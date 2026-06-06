@@ -169,16 +169,7 @@ jobs:
           mkdir NXGS-Gaming-Win
           cp build\gui\chiaki.exe "NXGS-Gaming-Win\NXGS Gaming.exe"
           cp build\third-party\cpp-steam-tools\cpp-steam-tools.dll NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\libcrypto-*.dll" NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\libssl-*.dll" NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\SDL2.dll" NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\hidapi.dll" NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\fftw3.dll" NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\opus.dll" NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\libspeexdsp.dll" NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\lcms2.dll" NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\miniupnpc.dll" NXGS-Gaming-Win
-          cp "${{ github.workspace }}\vcpkg_installed\${{ env.triplet }}\bin\json-c.dll" NXGS-Gaming-Win
+          Get-ChildItem -Path "${env:VCPKG_INSTALLED_DIR}\${{ env.triplet }}\bin" -Filter "*.dll" -File | Copy-Item -Destination NXGS-Gaming-Win -Force
           cp "${{ github.workspace }}\${{ env.dep_folder }}\bin\swresample-*.dll" NXGS-Gaming-Win
           cp "${{ github.workspace }}\${{ env.dep_folder }}\bin\avcodec-*.dll" NXGS-Gaming-Win
           cp "${{ github.workspace }}\${{ env.dep_folder }}\bin\avutil-*.dll" NXGS-Gaming-Win
