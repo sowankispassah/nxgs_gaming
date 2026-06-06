@@ -181,27 +181,44 @@ jobs:
           NXGS Gaming source code availability
 
           The complete corresponding source code for NXGS Gaming is available at:
-          https://github.com/soowankispassah/nxgs_gaming
+          https://github.com/sowankispassah/nxgs_gaming
 
           NXGS Gaming is a fork of chiaki-ng, which is based on Chiaki. This fork is distributed under the GNU Affero General Public License v3.0.
 
           NXGS Gaming is not affiliated with, endorsed by, sponsored by, or certified by Sony Interactive Entertainment LLC, PlayStation, chiaki-ng, Chiaki, or the original maintainers.
           "@ | Out-File -FilePath NXGS-Gaming-Win\SOURCE_CODE.txt -Encoding utf8
 
-      - name: Package NXGS Gaming
+      - name: Stage NXGS Gaming portable artifact
         run: |
           $CHIAKI_VERSION_MAJOR = (Select-String -Path .\CMakeLists.txt -Pattern 'set\(CHIAKI_VERSION_MAJOR ([0-9]+)\)') | %{$_.Matches.Groups[1].value}
           $CHIAKI_VERSION_MINOR = (Select-String -Path .\CMakeLists.txt -Pattern 'set\(CHIAKI_VERSION_MINOR ([0-9]+)\)') | %{$_.Matches.Groups[1].value}
           $CHIAKI_VERSION_PATCH = (Select-String -Path .\CMakeLists.txt -Pattern 'set\(CHIAKI_VERSION_PATCH ([0-9]+)\)') | %{$_.Matches.Groups[1].value}
-          $RELEASE_PACKAGE_FILE = "nxgs-gaming-win_x64-VC-portable-$CHIAKI_VERSION_MAJOR.$CHIAKI_VERSION_MINOR.$CHIAKI_VERSION_PATCH-test-build-${{ github.sha }}.zip"
-          Compress-Archive NXGS-Gaming-Win $RELEASE_PACKAGE_FILE
-          $release_filepath = Get-ChildItem $RELEASE_PACKAGE_FILE | %{$_[0].FullName}
-          echo "RELEASE_PACKAGE_PATH=$release_filepath" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          $RELEASE_VERSION = "$CHIAKI_VERSION_MAJOR.$CHIAKI_VERSION_MINOR.$CHIAKI_VERSION_PATCH"
+          $SHORT_SHA = "${{ github.sha }}".Substring(0, 8)
+          $RELEASE_VERSION_CODE = "$RELEASE_VERSION+run.${{ github.run_number }}.$SHORT_SHA"
+          $RELEASE_VERSION_SAFE = "$RELEASE_VERSION-build-${{ github.run_number }}-$SHORT_SHA"
+          $RUN_URL = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-build-info.ps1 `
+            -OutputDir NXGS-Gaming-Win `
+            -Version $RELEASE_VERSION `
+            -VersionCode $RELEASE_VERSION_CODE `
+            -Commit "${{ github.sha }}" `
+            -Branch "${{ github.ref_name }}" `
+            -RunUrl $RUN_URL `
+            -SourceUrl "https://github.com/sowankispassah/nxgs_gaming"
+          $release_dir = "artifact\portable"
+          New-Item -ItemType Directory -Force -Path $release_dir | Out-Null
+          Copy-Item -LiteralPath NXGS-Gaming-Win -Destination $release_dir -Recurse -Force
+          echo "RELEASE_PACKAGE_PATH=$release_dir" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          echo "RELEASE_VERSION_CODE=$RELEASE_VERSION_CODE" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          echo "RELEASE_VERSION_SAFE=$RELEASE_VERSION_SAFE" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          echo "RELEASE_PORTABLE_ARTIFACT_NAME=nxgs-gaming-win_x64-VC-portable-$RELEASE_VERSION_SAFE" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          echo "RELEASE_INSTALLER_ARTIFACT_NAME=nxgs-gaming-win_x64-VC-installer-$RELEASE_VERSION_SAFE" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Upload NXGS Gaming Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nxgs-gaming-win_x64-VC-Release
+          name: ${{ env.RELEASE_PORTABLE_ARTIFACT_NAME }}
           path: ${{ env.RELEASE_PACKAGE_PATH }}
           if-no-files-found: error
           retention-days: 7
@@ -215,7 +232,7 @@ jobs:
       - name: Upload NXGS Gaming Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nxgs-gaming-win_x64-VC-installer.zip
+          name: ${{ env.RELEASE_INSTALLER_ARTIFACT_NAME }}
           path: nxgs-gaming-windows-installer.exe
           if-no-files-found: error
           retention-days: 7

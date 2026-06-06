@@ -85,11 +85,24 @@ Copy-Item -LiteralPath (Join-Path $RepoRoot "COPYING") -Destination $OutputPath 
 Copy-Item -LiteralPath (Join-Path $RepoRoot "README.md") -Destination $OutputPath -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot "LICENSES") -Destination (Join-Path $OutputPath "LICENSES") -Recurse -Force
 
+$versionMajor = (Select-String -Path (Join-Path $RepoRoot "CMakeLists.txt") -Pattern 'set\(CHIAKI_VERSION_MAJOR ([0-9]+)\)').Matches.Groups[1].Value
+$versionMinor = (Select-String -Path (Join-Path $RepoRoot "CMakeLists.txt") -Pattern 'set\(CHIAKI_VERSION_MINOR ([0-9]+)\)').Matches.Groups[1].Value
+$versionPatch = (Select-String -Path (Join-Path $RepoRoot "CMakeLists.txt") -Pattern 'set\(CHIAKI_VERSION_PATCH ([0-9]+)\)').Matches.Groups[1].Value
+$version = "$versionMajor.$versionMinor.$versionPatch"
+$commit = ""
+$branch = ""
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $commit = (git -C $RepoRoot rev-parse HEAD 2>$null)
+    $branch = (git -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null)
+}
+$shortCommit = if ($commit) { $commit.Substring(0, [Math]::Min(8, $commit.Length)) } else { "local" }
+$versionCode = "$version+local.$shortCommit"
+
 @"
 NXGS Gaming source code availability
 
 The complete corresponding source code for NXGS Gaming is available at:
-https://github.com/soowankispassah/nxgs_gaming
+https://github.com/sowankispassah/nxgs_gaming
 
 NXGS Gaming is a fork of chiaki-ng, which is based on Chiaki. This fork is
 distributed under the GNU Affero General Public License v3.0.
@@ -99,11 +112,15 @@ Sony Interactive Entertainment LLC, PlayStation, chiaki-ng, Chiaki, or the
 original maintainers.
 "@ | Set-Content -LiteralPath (Join-Path $OutputPath "SOURCE_CODE.txt") -Encoding UTF8
 
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "write-build-info.ps1") `
+    -OutputDir $OutputPath `
+    -Version $version `
+    -VersionCode $versionCode `
+    -Commit $commit `
+    -Branch $branch
+
 if ($Zip) {
-    $versionMajor = (Select-String -Path (Join-Path $RepoRoot "CMakeLists.txt") -Pattern 'set\(CHIAKI_VERSION_MAJOR ([0-9]+)\)').Matches.Groups[1].Value
-    $versionMinor = (Select-String -Path (Join-Path $RepoRoot "CMakeLists.txt") -Pattern 'set\(CHIAKI_VERSION_MINOR ([0-9]+)\)').Matches.Groups[1].Value
-    $versionPatch = (Select-String -Path (Join-Path $RepoRoot "CMakeLists.txt") -Pattern 'set\(CHIAKI_VERSION_PATCH ([0-9]+)\)').Matches.Groups[1].Value
-    $zipPath = Join-Path $RepoRoot "nxgs-gaming-win_x64-portable-$versionMajor.$versionMinor.$versionPatch.zip"
+    $zipPath = Join-Path $RepoRoot "nxgs-gaming-win_x64-portable-$version-$shortCommit.zip"
     if (Test-Path $zipPath) {
         Remove-Item -LiteralPath $zipPath -Force
     }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "NXGS Gaming Release"
+  short_description: "Build NXGS Gaming releases cleanly"
+  default_prompt: "Use $nxgs-gaming-release to build and verify a clean NXGS Gaming release."
