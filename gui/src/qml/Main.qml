@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
-import org.streetpea.chiaking
+import com.nxgsstudio.nxgsgaming
 
 Item {
     id: root
@@ -169,7 +169,7 @@ Item {
 
     function showRendererFallbackDialog(reason) {
         showInfoDialog(qsTr("Renderer Fallback"),
-                       qsTr("Vulkan renderer is unavailable and chiaki-ng switched to OpenGL.\n\nReason: %1").arg(reason));
+                       qsTr("Vulkan renderer is unavailable and NXGS Gaming switched to OpenGL.\n\nReason: %1").arg(reason));
     }
 
     function showRemindDialog(title, text, remotePlay, callback) {

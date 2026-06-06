@@ -5,7 +5,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Dialogs
 
-import org.streetpea.chiaking
+import com.nxgsstudio.nxgsgaming
 
 import "controls" as C
 
@@ -3027,7 +3027,7 @@ DialogView {
 
                     C.Button {
                         id: aboutButton
-                        text: qsTr("About %1-ng").arg(Qt.application.name)
+                        text: qsTr("About NXGS Gaming")
                         onClicked: aboutDialog.open()
                         Material.roundedScale: Material.SmallScale
                     }
@@ -3088,7 +3088,7 @@ DialogView {
             parent: Overlay.overlay
             x: Math.round((root.width - width) / 2)
             y: Math.round((root.height - height) / 2)
-            title: qsTr("About %1-ng").arg(Qt.application.name)
+            title: qsTr("About NXGS Gaming")
             modal: true
             standardButtons: Dialog.Ok
             Material.roundedScale: Material.MediumScale
@@ -3104,15 +3104,18 @@ DialogView {
                     Layout.preferredWidth: 200
                     fillMode: Image.PreserveAspectFit
                     verticalAlignment: Image.AlignTop
-                    source: "qrc:icons/chiaking-logo.svg"
+                    source: "qrc:icons/nxgs-gaming-logo.png"
                 }
 
                 Label {
                     Layout.preferredWidth: 400
                     verticalAlignment: Text.AlignTop
                     wrapMode: Text.Wrap
-                    text: "<h1>chiaki-ng</h1> by Street Pea, version %1
-                        <h2>Fork of Chiaki</h2> by Florian Markl at version 2.1.1
+                    text: "<h1>NXGS Gaming</h1> by NXGS Studio, version %1
+                        <h2>Fork Attribution</h2>
+                        <p>NXGS Gaming is a fork of chiaki-ng, which is based on Chiaki. This fork is distributed under the GNU Affero General Public License v3.0.</p>
+                        <p>Source code: https://github.com/soowankispassah/nxgs_gaming</p>
+                        <p>NXGS Gaming is not affiliated with, endorsed by, sponsored by, or certified by Sony Interactive Entertainment LLC, PlayStation, chiaki-ng, Chiaki, or the original maintainers.</p>
 
                         <p>This program is free software: you can redistribute it and/or modify
                         it under the terms of the GNU Affero General Public License version 3

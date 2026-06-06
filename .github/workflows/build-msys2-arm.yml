@@ -93,21 +93,21 @@ jobs:
           
       - name: Deploy chiaki-ng
         run: |
-          ./scripts/deploy-windows-msys2.sh chiaki-ng-Win build/gui/chiaki.exe "${{ github.workspace }}/build/third-party/cpp-steam-tools" /clangarm64 gui/src/qml
+          ./scripts/deploy-windows-msys2.sh NXGS-Gaming-Win build/gui/chiaki.exe "${{ github.workspace }}/build/third-party/cpp-steam-tools" /clangarm64 gui/src/qml
 
       - name: Package chiaki-ng
         run: |
           CHIAKI_VERSION_MAJOR="$(grep 'CHIAKI_VERSION_MAJOR' CMakeLists.txt | grep -Eo '[0-9]+')"
           CHIAKI_VERSION_MINOR="$(grep 'CHIAKI_VERSION_MINOR' CMakeLists.txt | grep -Eo '[0-9]+')"
           CHIAKI_VERSION_PATCH="$(grep 'CHIAKI_VERSION_PATCH' CMakeLists.txt | grep -Eo '[0-9]+')"
-          RELEASE_PACKAGE_FILE="chiaki-ng-win_arm64-MSYS2-portable-$CHIAKI_VERSION_MAJOR.$CHIAKI_VERSION_MINOR.$CHIAKI_VERSION_PATCH-test-build-${{ github.sha }}.zip"
-          zip -r $RELEASE_PACKAGE_FILE chiaki-ng-Win
+          RELEASE_PACKAGE_FILE="nxgs-gaming-win_arm64-MSYS2-portable-$CHIAKI_VERSION_MAJOR.$CHIAKI_VERSION_MINOR.$CHIAKI_VERSION_PATCH-test-build-${{ github.sha }}.zip"
+          zip -r $RELEASE_PACKAGE_FILE NXGS-Gaming-Win
           echo "RELEASE_PACKAGE_PATH=${RELEASE_PACKAGE_FILE}" >> $GITHUB_ENV
 
       - name: Upload chiaki-ng Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chiaki-ng-win_arm64-MSYS2-Release-portable.zip
+          name: nxgs-gaming-win_arm64-MSYS2-Release-portable.zip
           path: ${{ env.RELEASE_PACKAGE_PATH }}
           if-no-files-found: error
           retention-days: 7
@@ -121,8 +121,8 @@ jobs:
       - name: Upload chiaki-ng Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chiaki-ng-win_arm64-MSYS2-Release-installer.exe
-          path: chiaki-ng-windows-installer.exe
+          name: nxgs-gaming-win_arm64-MSYS2-Release-installer.exe
+          path: nxgs-gaming-windows-installer.exe
           if-no-files-found: error
           retention-days: 7
           

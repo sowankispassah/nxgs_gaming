@@ -1,11 +1,11 @@
-name: Build chiaki-ng Appimage x86_64
+name: Build NXGS Gaming AppImage x86_64
 
 on:
   workflow_dispatch:
 
 jobs:
   build-appimage_x64:
-    name: Build chiaki-ng appimage_x64
+    name: Build NXGS Gaming appimage_x64
     runs-on: ubuntu-latest
     
     steps:
@@ -38,10 +38,10 @@ jobs:
             /bin/bash -c "sudo -E scripts/build-appimage.sh /build/appdir"
           
 
-      - name: Upload chiaki-ng Artifact
+      - name: Upload NXGS Gaming Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chiaki-ng.AppImage_x86_64
-          path: chiaki-ng/appimage/chiaki-ng.AppImage
+          name: nxgs-gaming.AppImage_x86_64
+          path: chiaki-ng/appimage/nxgs-gaming.AppImage
           if-no-files-found: error
           retention-days: 7

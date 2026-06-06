@@ -1,11 +1,11 @@
-name: Build chiaki-ng Appimage arm64
+name: Build NXGS Gaming AppImage arm64
 
 on:
   workflow_dispatch:
 
 jobs:
   build-appimage_arm64:
-    name: Build chiaki-ng appimage_arm64
+    name: Build NXGS Gaming appimage_arm64
     runs-on: ubuntu-24.04-arm
     
     steps:
@@ -37,10 +37,10 @@ jobs:
             -t docker.io/streetpea/chiaki-ng-builder:qt6.7 \
             /bin/bash -c "sudo -E scripts/build-appimage.sh /build/appdir"
 
-      - name: Upload chiaki-ng Artifact
+      - name: Upload NXGS Gaming Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chiaki-ng.AppImage_arm64
-          path: chiaki-ng/appimage/chiaki-ng.AppImage
+          name: nxgs-gaming.AppImage_arm64
+          path: chiaki-ng/appimage/nxgs-gaming.AppImage
           if-no-files-found: error
           retention-days: 7

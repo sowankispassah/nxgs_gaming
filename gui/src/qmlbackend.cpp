@@ -288,7 +288,7 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
 {
     qt_msg_handler = qInstallMessageHandler(msg_handler);
 
-    const char *uri = "org.streetpea.chiaking";
+    const char *uri = "com.nxgsstudio.nxgsgaming";
     qmlRegisterSingletonInstance(uri, 1, 0, "Chiaki", this);
     qmlRegisterUncreatableType<QmlMainWindow>(uri, 1, 0, "ChiakiWindow", {});
     qmlRegisterUncreatableType<QmlSettings>(uri, 1, 0, "ChiakiSettings", {});
@@ -1149,7 +1149,7 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
             return;
 
         if (chiaki_quit_reason_is_error(reason)) {
-            QString m = tr("Chiaki Session has quit") + ":\n" + chiaki_quit_reason_string(reason);
+            QString m = tr("NXGS Gaming session has quit") + ":\n" + chiaki_quit_reason_string(reason);
             if (!reason_str.isEmpty())
                 m += "\n" + tr("Reason") + ": \"" + reason_str + "\"";
             emit sessionError(tr("Session has quit"), m);

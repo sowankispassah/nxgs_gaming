@@ -12,9 +12,10 @@ exe_path="$2"
 tool_dir="$3"
 msys_prefix="$4"
 qml_dir="$5"
+app_exe_name="${APP_EXE_NAME:-NXGS Gaming.exe}"
 
 mkdir -p "$output_dir"
-cp "$exe_path" "$output_dir/"
+cp "$exe_path" "$output_dir/$app_exe_name"
 
 export PATH="${tool_dir}:${msys_prefix}/share/qt6/bin:${PATH}"
 export QT_PLUGIN_PATH="${msys_prefix}/share/qt6/plugins"
@@ -31,8 +32,8 @@ fi
 declare -A queued_paths=()
 declare -A scanned_paths=()
 
-queue=("$output_dir/$(basename "$exe_path")")
-queued_paths["$queue"]=1
+queue=("$output_dir/$app_exe_name")
+queued_paths["${queue[0]}"]=1
 
 extract_dependencies() {
     local binary="$1"
@@ -103,7 +104,23 @@ for dll_dir in "$msys_prefix/bin" "/clangarm64/bin" "$msys_prefix/mingw64/bin"; 
 done
 shopt -u nullglob
 
-windeployqt6.exe --no-translations --qmldir="$qml_dir" "$output_dir/$(basename "$exe_path")"
+windeployqt6.exe --no-translations --qmldir="$qml_dir" "$output_dir/$app_exe_name"
+
+cp COPYING README.md "$output_dir/"
+cp -R LICENSES "$output_dir/LICENSES"
+cat > "$output_dir/SOURCE_CODE.txt" <<'EOF'
+NXGS Gaming source code availability
+
+The complete corresponding source code for NXGS Gaming is available at:
+https://github.com/soowankispassah/nxgs_gaming
+
+NXGS Gaming is a fork of chiaki-ng, which is based on Chiaki. This fork is
+distributed under the GNU Affero General Public License v3.0.
+
+NXGS Gaming is not affiliated with, endorsed by, sponsored by, or certified by
+Sony Interactive Entertainment LLC, PlayStation, chiaki-ng, Chiaki, or the
+original maintainers.
+EOF
 
 # Remove system-provided DLLs that Windows already supplies and
 # should not be bundled with the MSYS2 build (e.g. D3D compiler). Use

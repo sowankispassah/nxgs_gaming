@@ -1,12 +1,12 @@
-app-id: io.github.streetpea.Chiaki4deck-devel
+app-id: com.nxgsstudio.nxgsgaming.Devel
 runtime: org.kde.Platform
 runtime-version: '6.9'
 sdk: org.kde.Sdk
 base: io.qt.qtwebengine.BaseApp
 base-version: '6.9'
 command: chiaki
-rename-icon: chiaking
-rename-desktop-file: chiaking.desktop
+rename-icon: com.nxgsstudio.nxgsgaming
+rename-desktop-file: com.nxgsstudio.nxgsgaming.desktop
 separate-locales: false
 finish-args:
   - --share=network
@@ -469,12 +469,12 @@ modules:
     post-install:
       - mv /app/lib/pkgconfig/sdl2-compat.pc /app/lib/pkgconfig/sdl2.pc
 
-  - name: chiaki-ng
+  - name: nxgs-gaming
     buildsystem: cmake-ninja
     builddir: true
     sources:
       - type: git
-        url: https://github.com/streetpea/chiaki-ng.git
+        url: https://github.com/soowankispassah/nxgs_gaming.git
         branch: main
     post-install:
       - "install -Dm755 ../scripts/psn-account-id.py /app/bin/psn-account-id"

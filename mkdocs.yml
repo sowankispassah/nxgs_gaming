@@ -1,7 +1,7 @@
-site_name: chiaki-ng
-repo_url: https://github.com/streetpea/chiaki-ng
-site_url: https://streetpea.github.io/chiaki-ng/
-edit_uri: edit/chiaki-ng/docs
+site_name: NXGS Gaming
+repo_url: https://github.com/soowankispassah/nxgs_gaming
+site_url: https://github.com/soowankispassah/nxgs_gaming
+edit_uri: edit/main/docs
 nav:
   - Home: index.md
   - Setup:
@@ -20,11 +20,11 @@ nav:
   - DIY:
     - Building the Flatpak Yourself: diy/buildit.md
     - Locally Building Documentation: diy/builddocs.md
-    - Developing chiaki-ng on Steam Deck: diy/steamdeckdev.md
+    - Developing NXGS Gaming on Steam Deck: diy/steamdeckdev.md
 
 theme:
-  favicon: images/chiaking.svg
-  logo: images/chiaking-logo-white.svg
+  favicon: images/nxgs-gaming.png
+  logo: images/nxgs-gaming-logo-white.png
   features:
     - header.autohide
     - navigation.sections
@@ -63,13 +63,13 @@ theme:
         name: Switch to dark mode
 
 copyright: >
-  Copyright &copy; 2022 Street Pea –
+  Copyright &copy; 2026 NXGS Studio. Portions copyright Street Pea and Chiaki contributors –
   <a href="#__consent">Change cookie settings</a>
 
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/streetpea/chiaki-ng
+      link: https://github.com/soowankispassah/nxgs_gaming
     - icon: fontawesome/brands/reddit
       link: https://www.reddit.com/u/Street_Pea_6693/?utm_source=share&utm_medium=ios_app&utm_name=iossmf
     - icon: fontawesome/brands/discord
@@ -90,7 +90,7 @@ extra:
           data: 0
           note: >- 
             Thanks for your feedback! Help me improve this page by
-            using my <a href="https://github.com/streetpea/chiaki-ng/issues/new/?title=[Feedback]+{title}+-+{url}" target="_blank" rel="noopener">feedback form</a>.
+            using my <a href="https://github.com/soowankispassah/nxgs_gaming/issues/new/?title=[Feedback]+{title}+-+{url}" target="_blank" rel="noopener">feedback form</a>.
 
   consent:
     title: Cookie consent

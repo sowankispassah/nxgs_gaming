@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
-import org.streetpea.chiaking
+import com.nxgsstudio.nxgsgaming
 
 Rectangle {
     id: view
@@ -181,7 +181,7 @@ Rectangle {
             switch(Chiaki.connectState)
             {
                 case Chiaki.PsnConnectState.LinkingConsole:
-                    infoLabel.text = registOnly ? qsTr("Registering PlayStation console with chiaki-ng ...") : qsTr("Linking chiaki-ng with PlayStation console ...")
+                    infoLabel.text = registOnly ? qsTr("Registering console with NXGS Gaming ...") : qsTr("Linking NXGS Gaming with console ...")
                     view.allowClose = false
                     break
                 case Chiaki.PsnConnectState.RegisteringConsole:

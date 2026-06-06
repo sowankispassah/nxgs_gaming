@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
-import org.streetpea.chiaking
+import com.nxgsstudio.nxgsgaming
 
 Rectangle {
     id: view

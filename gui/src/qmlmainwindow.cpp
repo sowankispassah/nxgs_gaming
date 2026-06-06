@@ -2845,9 +2845,9 @@ void QmlMainWindow::setSettings(Settings *new_settings)
     QString profile = settings->GetCurrentProfile();
     qCCritical(chiakiGui) << "Current Profile: " << profile;
     if(profile.isEmpty())
-        QGuiApplication::setApplicationDisplayName("chiaki-ng");
+        QGuiApplication::setApplicationDisplayName("NXGS Gaming");
     else
-        QGuiApplication::setApplicationDisplayName(QString("chiaki-ng:%1").arg(profile));
+        QGuiApplication::setApplicationDisplayName(QString("NXGS Gaming:%1").arg(profile));
     this->setTitle(QGuiApplication::applicationDisplayName());
 }
 
@@ -5836,7 +5836,7 @@ void QmlMainWindow::createSwapchain()
             if (surface_renderable && failures >= 60 && failure_duration_us >= 3000000) {
                 handleVulkanRendererFallback(
                     tr("Vulkan renderer stalled"),
-                    tr("The Vulkan surface could not recover. Chiaki-ng will relaunch with OpenGL for this run only."),
+                    tr("The Vulkan surface could not recover. NXGS Gaming will relaunch with OpenGL for this run only."),
                     tr("Vulkan surface creation failed repeatedly while the window was visible. OpenGL is being used for this launch only."));
             } else {
                 swapchain_recreate_pending.storeRelease(1);
@@ -6217,7 +6217,7 @@ void QmlMainWindow::handleVulkanDeviceLost(const QString &reason)
 {
     handleVulkanRendererFallback(
         tr("Vulkan device lost"),
-        tr("The Vulkan renderer stopped responding. Chiaki-ng will relaunch with OpenGL for this run only.\n\nReason: %1").arg(reason),
+        tr("The Vulkan renderer stopped responding. NXGS Gaming will relaunch with OpenGL for this run only.\n\nReason: %1").arg(reason),
         tr("Vulkan device was lost. OpenGL is being used for this launch only. Reason: %1").arg(reason));
 }
 
@@ -6750,7 +6750,7 @@ void QmlMainWindow::render()
             if (surface_renderable && failures >= 60 && failure_duration_us >= 3000000) {
                 handleVulkanRendererFallback(
                     tr("Vulkan renderer stalled"),
-                    tr("The Vulkan swapchain could not recover. Chiaki-ng will relaunch with OpenGL for this run only."),
+                    tr("The Vulkan swapchain could not recover. NXGS Gaming will relaunch with OpenGL for this run only."),
                     tr("Vulkan swapchain failed repeatedly while the window was visible. OpenGL is being used for this launch only."));
             } else {
                 swapchain_recreate_pending.storeRelease(1);

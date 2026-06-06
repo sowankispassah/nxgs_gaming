@@ -73,10 +73,10 @@ int real_main(int argc, char *argv[])
 	qRegisterMetaType<ChiakiRegistEventType>();
 	qRegisterMetaType<ChiakiLogLevel>();
 
-	QGuiApplication::setOrganizationName("Chiaki");
-	QGuiApplication::setApplicationName("Chiaki");
+	QGuiApplication::setOrganizationName("NXGS Studio");
+	QGuiApplication::setApplicationName("NXGS Gaming");
 	QGuiApplication::setApplicationVersion(CHIAKI_VERSION);
-	QGuiApplication::setApplicationDisplayName("chiaki-ng");
+	QGuiApplication::setApplicationDisplayName("NXGS Gaming");
 #if defined(Q_OS_MACOS)
 	qputenv("QT_MTL_NO_TRANSACTION", "1");
 #endif
@@ -85,7 +85,7 @@ int real_main(int argc, char *argv[])
 		QGuiApplication::setDesktopFileName(qEnvironmentVariable("FLATPAK_ID"));
 	else
 #endif
-		QGuiApplication::setDesktopFileName("chiaki-ng");
+		QGuiApplication::setDesktopFileName("com.nxgsstudio.nxgsgaming");
 
 	qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu");
 #if defined(Q_OS_WIN)
@@ -111,7 +111,7 @@ int real_main(int argc, char *argv[])
 		return 1;
 	}
 
-    SDL_SetHint(SDL_HINT_APP_NAME, "chiaki-ng");
+    SDL_SetHint(SDL_HINT_APP_NAME, "NXGS Gaming");
 
 	if(SDL_Init(SDL_INIT_AUDIO) < 0)
 	{
@@ -126,9 +126,9 @@ int real_main(int argc, char *argv[])
 	QApplication app(argc, argv);
 
 #ifdef Q_OS_MACOS
-	QGuiApplication::setWindowIcon(QIcon(":/icons/chiaking_macos.svg"));
+	QGuiApplication::setWindowIcon(QIcon(":/icons/nxgs-gaming.png"));
 #else
-	QGuiApplication::setWindowIcon(QIcon(":/icons/chiaking.svg"));
+	QGuiApplication::setWindowIcon(QIcon(":/icons/nxgs-gaming.png"));
 #endif
 
 	QCommandLineParser parser;
@@ -183,7 +183,7 @@ int real_main(int argc, char *argv[])
 		settings.SetCurrentProfile(parser.value(profile_option));
 	Settings alt_settings(parser.isSet(profile_option) ? "" : settings.GetCurrentProfile());
 	if(!settings.GetCurrentProfile().isEmpty())
-		QGuiApplication::setApplicationDisplayName(QString("chiaki-ng:%1").arg(settings.GetCurrentProfile()));
+		QGuiApplication::setApplicationDisplayName(QString("NXGS Gaming:%1").arg(settings.GetCurrentProfile()));
 	bool use_alt_settings = false;
 	if(!parser.isSet(profile_option))
 		use_alt_settings = true;

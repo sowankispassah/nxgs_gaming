@@ -13,24 +13,24 @@
 ## Where to Download 
 
 ### Linux
-- Flatpak Release on Flathub as io.github.streetpea.Chiaki4deck
+- Flatpak Release as com.nxgsstudio.nxgsgaming
 - Appimage  release (arm64 and x86_64) attached
 
 ### MacOS
 - Homebrew
   ```
-  brew install --cask streetpea/streetpea/chiaki-ng
+  brew install --cask ./scripts/nxgs-gaming.rb
   ```
 -  Attached releases (arm64 and x86_64) attached
 
 ### Windows:
 - winget
   ```
-  winget install --id=StreetPea.chiaki-ng -e
+  winget install --id=NXGSStudio.NXGSGaming -e
   ```
 - chocolatey
   ```
-  choco install chiaki-ng
+  choco install nxgs-gaming
   ```
  - Attached releases (installer and portable)
 

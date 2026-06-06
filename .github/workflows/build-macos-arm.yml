@@ -1,4 +1,4 @@
-name: Build chiaki-ng macOSX arm64
+name: Build NXGS Gaming macOS arm64
 
 on:
   workflow_dispatch:
@@ -26,49 +26,49 @@ jobs:
           sudo INSTALL_PREFIX=/usr/local scripts/build-sdl2-compat.sh
           sudo cp /usr/local/lib/pkgconfig/sdl2-compat.pc /usr/local/lib/pkgconfig/sdl2.pc
 
-      - name: Configure chiaki-ng
+      - name: Configure NXGS Gaming
         run: |
           cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCHIAKI_ENABLE_CLI=OFF -DCHIAKI_ENABLE_STEAMDECK_NATIVE=OFF -DCMAKE_PREFIX_PATH="$(brew --prefix)/opt/@openssl@3;$(brew --prefix)/opt/qt@6;$(brew --prefix)/opt/protobuf@29"
 
-      - name: Build chiaki-ng
+      - name: Build NXGS Gaming
         run: |
           export CPATH=$(brew --prefix)/opt/ffmpeg/include
           cmake --build build --config Release --clean-first --target chiaki
 
-      - name: Deploy chiaki-ng
+      - name: Deploy NXGS Gaming
         run: |
-          rm -rf chiaki-ng.app chiaki-ng.dmg
-          cp -a build/gui/chiaki.app chiaki-ng.app
+          rm -rf "NXGS Gaming.app" nxgs-gaming.dmg
+          cp -a build/gui/chiaki.app "NXGS Gaming.app"
           cp scripts/qtwebengine_import.qml gui/src/qml/
-          $(brew --prefix)/opt/qt@6/bin/macdeployqt chiaki-ng.app -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
-          mkdir -p chiaki-ng.app/Contents/Resources/vulkan/icd.d
+          $(brew --prefix)/opt/qt@6/bin/macdeployqt "NXGS Gaming.app" -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
+          mkdir -p "NXGS Gaming.app"/Contents/Resources/vulkan/icd.d
           wget https://github.com/KhronosGroup/MoltenVK/releases/download/v1.2.9/MoltenVK-macos.tar && tar xf MoltenVK-macos.tar
-          cp MoltenVK/MoltenVK/dylib/macOS/* chiaki-ng.app/Contents/Resources/vulkan/icd.d
-          $(brew --prefix)/opt/qt@6/bin/macdeployqt chiaki-ng.app -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
-          if [[ -d chiaki-ng.app/Contents/Frameworks/QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app ]]
+          cp MoltenVK/MoltenVK/dylib/macOS/* "NXGS Gaming.app"/Contents/Resources/vulkan/icd.d
+          $(brew --prefix)/opt/qt@6/bin/macdeployqt "NXGS Gaming.app" -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
+          if [[ -d "NXGS Gaming.app"/Contents/Frameworks/QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app ]]
           then
-            ln -s ../../../../../../../Frameworks chiaki-ng.app/Contents/Frameworks/QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app/Contents
+            ln -s ../../../../../../../Frameworks "NXGS Gaming.app"/Contents/Frameworks/QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app/Contents
           fi
-          cp /usr/local/lib/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL3.dylib
-          cp /usr/local/lib/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib
-          install_name_tool -id @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL3.dylib
-          install_name_tool -id @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib
-          install_name_tool -change /usr/local/lib/libSDL3.dylib @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib || true
-          install_name_tool -change @rpath/libSDL3.dylib @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib || true
-          install_name_tool -change /opt/homebrew/lib/libSDL3.dylib @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib || true
-          install_name_tool -change /usr/local/lib/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/chiaki || true
-          install_name_tool -change @rpath/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/chiaki || true
-          install_name_tool -change /opt/homebrew/lib/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/chiaki || true
-          ln -s libvulkan.1.dylib chiaki-ng.app/Contents/Frameworks/vulkan
-          codesign --force --entitlements gui/entitlements.xml --deep --sign - chiaki-ng.app
-          rm -f chiaki-ng.dmg
-          hdiutil create -srcfolder chiaki-ng.app chiaki-ng.dmg
-          codesign --force --entitlements gui/entitlements.xml --deep --sign - chiaki-ng.dmg
+          cp /usr/local/lib/libSDL3.dylib "NXGS Gaming.app"/Contents/MacOS/libSDL3.dylib
+          cp /usr/local/lib/libSDL2-2.0.0.dylib "NXGS Gaming.app"/Contents/MacOS/libSDL2-2.0.0.dylib
+          install_name_tool -id @executable_path/libSDL3.dylib "NXGS Gaming.app"/Contents/MacOS/libSDL3.dylib
+          install_name_tool -id @executable_path/libSDL2-2.0.0.dylib "NXGS Gaming.app"/Contents/MacOS/libSDL2-2.0.0.dylib
+          install_name_tool -change /usr/local/lib/libSDL3.dylib @executable_path/libSDL3.dylib "NXGS Gaming.app"/Contents/MacOS/libSDL2-2.0.0.dylib || true
+          install_name_tool -change @rpath/libSDL3.dylib @executable_path/libSDL3.dylib "NXGS Gaming.app"/Contents/MacOS/libSDL2-2.0.0.dylib || true
+          install_name_tool -change /opt/homebrew/lib/libSDL3.dylib @executable_path/libSDL3.dylib "NXGS Gaming.app"/Contents/MacOS/libSDL2-2.0.0.dylib || true
+          install_name_tool -change /usr/local/lib/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib "NXGS Gaming.app"/Contents/MacOS/chiaki || true
+          install_name_tool -change @rpath/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib "NXGS Gaming.app"/Contents/MacOS/chiaki || true
+          install_name_tool -change /opt/homebrew/lib/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib "NXGS Gaming.app"/Contents/MacOS/chiaki || true
+          ln -s libvulkan.1.dylib "NXGS Gaming.app"/Contents/Frameworks/vulkan
+          codesign --force --entitlements gui/entitlements.xml --deep --sign - "NXGS Gaming.app"
+          rm -f nxgs-gaming.dmg
+          hdiutil create -srcfolder "NXGS Gaming.app" nxgs-gaming.dmg
+          codesign --force --entitlements gui/entitlements.xml --deep --sign - nxgs-gaming.dmg
 
-      - name: Upload chiaki-ng Artifact
+      - name: Upload NXGS Gaming Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chiaki-ng-macos_arm64-Release
-          path: chiaki-ng.dmg
+          name: nxgs-gaming-macos_arm64-Release
+          path: nxgs-gaming.dmg
           if-no-files-found: error
           retention-days: 7

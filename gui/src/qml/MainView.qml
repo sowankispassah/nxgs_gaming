@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
-import org.streetpea.chiaking
+import com.nxgsstudio.nxgsgaming
 
 Pane {
     padding: 0
@@ -14,7 +14,7 @@ Pane {
         {
             root.initialAsk = true;
             if(Chiaki.settings.addSteamShortcutAsk && (typeof Chiaki.createSteamShortcut === "function"))
-                root.showRemindDialog(qsTr("Official Steam artwork + controller layout"), qsTr("Would you like to either create a new non-Steam game for chiaki-ng\nor update an existing non-Steam game with the official artwork and controller layout?") + "\n\n" + qsTr("(Note: If you select no now and want to do this later, click the button or press R3 from the main menu.)"), false, () => root.showSteamShortcutDialog(true));
+                root.showRemindDialog(qsTr("Steam artwork + controller layout"), qsTr("Would you like to either create a new non-Steam game for NXGS Gaming\nor update an existing non-Steam game with the configured artwork and controller layout?") + "\n\n" + qsTr("(Note: If you select no now and want to do this later, click the button or press R3 from the main menu.)"), false, () => root.showSteamShortcutDialog(true));
             else if(Chiaki.settings.remotePlayAsk)
             {
                 if(!Chiaki.settings.psnRefreshToken || !Chiaki.settings.psnAuthToken || !Chiaki.settings.psnAuthTokenExpiry || !Chiaki.settings.psnAccountId)
@@ -421,7 +421,7 @@ Pane {
     Image {
         id: logoImage
         anchors.centerIn: parent
-        source: "qrc:/icons/chiaking-logo-white.svg"
+        source: "qrc:/icons/nxgs-gaming-logo-white.png"
         sourceSize: Qt.size(Math.min(parent.width, parent.height) / 2, Math.min(parent.width, parent.height) / 2)
 
         PropertyAnimation {

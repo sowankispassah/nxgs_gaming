@@ -146,16 +146,16 @@ endif()
 set_target_properties(chiaki PROPERTIES
 		MACOSX_BUNDLE TRUE
 		MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/MacOSXBundleInfo.plist.in"
-		MACOSX_BUNDLE_BUNDLE_NAME chiaki-ng
+		MACOSX_BUNDLE_BUNDLE_NAME "NXGS Gaming"
 		MACOSX_BUNDLE_BUNDLE_VERSION ${CHIAKI_VERSION}
-		MACOSX_BUNDLE_COPYRIGHT "thestr4ng3r (AGPLv3)"
-		MACOSX_BUNDLE_GUI_IDENTIFIER "org.streetpea.chiaking"
+		MACOSX_BUNDLE_COPYRIGHT "AGPLv3. Portions copyright thestr4ng3r, Street Pea, and contributors."
+		MACOSX_BUNDLE_GUI_IDENTIFIER "com.nxgsstudio.nxgsgaming"
 		MACOSX_BUNDLE_ICON_FILE chiaking.icns
 		RESOURCE "${RESOURCE_FILES}")
 
 install(TARGETS chiaki
 		RUNTIME DESTINATION bin
 		BUNDLE DESTINATION bin)
-install(FILES chiaking.desktop DESTINATION share/applications)
-install(FILES chiaking.png DESTINATION share/icons/hicolor/512x512/apps)
-install(FILES io.github.streetpea.Chiaki4deck.appdata.xml DESTINATION share/metainfo)
+install(FILES com.nxgsstudio.nxgsgaming.desktop DESTINATION share/applications)
+install(FILES res/nxgs-gaming.png DESTINATION share/icons/hicolor/512x512/apps RENAME com.nxgsstudio.nxgsgaming.png)
+install(FILES com.nxgsstudio.nxgsgaming.metainfo.xml DESTINATION share/metainfo)

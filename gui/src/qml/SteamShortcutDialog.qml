@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
-import org.streetpea.chiaking
+import com.nxgsstudio.nxgsgaming
 
 import "controls" as C
 
@@ -66,7 +66,7 @@ DialogView {
             C.TextField {
                 id: name
                 Layout.preferredWidth: 400
-                text: Chiaki.settings.currentProfile ? qsTr("chiaki-ng ") + Chiaki.settings.currentProfile: qsTr("chiaki-ng")
+                text: Chiaki.settings.currentProfile ? qsTr("NXGS Gaming ") + Chiaki.settings.currentProfile: qsTr("NXGS Gaming")
                 firstInFocusChain: true
             }
 

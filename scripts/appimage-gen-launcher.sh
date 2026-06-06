@@ -23,7 +23,7 @@ fi
 if ! [ -f "${appimage_path}" ]
 then
     echo "Appimage does not exist at: ${appimage_path}" >&2
-    echo -e "Please set appimage_path=myappimage where myappimage\nis the path to your appimage like ~/Documents/chiaki-ng.AppImage" >&2
+    echo -e "Please set appimage_path=myappimage where myappimage\nis the path to your appimage like ~/Documents/nxgs-gaming.AppImage" >&2
     exit 2
 fi
 # create registration key and nickname array to handle case of multiple registered consoles
@@ -389,7 +389,7 @@ else
 fi
 
 cat <<EOF >> "$config_path/Chiaki-launcher.sh"
-# Begin playing PlayStation remote play via Chiaki on your Steam Deck :)
+# Begin remote play via NXGS Gaming on your Steam Deck.
 "${appimage_path}" --passcode "${login_passcode}" --${mode} stream $(printf %q "${server_nickname}") \${addr}
 EOF
 

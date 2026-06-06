@@ -1,11 +1,11 @@
-name: Build chiaki-ng Appimage Compatibility
+name: Build NXGS Gaming AppImage Compatibility
 
 on:
   workflow_dispatch:
 
 jobs:
   build-appimage_compat_x64:
-    name: Build compatibility chiaki-ng appimage_x64
+    name: Build compatibility NXGS Gaming appimage_x64
     runs-on: ubuntu-latest
     
     steps:
@@ -29,10 +29,10 @@ jobs:
         run: |
           ./run-podman-build-compatibility-appimage.sh
 
-      - name: Upload chiaki-ng Artifact
+      - name: Upload NXGS Gaming Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chiaki-ng-compatibility.AppImage
-          path: chiaki-ng/appimage/chiaki-ng-compatibility.AppImage
+          name: nxgs-gaming-compatibility.AppImage
+          path: chiaki-ng/appimage/nxgs-gaming-compatibility.AppImage
           if-no-files-found: error
           retention-days: 7

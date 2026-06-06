@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+  <id>com.nxgsstudio.nxgsgaming</id>
+  <launchable type="desktop-id">com.nxgsstudio.nxgsgaming.desktop</launchable>
+  <name>NXGS Gaming</name>
+  <summary>Open source remote play client fork based on chiaki-ng</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+  <developer_name>NXGS Studio</developer_name>
+  <url type="homepage">https://github.com/soowankispassah/nxgs_gaming</url>
+  <url type="help">https://github.com/soowankispassah/nxgs_gaming</url>
+  <url type="bugtracker">https://github.com/soowankispassah/nxgs_gaming/issues</url>
+  <url type="vcs-browser">https://github.com/soowankispassah/nxgs_gaming</url>
+  <description>
+    <p>
+      NXGS Gaming is a fork of chiaki-ng, which is based on Chiaki. This fork is distributed under the GNU Affero General Public License v3.0.
+    </p>
+    <p>
+      The complete corresponding source code for NXGS Gaming is available at: https://github.com/soowankispassah/nxgs_gaming
+    </p>
+    <p>
+      NXGS Gaming is not affiliated with, endorsed by, sponsored by, or certified by Sony Interactive Entertainment LLC, PlayStation, chiaki-ng, Chiaki, or the original maintainers.
+    </p>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/soowankispassah/nxgs_gaming/main/assets/screenshot.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+</component>

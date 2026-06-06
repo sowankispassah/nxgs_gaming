@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=NXGS Gaming
+Comment=Open source remote play client fork based on chiaki-ng
+Exec=chiaki
+Icon=com.nxgsstudio.nxgsgaming
+Categories=Game;Network;RemoteAccess;
+Keywords=remote play;game streaming;chiaki-ng;Chiaki;

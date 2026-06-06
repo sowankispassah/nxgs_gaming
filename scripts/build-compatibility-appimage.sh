@@ -46,5 +46,5 @@ set -e
 export LD_LIBRARY_PATH="`pwd`/sdl2-prefix/lib:$LD_LIBRARY_PATH"
 export EXTRA_QT_PLUGINS=opengl
 
-./linuxdeploy-x86_64.AppImage --appdir="${appdir}" -e "${appdir}/usr/bin/chiaki" -d "${appdir}/usr/share/applications/chiaking.desktop" --plugin qt --output appimage
-mv chiaki-ng-x86_64.AppImage chiaki-ng-compatibility.AppImage
+./linuxdeploy-x86_64.AppImage --appdir="${appdir}" -e "${appdir}/usr/bin/chiaki" -d "${appdir}/usr/share/applications/com.nxgsstudio.nxgsgaming.desktop" --plugin qt --output appimage
+mv ./*.AppImage nxgs-gaming-compatibility.AppImage
