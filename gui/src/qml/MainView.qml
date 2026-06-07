@@ -287,7 +287,7 @@ Pane {
                                     t += qsTr("discovered");
                             }
                             else
-                                t += qsTr("manual");
+                                t += modelData.manual ? qsTr("manual") : qsTr("saved console");
                         }
                         return t;
                     }

@@ -770,6 +770,7 @@ QVariantList QmlBackend::hosts() const
     QVariantList out;
     QList<QString> discovered_nicknames;
     QList<ManualHost> discovered_manual_hosts;
+    QStringList represented_registered_macs;
     size_t registered_discovered_ps4s = 0;
     auto manual_hosts = settings->GetManualHosts();
     for (const auto &host : discovery_manager.GetHosts()) {
@@ -780,7 +781,7 @@ QVariantList QmlBackend::hosts() const
         if(registered && hidden)
         {
             settings->RemoveHiddenHost(host_mac);
-            bool hidden = false;
+            hidden = false;
         }
         // Update hidden host nickname if it's changed
         if(hidden)
@@ -820,7 +821,24 @@ QVariantList QmlBackend::hosts() const
         }
         QString registered_display_name;
         if(registered)
-            registered_display_name = settings->GetRegisteredHost(host_mac).GetDisplayName();
+        {
+            RegisteredHost registered_host = settings->GetRegisteredHost(host_mac);
+            bool registered_host_updated = false;
+            registered_display_name = registered_host.GetDisplayName();
+            if(registered_host.GetLastHost() != host.host_addr)
+            {
+                registered_host.SetLastHost(host.host_addr);
+                registered_host_updated = true;
+            }
+            if(registered_host.GetPsnDuid().isEmpty() && psn_nickname_hosts.contains(host.host_name))
+            {
+                registered_host.SetPsnDuid(psn_nickname_hosts.value(host.host_name).GetDuid());
+                registered_host_updated = true;
+            }
+            if(registered_host_updated)
+                settings->AddRegisteredHost(registered_host);
+            represented_registered_macs.append(host_mac.ToString());
+        }
         m["name"] = host.host_name;
         m["displayName"] = !manual_display_name.isEmpty() ? manual_display_name :
             (!registered_display_name.isEmpty() ? registered_display_name : host.host_name);
@@ -865,6 +883,7 @@ QVariantList QmlBackend::hosts() const
                 (!registered.GetDisplayName().isEmpty() ? registered.GetDisplayName() : registered.GetServerNickname());
             m["ps5"] = chiaki_target_is_ps5(registered.GetTarget());
             m["mac"] = registered.GetServerMAC().ToString();
+            represented_registered_macs.append(registered.GetServerMAC().ToString());
         }
         out.append(m);
     }
@@ -896,6 +915,7 @@ QVariantList QmlBackend::hosts() const
         {
             auto registered_host = settings->GetNicknameRegisteredHost(host.GetName());
             registered_display_name = registered_host.GetDisplayName();
+            represented_registered_macs.append(registered_host.GetServerMAC().ToString());
             for(const auto &manual_host : settings->GetManualHosts())
             {
                 if(manual_host.GetRegistered() && manual_host.GetMAC() == registered_host.GetServerMAC() && !manual_host.GetDisplayName().isEmpty())
@@ -911,6 +931,36 @@ QVariantList QmlBackend::hosts() const
         m["address"] = "";
         m["registered"] = true;
         m["ps5"] = host.IsPS5();
+        out.append(m);
+    }
+    for (const auto &host : settings->GetRegisteredHosts()) {
+        const QString mac = host.GetServerMAC().ToString();
+        if(represented_registered_macs.contains(mac))
+            continue;
+        QVariantMap m;
+        QString display_name = host.GetDisplayName();
+        if(display_name.isEmpty())
+        {
+            for(const auto &manual_host : settings->GetManualHosts())
+            {
+                if(manual_host.GetRegistered() && manual_host.GetMAC() == host.GetServerMAC() && !manual_host.GetDisplayName().isEmpty())
+                {
+                    display_name = manual_host.GetDisplayName();
+                    break;
+                }
+            }
+        }
+        m["discovered"] = false;
+        m["manual"] = false;
+        m["display"] = true;
+        m["name"] = host.GetServerNickname();
+        m["displayName"] = display_name.isEmpty() ? host.GetServerNickname() : display_name;
+        m["duid"] = host.GetPsnDuid();
+        m["address"] = host.GetLastHost();
+        m["state"] = host.GetLastHost().isEmpty() ? "unknown" : "saved";
+        m["registered"] = true;
+        m["ps5"] = chiaki_target_is_ps5(host.GetTarget());
+        m["mac"] = mac;
         out.append(m);
     }
     return out;
@@ -1614,6 +1664,14 @@ void QmlBackend::connectToHost(int index, QString nickname)
         return;
     }
 
+    if(server.duid.isEmpty() && server.GetHostAddr().isEmpty())
+    {
+        window->setWindowAdjustable(true);
+        emit error(tr("Console address unavailable"),
+                   tr("This registered console is saved, but NXGS Gaming has not learned its PSN remote identity or last local address yet. Connect once while the console is discoverable or refresh PSN hosts, then it will stay reconnectable."));
+        return;
+    }
+
     if (server.discovered && server.discovery_host.state == CHIAKI_DISCOVERY_HOST_STATE_STANDBY)
     {
         const QString wake_host = server.GetHostAddr();
@@ -1824,6 +1882,7 @@ QmlBackend::DisplayServer QmlBackend::displayServerAt(int index) const
         return {};
     auto discovered = discovery_manager.GetHosts();
     auto manual = settings->GetManualHosts();
+    QStringList represented_registered_macs;
     if (index < discovered.size()) {
         DisplayServer server;
         server.valid = true;
@@ -1841,7 +1900,10 @@ QmlBackend::DisplayServer QmlBackend::displayServerAt(int index) const
         }
         server.duid = std::move(duid);
         if (server.registered)
+        {
             server.registered_host = settings->GetRegisteredHost(host_mac);
+            represented_registered_macs.append(server.registered_host.GetServerMAC().ToString());
+        }
         for (int i = 0; i < manual.size(); i++)
         {
             const auto &manual_host = manual.at(i);
@@ -1864,6 +1926,7 @@ QmlBackend::DisplayServer QmlBackend::displayServerAt(int index) const
         if (server.manual_host.GetRegistered() && settings->GetRegisteredHostRegistered(server.manual_host.GetMAC())) {
             server.registered = true;
             server.registered_host = settings->GetRegisteredHost(server.manual_host.GetMAC());
+            represented_registered_macs.append(server.registered_host.GetServerMAC().ToString());
         }
         return server;
     }
@@ -1899,10 +1962,48 @@ QmlBackend::DisplayServer QmlBackend::displayServerAt(int index) const
                 server.duid = i.key();
                 server.registered = true;
                 if(settings->GetNicknameRegisteredHostRegistered(server.psn_host.GetName()))
+                {
                     server.registered_host = settings->GetNicknameRegisteredHost(server.psn_host.GetName());
+                    represented_registered_macs.append(server.registered_host.GetServerMAC().ToString());
+                }
                 return server;
             }
             visible_psn_index++;
+        }
+        index -= visible_psn_index;
+        for(const auto &host : discovered)
+        {
+            HostMAC host_mac = host.GetHostMAC();
+            if(settings->GetRegisteredHostRegistered(host_mac))
+                represented_registered_macs.append(host_mac.ToString());
+        }
+        for(const auto &manual_host : manual)
+        {
+            if(manual_host.GetRegistered() && settings->GetRegisteredHostRegistered(manual_host.GetMAC()))
+                represented_registered_macs.append(manual_host.GetMAC().ToString());
+        }
+        for(const auto &host : psn_hosts)
+        {
+            if(settings->GetNicknameRegisteredHostRegistered(host.GetName()))
+                represented_registered_macs.append(settings->GetNicknameRegisteredHost(host.GetName()).GetServerMAC().ToString());
+        }
+        for(const auto &registered_host : settings->GetRegisteredHosts())
+        {
+            if(represented_registered_macs.contains(registered_host.GetServerMAC().ToString()))
+                continue;
+            if(index == 0)
+            {
+                server.valid = true;
+                server.discovered = false;
+                server.manual_host = ManualHost(-1, registered_host.GetLastHost(), QString(), true, registered_host.GetServerMAC());
+                server.registered = true;
+                server.registered_host = registered_host;
+                server.duid = registered_host.GetPsnDuid();
+                if(!server.duid.isEmpty())
+                    server.psn_host = PsnHost(server.duid, registered_host.GetServerNickname(), chiaki_target_is_ps5(registered_host.GetTarget()));
+                return server;
+            }
+            index--;
         }
         return {};
     }

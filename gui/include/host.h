@@ -65,6 +65,7 @@ class RegisteredHost
 		QString server_nickname;
 		QString display_name;
 		QString psn_duid;
+		QString last_host;
 		char rp_regist_key[CHIAKI_SESSION_AUTH_SIZE];
 		uint32_t rp_key_type;
 		uint8_t rp_key[0x10];
@@ -78,11 +79,13 @@ class RegisteredHost
 		void SetConsolePin(RegisteredHost &host, QString console_pin);
 		void SetDisplayName(const QString &name) { display_name = name; }
 		void SetPsnDuid(const QString &duid) { psn_duid = duid; }
+		void SetLastHost(const QString &host) { last_host = host; }
 		ChiakiTarget GetTarget() const			{ return target; }
 		const HostMAC &GetServerMAC() const 	{ return server_mac; }
 		const QString &GetServerNickname() const	{ return server_nickname; }
 		const QString &GetDisplayName() const	{ return display_name; }
 		const QString &GetPsnDuid() const		{ return psn_duid; }
+		const QString &GetLastHost() const		{ return last_host; }
 		const QByteArray GetRPRegistKey() const	{ return QByteArray(rp_regist_key, sizeof(rp_regist_key)); }
 		const QByteArray GetRPKey() const		{ return QByteArray((const char *)rp_key, sizeof(rp_key)); }
 		const QString GetConsolePin() const				{ return console_pin; }

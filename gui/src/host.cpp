@@ -20,6 +20,7 @@ RegisteredHost::RegisteredHost(const RegisteredHost &o)
 	server_nickname(o.server_nickname),
 	display_name(o.display_name),
 	psn_duid(o.psn_duid),
+	last_host(o.last_host),
 	rp_key_type(o.rp_key_type),
 	console_pin(o.console_pin)
 {
@@ -57,6 +58,7 @@ void RegisteredHost::SaveToSettings(QSettings *settings) const
 	settings->setValue("server_nickname", server_nickname);
 	settings->setValue("display_name", display_name);
 	settings->setValue("psn_duid", psn_duid);
+	settings->setValue("last_host", last_host);
 	settings->setValue("server_mac", QByteArray((const char *)server_mac.GetMAC(), 6));
 	settings->setValue("rp_regist_key", QByteArray(rp_regist_key, sizeof(rp_regist_key)));
 	settings->setValue("rp_key_type", rp_key_type);
@@ -75,6 +77,7 @@ RegisteredHost RegisteredHost::LoadFromSettings(QSettings *settings)
 	r.server_nickname = settings->value("server_nickname").toString();
 	r.display_name = settings->value("display_name").toString();
 	r.psn_duid = settings->value("psn_duid").toString();
+	r.last_host = settings->value("last_host").toString();
 	auto server_mac = settings->value("server_mac").toByteArray();
 	if(server_mac.size() == 6)
 		r.server_mac = HostMAC((const uint8_t *)server_mac.constData());
