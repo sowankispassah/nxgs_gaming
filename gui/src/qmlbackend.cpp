@@ -344,6 +344,13 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     updateControllerMappings();
     connect(settings, &Settings::ControllerMappingsUpdated, this, &QmlBackend::updateControllerMappings);
     connect(this, &QmlBackend::controllersChanged, this, &QmlBackend::updateControllerMappings);
+    for(const auto &host : settings->GetKnownPsnHosts())
+    {
+        psn_nickname_hosts.insert(host.GetName(), host);
+        if((host.IsPS5() && settings->GetNicknameRegisteredHostRegistered(host.GetName()))
+            || (!host.IsPS5() && settings->GetPS4RegisteredHostsRegistered() > 0))
+            psn_hosts.insert(host.GetDuid(), host);
+    }
     auto_connect_mac = settings->GetAutoConnectHost().GetServerMAC();
     auto_connect_nickname = settings->GetAutoConnectHost().GetServerNickname();
     psn_auto_connect_timer = new QTimer(this);
@@ -1623,6 +1630,7 @@ void QmlBackend::connectToHost(int index, QString nickname)
     }
     else
     {
+        settings->AddKnownPsnHost(server.psn_host);
         StreamSessionConnectInfo info(
                 settings,
                 server.psn_host.GetTarget(),
@@ -1809,12 +1817,12 @@ QmlBackend::DisplayServer QmlBackend::displayServerAt(int index) const
         return server;
     }
     index -= manual.size();
-    if (index < psn_hosts.count())
+    if (index >= 0)
     {
         DisplayServer server;
 
         QMapIterator<QString, PsnHost> i(psn_hosts);
-        size_t j = 0;
+        int visible_psn_index = 0;
         while (i.hasNext())
         {
             i.next();
@@ -1825,19 +1833,25 @@ QmlBackend::DisplayServer QmlBackend::displayServerAt(int index) const
                 if(host.host_name == psn_host.GetName())
                     hidden = true;
             }
+            for (int waking_i = 0; waking_i < waking_sleeping_nicknames.size(); ++waking_i)
+            {
+                if(waking_sleeping_nicknames.at(waking_i) == psn_host.GetName())
+                    hidden = true;
+            }
             if(hidden)
                 continue;
-            if(j == index)
+            if(visible_psn_index == index)
             {
                 server.valid = true;
                 server.discovered = false;
                 server.psn_host = std::move(psn_host);
                 server.duid = i.key();
                 server.registered = true;
-                server.registered_host = settings->GetNicknameRegisteredHost(server.psn_host.GetName());
+                if(settings->GetNicknameRegisteredHostRegistered(server.psn_host.GetName()))
+                    server.registered_host = settings->GetNicknameRegisteredHost(server.psn_host.GetName());
                 return server;
             }
-            j++;
+            visible_psn_index++;
         }
         return {};
     }
@@ -2648,8 +2662,8 @@ void QmlBackend::updatePsnHostsThread()
         QString name = QString(dev.device_name);
         bool ps5 = true;
         PsnHost psn_host(duid, name, ps5);
-        if(!psn_nickname_hosts.contains(name))
-            psn_nickname_hosts.insert(name, psn_host);
+        settings->AddKnownPsnHost(psn_host);
+        psn_nickname_hosts.insert(name, psn_host);
 	    if(!psn_hosts.contains(duid) && settings->GetNicknameRegisteredHostRegistered(name))
 		    psn_hosts.insert(duid, psn_host);
     }
@@ -2658,10 +2672,12 @@ void QmlBackend::updatePsnHostsThread()
     QString name = QString("Main PS4 Console");
     bool ps5 = false;
     PsnHost psn_host(duid, name, ps5);
-    if(!psn_nickname_hosts.contains(name))
-        psn_nickname_hosts.insert(name, psn_host);
+    psn_nickname_hosts.insert(name, psn_host);
     if(!psn_hosts.contains(duid) && (settings->GetPS4RegisteredHostsRegistered() > 0))
+    {
         psn_hosts.insert(duid, psn_host);
+        settings->AddKnownPsnHost(psn_host);
+    }
 
     emit hostsChanged();
     qCInfo(chiakiGui) << "Updated PSN hosts";

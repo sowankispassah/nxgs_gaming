@@ -186,3 +186,18 @@ ChiakiTarget PsnHost::GetTarget() const
 		return target;
 	}
 }
+
+void PsnHost::SaveToSettings(QSettings *settings) const
+{
+	settings->setValue("duid", duid);
+	settings->setValue("name", name);
+	settings->setValue("ps5", ps5);
+}
+
+PsnHost PsnHost::LoadFromSettings(QSettings *settings)
+{
+	return PsnHost(
+		settings->value("duid").toString(),
+		settings->value("name").toString(),
+		settings->value("ps5", true).toBool());
+}

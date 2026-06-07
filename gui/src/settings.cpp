@@ -277,6 +277,7 @@ Settings::Settings(const QString &conf, QObject *parent) : QObject(parent),
 	LoadRegisteredHosts();
 	LoadHiddenHosts();
 	LoadManualHosts();
+	LoadKnownPsnHosts();
 	LoadControllerMappings();
 	default_settings.setFallbacksEnabled(false);
 	MigrateSettings(&default_settings);
@@ -300,6 +301,7 @@ void Settings::ExportSettings(QString filepath)
 	SaveRegisteredHosts(&settings_backup);
 	SaveHiddenHosts(&settings_backup);
 	SaveManualHosts(&settings_backup);
+	SaveKnownPsnHosts(&settings_backup);
 	SaveControllerMappings(&settings_backup);
     QStringList keys = settings.allKeys();
     for( QStringList::iterator i = keys.begin(); i != keys.end(); i++ )
@@ -350,6 +352,7 @@ void Settings::ImportSettings(QString filepath)
 	LoadRegisteredHosts(&settings_backup);
 	LoadHiddenHosts(&settings_backup);
 	LoadManualHosts(&settings_backup);
+	LoadKnownPsnHosts(&settings_backup);
 	LoadControllerMappings(&settings_backup);
 	QString profile = settings_backup.value("settings/this_profile").toString();
 	if(profile.isEmpty())
@@ -358,6 +361,7 @@ void Settings::ImportSettings(QString filepath)
 		SaveRegisteredHosts();
 		SaveHiddenHosts();
 		SaveManualHosts();
+		SaveKnownPsnHosts();
 		SaveControllerMappings();
 		QStringList keys = settings_backup.allKeys();
 		for( QStringList::iterator i = keys.begin(); i != keys.end(); i++ )
@@ -374,6 +378,7 @@ void Settings::ImportSettings(QString filepath)
 		SaveRegisteredHosts(&profile_settings);
 		SaveHiddenHosts(&profile_settings);
 		SaveManualHosts(&profile_settings);
+		SaveKnownPsnHosts(&profile_settings);
 		SaveControllerMappings(&profile_settings);
 		QStringList keys = settings_backup.allKeys();
 		for( QStringList::iterator i = keys.begin(); i != keys.end(); i++ )
@@ -2158,6 +2163,7 @@ void Settings::DeleteProfile(QString profile)
 	SaveRegisteredHosts(&delete_profile);
 	SaveHiddenHosts(&delete_profile);
 	SaveManualHosts(&delete_profile);
+	SaveKnownPsnHosts(&delete_profile);
 	SaveControllerMappings(&delete_profile);
 	delete_profile.remove("settings");
 	profiles.removeOne(profile);
@@ -2166,6 +2172,7 @@ void Settings::DeleteProfile(QString profile)
 	LoadRegisteredHosts();
 	LoadHiddenHosts();
 	LoadManualHosts();
+	LoadKnownPsnHosts();
 	LoadControllerMappings();
 }
 
@@ -2323,6 +2330,47 @@ void Settings::RemoveManualHost(int id)
 	manual_hosts.remove(id);
 	SaveManualHosts();
 	emit ManualHostsUpdated();
+}
+
+void Settings::LoadKnownPsnHosts(QSettings *qsettings)
+{
+	if(!qsettings)
+		qsettings = &settings;
+	known_psn_hosts.clear();
+
+	int count = qsettings->beginReadArray("known_psn_hosts");
+	for(int i=0; i<count; i++)
+	{
+		qsettings->setArrayIndex(i);
+		PsnHost host = PsnHost::LoadFromSettings(qsettings);
+		if(host.GetDuid().isEmpty() || host.GetName().isEmpty())
+			continue;
+		known_psn_hosts[host.GetDuid()] = host;
+	}
+	qsettings->endArray();
+}
+
+void Settings::SaveKnownPsnHosts(QSettings *qsettings)
+{
+	if(!qsettings)
+		qsettings = &settings;
+	qsettings->beginWriteArray("known_psn_hosts");
+	int i=0;
+	for(const auto &host : known_psn_hosts)
+	{
+		qsettings->setArrayIndex(i);
+		host.SaveToSettings(qsettings);
+		i++;
+	}
+	qsettings->endArray();
+}
+
+void Settings::AddKnownPsnHost(const PsnHost &host)
+{
+	if(host.GetDuid().isEmpty() || host.GetName().isEmpty())
+		return;
+	known_psn_hosts[host.GetDuid()] = host;
+	SaveKnownPsnHosts();
 }
 
 void Settings::SetControllerMapping(const QString &vidpid, const QString &mapping)

@@ -132,6 +132,9 @@ class PsnHost
 		bool IsPS5() const               { return ps5;  }
 		ChiakiTarget GetTarget() const;
 
+		void SaveToSettings(QSettings *settings) const;
+		static PsnHost LoadFromSettings(QSettings *settings);
+
 };
 
 Q_DECLARE_METATYPE(HostMAC)

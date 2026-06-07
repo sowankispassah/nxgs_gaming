@@ -264,8 +264,8 @@ private:
         bool registered;
 
         QString GetHostAddr() const { return discovered ? discovery_host.host_addr : manual_host.GetHost(); }
-        bool IsPS5() const { return discovered ? discovery_host.ps5 :
-            (registered ? chiaki_target_is_ps5(registered_host.GetTarget()) : true); }
+        bool IsPS5() const { return !duid.isEmpty() ? psn_host.IsPS5() : (discovered ? discovery_host.ps5 :
+            (registered ? chiaki_target_is_ps5(registered_host.GetTarget()) : true)); }
     };
 
     DisplayServer displayServerAt(int index) const;

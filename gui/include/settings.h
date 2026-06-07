@@ -210,6 +210,7 @@ class Settings : public QObject
 		QList<QString> profiles;
 		size_t ps4s_registered;
 		QMap<int, ManualHost> manual_hosts;
+		QMap<QString, PsnHost> known_psn_hosts;
 		int manual_hosts_id_next;
 
 		void LoadRegisteredHosts(QSettings *qsettings = nullptr);
@@ -220,6 +221,9 @@ class Settings : public QObject
 
 		void LoadManualHosts(QSettings *qsettings = nullptr);
 		void SaveManualHosts(QSettings *qsettings = nullptr);
+
+		void LoadKnownPsnHosts(QSettings *qsettings = nullptr);
+		void SaveKnownPsnHosts(QSettings *qsettings = nullptr);
 
 		void LoadControllerMappings(QSettings *qsettings = nullptr);
 		void SaveControllerMappings(QSettings *qsettings = nullptr);
@@ -720,6 +724,9 @@ class Settings : public QObject
 		void RemoveManualHost(int id);
 		bool GetManualHostExists(int id)							{ return manual_hosts.contains(id); }
 		ManualHost GetManualHost(int id) const						{ return manual_hosts[id]; }
+
+		QMap<QString, PsnHost> GetKnownPsnHosts() const				{ return known_psn_hosts; }
+		void AddKnownPsnHost(const PsnHost &host);
 
 		QMap<QString, QString> GetControllerMappings() const		{ return controller_mappings; }
 		void SetControllerMapping(const QString &vidpid, const QString &mapping);
