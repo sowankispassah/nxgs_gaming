@@ -2215,8 +2215,15 @@ void Settings::SaveRegisteredHosts(QSettings *qsettings)
 
 void Settings::AddRegisteredHost(const RegisteredHost &host)
 {
-	registered_hosts[host.GetServerMAC()] = host;
-	nickname_registered_hosts[host.GetServerNickname()] = host;
+	RegisteredHost updated_host = host;
+	if(registered_hosts.contains(host.GetServerMAC()))
+	{
+		const RegisteredHost existing_host = registered_hosts[host.GetServerMAC()];
+		if(updated_host.GetDisplayName().trimmed().isEmpty() && !existing_host.GetDisplayName().trimmed().isEmpty())
+			updated_host.SetDisplayName(existing_host.GetDisplayName());
+	}
+	registered_hosts[updated_host.GetServerMAC()] = updated_host;
+	nickname_registered_hosts[updated_host.GetServerNickname()] = updated_host;
 	SaveRegisteredHosts();
 	emit RegisteredHostsUpdated();
 }
