@@ -596,6 +596,7 @@ public:
     QStringList profiles() const;
 
     Q_INVOKABLE void deleteRegisteredHost(int index);
+    Q_INVOKABLE void setRegisteredHostDisplayName(int index, const QString &display_name);
     Q_INVOKABLE void refreshAudioDevices();
     Q_INVOKABLE QString changeControllerKey(int button, int key);
     Q_INVOKABLE void clearKeyMapping();

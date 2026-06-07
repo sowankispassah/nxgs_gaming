@@ -63,6 +63,7 @@ class RegisteredHost
 		QString ap_name;
 		HostMAC server_mac;
 		QString server_nickname;
+		QString display_name;
 		char rp_regist_key[CHIAKI_SESSION_AUTH_SIZE];
 		uint32_t rp_key_type;
 		uint8_t rp_key[0x10];
@@ -74,9 +75,11 @@ class RegisteredHost
 
 		RegisteredHost(const ChiakiRegisteredHost &chiaki_host);
 		void SetConsolePin(RegisteredHost &host, QString console_pin);
+		void SetDisplayName(const QString &name) { display_name = name; }
 		ChiakiTarget GetTarget() const			{ return target; }
 		const HostMAC &GetServerMAC() const 	{ return server_mac; }
 		const QString &GetServerNickname() const	{ return server_nickname; }
+		const QString &GetDisplayName() const	{ return display_name; }
 		const QByteArray GetRPRegistKey() const	{ return QByteArray(rp_regist_key, sizeof(rp_regist_key)); }
 		const QByteArray GetRPKey() const		{ return QByteArray((const char *)rp_key, sizeof(rp_key)); }
 		const QString GetConsolePin() const				{ return console_pin; }

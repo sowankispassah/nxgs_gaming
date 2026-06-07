@@ -19,7 +19,7 @@ DialogView {
     }
     onAccepted: {
         let psnId = onlineId.visible ? onlineId.text.trim() : accountId.text.trim();
-        let registerOk = Chiaki.registerHost(hostField.text.trim(), psnId, pin.text.trim(), cpin.text.trim(), hostField.text.trim() == "255.255.255.255", consoleButtons.checkedButton.target, function(msg, ok, done) {
+        let registerOk = Chiaki.registerHost(hostField.text.trim(), deviceNameField.text.trim(), psnId, pin.text.trim(), cpin.text.trim(), hostField.text.trim() == "255.255.255.255", consoleButtons.checkedButton.target, function(msg, ok, done) {
             if (!done)
                 logArea.text += msg + "\n";
             else
@@ -56,6 +56,20 @@ DialogView {
 
             Label {
                 Layout.alignment: Qt.AlignRight
+                text: qsTr("Device name:")
+            }
+
+            C.TextField {
+                id: deviceNameField
+                echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
+                placeholderText: qsTr("Living Room PS5")
+                Layout.preferredWidth: 400
+                KeyNavigation.up: hostField
+                KeyNavigation.down: onlineId.visible ? onlineId : accountId
+            }
+
+            Label {
+                Layout.alignment: Qt.AlignRight
                 text: qsTr("PSN Online-ID:")
                 visible: onlineId.visible
             }
@@ -66,6 +80,7 @@ DialogView {
                 visible: ps4_7.checked
                 placeholderText: qsTr("username, case-sensitive")
                 Layout.preferredWidth: 400
+                KeyNavigation.up: deviceNameField
             }
 
             Label {
@@ -86,7 +101,7 @@ DialogView {
                     else
                         KeyNavigation.AfterItem
                 }
-                KeyNavigation.up: hostField
+                KeyNavigation.up: deviceNameField
                 KeyNavigation.right: loginButton
                 KeyNavigation.down: pin
 
@@ -104,7 +119,7 @@ DialogView {
                     visible: accountId.visible
                     Material.roundedScale: Material.SmallScale
                     KeyNavigation.priority: KeyNavigation.BeforeItem
-                    KeyNavigation.up: hostField
+                    KeyNavigation.up: deviceNameField
                     KeyNavigation.left: accountId
                     KeyNavigation.right: lookupButton
                     KeyNavigation.down: pin
@@ -122,7 +137,7 @@ DialogView {
                     onClicked: stack.push(psnLoginDialogComponent, {login: false, callback: (id) => accountId.text = id})
                     visible: accountId.visible
                     Material.roundedScale: Material.SmallScale
-                    KeyNavigation.up: hostField
+                    KeyNavigation.up: deviceNameField
                     KeyNavigation.priority: KeyNavigation.BeforeItem
                     KeyNavigation.left: loginButton
                     KeyNavigation.right: lookupButton

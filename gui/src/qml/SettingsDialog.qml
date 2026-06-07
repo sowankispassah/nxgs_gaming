@@ -1896,10 +1896,11 @@ DialogView {
                             clip: true
                             model: Chiaki.settings.registeredHosts
                             delegate: ItemDelegate {
-                                text: "%1 (%2, %3)".arg(Chiaki.settings.streamerMode ? "hidden" : modelData.mac).arg(modelData.ps5 ? "PS5" : "PS4").arg(modelData.name)
+                                text: "%1 (%2, %3)".arg(Chiaki.settings.streamerMode ? "hidden" : modelData.mac).arg(modelData.ps5 ? "PS5" : "PS4").arg(modelData.displayName)
                                 height: 80
                                 width: parent ? parent.width : 0
                                 leftPadding: autoConnectButton.width + 40
+                                rightPadding: 230
 
                                 CheckBox {
                                     property bool firstInFocusChain: false
@@ -1980,6 +1981,19 @@ DialogView {
                                 }
 
                                 Button {
+                                    id: editButton
+                                    anchors {
+                                        right: deleteButton.left
+                                        verticalCenter: parent.verticalCenter
+                                        rightMargin: 10
+                                    }
+                                    text: qsTr("Edit")
+                                    onClicked: editConsoleNameDialog.openForConsole(index, modelData.displayName)
+                                    Material.roundedScale: Material.SmallScale
+                                }
+
+                                Button {
+                                    id: deleteButton
                                     property bool firstInFocusChain: false
                                     property bool lastInFocusChain: index > consolesView.count + hiddenConsolesView.count - 2
                                     Material.background: visualFocus ? Material.accent : undefined
@@ -3079,6 +3093,47 @@ DialogView {
                         controllerMappingDialog.resetFocus = false;
                         controllerMappingDialog.close();
                     }
+                }
+            }
+        }
+
+        Dialog {
+            id: editConsoleNameDialog
+            property int consoleIndex: -1
+            parent: Overlay.overlay
+            x: Math.round((root.width - width) / 2)
+            y: Math.round((root.height - height) / 2)
+            title: qsTr("Edit Console Name")
+            modal: true
+            standardButtons: Dialog.Ok | Dialog.Cancel
+            Material.roundedScale: Material.MediumScale
+            onOpened: editConsoleNameField.forceActiveFocus(Qt.TabFocusReason)
+            onAccepted: {
+                Chiaki.settings.setRegisteredHostDisplayName(consoleIndex, editConsoleNameField.text.trim());
+            }
+
+            function openForConsole(index, displayName) {
+                consoleIndex = index;
+                editConsoleNameField.text = displayName;
+                open();
+            }
+
+            GridLayout {
+                columns: 2
+                rowSpacing: 20
+                columnSpacing: 20
+
+                Label {
+                    Layout.alignment: Qt.AlignRight
+                    text: qsTr("Device name:")
+                }
+
+                C.TextField {
+                    id: editConsoleNameField
+                    Layout.preferredWidth: 360
+                    placeholderText: qsTr("Living Room PS5")
+                    Keys.onReturnPressed: editConsoleNameDialog.accept()
+                    Keys.onEscapePressed: editConsoleNameDialog.reject()
                 }
             }
         }

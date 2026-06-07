@@ -784,8 +784,12 @@ QVariantList QmlBackend::hosts() const
                 }
             }
         }
+        QString registered_display_name;
+        if(registered)
+            registered_display_name = settings->GetRegisteredHost(host_mac).GetDisplayName();
         m["name"] = host.host_name;
-        m["displayName"] = manual_display_name.isEmpty() ? host.host_name : manual_display_name;
+        m["displayName"] = !manual_display_name.isEmpty() ? manual_display_name :
+            (!registered_display_name.isEmpty() ? registered_display_name : host.host_name);
         if(!registered)
         {
             if(psn_nickname_hosts.contains(host.host_name))
@@ -823,7 +827,8 @@ QVariantList QmlBackend::hosts() const
             auto registered = settings->GetRegisteredHost(host.GetMAC());
             m["registered"] = true;
             m["name"] = registered.GetServerNickname();
-            m["displayName"] = host.GetDisplayName().isEmpty() ? registered.GetServerNickname() : host.GetDisplayName();
+            m["displayName"] = !host.GetDisplayName().isEmpty() ? host.GetDisplayName() :
+                (!registered.GetDisplayName().isEmpty() ? registered.GetDisplayName() : registered.GetServerNickname());
             m["ps5"] = chiaki_target_is_ps5(registered.GetTarget());
             m["mac"] = registered.GetServerMAC().ToString();
         }
@@ -851,7 +856,10 @@ QVariantList QmlBackend::hosts() const
         m["manual"] = false;
         m["display"] = true;
         m["name"] = host.GetName();
-        m["displayName"] = host.GetName();
+        QString registered_display_name;
+        if(settings->GetNicknameRegisteredHostRegistered(host.GetName()))
+            registered_display_name = settings->GetNicknameRegisteredHost(host.GetName()).GetDisplayName();
+        m["displayName"] = registered_display_name.isEmpty() ? host.GetName() : registered_display_name;
         m["duid"] = host.GetDuid();
         m["address"] = "";
         m["registered"] = true;
@@ -1376,7 +1384,7 @@ QVariantList QmlBackend::hiddenHosts() const
 }
 
 
-bool QmlBackend::registerHost(const QString &host, const QString &psn_id, const QString &pin, const QString &cpin, bool broadcast, int target, const QJSValue &callback)
+bool QmlBackend::registerHost(const QString &host, const QString &display_name, const QString &psn_id, const QString &pin, const QString &cpin, bool broadcast, int target, const QJSValue &callback)
 {
     ChiakiRegistInfo info = {};
     QByteArray hostb = host.toUtf8();
@@ -1413,18 +1421,22 @@ bool QmlBackend::registerHost(const QString &host, const QString &psn_id, const 
 
         regist_dialog_server = {};
     });
-    connect(regist, &QmlRegist::success, this, [this, host, callback](const RegisteredHost &rhost) {
+    connect(regist, &QmlRegist::success, this, [this, host, display_name, callback](const RegisteredHost &rhost) {
         QJSValue cb = callback;
         if (cb.isCallable())
             cb.call({QString(), true, true});
 
-        settings->AddRegisteredHost(rhost);
+        RegisteredHost registered_host = rhost;
+        registered_host.SetDisplayName(display_name.trimmed());
+        settings->AddRegisteredHost(registered_host);
         if(regist_dialog_server.discovered == false)
         {
             ManualHost manual_host = regist_dialog_server.manual_host;
             if(manual_host.GetHost().isEmpty())
                 manual_host.SetHost(host);
-            manual_host.Register(rhost);
+            if(!display_name.trimmed().isEmpty())
+                manual_host.SetDisplayName(display_name.trimmed());
+            manual_host.Register(registered_host);
             settings->SetManualHost(manual_host);
         }
     });

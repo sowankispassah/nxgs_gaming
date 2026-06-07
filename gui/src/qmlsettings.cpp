@@ -1713,6 +1713,7 @@ QVariantList QmlSettings::registeredHosts() const
     for (const auto &host : settings->GetRegisteredHosts()) {
         QVariantMap m;
         m["name"] = host.GetServerNickname();
+        m["displayName"] = host.GetDisplayName().isEmpty() ? host.GetServerNickname() : host.GetDisplayName();
         m["mac"] = host.GetServerMAC().ToString();
         m["ps5"] = chiaki_target_is_ps5(host.GetTarget());
         out.append(m);
@@ -1823,6 +1824,16 @@ QString QmlSettings::stringForStreamMenuShortcut() const
 void QmlSettings::deleteRegisteredHost(int index)
 {
     settings->RemoveRegisteredHost(settings->GetRegisteredHosts().value(index).GetServerMAC());
+}
+
+void QmlSettings::setRegisteredHostDisplayName(int index, const QString &display_name)
+{
+    QList<RegisteredHost> hosts = settings->GetRegisteredHosts();
+    if(index < 0 || index >= hosts.size())
+        return;
+    RegisteredHost host = hosts.value(index);
+    host.SetDisplayName(display_name.trimmed());
+    settings->AddRegisteredHost(host);
 }
 
 void QmlSettings::refreshAudioDevices()
