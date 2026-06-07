@@ -543,19 +543,54 @@ void QmlBackend::rebuildPsnHostsFromSettings()
     for(const auto &host : settings->GetKnownPsnHosts())
     {
         psn_nickname_hosts.insert(host.GetName(), host);
-        if(settings->GetNicknameRegisteredHostRegistered(host.GetName()))
+        RegisteredHost registered_host;
+        if(findRegisteredHostForPsnHost(host, &registered_host))
         {
-            RegisteredHost registered_host = settings->GetNicknameRegisteredHost(host.GetName());
             if(registered_host.GetPsnDuid().isEmpty())
             {
                 registered_host.SetPsnDuid(host.GetDuid());
                 settings->AddRegisteredHost(registered_host);
             }
         }
-        if((host.IsPS5() && settings->GetNicknameRegisteredHostRegistered(host.GetName()))
+        if((host.IsPS5() && findRegisteredHostForPsnHost(host))
             || (!host.IsPS5() && settings->GetPS4RegisteredHostsRegistered() > 0))
             psn_hosts.insert(host.GetDuid(), host);
     }
+}
+
+bool QmlBackend::findRegisteredHostForPsnHost(const PsnHost &psn_host, RegisteredHost *registered_host) const
+{
+    if(settings->GetNicknameRegisteredHostRegistered(psn_host.GetName()))
+    {
+        if(registered_host)
+            *registered_host = settings->GetNicknameRegisteredHost(psn_host.GetName());
+        return true;
+    }
+
+    const QString psn_name = psn_host.GetName().trimmed();
+    for(const auto &host : settings->GetRegisteredHosts())
+    {
+        if(host.GetServerNickname().trimmed().compare(psn_name, Qt::CaseInsensitive) == 0
+            || (!host.GetDisplayName().trimmed().isEmpty() && host.GetDisplayName().trimmed().compare(psn_name, Qt::CaseInsensitive) == 0))
+        {
+            if(registered_host)
+                *registered_host = host;
+            return true;
+        }
+    }
+    return false;
+}
+
+QString QmlBackend::displayNameForRegisteredHost(const RegisteredHost &registered_host) const
+{
+    if(!registered_host.GetDisplayName().isEmpty())
+        return registered_host.GetDisplayName();
+    for(const auto &manual_host : settings->GetManualHosts())
+    {
+        if(manual_host.GetRegistered() && manual_host.GetMAC() == registered_host.GetServerMAC() && !manual_host.GetDisplayName().isEmpty())
+            return manual_host.GetDisplayName();
+    }
+    return registered_host.GetServerNickname();
 }
 
 void QmlBackend::goToSleep()
@@ -909,24 +944,19 @@ QVariantList QmlBackend::hosts() const
         m["manual"] = false;
         m["display"] = true;
         m["name"] = host.GetName();
-        QString registered_display_name;
-        QString manual_display_name;
-        if(settings->GetNicknameRegisteredHostRegistered(host.GetName()))
+        QString display_name = host.GetName();
+        RegisteredHost registered_host;
+        if(findRegisteredHostForPsnHost(host, &registered_host))
         {
-            auto registered_host = settings->GetNicknameRegisteredHost(host.GetName());
-            registered_display_name = registered_host.GetDisplayName();
+            display_name = displayNameForRegisteredHost(registered_host);
             represented_registered_macs.append(registered_host.GetServerMAC().ToString());
-            for(const auto &manual_host : settings->GetManualHosts())
+            if(registered_host.GetPsnDuid() != host.GetDuid())
             {
-                if(manual_host.GetRegistered() && manual_host.GetMAC() == registered_host.GetServerMAC() && !manual_host.GetDisplayName().isEmpty())
-                {
-                    manual_display_name = manual_host.GetDisplayName();
-                    break;
-                }
+                registered_host.SetPsnDuid(host.GetDuid());
+                settings->AddRegisteredHost(registered_host);
             }
         }
-        m["displayName"] = !manual_display_name.isEmpty() ? manual_display_name :
-            (registered_display_name.isEmpty() ? host.GetName() : registered_display_name);
+        m["displayName"] = display_name;
         m["duid"] = host.GetDuid();
         m["address"] = "";
         m["registered"] = true;
@@ -1961,9 +1991,15 @@ QmlBackend::DisplayServer QmlBackend::displayServerAt(int index) const
                 server.psn_host = std::move(psn_host);
                 server.duid = i.key();
                 server.registered = true;
-                if(settings->GetNicknameRegisteredHostRegistered(server.psn_host.GetName()))
+                RegisteredHost registered_host;
+                if(findRegisteredHostForPsnHost(server.psn_host, &registered_host))
                 {
-                    server.registered_host = settings->GetNicknameRegisteredHost(server.psn_host.GetName());
+                    server.registered_host = registered_host;
+                    if(server.registered_host.GetPsnDuid() != server.duid)
+                    {
+                        server.registered_host.SetPsnDuid(server.duid);
+                        settings->AddRegisteredHost(server.registered_host);
+                    }
                     represented_registered_macs.append(server.registered_host.GetServerMAC().ToString());
                 }
                 return server;
@@ -1984,8 +2020,9 @@ QmlBackend::DisplayServer QmlBackend::displayServerAt(int index) const
         }
         for(const auto &host : psn_hosts)
         {
-            if(settings->GetNicknameRegisteredHostRegistered(host.GetName()))
-                represented_registered_macs.append(settings->GetNicknameRegisteredHost(host.GetName()).GetServerMAC().ToString());
+            RegisteredHost registered_host;
+            if(findRegisteredHostForPsnHost(host, &registered_host))
+                represented_registered_macs.append(registered_host.GetServerMAC().ToString());
         }
         for(const auto &registered_host : settings->GetRegisteredHosts())
         {
@@ -2816,9 +2853,9 @@ void QmlBackend::updatePsnHostsThread()
         PsnHost psn_host(duid, name, ps5);
         settings->AddKnownPsnHost(psn_host);
         psn_nickname_hosts.insert(name, psn_host);
-        if(settings->GetNicknameRegisteredHostRegistered(name))
+        RegisteredHost registered_host;
+        if(findRegisteredHostForPsnHost(psn_host, &registered_host))
         {
-            RegisteredHost registered_host = settings->GetNicknameRegisteredHost(name);
             if(registered_host.GetPsnDuid() != duid)
             {
                 registered_host.SetPsnDuid(duid);

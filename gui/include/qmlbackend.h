@@ -277,6 +277,8 @@ private:
     void updatePsnHosts();
     void updatePsnHostsThread();
     void rebuildPsnHostsFromSettings();
+    bool findRegisteredHostForPsnHost(const PsnHost &psn_host, RegisteredHost *registered_host = nullptr) const;
+    QString displayNameForRegisteredHost(const RegisteredHost &registered_host) const;
     void updateAudioVolume();
     void resumeFromSleep();
     uint32_t getStreamShortcut() const;
