@@ -12,8 +12,8 @@ if(Qt6_VERSION VERSION_GREATER_EQUAL "6.10.0")
 	find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
 endif()
 
-find_package(Qt6 COMPONENTS WebEngineQuick)
-find_package(Qt6 COMPONENTS DBus)
+find_package(Qt6WebEngineQuick QUIET)
+find_package(Qt6DBus QUIET)
 
 if(WIN32)
 	add_definitions(-DWIN32_LEAN_AND_MEAN)

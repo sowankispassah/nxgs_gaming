@@ -1712,8 +1712,20 @@ QVariantList QmlSettings::registeredHosts() const
     QVariantList out;
     for (const auto &host : settings->GetRegisteredHosts()) {
         QVariantMap m;
+        QString display_name = host.GetDisplayName();
+        if(display_name.isEmpty())
+        {
+            for(const auto &manual_host : settings->GetManualHosts())
+            {
+                if(manual_host.GetRegistered() && manual_host.GetMAC() == host.GetServerMAC() && !manual_host.GetDisplayName().isEmpty())
+                {
+                    display_name = manual_host.GetDisplayName();
+                    break;
+                }
+            }
+        }
         m["name"] = host.GetServerNickname();
-        m["displayName"] = host.GetDisplayName().isEmpty() ? host.GetServerNickname() : host.GetDisplayName();
+        m["displayName"] = display_name.isEmpty() ? host.GetServerNickname() : display_name;
         m["mac"] = host.GetServerMAC().ToString();
         m["ps5"] = chiaki_target_is_ps5(host.GetTarget());
         out.append(m);
@@ -1834,6 +1846,15 @@ void QmlSettings::setRegisteredHostDisplayName(int index, const QString &display
     RegisteredHost host = hosts.value(index);
     host.SetDisplayName(display_name.trimmed());
     settings->AddRegisteredHost(host);
+    for(const auto &manual_host : settings->GetManualHosts())
+    {
+        if(manual_host.GetRegistered() && manual_host.GetMAC() == host.GetServerMAC())
+        {
+            ManualHost updated_manual_host = manual_host;
+            updated_manual_host.SetDisplayName(display_name.trimmed());
+            settings->SetManualHost(updated_manual_host);
+        }
+    }
 }
 
 void QmlSettings::refreshAudioDevices()
