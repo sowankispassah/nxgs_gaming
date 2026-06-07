@@ -10,6 +10,7 @@ import "controls" as C
 DialogView {
     property bool ps5: true
     property alias host: hostField.text
+    property alias deviceName: deviceNameField.text
     title: qsTr("Register Console")
     buttonText: qsTr("Register")
     buttonEnabled: hostField.text.trim() && pin.acceptableInput && cpin.acceptableInput && (!onlineId.visible || onlineId.text.trim()) && (!accountId.visible || accountId.text.trim())

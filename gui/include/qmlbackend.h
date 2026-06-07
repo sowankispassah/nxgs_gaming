@@ -246,7 +246,7 @@ signals:
     void sessionError(const QString &title, const QString &text);
     void sessionPinDialogRequested();
     void sessionStopDialogRequested();
-    void registDialogRequested(const QString &host, bool ps5, const QString &duid);
+    void registDialogRequested(const QString &host, bool ps5, const QString &duid, const QString &display_name);
     void psnLoginAccountIdDone(const QString &accountId);
     void psnLoginAccountIdError(const QString &error);
 

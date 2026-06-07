@@ -1690,7 +1690,7 @@ void QmlBackend::connectToHost(int index, QString nickname)
 
     if (!server.registered) {
         regist_dialog_server = server;
-        emit registDialogRequested(server.GetHostAddr(), server.IsPS5(), server.duid);
+        emit registDialogRequested(server.GetHostAddr(), server.IsPS5(), server.duid, server.manual_host.GetDisplayName());
         return;
     }
 
