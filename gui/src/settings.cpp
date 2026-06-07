@@ -2346,8 +2346,20 @@ void Settings::LoadKnownPsnHosts(QSettings *qsettings)
 		if(host.GetDuid().isEmpty() || host.GetName().isEmpty())
 			continue;
 		known_psn_hosts[host.GetDuid()] = host;
+		if(nickname_registered_hosts.contains(host.GetName()))
+		{
+			RegisteredHost registered_host = nickname_registered_hosts[host.GetName()];
+			if(registered_host.GetPsnDuid().isEmpty())
+			{
+				registered_host.SetPsnDuid(host.GetDuid());
+				registered_hosts[registered_host.GetServerMAC()] = registered_host;
+				nickname_registered_hosts[registered_host.GetServerNickname()] = registered_host;
+			}
+		}
 	}
 	qsettings->endArray();
+	if(!known_psn_hosts.isEmpty())
+		SaveRegisteredHosts(qsettings);
 }
 
 void Settings::SaveKnownPsnHosts(QSettings *qsettings)
@@ -2370,6 +2382,17 @@ void Settings::AddKnownPsnHost(const PsnHost &host)
 	if(host.GetDuid().isEmpty() || host.GetName().isEmpty())
 		return;
 	known_psn_hosts[host.GetDuid()] = host;
+	if(nickname_registered_hosts.contains(host.GetName()))
+	{
+		RegisteredHost registered_host = nickname_registered_hosts[host.GetName()];
+		if(registered_host.GetPsnDuid() != host.GetDuid())
+		{
+			registered_host.SetPsnDuid(host.GetDuid());
+			registered_hosts[registered_host.GetServerMAC()] = registered_host;
+			nickname_registered_hosts[registered_host.GetServerNickname()] = registered_host;
+			SaveRegisteredHosts();
+		}
+	}
 	SaveKnownPsnHosts();
 }
 

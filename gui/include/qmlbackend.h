@@ -276,6 +276,7 @@ private:
     void updateDiscoveryHosts();
     void updatePsnHosts();
     void updatePsnHostsThread();
+    void rebuildPsnHostsFromSettings();
     void updateAudioVolume();
     void resumeFromSleep();
     uint32_t getStreamShortcut() const;

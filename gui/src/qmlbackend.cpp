@@ -344,13 +344,7 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     updateControllerMappings();
     connect(settings, &Settings::ControllerMappingsUpdated, this, &QmlBackend::updateControllerMappings);
     connect(this, &QmlBackend::controllersChanged, this, &QmlBackend::updateControllerMappings);
-    for(const auto &host : settings->GetKnownPsnHosts())
-    {
-        psn_nickname_hosts.insert(host.GetName(), host);
-        if((host.IsPS5() && settings->GetNicknameRegisteredHostRegistered(host.GetName()))
-            || (!host.IsPS5() && settings->GetPS4RegisteredHostsRegistered() > 0))
-            psn_hosts.insert(host.GetDuid(), host);
-    }
+    rebuildPsnHostsFromSettings();
     auto_connect_mac = settings->GetAutoConnectHost().GetServerMAC();
     auto_connect_nickname = settings->GetAutoConnectHost().GetServerNickname();
     psn_auto_connect_timer = new QTimer(this);
@@ -532,6 +526,38 @@ void QmlBackend::updateAudioVolume()
         session->SetAudioVolume(settings->GetAudioVolume());
 }
 
+void QmlBackend::rebuildPsnHostsFromSettings()
+{
+    psn_hosts.clear();
+    psn_nickname_hosts.clear();
+
+    for(const auto &registered_host : settings->GetRegisteredHosts())
+    {
+        if(registered_host.GetPsnDuid().isEmpty())
+            continue;
+        PsnHost psn_host(registered_host.GetPsnDuid(), registered_host.GetServerNickname(), chiaki_target_is_ps5(registered_host.GetTarget()));
+        psn_nickname_hosts.insert(psn_host.GetName(), psn_host);
+        psn_hosts.insert(psn_host.GetDuid(), psn_host);
+        settings->AddKnownPsnHost(psn_host);
+    }
+    for(const auto &host : settings->GetKnownPsnHosts())
+    {
+        psn_nickname_hosts.insert(host.GetName(), host);
+        if(settings->GetNicknameRegisteredHostRegistered(host.GetName()))
+        {
+            RegisteredHost registered_host = settings->GetNicknameRegisteredHost(host.GetName());
+            if(registered_host.GetPsnDuid().isEmpty())
+            {
+                registered_host.SetPsnDuid(host.GetDuid());
+                settings->AddRegisteredHost(registered_host);
+            }
+        }
+        if((host.IsPS5() && settings->GetNicknameRegisteredHostRegistered(host.GetName()))
+            || (!host.IsPS5() && settings->GetPS4RegisteredHostsRegistered() > 0))
+            psn_hosts.insert(host.GetDuid(), host);
+    }
+}
+
 void QmlBackend::goToSleep()
 {
     qCInfo(chiakiGui) << "About to sleep";
@@ -607,6 +633,7 @@ void QmlBackend::profileChanged()
     discovery_manager.SetSettings(settings);
     window->setSettings(settings);
     setDiscoveryEnabled(true);
+    rebuildPsnHostsFromSettings();
 
     auto_connect_mac = settings->GetAutoConnectHost().GetServerMAC();
     auto_connect_nickname = settings->GetAutoConnectHost().GetServerNickname();
@@ -864,9 +891,22 @@ QVariantList QmlBackend::hosts() const
         m["display"] = true;
         m["name"] = host.GetName();
         QString registered_display_name;
+        QString manual_display_name;
         if(settings->GetNicknameRegisteredHostRegistered(host.GetName()))
-            registered_display_name = settings->GetNicknameRegisteredHost(host.GetName()).GetDisplayName();
-        m["displayName"] = registered_display_name.isEmpty() ? host.GetName() : registered_display_name;
+        {
+            auto registered_host = settings->GetNicknameRegisteredHost(host.GetName());
+            registered_display_name = registered_host.GetDisplayName();
+            for(const auto &manual_host : settings->GetManualHosts())
+            {
+                if(manual_host.GetRegistered() && manual_host.GetMAC() == registered_host.GetServerMAC() && !manual_host.GetDisplayName().isEmpty())
+                {
+                    manual_display_name = manual_host.GetDisplayName();
+                    break;
+                }
+            }
+        }
+        m["displayName"] = !manual_display_name.isEmpty() ? manual_display_name :
+            (registered_display_name.isEmpty() ? host.GetName() : registered_display_name);
         m["duid"] = host.GetDuid();
         m["address"] = "";
         m["registered"] = true;
@@ -1435,6 +1475,8 @@ bool QmlBackend::registerHost(const QString &host, const QString &display_name, 
 
         RegisteredHost registered_host = rhost;
         registered_host.SetDisplayName(display_name.trimmed());
+        if(!regist_dialog_server.duid.isEmpty())
+            registered_host.SetPsnDuid(regist_dialog_server.duid);
         settings->AddRegisteredHost(registered_host);
         if(regist_dialog_server.discovered == false)
         {
@@ -1504,7 +1546,16 @@ void QmlBackend::finishAutoRegister(const ChiakiRegisteredHost &host)
         emit error(tr("PS4 Console Not Main"), tr("Can't proceed...%1 is not your main PS4 console in PSN").arg(regist_dialog_server.discovery_host.host_name));
         return;
     }
-    settings->AddRegisteredHost(host);
+    RegisteredHost registered_host(host);
+    if(!regist_dialog_server.duid.isEmpty())
+    {
+        registered_host.SetPsnDuid(regist_dialog_server.duid);
+        PsnHost psn_host(regist_dialog_server.duid, registered_host.GetServerNickname(), chiaki_target_is_ps5(registered_host.GetTarget()));
+        settings->AddKnownPsnHost(psn_host);
+        psn_nickname_hosts.insert(psn_host.GetName(), psn_host);
+        psn_hosts.insert(psn_host.GetDuid(), psn_host);
+    }
+    settings->AddRegisteredHost(registered_host);
     setConnectState(PsnConnectState::RegistrationFinished);
     updatePsnHosts();
 }
@@ -2664,8 +2715,17 @@ void QmlBackend::updatePsnHostsThread()
         PsnHost psn_host(duid, name, ps5);
         settings->AddKnownPsnHost(psn_host);
         psn_nickname_hosts.insert(name, psn_host);
-	    if(!psn_hosts.contains(duid) && settings->GetNicknameRegisteredHostRegistered(name))
-		    psn_hosts.insert(duid, psn_host);
+        if(settings->GetNicknameRegisteredHostRegistered(name))
+        {
+            RegisteredHost registered_host = settings->GetNicknameRegisteredHost(name);
+            if(registered_host.GetPsnDuid() != duid)
+            {
+                registered_host.SetPsnDuid(duid);
+                settings->AddRegisteredHost(registered_host);
+            }
+            if(!psn_hosts.contains(duid))
+                psn_hosts.insert(duid, psn_host);
+        }
     }
     QByteArray duid_bytes(32, 'A');
     QString duid = QString(duid_bytes.toHex());
