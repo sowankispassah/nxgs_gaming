@@ -101,7 +101,7 @@ DialogView {
                     bottomPadding: 18
                     text: qsTr("PSN Login")
                     onClicked: stack.push(psnLoginDialogComponent, {login: true, callback: (id) => accountId.text = id})
-                    visible: !Chiaki.settings.psnAccountId
+                    visible: accountId.visible
                     Material.roundedScale: Material.SmallScale
                     KeyNavigation.priority: KeyNavigation.BeforeItem
                     KeyNavigation.up: hostField
@@ -120,7 +120,7 @@ DialogView {
                     bottomPadding: 18
                     text: qsTr("Public Lookup")
                     onClicked: stack.push(psnLoginDialogComponent, {login: false, callback: (id) => accountId.text = id})
-                    visible: !Chiaki.settings.psnAccountId
+                    visible: accountId.visible
                     Material.roundedScale: Material.SmallScale
                     KeyNavigation.up: hostField
                     KeyNavigation.priority: KeyNavigation.BeforeItem
