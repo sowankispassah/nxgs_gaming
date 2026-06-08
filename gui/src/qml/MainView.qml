@@ -273,6 +273,8 @@ Pane {
                         {
                             if(modelData.discovered)
                                 t += "\n" + qsTr("Automatic Registration Available");
+                            else if(modelData.psnLiveKnown && !modelData.psnLive)
+                                t += "\n" + qsTr("Saved PSN identity - not returned by PSN");
                             else
                                 t += "\n" + qsTr("Remote Connection via PSN");
                         } 

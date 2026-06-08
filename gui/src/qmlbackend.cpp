@@ -911,6 +911,8 @@ QVariantList QmlBackend::hosts() const
                 duid =  psn_nickname_hosts.value(QString("Main PS4 Console")).GetDuid();
         }
         m["duid"] = duid;
+        m["psnLive"] = !duid.isEmpty() && live_psn_duids.contains(duid);
+        m["psnLiveKnown"] = psn_hosts_live_loaded;
         m["address"] = host.host_addr;
         m["ps5"] = host.ps5;
         m["mac"] = host_mac.ToString();
@@ -949,6 +951,8 @@ QVariantList QmlBackend::hosts() const
                 m["duid"] = registered.GetPsnDuid();
                 m["address"] = "";
             }
+            m["psnLive"] = !registered.GetPsnDuid().isEmpty() && live_psn_duids.contains(registered.GetPsnDuid());
+            m["psnLiveKnown"] = psn_hosts_live_loaded;
             represented_registered_macs.append(registered.GetServerMAC().ToString());
         }
         out.append(m);
@@ -992,6 +996,8 @@ QVariantList QmlBackend::hosts() const
         m["displayName"] = display_name;
         m["duid"] = host.GetDuid();
         m["address"] = "";
+        m["psnLive"] = live_psn_duids.contains(host.GetDuid());
+        m["psnLiveKnown"] = psn_hosts_live_loaded;
         m["registered"] = true;
         m["ps5"] = host.IsPS5();
         out.append(m);
@@ -1020,6 +1026,8 @@ QVariantList QmlBackend::hosts() const
         m["displayName"] = display_name.isEmpty() ? host.GetServerNickname() : display_name;
         m["duid"] = host.GetPsnDuid();
         m["address"] = host.GetLastHost();
+        m["psnLive"] = !host.GetPsnDuid().isEmpty() && live_psn_duids.contains(host.GetPsnDuid());
+        m["psnLiveKnown"] = psn_hosts_live_loaded;
         m["state"] = host.GetLastHost().isEmpty() ? "unknown" : "saved";
         m["registered"] = true;
         m["ps5"] = chiaki_target_is_ps5(host.GetTarget());
@@ -1780,6 +1788,14 @@ void QmlBackend::connectToHost(int index, QString nickname, QString duid, QStrin
         window->setWindowAdjustable(true);
         emit error(tr("Console address unavailable"),
                    tr("This registered console is saved, but NXGS Gaming has not learned its PSN remote identity or last local address yet. Connect once while the console is discoverable or refresh PSN hosts, then it will stay reconnectable."));
+        return;
+    }
+
+    if(!server.duid.isEmpty() && psn_hosts_live_loaded && !live_psn_duids.contains(server.duid))
+    {
+        window->setWindowAdjustable(true);
+        emit error(tr("Console not available over PSN"),
+                   tr("This console is saved locally, but Sony PSN did not return it in the latest remote device list for this account. Refresh PSN Hosts while the console is online. If it still only works locally, NXGS Gaming cannot start a PSN remote session for this saved DUID until PSN returns the console."));
         return;
     }
 
@@ -2911,6 +2927,8 @@ void QmlBackend::updatePsnHostsThread()
 
     ChiakiHolepunchDeviceInfo *device_info_ps5 = nullptr;
     size_t num_devices_ps5 = 0;
+    bool ps5_devices_loaded = false;
+    QSet<QString> refreshed_live_psn_duids;
     ChiakiLog backend_log;
     chiaki_log_init(&backend_log, settings->GetLogLevelMask(), chiaki_log_cb_print, nullptr);
     for(int i = 0; i < PSN_DEVICES_TRIES; i++)
@@ -2929,6 +2947,7 @@ void QmlBackend::updatePsnHostsThread()
                 num_devices_ps5 = 0;
             }
         }
+        ps5_devices_loaded = err == CHIAKI_ERR_SUCCESS;
         break;
     }
     for (size_t i = 0; i < num_devices_ps5; i++)
@@ -2942,6 +2961,7 @@ void QmlBackend::updatePsnHostsThread()
         QString name = QString(dev.device_name);
         bool ps5 = true;
         PsnHost psn_host(duid, name, ps5);
+        refreshed_live_psn_duids.insert(duid);
         settings->AddKnownPsnHost(psn_host);
         psn_nickname_hosts.insert(name, psn_host);
         RegisteredHost registered_host;
@@ -2955,6 +2975,11 @@ void QmlBackend::updatePsnHostsThread()
             if(!psn_hosts.contains(duid))
                 psn_hosts.insert(duid, psn_host);
         }
+    }
+    if(ps5_devices_loaded)
+    {
+        live_psn_duids = refreshed_live_psn_duids;
+        psn_hosts_live_loaded = true;
     }
     QByteArray duid_bytes(32, 'A');
     QString duid = QString(duid_bytes.toHex());

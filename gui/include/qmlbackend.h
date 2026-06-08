@@ -339,6 +339,8 @@ private:
     bool wakeup_start = false;
     QMap<QString, PsnHost> psn_hosts = {};
     QMap<QString, PsnHost> psn_nickname_hosts = {};
+    QSet<QString> live_psn_duids = {};
+    bool psn_hosts_live_loaded = false;
 #ifdef CHIAKI_HAVE_WEBENGINE
     SecUaRequestInterceptor * request_interceptor = {};
 #endif
