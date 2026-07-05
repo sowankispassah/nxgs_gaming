@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppSettings,
+  ActiveGameState,
   FilePickerResult,
+  GameControlResult,
   GameInput,
   InitialData,
   LaunchRequest,
@@ -31,6 +33,9 @@ const api = {
   selectExecutableFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectExecutableFile'),
   selectFolder: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectFolder'),
   launchGame: (request: LaunchRequest): Promise<LaunchResult> => ipcRenderer.invoke('game:launch', request),
+  resumeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:resumeActive'),
+  minimizeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:minimizeActive'),
+  closeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:closeActive'),
   exitApp: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('app:exit', pin),
   forceCloseGame: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('session:forceClose', pin),
   clearExpiredSession: (): Promise<void> => ipcRenderer.invoke('session:clearExpired'),
@@ -46,6 +51,20 @@ const api = {
     ipcRenderer.on('updates:downloadProgress', listener);
     return () => {
       ipcRenderer.removeListener('updates:downloadProgress', listener);
+    };
+  },
+  onActiveGameState: (callback: (state: ActiveGameState) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: ActiveGameState) => callback(state);
+    ipcRenderer.on('activeGame:state', listener);
+    return () => {
+      ipcRenderer.removeListener('activeGame:state', listener);
+    };
+  },
+  onShellHome: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('shell:home', listener);
+    return () => {
+      ipcRenderer.removeListener('shell:home', listener);
     };
   }
 };

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import brandImage from './assets/nxgs-gaming-banner.png';
 import type {
+  ActiveGameState,
   AppSettings,
   GameInput,
   GameRecord,
@@ -53,7 +54,13 @@ const EMPTY_GAME: GameInput = {
   workingDirectory: '',
   processName: '',
   launchArguments: '',
+  launchMode: 'borderlessPreferred',
   enabled: true
+};
+
+const EMPTY_ACTIVE_GAME: ActiveGameState = {
+  status: 'idle',
+  updatedAt: new Date(0).toISOString()
 };
 
 const SOURCE_OPTIONS = ['Manual', 'Steam', 'Epic Games', 'Microsoft Store', 'Start Menu', 'Local', 'Local Folder', 'Custom'] as const;
@@ -121,6 +128,7 @@ export function App(): JSX.Element {
   const [confirmGame, setConfirmGame] = useState<GameRecord | null>(null);
   const [pinOpen, setPinOpen] = useState(false);
   const [session, setSession] = useState<SessionState>(EMPTY_SESSION);
+  const [activeGame, setActiveGame] = useState<ActiveGameState>(EMPTY_ACTIVE_GAME);
   const [bootError, setBootError] = useState('');
   const [cursorHidden, setCursorHidden] = useState(false);
 
@@ -138,20 +146,34 @@ export function App(): JSX.Element {
         setInitialData(data);
         setGames(data.games);
         setSettings(data.settings);
+        setActiveGame(data.activeGame);
       })
       .catch((error) => setBootError(error instanceof Error ? error.message : String(error)));
 
-    const unsubscribe = window.nxgs.onSessionState((next) => {
+    const unsubscribeSession = window.nxgs.onSessionState((next) => {
       setSession(next);
       if (next.status === 'expired') {
         setConfirmGame(null);
         setView('home');
       }
     });
+    const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
+      setActiveGame(next);
+      if (next.status === 'launching' || next.status === 'returning') {
+        setView('home');
+      }
+    });
+    const unsubscribeShellHome = window.nxgs.onShellHome(() => {
+      setConfirmGame(null);
+      setPinOpen(false);
+      setView('home');
+    });
 
     return () => {
       mounted = false;
-      unsubscribe();
+      unsubscribeSession();
+      unsubscribeActiveGame();
+      unsubscribeShellHome();
     };
   }, []);
 
@@ -296,6 +318,7 @@ export function App(): JSX.Element {
           selectedIndex={selectedIndex}
           selectedGame={selectedGame}
           session={session}
+          activeGame={activeGame}
           onOpenAdmin={() => setPinOpen(true)}
           onSelectGame={setConfirmGame}
         />
@@ -345,6 +368,7 @@ export function App(): JSX.Element {
           }}
         />
       )}
+      {(activeGame.status === 'launching' || activeGame.status === 'closing') && <GameTransitionOverlay activeGame={activeGame} />}
     </main>
   );
 }
@@ -354,6 +378,7 @@ function HomeScreen(props: {
   selectedIndex: number;
   selectedGame: GameRecord | null;
   session: SessionState;
+  activeGame: ActiveGameState;
   onOpenAdmin: () => void;
   onSelectGame: (game: GameRecord) => void;
 }): JSX.Element {
@@ -425,7 +450,126 @@ function HomeScreen(props: {
           </div>
         </>
       )}
+      <ActiveGameDock activeGame={props.activeGame} />
     </section>
+  );
+}
+
+function ActiveGameDock(props: { activeGame: ActiveGameState }): JSX.Element | null {
+  const [open, setOpen] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'resume' | 'minimize' | 'close' | null>(null);
+  const [message, setMessage] = useState('');
+  const game = props.activeGame.game;
+
+  useEffect(() => {
+    if (!game) {
+      setOpen(false);
+      setConfirmClose(false);
+      setPendingAction(null);
+      setMessage('');
+    }
+  }, [game]);
+
+  if (!game || props.activeGame.status === 'idle') {
+    return null;
+  }
+
+  const runControl = async (
+    action: 'resume' | 'minimize' | 'close',
+    control: () => Promise<{ ok: boolean; error?: string }>
+  ): Promise<void> => {
+    setPendingAction(action);
+    setMessage('');
+    try {
+      const result = await control();
+      if (!result.ok) {
+        setMessage(result.error ?? 'Game control failed.');
+      } else if (action === 'close') {
+        setConfirmClose(false);
+        setOpen(false);
+      }
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  return (
+    <div className="active-game-dock">
+      <button
+        className={`active-game-tile ${open ? 'selected' : ''}`}
+        type="button"
+        title={game.title}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <div className="active-game-thumb">
+          {game.coverImagePath ? <img src={coverUrl(game.coverImagePath)} alt="" /> : <Gamepad2 size={24} />}
+        </div>
+        <span>{props.activeGame.status === 'launching' ? 'Launching' : 'Running'}</span>
+      </button>
+      {open && (
+        <div className="active-game-panel">
+          <div>
+            <p className="eyebrow">Active game</p>
+            <strong>{game.title}</strong>
+            <span>{props.activeGame.message ?? 'Running in the background.'}</span>
+          </div>
+          {message && <p className="error-text">{message}</p>}
+          {confirmClose ? (
+            <div className="active-game-actions">
+              <span>Close this game?</span>
+              <button className="secondary-action" type="button" disabled={pendingAction !== null} onClick={() => setConfirmClose(false)}>
+                Cancel
+              </button>
+              <button
+                className="danger-action"
+                type="button"
+                disabled={pendingAction !== null}
+                onClick={() => runControl('close', window.nxgs.closeActiveGame)}
+              >
+                {pendingAction === 'close' ? 'Closing...' : 'Close Game'}
+              </button>
+            </div>
+          ) : (
+            <div className="active-game-actions">
+              <button
+                className="primary-action"
+                type="button"
+                disabled={pendingAction !== null}
+                onClick={() => runControl('resume', window.nxgs.resumeActiveGame)}
+              >
+                <Play size={18} />
+                {pendingAction === 'resume' ? 'Resuming...' : 'Resume Game'}
+              </button>
+              <button
+                className="secondary-action"
+                type="button"
+                disabled={pendingAction !== null}
+                onClick={() => runControl('minimize', window.nxgs.minimizeActiveGame)}
+              >
+                {pendingAction === 'minimize' ? 'Minimizing...' : 'Minimize Game'}
+              </button>
+              <button className="danger-action" type="button" disabled={pendingAction !== null} onClick={() => setConfirmClose(true)}>
+                Close Game
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GameTransitionOverlay(props: { activeGame: ActiveGameState }): JSX.Element {
+  return (
+    <div className="game-transition-overlay">
+      <img className="boot-logo" src={brandImage} alt="NXGS Gaming" />
+      <div>
+        <p className="eyebrow">{props.activeGame.status === 'closing' ? 'Closing game' : 'Launching game'}</p>
+        <h2>{props.activeGame.game?.title ?? 'Game'}</h2>
+        <span>{props.activeGame.message ?? 'Preparing the game window...'}</span>
+      </div>
+    </div>
   );
 }
 

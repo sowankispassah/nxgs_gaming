@@ -31,6 +31,21 @@ export async function isProcessRunning(processName: string): Promise<boolean> {
   }
 }
 
+export async function isProcessRunningByPid(pid: number): Promise<boolean> {
+  if (process.platform !== 'win32' || !Number.isFinite(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    const { stdout } = await execFileAsync('tasklist.exe', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], {
+      windowsHide: true
+    });
+    return stdout.includes(String(pid));
+  } catch {
+    return false;
+  }
+}
+
 export async function closeProcessByName(processName: string, force: boolean): Promise<void> {
   const normalized = normalizeProcessName(processName);
   if (!normalized) {

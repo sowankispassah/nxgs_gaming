@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { DataStore } from './database';
@@ -10,6 +10,7 @@ import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateS
 import type {
   AppSettings,
   FilePickerResult,
+  GameControlResult,
   GameInput,
   LaunchRequest,
   SessionState,
@@ -68,6 +69,15 @@ function broadcastSession(state: SessionState): void {
   mainWindow?.webContents.send('session:state', state);
 }
 
+function broadcastActiveGame(): void {
+  mainWindow?.webContents.send('activeGame:state', launcher.activeState);
+}
+
+function returnToShellHome(): void {
+  void launcher.returnToHome().then(() => applyKioskSettings(store.getSettings()));
+  mainWindow?.webContents.send('shell:home');
+}
+
 const sessionTimer = new SessionTimer({
   onTick: broadcastSession,
   onExpired: (game) => {
@@ -82,10 +92,15 @@ const launcher = new GameLauncher(
   {
     onGameExited: () => {
       sessionTimer.stop('idle');
+      applyKioskSettings(store.getSettings());
     },
     onError: (message) => {
       sessionTimer.setError(message);
       launcher.focusLauncher();
+      applyKioskSettings(store.getSettings());
+    },
+    onActiveGameChanged: () => {
+      broadcastActiveGame();
     }
   }
 );
@@ -155,7 +170,8 @@ function registerIpc(): void {
     platform: process.platform,
     dataPath: store.path,
     logsPath: getLogPath(),
-    isPackaged: app.isPackaged
+    isPackaged: app.isPackaged,
+    activeGame: launcher.activeState
   }));
 
   ipcMain.handle('auth:verifyPin', (_event, pin: string) => ({ ok: store.verifyPin(pin) }));
@@ -249,6 +265,27 @@ function registerIpc(): void {
     }
   });
 
+  ipcMain.handle('game:resumeActive', async (): Promise<GameControlResult> => launcher.resumeActiveGame());
+
+  ipcMain.handle('game:minimizeActive', async (): Promise<GameControlResult> => {
+    const result = await launcher.minimizeActiveGame();
+    if (result.ok) {
+      applyKioskSettings(store.getSettings());
+    }
+    return result;
+  });
+
+  ipcMain.handle('game:closeActive', async (): Promise<GameControlResult> => {
+    try {
+      await launcher.closeActiveGame(false);
+      launcher.focusLauncher();
+      applyKioskSettings(store.getSettings());
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   ipcMain.handle('session:forceClose', async (_event, pin: string) => {
     if (!store.verifyPin(pin)) {
       return { ok: false };
@@ -279,6 +316,8 @@ app.whenReady().then(async () => {
   await store.init();
   registerIpc();
   await createWindow();
+  globalShortcut.register('CommandOrControl+Shift+H', returnToShellHome);
+  globalShortcut.register('F10', returnToShellHome);
   await logLine('info', 'NXGS Play started.');
 });
 
@@ -292,4 +331,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });

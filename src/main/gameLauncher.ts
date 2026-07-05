@@ -2,13 +2,22 @@ import { BrowserWindow, shell } from 'electron';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { GameRecord } from '../shared/types';
+import type { ActiveGameState, GameControlResult, GameLaunchMode, GameRecord } from '../shared/types';
 import { logLine } from './logger';
-import { closeProcessByName, closeProcessByPid, isProcessRunning } from './windowsProcess';
+import { closeProcessByName, closeProcessByPid, isProcessRunning, isProcessRunningByPid } from './windowsProcess';
+import {
+  activateGameWindow,
+  closeGameWindow,
+  findGameWindow,
+  type GameWindowInfo,
+  minimizeGameWindow,
+  waitForGameWindow
+} from './windowManagerService';
 
 type LauncherEvents = {
   onGameExited: (game: GameRecord) => void;
   onError: (message: string) => void;
+  onActiveGameChanged: (state: ActiveGameState) => void;
 };
 
 function splitArgs(raw: string): string[] {
@@ -21,10 +30,20 @@ function splitArgs(raw: string): string[] {
   return args;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class GameLauncher {
   private activeGame: GameRecord | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
   private monitor: NodeJS.Timeout | null = null;
+  private activeWindow: GameWindowInfo | null = null;
+  private activeProcessId: number | null = null;
+  private state: ActiveGameState = {
+    status: 'idle',
+    updatedAt: new Date().toISOString()
+  };
 
   constructor(
     private readonly windowProvider: () => BrowserWindow | null,
@@ -33,6 +52,10 @@ export class GameLauncher {
 
   get active(): GameRecord | null {
     return this.activeGame;
+  }
+
+  get activeState(): ActiveGameState {
+    return this.state;
   }
 
   async launch(game: GameRecord): Promise<void> {
@@ -48,20 +71,35 @@ export class GameLauncher {
 
     await this.stopMonitoring(false);
     this.activeGame = game;
+    this.activeWindow = null;
+    this.activeProcessId = null;
+    this.setActiveState({
+      status: 'launching',
+      game,
+      message: `Preparing ${game.title} for full-screen launch...`,
+      windowDetected: false
+    });
+    this.showLaunchShield();
+    await delay(160);
     await logLine('info', `Launching ${game.title} using ${game.launchType}: ${game.launchCommand}`);
 
-    if (game.launchType === 'localExe') {
-      await this.launchExecutable(game);
-    } else if (game.launchType === 'steam' || game.launchType === 'epic') {
-      await shell.openExternal(game.launchCommand);
-      this.monitorByProcessName(game);
-    } else if (game.launchType === 'microsoftStore') {
-      await this.launchMicrosoftStoreApp(game);
-    } else {
-      await this.launchCustomCommand(game);
-    }
+    try {
+      if (game.launchType === 'localExe') {
+        await this.launchExecutable(game);
+      } else if (game.launchType === 'steam' || game.launchType === 'epic') {
+        await shell.openExternal(game.launchCommand);
+        this.monitorByProcessName(game);
+      } else if (game.launchType === 'microsoftStore') {
+        await this.launchMicrosoftStoreApp(game);
+      } else {
+        await this.launchCustomCommand(game);
+      }
 
-    this.windowProvider()?.minimize();
+      await this.activateLaunchedGame(game);
+    } catch (error) {
+      this.releaseLaunchShield();
+      throw error;
+    }
   }
 
   async closeActiveGame(force: boolean): Promise<void> {
@@ -71,9 +109,23 @@ export class GameLauncher {
     }
 
     await logLine('info', `${force ? 'Force closing' : 'Closing'} ${game.title}`);
+    this.setActiveState({
+      status: 'closing',
+      game,
+      message: `Closing ${game.title}...`,
+      windowDetected: Boolean(this.activeWindow)
+    });
     const errors: string[] = [];
 
-    if (this.child?.pid) {
+    if (!force && this.activeWindow) {
+      try {
+        await closeGameWindow(this.activeWindow);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    if (force && this.child?.pid) {
       try {
         await closeProcessByPid(this.child.pid, force);
       } catch (error) {
@@ -81,7 +133,15 @@ export class GameLauncher {
       }
     }
 
-    if (game.processName) {
+    if (force && this.activeProcessId) {
+      try {
+        await closeProcessByPid(this.activeProcessId, true);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    if (game.processName && (force || !this.activeWindow)) {
       try {
         await closeProcessByName(game.processName, force);
       } catch (error) {
@@ -92,12 +152,100 @@ export class GameLauncher {
     if (errors.length > 0) {
       await logLine('warn', `Close game errors for ${game.title}: ${errors.join(' | ')}`);
     }
+
+    if (!force) {
+      setTimeout(() => {
+        void this.checkGracefulCloseResult(game);
+      }, 2500);
+    }
+  }
+
+  async resumeActiveGame(): Promise<GameControlResult> {
+    const game = this.activeGame;
+    if (!game) {
+      return { ok: false, error: 'No game is currently running.' };
+    }
+
+    if (game.launchType === 'microsoftStore') {
+      return this.resumeMicrosoftStoreApp(game);
+    }
+
+    const window = await this.getActiveWindow(game);
+    if (!window) {
+      await logLine('warn', `Resume requested for ${game.title}, but no game window was found.`);
+      return { ok: false, error: 'NXGS Play could not find the running game window.' };
+    }
+
+    try {
+      this.showLaunchShield();
+      await this.revealGameWindow(window, this.launchMode(game));
+      this.activeWindow = window;
+      this.activeProcessId = window.processId;
+      this.setActiveState({
+        status: 'running',
+        game,
+        message: `${game.title} is running.`,
+        windowDetected: true
+      });
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await logLine('warn', `Native resume failed for ${game.title}: ${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
+  async minimizeActiveGame(): Promise<GameControlResult> {
+    const game = this.activeGame;
+    if (!game) {
+      return { ok: false, error: 'No game is currently running.' };
+    }
+
+    const window = await this.getActiveWindow(game);
+    if (!window) {
+      return { ok: false, error: 'NXGS Play could not find the running game window.' };
+    }
+
+    try {
+      await minimizeGameWindow(window);
+      this.focusLauncher();
+      this.setActiveState({
+        status: 'running',
+        game,
+        message: `${game.title} is minimized.`,
+        windowDetected: true
+      });
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await logLine('warn', `Minimize failed for ${game.title}: ${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
+  async returnToHome(): Promise<GameControlResult> {
+    const game = this.activeGame;
+    this.focusLauncher();
+    if (game) {
+      this.setActiveState({
+        status: 'running',
+        game,
+        message: `${game.title} is running in the background.`,
+        windowDetected: Boolean(this.activeWindow)
+      });
+    }
+    return { ok: true };
   }
 
   async clearActive(): Promise<void> {
     await this.stopMonitoring(false);
     this.activeGame = null;
     this.child = null;
+    this.activeWindow = null;
+    this.activeProcessId = null;
+    this.setActiveState({
+      status: 'idle'
+    });
   }
 
   focusLauncher(): void {
@@ -109,6 +257,57 @@ export class GameLauncher {
     window.setFullScreen(true);
     window.moveTop();
     window.focus();
+  }
+
+  private async activateLaunchedGame(game: GameRecord): Promise<void> {
+    const window = await waitForGameWindow(
+      {
+        pid: this.child?.pid,
+        processName: game.processName,
+        titleHint: game.title
+      },
+      22000,
+      200
+    );
+
+    if (!window) {
+      await logLine('warn', `No main game window detected for ${game.title}; leaving NXGS Play visible.`);
+      this.releaseLaunchShield();
+      this.setActiveState({
+        status: 'running',
+        game,
+        message: `${game.title} launched. Game window detection is still best-effort.`,
+        windowDetected: false
+      });
+      return;
+    }
+
+    this.activeWindow = window;
+    this.activeProcessId = window.processId;
+    this.monitorByProcessName(game);
+
+    const launchMode = this.launchMode(game);
+    if (launchMode === 'fullscreen' || launchMode === 'borderlessPreferred') {
+      await logLine(
+        'info',
+        `${game.title} requested ${launchMode}; NXGS Play will attempt a native borderless fullscreen window.`
+      );
+    }
+
+    this.setActiveState({
+      status: 'launching',
+      game,
+      message: `Preparing ${game.title} borderless full-screen view...`,
+      windowDetected: true
+    });
+
+    await this.revealGameWindow(window, launchMode);
+    this.setActiveState({
+      status: 'running',
+      game,
+      message: `${game.title} is running.`,
+      windowDetected: true
+    });
   }
 
   private async launchExecutable(game: GameRecord): Promise<void> {
@@ -127,12 +326,21 @@ export class GameLauncher {
       detached: false,
       windowsHide: false
     });
+    this.activeProcessId = this.child.pid ?? null;
 
     this.child.once('error', async (error) => {
       await logLine('error', `Launch failed for ${game.title}: ${error.message}`);
       this.events.onError(error.message);
     });
     this.child.once('close', () => {
+      if (game.processName) {
+        void isProcessRunning(game.processName).then((running) => {
+          if (!running) {
+            this.handleGameExit(game);
+          }
+        });
+        return;
+      }
       this.handleGameExit(game);
     });
 
@@ -150,6 +358,7 @@ export class GameLauncher {
       detached: false,
       windowsHide: false
     });
+    this.activeProcessId = this.child.pid ?? null;
 
     this.child.once('error', async (error) => {
       await logLine('error', `Custom command failed for ${game.title}: ${error.message}`);
@@ -186,21 +395,68 @@ export class GameLauncher {
     }
   }
 
+  private async resumeMicrosoftStoreApp(game: GameRecord): Promise<GameControlResult> {
+    try {
+      await logLine('info', `Retrying Microsoft Store activation for ${game.title}`);
+      await this.launchMicrosoftStoreApp(game);
+      const window = await waitForGameWindow(
+        {
+          pid: this.activeProcessId ?? this.child?.pid,
+          processName: game.processName,
+          titleHint: game.title
+        },
+        8000,
+        200
+      );
+
+      if (!window) {
+        const message = 'Windows accepted the app activation, but NXGS Play could not find the game window.';
+        await logLine('warn', `${game.title}: ${message}`);
+        this.setActiveState({
+          status: 'running',
+          game,
+          message,
+          windowDetected: false
+        });
+        return { ok: false, error: message };
+      }
+
+      this.activeWindow = window;
+      this.activeProcessId = window.processId;
+      this.showLaunchShield();
+      await this.revealGameWindow(window, this.launchMode(game));
+      this.setActiveState({
+        status: 'running',
+        game,
+        message: `${game.title} was activated through Windows shell.`,
+        windowDetected: true
+      });
+      return { ok: true };
+    } catch (fallbackError) {
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      await logLine('warn', `Microsoft Store resume fallback failed for ${game.title}: ${fallbackMessage}`);
+      return { ok: false, error: fallbackMessage };
+    }
+  }
+
   private monitorByProcessName(game: GameRecord): void {
     if (this.monitor) {
       clearInterval(this.monitor);
       this.monitor = null;
     }
-    if (!game.processName) {
+    if (!game.processName && !this.activeProcessId) {
       return;
     }
 
     let seenRunning = false;
     this.monitor = setInterval(() => {
-      void isProcessRunning(game.processName)
+      const processCheck = game.processName ? isProcessRunning(game.processName) : Promise.resolve(false);
+      const pidCheck = this.activeProcessId ? isProcessRunningByPid(this.activeProcessId) : Promise.resolve(false);
+      void Promise.all([processCheck, pidCheck])
         .then((running) => {
-          seenRunning ||= running;
-          if (seenRunning && !running) {
+          const isRunning = running.some(Boolean);
+          seenRunning ||= isRunning;
+          if (seenRunning && !isRunning) {
             this.handleGameExit(game);
           }
         })
@@ -220,6 +476,12 @@ export class GameLauncher {
     }
     this.child = null;
     this.activeGame = null;
+    this.activeWindow = null;
+    this.activeProcessId = null;
+    this.setActiveState({
+      status: 'idle',
+      message: `${game.title} exited.`
+    });
     void logLine('info', `${game.title} exited; returning to launcher.`);
     this.focusLauncher();
     this.events.onGameExited(game);
@@ -233,5 +495,92 @@ export class GameLauncher {
     if (closeGame) {
       await this.closeActiveGame(false);
     }
+  }
+
+  private async getActiveWindow(game: GameRecord): Promise<GameWindowInfo | null> {
+    if (this.activeWindow) {
+      const stillCurrent = await findGameWindow({
+        pid: this.activeWindow.processId,
+        processName: game.processName,
+        titleHint: game.title
+      });
+      if (stillCurrent) {
+        return stillCurrent;
+      }
+    }
+
+    const window = await findGameWindow({
+      pid: this.activeProcessId ?? this.child?.pid,
+      processName: game.processName,
+      titleHint: game.title
+    });
+    this.activeWindow = window;
+    this.activeProcessId = window?.processId ?? this.activeProcessId;
+    return window;
+  }
+
+  private async checkGracefulCloseResult(game: GameRecord): Promise<void> {
+    if (this.activeGame?.id !== game.id) {
+      return;
+    }
+
+    const processChecks = await Promise.all([
+      game.processName ? isProcessRunning(game.processName) : Promise.resolve(false),
+      this.activeProcessId ? isProcessRunningByPid(this.activeProcessId) : Promise.resolve(false)
+    ]);
+    const window = await findGameWindow({
+      pid: this.activeProcessId ?? this.child?.pid,
+      processName: game.processName,
+      titleHint: game.title
+    });
+
+    if (!processChecks.some(Boolean) && !window) {
+      this.handleGameExit(game);
+      return;
+    }
+
+    this.setActiveState({
+      status: 'running',
+      game,
+      message: `${game.title} did not close yet. Admin force close is available from settings if needed.`,
+      windowDetected: Boolean(window)
+    });
+  }
+
+  private launchMode(game: GameRecord): GameLaunchMode {
+    return game.launchMode ?? 'borderlessPreferred';
+  }
+
+  private showLaunchShield(): void {
+    const window = this.windowProvider();
+    if (!window) {
+      return;
+    }
+    window.show();
+    window.setFullScreen(true);
+    window.setAlwaysOnTop(true, 'screen-saver');
+    window.moveTop();
+    window.focus();
+  }
+
+  private releaseLaunchShield(): void {
+    this.windowProvider()?.setAlwaysOnTop(false);
+  }
+
+  private async revealGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode): Promise<void> {
+    try {
+      await activateGameWindow(window, launchMode);
+    } finally {
+      this.releaseLaunchShield();
+    }
+    await activateGameWindow(window, launchMode);
+  }
+
+  private setActiveState(state: Omit<ActiveGameState, 'updatedAt'>): void {
+    this.state = {
+      updatedAt: new Date().toISOString(),
+      ...state
+    };
+    this.events.onActiveGameChanged(this.state);
   }
 }

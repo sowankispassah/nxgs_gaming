@@ -76,7 +76,7 @@ button {
 .home-screen {
   display: flex;
   flex-direction: column;
-  padding: 42px 52px 48px;
+  padding: 42px 52px 104px;
 }
 
 .top-bar {
@@ -321,6 +321,130 @@ button {
 .status.missing,
 .status.disabled {
   color: #ff8f8f;
+}
+
+.active-game-dock {
+  position: fixed;
+  left: 52px;
+  right: 52px;
+  bottom: 28px;
+  z-index: 4;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  pointer-events: none;
+}
+
+.active-game-tile,
+.active-game-panel {
+  pointer-events: auto;
+}
+
+.active-game-tile {
+  display: grid;
+  width: 86px;
+  min-height: 86px;
+  place-items: center;
+  gap: 5px;
+  border: 2px solid rgba(115, 222, 200, 0.46);
+  border-radius: 8px;
+  background: rgba(8, 14, 18, 0.9);
+  color: #dffdf7;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
+  cursor: pointer;
+}
+
+.active-game-tile.selected,
+.active-game-tile:hover,
+.active-game-tile:focus-visible {
+  border-color: #1dd1a1;
+  outline: none;
+}
+
+.active-game-thumb {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #73dec8;
+}
+
+.active-game-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.active-game-tile span {
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.active-game-panel {
+  display: grid;
+  width: min(620px, calc(100vw - 172px));
+  gap: 14px;
+  border: 1px solid rgba(115, 222, 200, 0.3);
+  border-radius: 8px;
+  background: rgba(12, 18, 25, 0.96);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+  padding: 18px;
+}
+
+.active-game-panel strong,
+.active-game-panel span {
+  display: block;
+}
+
+.active-game-panel strong {
+  font-size: 20px;
+}
+
+.active-game-panel span {
+  margin-top: 6px;
+  color: #aab4c3;
+}
+
+.active-game-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.active-game-actions > span {
+  margin-right: auto;
+  color: #f5f7fb;
+  font-weight: 850;
+}
+
+.game-transition-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 28px;
+  background:
+    linear-gradient(120deg, rgba(5, 8, 14, 0.96), rgba(9, 13, 20, 0.96)),
+    #07090d;
+  text-align: center;
+}
+
+.game-transition-overlay h2 {
+  margin: 0;
+  font-size: clamp(34px, 6vw, 72px);
+}
+
+.game-transition-overlay span {
+  display: block;
+  margin-top: 12px;
+  color: #aab4c3;
+  font-size: 18px;
 }
 
 .empty-library {

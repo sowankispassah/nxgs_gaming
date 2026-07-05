@@ -78,6 +78,7 @@ function normalizeGame(input: GameInput, existing?: GameRecord): GameRecord {
     workingDirectory: input.workingDirectory?.trim() ?? existing?.workingDirectory ?? '',
     processName: input.processName?.trim() ?? existing?.processName ?? '',
     launchArguments: input.launchArguments?.trim() ?? existing?.launchArguments ?? '',
+    launchMode: input.launchMode ?? existing?.launchMode ?? 'borderlessPreferred',
     enabled,
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
@@ -117,7 +118,10 @@ export class DataStore {
           ...(parsed.settings?.kiosk ?? {})
         }
       },
-      games: parsed.games ?? []
+      games: (parsed.games ?? []).map((game) => ({
+        ...game,
+        launchMode: game.launchMode ?? 'borderlessPreferred'
+      }))
     };
     await this.persist();
   }

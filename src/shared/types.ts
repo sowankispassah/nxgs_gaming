@@ -13,10 +13,13 @@ export interface GameRecord {
   workingDirectory: string;
   processName: string;
   launchArguments: string;
+  launchMode?: GameLaunchMode;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+export type GameLaunchMode = 'normal' | 'maximized' | 'fullscreen' | 'borderlessPreferred';
 
 export interface GameInput {
   id?: string;
@@ -29,6 +32,7 @@ export interface GameInput {
   workingDirectory?: string;
   processName?: string;
   launchArguments?: string;
+  launchMode?: GameLaunchMode;
   enabled?: boolean;
 }
 
@@ -69,6 +73,7 @@ export interface InitialData {
   dataPath: string;
   logsPath: string;
   isPackaged: boolean;
+  activeGame: ActiveGameState;
 }
 
 export interface SessionState {
@@ -89,6 +94,21 @@ export interface LaunchRequest {
 export interface LaunchResult {
   ok: boolean;
   error?: string;
+}
+
+export interface GameControlResult {
+  ok: boolean;
+  error?: string;
+}
+
+export type ActiveGameStatus = 'idle' | 'launching' | 'running' | 'returning' | 'closing' | 'error';
+
+export interface ActiveGameState {
+  status: ActiveGameStatus;
+  game?: GameRecord;
+  message?: string;
+  windowDetected?: boolean;
+  updatedAt: string;
 }
 
 export interface VerifyPinResult {
