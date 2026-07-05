@@ -110,6 +110,24 @@ export interface UpdateCheckResult {
   currentVersion: string;
   latestVersion?: string;
   releaseUrl?: string;
+  assetName?: string;
+  downloadUrl?: string;
+  canDownload?: boolean;
   message: string;
   checkedAt: string;
+}
+
+export interface UpdateDownloadRequest {
+  downloadUrl: string;
+  assetName?: string;
+}
+
+export interface UpdateDownloadResult {
+  ok: boolean;
+  installerPath?: string;
+  message: string;
+}
+
+export interface UpdateInstallRequest {
+  installerPath: string;
 }

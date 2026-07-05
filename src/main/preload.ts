@@ -8,6 +8,9 @@ import type {
   LaunchResult,
   SessionState,
   UpdateCheckResult,
+  UpdateDownloadRequest,
+  UpdateDownloadResult,
+  UpdateInstallRequest,
   VerifyPinResult
 } from '../shared/types';
 
@@ -19,6 +22,10 @@ const api = {
   scanInstalledGames: () => ipcRenderer.invoke('games:scanInstalled'),
   updateSettings: (settings: AppSettings) => ipcRenderer.invoke('settings:update', settings),
   checkForUpdates: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('updates:check'),
+  downloadUpdate: (request: UpdateDownloadRequest): Promise<UpdateDownloadResult> =>
+    ipcRenderer.invoke('updates:download', request),
+  installUpdate: (request: UpdateInstallRequest): Promise<UpdateDownloadResult> =>
+    ipcRenderer.invoke('updates:install', request),
   selectImageFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectImageFile'),
   selectExecutableFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectExecutableFile'),
   selectFolder: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectFolder'),

@@ -1168,8 +1168,13 @@ function KioskSettingsPanel(props: {
 }
 
 function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
-  const [pending, setPending] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'check' | 'download' | 'install' | null>(null);
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
+  const [downloadedInstallerPath, setDownloadedInstallerPath] = useState('');
+  const [operationMessage, setOperationMessage] = useState('');
+  const [operationOk, setOperationOk] = useState(true);
+
+  const pending = pendingAction !== null;
 
   return (
     <section className="panel narrow-panel">
@@ -1180,26 +1185,30 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
         <strong>{props.initialData.appVersion}</strong>
       </div>
       <p className="muted">
-        NXGS Play checks GitHub Releases for a newer version. Automatic download and install are intentionally not enabled in this MVP.
+        NXGS Play checks GitHub Releases for a newer packaged installer. Installing an update starts the installer and closes
+        NXGS Play so Windows can replace the app files.
       </p>
       <button
         className="primary-action wide"
         type="button"
         disabled={pending}
         onClick={async () => {
-          setPending(true);
+          setPendingAction('check');
+          setOperationMessage('');
+          setOperationOk(true);
+          setDownloadedInstallerPath('');
           try {
             setResult(await window.nxgs.checkForUpdates());
           } finally {
-            setPending(false);
+            setPendingAction(null);
           }
         }}
       >
         <RefreshCw size={19} />
-        {pending ? 'Checking for updates...' : 'Check for Updates'}
+        {pendingAction === 'check' ? 'Checking for updates...' : 'Check for Updates'}
       </button>
-      <div className={`update-status ${pending ? 'checking' : result?.status ?? ''}`}>
-        {pending ? (
+      <div className={`update-status ${pendingAction === 'check' ? 'checking' : result?.status ?? ''}`}>
+        {pendingAction === 'check' ? (
           <p>Checking for updates...</p>
         ) : result ? (
           <>
@@ -1212,6 +1221,7 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
             </strong>
             <span>{result.message}</span>
             {result.latestVersion && <span>Latest version: {result.latestVersion}</span>}
+            {result.assetName && <span>Installer asset: {result.assetName}</span>}
             {result.releaseUrl && (
               <a href={result.releaseUrl} target="_blank" rel="noreferrer">
                 View GitHub release
@@ -1223,6 +1233,57 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
           <p>No update check has been run yet.</p>
         )}
       </div>
+      {result?.status === 'available' && result.canDownload && result.downloadUrl && !downloadedInstallerPath && (
+        <button
+          className="primary-action wide"
+          type="button"
+          disabled={pending}
+          onClick={async () => {
+            setPendingAction('download');
+            setOperationMessage('');
+            setOperationOk(true);
+            try {
+              const download = await window.nxgs.downloadUpdate({
+                downloadUrl: result.downloadUrl ?? '',
+                assetName: result.assetName
+              });
+              setOperationMessage(download.message);
+              setOperationOk(download.ok);
+              if (download.ok && download.installerPath) {
+                setDownloadedInstallerPath(download.installerPath);
+              }
+            } finally {
+              setPendingAction(null);
+            }
+          }}
+        >
+          <FileUp size={19} />
+          {pendingAction === 'download' ? 'Downloading update...' : 'Download Update'}
+        </button>
+      )}
+      {downloadedInstallerPath && (
+        <button
+          className="danger-action wide"
+          type="button"
+          disabled={pending}
+          onClick={async () => {
+            setPendingAction('install');
+            setOperationMessage('');
+            setOperationOk(true);
+            try {
+              const install = await window.nxgs.installUpdate({ installerPath: downloadedInstallerPath });
+              setOperationMessage(install.message);
+              setOperationOk(install.ok);
+            } finally {
+              setPendingAction(null);
+            }
+          }}
+        >
+          <Power size={19} />
+          {pendingAction === 'install' ? 'Starting installer...' : 'Install Update and Close NXGS Play'}
+        </button>
+      )}
+      {operationMessage && <p className={operationOk ? 'success-text' : 'error-text'}>{operationMessage}</p>}
     </section>
   );
 }

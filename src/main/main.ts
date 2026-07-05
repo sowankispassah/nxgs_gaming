@@ -6,8 +6,16 @@ import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
-import { checkForUpdates } from './updateService';
-import type { AppSettings, FilePickerResult, GameInput, LaunchRequest, SessionState } from '../shared/types';
+import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
+import type {
+  AppSettings,
+  FilePickerResult,
+  GameInput,
+  LaunchRequest,
+  SessionState,
+  UpdateDownloadRequest,
+  UpdateInstallRequest
+} from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
@@ -171,6 +179,17 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('updates:check', async () => checkForUpdates());
+
+  ipcMain.handle('updates:download', async (_event, request: UpdateDownloadRequest) => downloadUpdate(request));
+
+  ipcMain.handle('updates:install', async (_event, request: UpdateInstallRequest) => {
+    const result = await startUpdateInstaller(request);
+    if (result.ok) {
+      isQuitting = true;
+      setTimeout(() => app.quit(), 500);
+    }
+    return result;
+  });
 
   ipcMain.handle('dialog:selectImageFile', async (): Promise<FilePickerResult> => {
     const result = await showOpenDialog({

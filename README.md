@@ -26,6 +26,7 @@ Build artifacts are written to `release/`:
 - `release/win-unpacked/NXGS Play.exe`
 - `release/NXGS Play Setup.exe`
 - `release/NXGS Play.exe`
+- `release/latest.yml`
 
 This MVP build is unsigned. The Windows package config disables certificate auto-discovery and executable signing/editing so local builds work without Windows symlink privileges.
 
@@ -42,9 +43,15 @@ Current behavior:
 - Queries the latest GitHub Release at `sowankispassah/nxgs_gaming`.
 - Shows `You are on the latest version` when no newer release is found.
 - Shows `New update available` when the latest release tag is greater than the local `package.json` version.
-- Shows `Update check failed` with the error message if GitHub cannot be reached, no GitHub Release is published yet, or GitHub returns an unexpected response.
+- Shows `Download Update` when the newer GitHub Release includes a Windows installer asset.
+- Downloads the installer to `%APPDATA%\nxgs-play\updates\`.
+- Shows `Install Update and Close NXGS Play` after the installer downloads.
+- Starts the installer and closes NXGS Play only after the admin clicks install.
+- Shows `Update check failed` with the error message if GitHub cannot be reached, no GitHub Release is published yet, no installer asset is attached, or GitHub returns an unexpected response.
 
-Automatic update download/install is not enabled yet. The update-check code is isolated in `src/main/updateService.ts` so `electron-updater` or a GitHub Releases download flow can be connected later without changing the admin UI contract.
+Important: pushing commits to `main` does not create an installable update. Installed copies can only update from a published GitHub Release whose tag is newer than the local app version and whose assets include `NXGS Play Setup.exe`.
+
+The update code is isolated in `src/main/updateService.ts`. It currently uses a controlled GitHub Releases installer download flow; `electron-updater` can replace or extend this later once signing and release publishing are stable.
 
 ## GitHub Releases Plan
 
@@ -55,11 +62,16 @@ owner: sowankispassah
 repo: nxgs_gaming
 ```
 
-Local builds still use `--publish=never`, so packaging does not require release credentials. A future release workflow should:
+Local builds still use `--publish=never`, so packaging does not require release credentials. The GitHub Actions workflow at `.github/workflows/release.yml` publishes release assets when a version tag is pushed.
+
+Release flow:
 
 - Bump `version` in `package.json`.
 - Run `npm run typecheck`, `npm run build`, and `npm run build:win`.
-- Publish the generated Windows installer/portable artifact to a GitHub Release tagged with the same version, for example `v0.1.2`.
+- Commit and push the version/build changes.
+- Push a Git tag matching the app version, for example `v0.3.0`.
+- GitHub Actions builds the Windows package and attaches `NXGS Play Setup.exe`, `NXGS Play.exe`, `latest.yml`, and the blockmap to the Release.
+- Installed copies see the update only after the Release exists.
 - Add signing credentials and re-enable production signing when ready.
 - Optionally integrate `electron-updater` once releases and signing are stable.
 
