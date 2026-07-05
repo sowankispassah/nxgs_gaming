@@ -8,6 +8,7 @@ import type {
   LaunchResult,
   SessionState,
   UpdateCheckResult,
+  UpdateDownloadProgress,
   UpdateDownloadRequest,
   UpdateDownloadResult,
   UpdateInstallRequest,
@@ -36,7 +37,16 @@ const api = {
   onSessionState: (callback: (state: SessionState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: SessionState) => callback(state);
     ipcRenderer.on('session:state', listener);
-    return () => ipcRenderer.removeListener('session:state', listener);
+    return () => {
+      ipcRenderer.removeListener('session:state', listener);
+    };
+  },
+  onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: UpdateDownloadProgress) => callback(progress);
+    ipcRenderer.on('updates:downloadProgress', listener);
+    return () => {
+      ipcRenderer.removeListener('updates:downloadProgress', listener);
+    };
   }
 };
 

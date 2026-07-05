@@ -1,18 +1,29 @@
 import { app } from 'electron';
-import { access, mkdir, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
 import { spawn } from 'node:child_process';
-import type { UpdateCheckResult, UpdateDownloadRequest, UpdateDownloadResult, UpdateInstallRequest } from '../shared/types';
+import { createHash } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { access, mkdir, rename, rm } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import type {
+  UpdateCheckResult,
+  UpdateDownloadProgress,
+  UpdateDownloadRequest,
+  UpdateDownloadResult,
+  UpdateInstallRequest
+} from '../shared/types';
 import { logLine } from './logger';
 
 const OWNER = 'sowankispassah';
 const REPO = 'nxgs_gaming';
+const RELEASES_URL = `https://github.com/${OWNER}/${REPO}/releases`;
 const LATEST_RELEASE_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`;
-const INSTALLER_ASSET_NAME = 'NXGS Play Setup.exe';
+const UPDATE_MANIFEST_URL = `${RELEASES_URL}/latest/download/windows-update.json`;
+const INSTALLER_ASSET_NAME = 'NXGS-Play-Setup.exe';
 
 interface GitHubAsset {
   name?: string;
   browser_download_url?: string;
+  digest?: string;
   size?: number;
 }
 
@@ -21,6 +32,15 @@ interface GitHubRelease {
   html_url?: string;
   name?: string;
   assets?: GitHubAsset[];
+}
+
+interface UpdateManifest {
+  version?: string;
+  downloadUrl?: string;
+  sha256?: string;
+  required?: boolean;
+  notes?: string;
+  releaseUrl?: string;
 }
 
 function normalizeVersion(version: string): string {
@@ -46,6 +66,36 @@ function compareVersions(left: string, right: string): number {
   return 0;
 }
 
+function validSha256(value?: string): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && /^[0-9a-f]{64}$/.test(normalized) ? normalized : undefined;
+}
+
+function digestToSha256(digest?: string): string | undefined {
+  return validSha256(digest?.replace(/^sha256:/i, ''));
+}
+
+function trustedHttpsUrl(value?: string): boolean {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && (url.hostname === 'github.com' || url.hostname.endsWith('.githubusercontent.com'));
+  } catch {
+    return false;
+  }
+}
+
+function assetNameFromUrl(value: string): string {
+  try {
+    return basename(decodeURIComponent(new URL(value).pathname));
+  } catch {
+    return INSTALLER_ASSET_NAME;
+  }
+}
+
 function findInstallerAsset(assets: GitHubAsset[] = []): GitHubAsset | undefined {
   const exactMatch = assets.find((asset) => asset.name?.toLowerCase() === INSTALLER_ASSET_NAME.toLowerCase());
   if (exactMatch) {
@@ -63,9 +113,160 @@ function findInstallerAsset(assets: GitHubAsset[] = []): GitHubAsset | undefined
   return assets.find((asset) => asset.name?.toLowerCase().endsWith('.exe'));
 }
 
-function sanitizeAssetName(assetName?: string): string {
-  const cleanName = basename(assetName || INSTALLER_ASSET_NAME).replace(/[<>:"/\\|?*]/g, '').trim();
-  return cleanName || INSTALLER_ASSET_NAME;
+function sanitizeAssetName(assetName?: string, latestVersion?: string): string {
+  const fallbackName = latestVersion ? `NXGS-Play-Setup-${latestVersion}.exe` : INSTALLER_ASSET_NAME;
+  const cleanName = basename(assetName || fallbackName).replace(/[<>:"/\\|?*]/g, '').trim();
+  return cleanName.toLowerCase().endsWith('.exe') ? cleanName : fallbackName;
+}
+
+function powershellQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function buildResultFromManifest(manifest: UpdateManifest, currentVersion: string, checkedAt: string): UpdateCheckResult {
+  const latestVersion = normalizeVersion(manifest.version ?? '');
+  if (!latestVersion) {
+    throw new Error('Update manifest version is missing.');
+  }
+
+  const updateAvailable = compareVersions(latestVersion, currentVersion) > 0;
+  const sha256 = validSha256(manifest.sha256);
+  const canDownload = Boolean(updateAvailable && trustedHttpsUrl(manifest.downloadUrl) && sha256);
+
+  return {
+    status: updateAvailable ? 'available' : 'latest',
+    currentVersion,
+    latestVersion,
+    releaseUrl: manifest.releaseUrl || `${RELEASES_URL}/latest`,
+    assetName: manifest.downloadUrl ? assetNameFromUrl(manifest.downloadUrl) : INSTALLER_ASSET_NAME,
+    downloadUrl: canDownload ? manifest.downloadUrl : undefined,
+    sha256,
+    required: Boolean(manifest.required),
+    notes: manifest.notes,
+    source: 'manifest',
+    canDownload,
+    message: updateAvailable
+      ? canDownload
+        ? 'New update available. Download it now, then restart when you are ready.'
+        : 'New update found, but the update manifest is missing a secure installer URL or checksum.'
+      : 'You are on the latest version.',
+    checkedAt
+  };
+}
+
+async function checkManifest(currentVersion: string, checkedAt: string): Promise<UpdateCheckResult | null> {
+  const response = await fetch(UPDATE_MANIFEST_URL, {
+    headers: {
+      Accept: 'application/json',
+      'Cache-Control': 'no-cache',
+      'User-Agent': `NXGS-Play/${currentVersion}`
+    }
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Update manifest returned ${response.status} ${response.statusText}`);
+  }
+
+  const manifest = (await response.json()) as UpdateManifest;
+  return buildResultFromManifest(manifest, currentVersion, checkedAt);
+}
+
+async function checkGitHubRelease(currentVersion: string, checkedAt: string): Promise<UpdateCheckResult> {
+  const response = await fetch(LATEST_RELEASE_URL, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'Cache-Control': 'no-cache',
+      'User-Agent': `NXGS-Play/${currentVersion}`
+    }
+  });
+
+  if (response.status === 404) {
+    return {
+      status: 'failed',
+      currentVersion,
+      message:
+        'No GitHub Release is published yet. Pushed code is not installable until a release with the Windows installer is published.',
+      checkedAt
+    };
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub returned ${response.status} ${response.statusText}`);
+  }
+
+  const release = (await response.json()) as GitHubRelease;
+  const latestVersion = normalizeVersion(release.tag_name ?? release.name ?? '');
+  if (!latestVersion) {
+    throw new Error('Latest release did not include a version tag.');
+  }
+
+  const updateAvailable = compareVersions(latestVersion, currentVersion) > 0;
+  const installerAsset = findInstallerAsset(release.assets);
+  const sha256 = digestToSha256(installerAsset?.digest);
+  const downloadUrl = installerAsset?.browser_download_url;
+  const canDownload = Boolean(updateAvailable && downloadUrl && trustedHttpsUrl(downloadUrl) && sha256);
+
+  return {
+    status: updateAvailable ? 'available' : 'latest',
+    currentVersion,
+    latestVersion,
+    releaseUrl: release.html_url,
+    assetName: installerAsset?.name,
+    downloadUrl: canDownload ? downloadUrl : undefined,
+    sha256,
+    source: 'github-release',
+    canDownload,
+    message: updateAvailable
+      ? canDownload
+        ? 'New update available. Download it now, then restart when you are ready.'
+        : 'New release found, but the installer asset or checksum could not be read.'
+      : 'You are on the latest version.',
+    checkedAt
+  };
+}
+
+async function writeChunk(stream: ReturnType<typeof createWriteStream>, chunk: Buffer): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    stream.write(chunk, (error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+async function closeStream(stream: ReturnType<typeof createWriteStream>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    stream.end((error?: Error | null) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+async function sha256File(path: string): Promise<string> {
+  const { createReadStream } = await import('node:fs');
+  const hash = createHash('sha256');
+  const stream = createReadStream(path);
+
+  await new Promise<void>((resolve, reject) => {
+    stream.on('data', (chunk) => {
+      hash.update(chunk);
+    });
+    stream.on('error', reject);
+    stream.on('end', resolve);
+  });
+
+  return hash.digest('hex');
 }
 
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
@@ -73,52 +274,12 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   const checkedAt = new Date().toISOString();
 
   try {
-    const response = await fetch(LATEST_RELEASE_URL, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': `NXGS-Play/${currentVersion}`
-      }
-    });
-
-    if (response.status === 404) {
-      return {
-        status: 'failed',
-        currentVersion,
-        message:
-          'No GitHub Release is published yet. Pushed code is not installable until a release with the Windows installer is published.',
-        checkedAt
-      };
+    const manifestResult = await checkManifest(currentVersion, checkedAt);
+    if (manifestResult) {
+      return manifestResult;
     }
 
-    if (!response.ok) {
-      throw new Error(`GitHub returned ${response.status} ${response.statusText}`);
-    }
-
-    const release = (await response.json()) as GitHubRelease;
-    const latestVersion = normalizeVersion(release.tag_name ?? release.name ?? '');
-    if (!latestVersion) {
-      throw new Error('Latest release did not include a version tag.');
-    }
-
-    const updateAvailable = compareVersions(latestVersion, currentVersion) > 0;
-    const installerAsset = findInstallerAsset(release.assets);
-    const canDownload = Boolean(updateAvailable && installerAsset?.browser_download_url);
-
-    return {
-      status: updateAvailable ? 'available' : 'latest',
-      currentVersion,
-      latestVersion,
-      releaseUrl: release.html_url,
-      assetName: installerAsset?.name,
-      downloadUrl: canDownload ? installerAsset?.browser_download_url : undefined,
-      canDownload,
-      message: updateAvailable
-        ? canDownload
-          ? 'New update available. Download the Windows installer to update NXGS Play.'
-          : 'New release found, but no Windows installer asset is attached to the GitHub Release.'
-        : 'You are on the latest version.',
-      checkedAt
-    };
+    return await checkGitHubRelease(currentVersion, checkedAt);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await logLine('warn', `Update check failed: ${message}`);
@@ -131,41 +292,86 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   }
 }
 
-export async function downloadUpdate(request: UpdateDownloadRequest): Promise<UpdateDownloadResult> {
+export async function downloadUpdate(
+  request: UpdateDownloadRequest,
+  onProgress?: (progress: UpdateDownloadProgress) => void
+): Promise<UpdateDownloadResult> {
+  const expectedSha256 = validSha256(request.sha256);
+  const assetName = sanitizeAssetName(request.assetName, request.latestVersion);
+  const updatesDirectory = join(app.getPath('temp'), 'NXGS Play Updates');
+  const installerPath = join(updatesDirectory, assetName);
+  const partPath = `${installerPath}.part`;
+  let stream: ReturnType<typeof createWriteStream> | null = null;
+
   try {
-    if (!request.downloadUrl || !request.downloadUrl.startsWith('https://github.com/')) {
-      throw new Error('Update download URL is not a trusted GitHub release asset.');
+    if (!trustedHttpsUrl(request.downloadUrl)) {
+      throw new Error('Update download URL is not a trusted HTTPS URL.');
     }
 
-    const assetName = sanitizeAssetName(request.assetName);
-    const updatesDirectory = join(app.getPath('userData'), 'updates');
-    const installerPath = join(updatesDirectory, assetName);
-
     await mkdir(updatesDirectory, { recursive: true });
+    await rm(partPath, { force: true });
+    await rm(installerPath, { force: true });
+
     const response = await fetch(request.downloadUrl, {
       headers: {
+        'Cache-Control': 'no-cache',
         'User-Agent': `NXGS-Play/${app.getVersion()}`
       }
     });
 
     if (!response.ok) {
-      throw new Error(`GitHub returned ${response.status} ${response.statusText}`);
+      throw new Error(`Download returned ${response.status} ${response.statusText}`);
     }
 
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length === 0) {
-      throw new Error('Downloaded installer was empty.');
+    if (!response.body) {
+      throw new Error('Update download did not include a response body.');
     }
 
-    await writeFile(installerPath, buffer);
-    await logLine('info', `Downloaded update installer to ${installerPath}`);
+    const totalBytes = Number(response.headers.get('content-length') || 0) || undefined;
+    const hash = createHash('sha256');
+    const reader = response.body.getReader();
+    stream = createWriteStream(partPath, { flags: 'wx' });
+    let receivedBytes = 0;
+
+    onProgress?.({ receivedBytes, totalBytes, percent: 0 });
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      const chunk = Buffer.from(value);
+      receivedBytes += chunk.length;
+      hash.update(chunk);
+      await writeChunk(stream, chunk);
+
+      const percent = totalBytes ? Math.min(99, Math.round((receivedBytes / totalBytes) * 100)) : 0;
+      onProgress?.({ receivedBytes, totalBytes, percent });
+    }
+
+    await closeStream(stream);
+    stream = null;
+
+    const actualSha256 = hash.digest('hex');
+    if (expectedSha256 && actualSha256 !== expectedSha256) {
+      throw new Error('The downloaded installer failed checksum verification.');
+    }
+
+    await rename(partPath, installerPath);
+    onProgress?.({ receivedBytes, totalBytes, percent: 100 });
+    await logLine('info', `Downloaded verified update installer to ${installerPath}`);
 
     return {
       ok: true,
       installerPath,
-      message: `Downloaded ${assetName}.`
+      message: `Update downloaded. Restart when you are ready to install ${request.latestVersion ?? 'the new version'}.`
     };
   } catch (error) {
+    if (stream) {
+      stream.destroy();
+    }
+    await rm(partPath, { force: true }).catch(() => undefined);
     const message = error instanceof Error ? error.message : String(error);
     await logLine('error', `Update download failed: ${message}`);
     return {
@@ -182,17 +388,45 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
     }
 
     await access(request.installerPath);
-    const child = spawn(request.installerPath, [], {
-      detached: true,
-      stdio: 'ignore'
-    });
+
+    const expectedSha256 = validSha256(request.sha256);
+    if (expectedSha256) {
+      const actualSha256 = await sha256File(request.installerPath);
+      if (actualSha256 !== expectedSha256) {
+        throw new Error('The installer checksum no longer matches.');
+      }
+    }
+
+    const currentExePath = app.getPath('exe');
+    const script = [
+      '$ErrorActionPreference = "SilentlyContinue"',
+      `$pidToWait = ${process.pid}`,
+      `$installer = ${powershellQuote(request.installerPath)}`,
+      `$appPath = ${powershellQuote(currentExePath)}`,
+      'Wait-Process -Id $pidToWait',
+      '$installProcess = Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru',
+      'Start-Sleep -Seconds 1',
+      'if ((Test-Path -LiteralPath $appPath) -and ($installProcess.ExitCode -eq 0 -or $null -eq $installProcess.ExitCode)) {',
+      '  Start-Process -FilePath $appPath',
+      '}'
+    ].join('; ');
+
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', script],
+      {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      }
+    );
     child.unref();
 
-    await logLine('info', `Started update installer ${request.installerPath}`);
+    await logLine('info', `Started update restart helper for ${request.installerPath}`);
     return {
       ok: true,
       installerPath: request.installerPath,
-      message: 'Update installer started. NXGS Play will close so the installer can replace the app files.'
+      message: 'Restarting NXGS Play to install the update.'
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

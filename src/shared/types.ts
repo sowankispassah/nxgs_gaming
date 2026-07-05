@@ -112,6 +112,10 @@ export interface UpdateCheckResult {
   releaseUrl?: string;
   assetName?: string;
   downloadUrl?: string;
+  sha256?: string;
+  required?: boolean;
+  notes?: string;
+  source?: 'manifest' | 'github-release';
   canDownload?: boolean;
   message: string;
   checkedAt: string;
@@ -120,6 +124,8 @@ export interface UpdateCheckResult {
 export interface UpdateDownloadRequest {
   downloadUrl: string;
   assetName?: string;
+  sha256?: string;
+  latestVersion?: string;
 }
 
 export interface UpdateDownloadResult {
@@ -130,4 +136,11 @@ export interface UpdateDownloadResult {
 
 export interface UpdateInstallRequest {
   installerPath: string;
+  sha256?: string;
+}
+
+export interface UpdateDownloadProgress {
+  receivedBytes: number;
+  totalBytes?: number;
+  percent: number;
 }

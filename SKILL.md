@@ -15,8 +15,9 @@ Follow these rules for every future coding change in this project:
 - Keep app versioning clear in `package.json`.
 - Update the `version` field in `package.json` for every completed user-facing change, release change, update-check change, or packaged build. Use semver: patch for fixes/small changes, minor for new features, major for breaking changes.
 - Keep GitHub Release tags aligned with `package.json` versions, using tags like `v0.1.1`.
-- Do not treat a pushed commit as an app update; the Admin update button can only detect/install a published GitHub Release with a newer tag and Windows installer asset.
-- For updater changes, confirm the release asset name expected by the app still matches the packaged installer name.
+- Do not treat a pushed commit as an app update; the Admin update button can only detect/install a published GitHub Release with `windows-update.json` and a newer manifest version.
+- For updater changes, confirm the release asset name expected by the app still matches the packaged installer name, currently `NXGS-Play-Setup.exe`.
+- For release builds, generate or verify `updates/windows-update.json` with the installer download URL and SHA-256 checksum.
 - Keep update-check functionality working after every release-related change.
 - Run `npm run typecheck` after code changes.
 - Run `npm run build` after code changes.

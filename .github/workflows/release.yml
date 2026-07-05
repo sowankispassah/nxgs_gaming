@@ -32,11 +32,21 @@ jobs:
       - name: Build Windows package
         run: npm run build:win
 
+      - name: Generate update manifest
+        shell: pwsh
+        run: |
+          ./scripts/generate-update-manifest.ps1 `
+            -Installer "release/NXGS-Play-Setup.exe" `
+            -DownloadUrl "https://github.com/${{ github.repository }}/releases/latest/download/NXGS-Play-Setup.exe" `
+            -Output "updates/windows-update.json" `
+            -Notes "NXGS Play ${env:GITHUB_REF_NAME} is ready to install."
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/NXGS Play Setup.exe
-            release/NXGS Play Setup.exe.blockmap
-            release/NXGS Play.exe
+            release/NXGS-Play-Setup.exe
+            release/NXGS-Play-Setup.exe.blockmap
+            release/NXGS-Play.exe
             release/latest.yml
+            updates/windows-update.json

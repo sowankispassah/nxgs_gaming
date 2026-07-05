@@ -180,7 +180,11 @@ function registerIpc(): void {
 
   ipcMain.handle('updates:check', async () => checkForUpdates());
 
-  ipcMain.handle('updates:download', async (_event, request: UpdateDownloadRequest) => downloadUpdate(request));
+  ipcMain.handle('updates:download', async (event, request: UpdateDownloadRequest) =>
+    downloadUpdate(request, (progress) => {
+      event.sender.send('updates:downloadProgress', progress);
+    })
+  );
 
   ipcMain.handle('updates:install', async (_event, request: UpdateInstallRequest) => {
     const result = await startUpdateInstaller(request);

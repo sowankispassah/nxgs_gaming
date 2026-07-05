@@ -643,6 +643,67 @@ select:focus {
   text-decoration: none;
 }
 
+.download-progress {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  border: 1px solid rgba(115, 222, 200, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 14px;
+}
+
+.download-progress div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #aab4c3;
+  font-size: 13px;
+}
+
+.download-progress strong {
+  color: #73dec8;
+}
+
+.progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #1dd1a1;
+  transition: width 160ms ease;
+}
+
+.update-actions {
+  margin-top: 14px;
+}
+
+.update-modal {
+  display: grid;
+  gap: 16px;
+}
+
+.update-restart-note {
+  border: 1px solid rgba(115, 222, 200, 0.22);
+  border-radius: 8px;
+  background: rgba(115, 222, 200, 0.08);
+  color: #d7fff6;
+  padding: 12px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .danger-zone {
   display: grid;
   gap: 12px;

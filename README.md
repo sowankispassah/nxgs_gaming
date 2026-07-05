@@ -24,8 +24,8 @@ npm run build:win
 Build artifacts are written to `release/`:
 
 - `release/win-unpacked/NXGS Play.exe`
-- `release/NXGS Play Setup.exe`
-- `release/NXGS Play.exe`
+- `release/NXGS-Play-Setup.exe`
+- `release/NXGS-Play.exe`
 - `release/latest.yml`
 
 This MVP build is unsigned. The Windows package config disables certificate auto-discovery and executable signing/editing so local builds work without Windows symlink privileges.
@@ -40,18 +40,21 @@ Current behavior:
 
 - Shows the current app version from Electron/package metadata.
 - Shows `Checking for updates...` while the request is pending.
-- Queries the latest GitHub Release at `sowankispassah/nxgs_gaming`.
+- Queries the latest release manifest at `https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/windows-update.json`.
+- Falls back to GitHub Releases metadata if the manifest is not published yet.
 - Shows `You are on the latest version` when no newer release is found.
-- Shows `New update available` when the latest release tag is greater than the local `package.json` version.
-- Shows `Download Update` when the newer GitHub Release includes a Windows installer asset.
-- Downloads the installer to `%APPDATA%\nxgs-play\updates\`.
-- Shows `Install Update and Close NXGS Play` after the installer downloads.
-- Starts the installer and closes NXGS Play only after the admin clicks install.
+- Shows `New update available` when the manifest version is greater than the local `package.json` version.
+- Shows `Download Update` when the manifest includes a secure Windows installer URL and SHA-256 checksum.
+- Downloads the installer to the Windows temp updates folder and shows progress.
+- Verifies the downloaded installer checksum.
+- Shows a restart prompt after the installer is verified.
+- Keeps NXGS Play open until the admin clicks `Restart Now`.
+- Runs the installer and reopens NXGS Play during the restart/install step.
 - Shows `Update check failed` with the error message if GitHub cannot be reached, no GitHub Release is published yet, no installer asset is attached, or GitHub returns an unexpected response.
 
-Important: pushing commits to `main` does not create an installable update. Installed copies can only update from a published GitHub Release whose tag is newer than the local app version and whose assets include a Windows installer ending in `Setup.exe`.
+Important: pushing commits to `main` does not create an installable update. Installed copies can only update from a published GitHub Release whose manifest version is newer than the local app version and whose assets include `windows-update.json` plus `NXGS-Play-Setup.exe`.
 
-The update code is isolated in `src/main/updateService.ts`. It currently uses a controlled GitHub Releases installer download flow; `electron-updater` can replace or extend this later once signing and release publishing are stable.
+The update code is isolated in `src/main/updateService.ts`. It uses a controlled manifest download flow similar to the older NXGS Gaming updater; `electron-updater` can replace or extend this later once signing and release publishing are stable.
 
 ## GitHub Releases Plan
 
@@ -68,9 +71,10 @@ Release flow:
 
 - Bump `version` in `package.json`.
 - Run `npm run typecheck`, `npm run build`, and `npm run build:win`.
+- Generate `updates/windows-update.json` with `scripts/generate-update-manifest.ps1`.
 - Commit and push the version/build changes.
-- Push a Git tag matching the app version, for example `v0.3.1`.
-- GitHub Actions builds the Windows package and attaches the setup installer, portable executable, `latest.yml`, and the blockmap to the Release.
+- Push a Git tag matching the app version, for example `v0.4.0`.
+- GitHub Actions builds the Windows package and attaches `NXGS-Play-Setup.exe`, `NXGS-Play.exe`, `latest.yml`, `windows-update.json`, and the blockmap to the Release.
 - Installed copies see the update only after the Release exists.
 - Add signing credentials and re-enable production signing when ready.
 - Optionally integrate `electron-updater` once releases and signing are stable.
