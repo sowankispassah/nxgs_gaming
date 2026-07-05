@@ -1,7 +1,7 @@
-﻿{
-    "version":  "0.4.0",
+{
+    "version":  "0.4.1",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "6043b47553bead2228e6db2dc1d83c07f369e2124f308ec71a15e41b6528dc88",
+    "sha256":  "f600c078734435ed364000188d7cee4b41c6c1d0879da35473e392782c80bbef",
     "required":  false,
-    "notes":  "NXGS Play 0.4.0 adds manifest-based download/install updates with a Restart Now prompt."
+    "notes":  "NXGS Play 0.4.1 adds manifest-based download/install updates with a Restart Now prompt."
 }

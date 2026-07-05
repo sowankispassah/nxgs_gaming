@@ -33,5 +33,7 @@ $manifest = [ordered]@{
     notes = $Notes
 }
 
-$manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $outputPath -Encoding UTF8
+$json = $manifest | ConvertTo-Json -Depth 4
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($outputPath, $json, $utf8NoBom)
 Write-Host "Wrote update manifest to $outputPath"

@@ -73,7 +73,7 @@ Release flow:
 - Run `npm run typecheck`, `npm run build`, and `npm run build:win`.
 - Generate `updates/windows-update.json` with `scripts/generate-update-manifest.ps1`.
 - Commit and push the version/build changes.
-- Push a Git tag matching the app version, for example `v0.4.0`.
+- Push a Git tag matching the app version, for example `v0.4.1`.
 - GitHub Actions builds the Windows package and attaches `NXGS-Play-Setup.exe`, `NXGS-Play.exe`, `latest.yml`, `windows-update.json`, and the blockmap to the Release.
 - Installed copies see the update only after the Release exists.
 - Add signing credentials and re-enable production signing when ready.
