@@ -3,8 +3,11 @@ import {
   AlertTriangle,
   Check,
   Clock,
+  FileUp,
+  FolderOpen,
   Gamepad2,
   Home,
+  Image as ImageIcon,
   Lock,
   Monitor,
   Play,
@@ -51,6 +54,8 @@ const EMPTY_GAME: GameInput = {
   launchArguments: '',
   enabled: true
 };
+
+const SOURCE_OPTIONS = ['Manual', 'Steam', 'Epic Games', 'Local Folder', 'Custom'] as const;
 
 function formatTime(seconds: number): string {
   const safeSeconds = Math.max(0, seconds);
@@ -611,22 +616,113 @@ function GameForm(props: {
   form: GameInput;
   onChange: <K extends keyof GameInput>(key: K, value: GameInput[K]) => void;
 }): JSX.Element {
+  const [picking, setPicking] = useState<'image' | 'exe' | 'folder' | null>(null);
+  const [pickerError, setPickerError] = useState('');
+  const sourceValue = SOURCE_OPTIONS.includes((props.form.source ?? '') as (typeof SOURCE_OPTIONS)[number])
+    ? props.form.source
+    : 'Manual';
+
+  const pickImage = async (): Promise<void> => {
+    setPicking('image');
+    setPickerError('');
+    try {
+      const result = await window.nxgs.selectImageFile();
+      if (result.canceled) {
+        return;
+      }
+      if (result.error || !result.path) {
+        setPickerError(result.error ?? 'No image file was selected.');
+        return;
+      }
+      props.onChange('coverImagePath', result.path);
+    } finally {
+      setPicking(null);
+    }
+  };
+
+  const pickExecutable = async (): Promise<void> => {
+    setPicking('exe');
+    setPickerError('');
+    try {
+      const result = await window.nxgs.selectExecutableFile();
+      if (result.canceled) {
+        return;
+      }
+      if (result.error || !result.path) {
+        setPickerError(result.error ?? 'No executable file was selected.');
+        return;
+      }
+      props.onChange('launchCommand', result.path);
+      if (result.fileName) {
+        props.onChange('processName', result.fileName);
+      }
+      if (!props.form.workingDirectory?.trim() && result.directory) {
+        props.onChange('workingDirectory', result.directory);
+      }
+    } finally {
+      setPicking(null);
+    }
+  };
+
+  const pickFolder = async (): Promise<void> => {
+    setPicking('folder');
+    setPickerError('');
+    try {
+      const result = await window.nxgs.selectFolder();
+      if (result.canceled) {
+        return;
+      }
+      if (result.error || !result.path) {
+        setPickerError(result.error ?? 'No folder was selected.');
+        return;
+      }
+      props.onChange('workingDirectory', result.path);
+    } finally {
+      setPicking(null);
+    }
+  };
+
   return (
     <div className="form-grid">
       <label>
-        <span>Game title</span>
+        <span>
+          Game title <em className="required-badge">Required</em>
+        </span>
         <input value={props.form.title} onChange={(event) => props.onChange('title', event.target.value)} />
       </label>
       <label>
         <span>Source</span>
-        <input value={props.form.source ?? ''} onChange={(event) => props.onChange('source', event.target.value)} />
+        <select value={sourceValue} onChange={(event) => props.onChange('source', event.target.value)}>
+          {SOURCE_OPTIONS.map((source) => (
+            <option key={source} value={source}>
+              {source}
+            </option>
+          ))}
+        </select>
       </label>
-      <label className="full">
-        <span>Cover image path</span>
-        <input value={props.form.coverImagePath ?? ''} onChange={(event) => props.onChange('coverImagePath', event.target.value)} />
-      </label>
+      <div className="form-field full">
+        <label htmlFor="cover-image-path">Cover image path</label>
+        <div className="input-with-button">
+          <input
+            id="cover-image-path"
+            value={props.form.coverImagePath ?? ''}
+            onChange={(event) => props.onChange('coverImagePath', event.target.value)}
+          />
+          <button className="secondary-action browse-button" type="button" disabled={picking === 'image'} onClick={pickImage}>
+            <ImageIcon size={18} />
+            {picking === 'image' ? 'Browsing...' : 'Browse Image'}
+          </button>
+        </div>
+        {props.form.coverImagePath && (
+          <div className="cover-preview">
+            <img src={coverUrl(props.form.coverImagePath)} alt="Selected cover preview" />
+          </div>
+        )}
+      </div>
       <label>
-        <span>Launch type</span>
+        <span>
+          Launch type <em className="required-badge">Required</em>
+        </span>
         <select value={props.form.launchType} onChange={(event) => props.onChange('launchType', event.target.value as LaunchType)}>
           <option value="steam">Steam app ID / URI</option>
           <option value="epic">Epic launch URI</option>
@@ -638,18 +734,43 @@ function GameForm(props: {
         <span>Process name to monitor</span>
         <input value={props.form.processName ?? ''} onChange={(event) => props.onChange('processName', event.target.value)} />
       </label>
-      <label className="full">
-        <span>Launch command</span>
-        <input value={props.form.launchCommand} onChange={(event) => props.onChange('launchCommand', event.target.value)} />
-      </label>
-      <label className="full">
-        <span>Working directory</span>
-        <input value={props.form.workingDirectory ?? ''} onChange={(event) => props.onChange('workingDirectory', event.target.value)} />
-      </label>
+      <div className="form-field full">
+        <label htmlFor="launch-command">
+          Launch command <em className="required-badge">Required</em>
+        </label>
+        <div className="input-with-button">
+          <input
+            id="launch-command"
+            value={props.form.launchCommand}
+            onChange={(event) => props.onChange('launchCommand', event.target.value)}
+          />
+          {props.form.launchType === 'localExe' && (
+            <button className="secondary-action browse-button" type="button" disabled={picking === 'exe'} onClick={pickExecutable}>
+              <FileUp size={18} />
+              {picking === 'exe' ? 'Browsing...' : 'Browse EXE'}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="form-field full">
+        <label htmlFor="working-directory">Working directory</label>
+        <div className="input-with-button">
+          <input
+            id="working-directory"
+            value={props.form.workingDirectory ?? ''}
+            onChange={(event) => props.onChange('workingDirectory', event.target.value)}
+          />
+          <button className="secondary-action browse-button" type="button" disabled={picking === 'folder'} onClick={pickFolder}>
+            <FolderOpen size={18} />
+            {picking === 'folder' ? 'Browsing...' : 'Browse Folder'}
+          </button>
+        </div>
+      </div>
       <label className="full">
         <span>Launch arguments</span>
         <input value={props.form.launchArguments ?? ''} onChange={(event) => props.onChange('launchArguments', event.target.value)} />
       </label>
+      {pickerError && <p className="error-text full">{pickerError}</p>}
       <label className="checkbox-row full">
         <input
           type="checkbox"

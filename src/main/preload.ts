@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppSettings,
+  FilePickerResult,
   GameInput,
   InitialData,
   LaunchRequest,
@@ -18,6 +19,9 @@ const api = {
   scanInstalledGames: () => ipcRenderer.invoke('games:scanInstalled'),
   updateSettings: (settings: AppSettings) => ipcRenderer.invoke('settings:update', settings),
   checkForUpdates: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('updates:check'),
+  selectImageFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectImageFile'),
+  selectExecutableFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectExecutableFile'),
+  selectFolder: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectFolder'),
   launchGame: (request: LaunchRequest): Promise<LaunchResult> => ipcRenderer.invoke('game:launch', request),
   exitApp: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('app:exit', pin),
   forceCloseGame: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('session:forceClose', pin),

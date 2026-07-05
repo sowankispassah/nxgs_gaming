@@ -437,6 +437,7 @@ button {
 }
 
 .form-grid label,
+.form-field,
 .toggle-stack label,
 .danger-zone label {
   display: grid;
@@ -448,6 +449,41 @@ button {
 
 .form-grid .full {
   grid-column: 1 / -1;
+}
+
+.required-badge {
+  color: #ffd166;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.input-with-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 10px;
+}
+
+.browse-button {
+  min-width: 148px;
+  margin: 0 !important;
+  white-space: nowrap;
+}
+
+.cover-preview {
+  width: 96px;
+  height: 128px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.cover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 input,
@@ -713,7 +749,12 @@ select:focus {
   }
 
   .duration-grid,
-  .form-grid {
+  .form-grid,
+  .input-with-button {
     grid-template-columns: 1fr;
+  }
+
+  .browse-button {
+    width: 100%;
   }
 }

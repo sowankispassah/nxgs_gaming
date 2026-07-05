@@ -1,12 +1,13 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
-import { join } from 'node:path';
+import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
+import { basename, dirname, extname, join } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
 import { DataStore } from './database';
 import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
 import { checkForUpdates } from './updateService';
-import type { AppSettings, GameInput, LaunchRequest, SessionState } from '../shared/types';
+import type { AppSettings, FilePickerResult, GameInput, LaunchRequest, SessionState } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
@@ -15,6 +16,44 @@ const store = new DataStore();
 
 function getAppIconPath(): string {
   return app.isPackaged ? join(process.resourcesPath, 'icon.ico') : join(app.getAppPath(), 'build', 'icon.ico');
+}
+
+function validatePickedPath(path: string, allowedExtensions?: string[], mustBeDirectory = false): FilePickerResult {
+  try {
+    if (!existsSync(path)) {
+      return { canceled: false, error: `Selected path does not exist: ${path}` };
+    }
+
+    const stats = statSync(path);
+    if (mustBeDirectory) {
+      if (!stats.isDirectory()) {
+        return { canceled: false, error: `Selected path is not a folder: ${path}` };
+      }
+      return { canceled: false, path };
+    }
+
+    if (!stats.isFile()) {
+      return { canceled: false, error: `Selected path is not a file: ${path}` };
+    }
+
+    const extension = extname(path).toLowerCase();
+    if (allowedExtensions && !allowedExtensions.includes(extension)) {
+      return { canceled: false, error: `Invalid file type selected: ${extension || 'unknown'}` };
+    }
+
+    return {
+      canceled: false,
+      path,
+      fileName: basename(path),
+      directory: dirname(path)
+    };
+  } catch (error) {
+    return { canceled: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function showOpenDialog(options: OpenDialogOptions): Promise<OpenDialogReturnValue> {
+  return mainWindow ? dialog.showOpenDialog(mainWindow, options) : dialog.showOpenDialog(options);
 }
 
 function broadcastSession(state: SessionState): void {
@@ -132,6 +171,41 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('updates:check', async () => checkForUpdates());
+
+  ipcMain.handle('dialog:selectImageFile', async (): Promise<FilePickerResult> => {
+    const result = await showOpenDialog({
+      title: 'Select Cover Image',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+    return validatePickedPath(result.filePaths[0], ['.png', '.jpg', '.jpeg', '.webp']);
+  });
+
+  ipcMain.handle('dialog:selectExecutableFile', async (): Promise<FilePickerResult> => {
+    const result = await showOpenDialog({
+      title: 'Select Game Executable',
+      properties: ['openFile'],
+      filters: [{ name: 'Windows Executable', extensions: ['exe'] }]
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+    return validatePickedPath(result.filePaths[0], ['.exe']);
+  });
+
+  ipcMain.handle('dialog:selectFolder', async (): Promise<FilePickerResult> => {
+    const result = await showOpenDialog({
+      title: 'Select Working Directory',
+      properties: ['openDirectory']
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+    return validatePickedPath(result.filePaths[0], undefined, true);
+  });
 
   ipcMain.handle('game:launch', async (_event, request: LaunchRequest) => {
     try {

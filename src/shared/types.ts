@@ -92,6 +92,14 @@ export interface VerifyPinResult {
   ok: boolean;
 }
 
+export interface FilePickerResult {
+  canceled: boolean;
+  path?: string;
+  fileName?: string;
+  directory?: string;
+  error?: string;
+}
+
 export type UpdateCheckStatus = 'latest' | 'available' | 'failed';
 
 export interface UpdateCheckResult {

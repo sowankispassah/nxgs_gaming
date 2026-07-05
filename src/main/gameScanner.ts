@@ -204,7 +204,7 @@ async function scanCommonFolders(): Promise<GameSuggestion[]> {
         makeSuggestion({
           key: best,
           title: entry,
-          source: 'Local folder',
+          source: 'Local Folder',
           launchType: 'localExe',
           launchCommand: best,
           workingDirectory: dirname(best),
@@ -237,7 +237,7 @@ async function scanStartMenu(): Promise<GameSuggestion[]> {
         makeSuggestion({
           key: shortcut,
           title,
-          source: 'Start Menu',
+          source: 'Custom',
           launchType: 'custom',
           launchCommand: `start "" "${shortcut}"`,
           workingDirectory: dirname(shortcut),

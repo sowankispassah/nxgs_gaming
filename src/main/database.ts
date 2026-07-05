@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { dirname, extname, join } from 'node:path';
 import type { AppDatabase, AppSettings, GameInput, GameRecord } from '../shared/types';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -21,6 +21,45 @@ function nowIso(): string {
 
 function createId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function assertExistingFile(path: string, allowedExtensions: string[], label: string): void {
+  if (!existsSync(path)) {
+    throw new Error(`${label} not found: ${path}`);
+  }
+  const stats = statSync(path);
+  if (!stats.isFile()) {
+    throw new Error(`${label} must be a file: ${path}`);
+  }
+  const extension = extname(path).toLowerCase();
+  if (!allowedExtensions.includes(extension)) {
+    throw new Error(`${label} must be one of: ${allowedExtensions.join(', ')}`);
+  }
+}
+
+function assertExistingDirectory(path: string, label: string): void {
+  if (!existsSync(path)) {
+    throw new Error(`${label} not found: ${path}`);
+  }
+  if (!statSync(path).isDirectory()) {
+    throw new Error(`${label} must be a folder: ${path}`);
+  }
+}
+
+function validateGameInput(input: GameInput): void {
+  const coverImagePath = input.coverImagePath?.trim();
+  if (coverImagePath && !/^https?:\/\//i.test(coverImagePath)) {
+    assertExistingFile(coverImagePath, ['.png', '.jpg', '.jpeg', '.webp'], 'Cover image');
+  }
+
+  if (input.launchType === 'localExe') {
+    assertExistingFile(input.launchCommand.trim(), ['.exe'], 'Local executable');
+  }
+
+  const workingDirectory = input.workingDirectory?.trim();
+  if (workingDirectory) {
+    assertExistingDirectory(workingDirectory, 'Working directory');
+  }
 }
 
 function normalizeGame(input: GameInput, existing?: GameRecord): GameRecord {
@@ -98,6 +137,7 @@ export class DataStore {
     if (!input.launchCommand.trim()) {
       throw new Error('Launch command is required.');
     }
+    validateGameInput(input);
 
     const data = this.requireData();
     const existingIndex = input.id ? data.games.findIndex((game) => game.id === input.id) : -1;
