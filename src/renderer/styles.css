@@ -432,6 +432,12 @@ button {
   gap: 14px;
 }
 
+.linking-actions {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
 .form-grid.single {
   grid-template-columns: 1fr;
 }
@@ -484,6 +490,12 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.field-note {
+  color: #aab4c3;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 input,
@@ -671,6 +683,124 @@ select:focus {
   width: min(660px, calc(100vw - 40px));
 }
 
+.installed-picker-modal {
+  width: min(880px, calc(100vw - 44px));
+  max-height: min(780px, calc(100vh - 44px));
+  overflow: hidden;
+}
+
+.picker-search {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 0 12px;
+}
+
+.picker-search input {
+  border: 0;
+  background: transparent;
+}
+
+.installed-game-list {
+  display: grid;
+  max-height: min(520px, calc(100vh - 240px));
+  gap: 10px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.installed-game-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 82px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #fff;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.installed-game-row:hover,
+.installed-game-row:focus-visible {
+  border-color: rgba(115, 222, 200, 0.7);
+  outline: none;
+}
+
+.installed-game-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.installed-game-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #73dec8;
+}
+
+.installed-game-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.installed-game-row div:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.installed-game-row strong,
+.installed-game-row span,
+.installed-game-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.installed-game-row span,
+.installed-game-row small {
+  color: #aab4c3;
+}
+
+.picker-status {
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd2dc;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.picker-status.ready {
+  color: #81f7c4;
+}
+
+.picker-status.needs-confirmation {
+  color: #ffd166;
+}
+
+.picker-status.unsupported {
+  color: #ff8f8f;
+}
+
 .pin-modal {
   display: grid;
   gap: 16px;
@@ -752,6 +882,15 @@ select:focus {
   .form-grid,
   .input-with-button {
     grid-template-columns: 1fr;
+  }
+
+  .installed-game-row {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .picker-status {
+    grid-column: 1 / -1;
+    width: max-content;
   }
 
   .browse-button {

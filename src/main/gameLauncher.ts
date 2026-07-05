@@ -55,6 +55,8 @@ export class GameLauncher {
     } else if (game.launchType === 'steam' || game.launchType === 'epic') {
       await shell.openExternal(game.launchCommand);
       this.monitorByProcessName(game);
+    } else if (game.launchType === 'microsoftStore') {
+      await this.launchMicrosoftStoreApp(game);
     } else {
       await this.launchCustomCommand(game);
     }
@@ -160,6 +162,28 @@ export class GameLauncher {
     });
 
     this.monitorByProcessName(game);
+  }
+
+  private async launchMicrosoftStoreApp(game: GameRecord): Promise<void> {
+    const appUserModelId = game.launchCommand.trim();
+    if (!appUserModelId) {
+      throw new Error(`${game.title} does not have a Microsoft Store app identifier.`);
+    }
+
+    const explorer = spawn('explorer.exe', [`shell:AppsFolder\\${appUserModelId}`], {
+      detached: true,
+      windowsHide: false,
+      stdio: 'ignore'
+    });
+    explorer.unref();
+
+    this.monitorByProcessName(game);
+    if (!game.processName) {
+      await logLine(
+        'warn',
+        `${game.title} launched as a Microsoft Store app without a process name. Process exit monitoring is unavailable; session timer will continue.`
+      );
+    }
   }
 
   private monitorByProcessName(game: GameRecord): void {

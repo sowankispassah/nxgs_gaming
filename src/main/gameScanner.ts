@@ -1,15 +1,32 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import { basename, dirname, extname, join, parse } from 'node:path';
 import type { GameSuggestion, LaunchType } from '../shared/types';
 import { logLine } from './logger';
 
-function suggestionId(prefix: string, key: string): string {
-  return `${prefix}_${Buffer.from(key).toString('base64url').slice(0, 20)}`;
+const execFileAsync = promisify(execFile);
+
+interface StartAppRecord {
+  Name?: string;
+  AppID?: string;
 }
 
-function stripQuotes(value: string): string {
-  return value.replace(/^"|"$/g, '').trim();
+interface AppxPackageRecord {
+  Name?: string;
+  PackageFamilyName?: string;
+}
+
+interface ShortcutRecord {
+  TargetPath?: string;
+  Arguments?: string;
+  IconLocation?: string;
+  WorkingDirectory?: string;
+}
+
+function suggestionId(prefix: string, key: string): string {
+  return `${prefix}_${Buffer.from(key).toString('base64url').slice(0, 20)}`;
 }
 
 function parseVdfPairs(content: string): Record<string, string> {
@@ -22,6 +39,17 @@ function parseVdfPairs(content: string): Record<string, string> {
   return pairs;
 }
 
+function parseJsonList<T>(raw: string): T[] {
+  if (!raw.trim()) {
+    return [];
+  }
+  const parsed = JSON.parse(raw) as T | T[];
+  if (!parsed) {
+    return [];
+  }
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
+
 function isLikelyGameExe(fileName: string): boolean {
   const lower = fileName.toLowerCase();
   if (!lower.endsWith('.exe')) {
@@ -30,6 +58,10 @@ function isLikelyGameExe(fileName: string): boolean {
   return !['unins', 'uninstall', 'setup', 'install', 'redist', 'vcredist', 'crash', 'unitycrashhandler'].some((part) =>
     lower.includes(part)
   );
+}
+
+function isNoisyStartApp(title: string): boolean {
+  return /uninstall|readme|manual|help|website|documentation|license|eula/i.test(title);
 }
 
 function makeSuggestion(input: {
@@ -42,22 +74,28 @@ function makeSuggestion(input: {
   processName?: string;
   detectionSource: GameSuggestion['detectionSource'];
   confidence: GameSuggestion['confidence'];
+  launchMethod: string;
+  status: GameSuggestion['status'];
+  iconPath?: string;
   notes: string;
 }): GameSuggestion {
   return {
     suggestionId: suggestionId(input.detectionSource, input.key),
     title: input.title,
     source: input.source,
-    availabilityStatus: 'available',
+    availabilityStatus: input.status === 'unsupported' ? 'unknown' : 'available',
     launchType: input.launchType,
     launchCommand: input.launchCommand,
     workingDirectory: input.workingDirectory ?? '',
     processName: input.processName ?? '',
     launchArguments: '',
     coverImagePath: '',
-    enabled: true,
+    enabled: input.status !== 'unsupported',
     detectionSource: input.detectionSource,
     confidence: input.confidence,
+    launchMethod: input.launchMethod,
+    status: input.status,
+    iconPath: input.iconPath,
     notes: input.notes
   };
 }
@@ -70,7 +108,7 @@ export async function scanInstalledGames(): Promise<GameSuggestion[]> {
   const results: GameSuggestion[] = [];
   const seen = new Set<string>();
 
-  for (const scanner of [scanSteam, scanEpic, scanCommonFolders, scanStartMenu]) {
+  for (const scanner of [scanSteam, scanEpic, scanMicrosoftStoreApps, scanStartMenu, scanCommonFolders]) {
     try {
       const found = await scanner();
       for (const suggestion of found) {
@@ -86,6 +124,18 @@ export async function scanInstalledGames(): Promise<GameSuggestion[]> {
   }
 
   return results.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+async function runPowerShellJson<T>(script: string): Promise<T[]> {
+  const { stdout } = await execFileAsync(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+    {
+      windowsHide: true,
+      maxBuffer: 1024 * 1024 * 8
+    }
+  );
+  return parseJsonList<T>(stdout);
 }
 
 async function scanSteam(): Promise<GameSuggestion[]> {
@@ -133,7 +183,9 @@ async function scanSteam(): Promise<GameSuggestion[]> {
           workingDirectory: installDir,
           detectionSource: 'steam',
           confidence: 'high',
-          notes: 'Detected from Steam library manifest. Add the process name for reliable return-to-launcher monitoring.'
+          launchMethod: 'Steam URI',
+          status: 'ready',
+          notes: 'Detected from Steam library manifest. Process monitoring is best when a process name is also known.'
         })
       );
     }
@@ -172,6 +224,8 @@ async function scanEpic(): Promise<GameSuggestion[]> {
           processName: executable ? basename(executable) : '',
           detectionSource: 'epic',
           confidence: executable || launchCommand.startsWith('com.epicgames') ? 'high' : 'medium',
+          launchMethod: launchCommand.startsWith('com.epicgames') ? 'Epic URI' : 'Local executable',
+          status: 'ready',
           notes: 'Detected from Epic Games Launcher manifest.'
         })
       );
@@ -180,6 +234,41 @@ async function scanEpic(): Promise<GameSuggestion[]> {
     }
   }
   return suggestions;
+}
+
+async function scanMicrosoftStoreApps(): Promise<GameSuggestion[]> {
+  const [startApps, packages] = await Promise.all([
+    runPowerShellJson<StartAppRecord>('Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Depth 2'),
+    runPowerShellJson<AppxPackageRecord>('Get-AppxPackage | Select-Object Name,PackageFamilyName | ConvertTo-Json -Depth 2')
+  ]);
+  const packageFamilies = new Set(
+    packages
+      .map((pkg) => pkg.PackageFamilyName?.toLowerCase())
+      .filter((family): family is string => Boolean(family))
+  );
+
+  return startApps
+    .filter((app) => app.Name && app.AppID && !isNoisyStartApp(app.Name))
+    .filter((app) => {
+      const appId = app.AppID?.toLowerCase() ?? '';
+      const packageFamily = appId.split('!')[0];
+      return appId.includes('!') && packageFamilies.has(packageFamily);
+    })
+    .map((app) =>
+      makeSuggestion({
+        key: app.AppID ?? app.Name ?? '',
+        title: app.Name ?? 'Microsoft Store App',
+        source: 'Microsoft Store',
+        launchType: 'microsoftStore',
+        launchCommand: app.AppID ?? '',
+        detectionSource: 'microsoft-store',
+        confidence: 'high',
+        launchMethod: 'AppUserModelId',
+        status: 'ready',
+        notes:
+          'Detected from Windows Start Apps/Appx packages. UWP process monitoring is best-effort; the session timer remains authoritative.'
+      })
+    );
 }
 
 async function scanCommonFolders(): Promise<GameSuggestion[]> {
@@ -204,13 +293,15 @@ async function scanCommonFolders(): Promise<GameSuggestion[]> {
         makeSuggestion({
           key: best,
           title: entry,
-          source: 'Local Folder',
+          source: 'Local',
           launchType: 'localExe',
           launchCommand: best,
           workingDirectory: dirname(best),
           processName: basename(best),
           detectionSource: 'folder',
           confidence: 'medium',
+          launchMethod: 'Local executable',
+          status: 'needs-confirmation',
           notes: `Detected executable in ${root}. Confirm this is the intended game launcher before saving.`
         })
       );
@@ -227,28 +318,84 @@ async function scanStartMenu(): Promise<GameSuggestion[]> {
 
   const suggestions: GameSuggestion[] = [];
   for (const root of roots) {
-    const shortcuts = await findFiles(root, '.lnk', 3, 100);
+    const shortcuts = await findFiles(root, '.lnk', 4, 220);
     for (const shortcut of shortcuts) {
       const title = parse(shortcut).name;
-      if (!title || /uninstall|readme|website/i.test(title)) {
+      if (!title || isNoisyStartApp(title)) {
         continue;
       }
-      suggestions.push(
-        makeSuggestion({
-          key: shortcut,
-          title,
-          source: 'Custom',
-          launchType: 'custom',
-          launchCommand: `start "" "${shortcut}"`,
-          workingDirectory: dirname(shortcut),
-          detectionSource: 'start-menu',
-          confidence: 'low',
-          notes: 'Detected Start Menu shortcut. Windows shortcut targets are not inspected in this MVP.'
-        })
-      );
+      const resolved = await resolveShortcut(shortcut);
+      const targetPath = resolved?.TargetPath?.trim() ?? '';
+      const iconPath = normalizeIconPath(resolved?.IconLocation);
+
+      if (targetPath && extname(targetPath).toLowerCase() === '.exe' && existsSync(targetPath)) {
+        suggestions.push(
+          makeSuggestion({
+            key: targetPath,
+            title,
+            source: 'Start Menu',
+            launchType: 'localExe',
+            launchCommand: targetPath,
+            workingDirectory: resolved?.WorkingDirectory || dirname(targetPath),
+            processName: basename(targetPath),
+            detectionSource: 'start-menu',
+            confidence: 'medium',
+            launchMethod: 'Resolved shortcut executable',
+            status: 'ready',
+            iconPath,
+            notes: 'Detected from Start Menu shortcut and resolved to an executable target.'
+          })
+        );
+      } else {
+        suggestions.push(
+          makeSuggestion({
+            key: shortcut,
+            title,
+            source: 'Start Menu',
+            launchType: 'custom',
+            launchCommand: `start "" "${shortcut}"`,
+            workingDirectory: dirname(shortcut),
+            detectionSource: 'start-menu',
+            confidence: 'low',
+            launchMethod: 'Start Menu shortcut',
+            status: 'needs-confirmation',
+            iconPath,
+            notes: 'Detected Start Menu shortcut. Use when no normal executable or Store app entry is available.'
+          })
+        );
+      }
     }
   }
   return suggestions;
+}
+
+async function resolveShortcut(shortcutPath: string): Promise<ShortcutRecord | null> {
+  const script = `
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut(${psQuote(shortcutPath)})
+    [pscustomobject]@{
+      TargetPath = $shortcut.TargetPath
+      Arguments = $shortcut.Arguments
+      IconLocation = $shortcut.IconLocation
+      WorkingDirectory = $shortcut.WorkingDirectory
+    } | ConvertTo-Json -Depth 2
+  `;
+  try {
+    const records = await runPowerShellJson<ShortcutRecord>(script);
+    return records[0] ?? null;
+  } catch (error) {
+    await logLine('warn', `Shortcut resolve failed for ${shortcutPath}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+function normalizeIconPath(iconLocation?: string): string | undefined {
+  const raw = iconLocation?.split(',')[0]?.trim();
+  return raw && existsSync(raw) ? raw : undefined;
+}
+
+function psQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 async function safeReaddir(path: string): Promise<string[]> {

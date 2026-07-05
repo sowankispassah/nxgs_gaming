@@ -55,7 +55,33 @@ const EMPTY_GAME: GameInput = {
   enabled: true
 };
 
-const SOURCE_OPTIONS = ['Manual', 'Steam', 'Epic Games', 'Local Folder', 'Custom'] as const;
+const SOURCE_OPTIONS = ['Manual', 'Steam', 'Epic Games', 'Microsoft Store', 'Start Menu', 'Local', 'Local Folder', 'Custom'] as const;
+
+function launchTypeLabel(launchType: LaunchType): string {
+  if (launchType === 'steam') {
+    return 'Steam game';
+  }
+  if (launchType === 'epic') {
+    return 'Epic game';
+  }
+  if (launchType === 'microsoftStore') {
+    return 'Microsoft Store app';
+  }
+  if (launchType === 'localExe') {
+    return 'Local executable';
+  }
+  return 'Custom command';
+}
+
+function suggestionStatusLabel(status: GameSuggestion['status']): string {
+  if (status === 'ready') {
+    return 'ready';
+  }
+  if (status === 'needs-confirmation') {
+    return 'needs confirmation';
+  }
+  return 'unsupported';
+}
 
 function formatTime(seconds: number): string {
   const safeSeconds = Math.max(0, seconds);
@@ -527,9 +553,26 @@ function GameManager(props: { games: GameRecord[]; onGamesChanged: (games: GameR
   const [pending, setPending] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [message, setMessage] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const update = <K extends keyof GameInput>(key: K, value: GameInput[K]): void => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const applySuggestion = (suggestion: GameSuggestion): void => {
+    setForm({
+      title: suggestion.title,
+      coverImagePath: suggestion.coverImagePath ?? '',
+      source: suggestion.source,
+      availabilityStatus: suggestion.availabilityStatus,
+      launchType: suggestion.launchType,
+      launchCommand: suggestion.launchCommand,
+      workingDirectory: suggestion.workingDirectory ?? '',
+      processName: suggestion.processName ?? '',
+      launchArguments: '',
+      enabled: suggestion.enabled ?? true
+    });
+    setMessage(`${suggestion.title} selected. Review and save it to add it to the customer library.`);
   };
 
   return (
@@ -537,12 +580,19 @@ function GameManager(props: { games: GameRecord[]; onGamesChanged: (games: GameR
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Manual setup</p>
+            <p className="eyebrow">Game linking</p>
             <h2>{form.id ? 'Edit game' : 'Add game'}</h2>
           </div>
           <button className="icon-button" type="button" title="New game" onClick={() => setForm(EMPTY_GAME)}>
             <Plus size={20} />
           </button>
+        </div>
+        <div className="linking-actions">
+          <button className="primary-action" type="button" onClick={() => setPickerOpen(true)}>
+            <Search size={19} />
+            Choose Installed Game
+          </button>
+          <span className="muted">Use manual EXE browsing only when the game is not detected.</span>
         </div>
         <GameForm form={form} onChange={update} />
         {message && <p className={message.startsWith('Saved') ? 'success-text' : 'error-text'}>{message}</p>}
@@ -582,7 +632,7 @@ function GameManager(props: { games: GameRecord[]; onGamesChanged: (games: GameR
             <div key={game.id} className="admin-list-row">
               <button type="button" className="row-main" onClick={() => setForm(normalizeForm(game))}>
                 <strong>{game.title}</strong>
-                <span>{game.launchType} - {game.enabled ? game.availabilityStatus : 'disabled'}</span>
+                <span>{launchTypeLabel(game.launchType)} - {game.enabled ? game.availabilityStatus : 'disabled'}</span>
               </button>
               <button
                 className="icon-button danger"
@@ -606,6 +656,106 @@ function GameManager(props: { games: GameRecord[]; onGamesChanged: (games: GameR
               </button>
             </div>
           ))}
+        </div>
+      </section>
+      {pickerOpen && (
+        <InstalledGamePicker
+          onClose={() => setPickerOpen(false)}
+          onSelect={(suggestion) => {
+            applySuggestion(suggestion);
+            setPickerOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function InstalledGamePicker(props: { onClose: () => void; onSelect: (suggestion: GameSuggestion) => void }): JSX.Element {
+  const [suggestions, setSuggestions] = useState<GameSuggestion[]>([]);
+  const [pending, setPending] = useState(false);
+  const [query, setQuery] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    setPending(true);
+    setError('');
+    window.nxgs
+      .scanInstalledGames()
+      .then((found) => {
+        if (mounted) {
+          setSuggestions(found);
+        }
+      })
+      .catch((scanError) => {
+        if (mounted) {
+          setError(scanError instanceof Error ? scanError.message : String(scanError));
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setPending(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredSuggestions = suggestions.filter((suggestion) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+    return [suggestion.title, suggestion.source, suggestion.launchMethod, suggestion.launchCommand]
+      .join(' ')
+      .toLowerCase()
+      .includes(normalizedQuery);
+  });
+
+  return (
+    <div className="modal-backdrop">
+      <section className="modal installed-picker-modal">
+        <button className="icon-button close-button" type="button" title="Close" onClick={props.onClose} disabled={pending}>
+          <X size={20} />
+        </button>
+        <p className="eyebrow">Detected apps and games</p>
+        <h2>Choose Installed Game</h2>
+        <div className="picker-search">
+          <Search size={18} />
+          <input
+            autoFocus
+            placeholder="Search installed games, for example Chicken Invaders"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        {pending && <p className="muted">Scanning installed games...</p>}
+        {error && <p className="error-text">{error}</p>}
+        <div className="installed-game-list">
+          {filteredSuggestions.map((suggestion) => (
+            <button
+              key={suggestion.suggestionId}
+              className="installed-game-row"
+              type="button"
+              disabled={suggestion.status === 'unsupported'}
+              onClick={() => props.onSelect(suggestion)}
+            >
+              <div className="installed-game-icon">
+                {suggestion.iconPath ? <img src={coverUrl(suggestion.iconPath)} alt="" /> : <Gamepad2 size={22} />}
+              </div>
+              <div>
+                <strong>{suggestion.title}</strong>
+                <span>
+                  {suggestion.source} - {suggestion.launchMethod}
+                </span>
+                <small>{suggestion.notes}</small>
+              </div>
+              <em className={`picker-status ${suggestion.status}`}>{suggestionStatusLabel(suggestion.status)}</em>
+            </button>
+          ))}
+          {!pending && filteredSuggestions.length === 0 && <p className="muted">No installed games matched your search.</p>}
         </div>
       </section>
     </div>
@@ -724,8 +874,9 @@ function GameForm(props: {
           Launch type <em className="required-badge">Required</em>
         </span>
         <select value={props.form.launchType} onChange={(event) => props.onChange('launchType', event.target.value as LaunchType)}>
-          <option value="steam">Steam app ID / URI</option>
-          <option value="epic">Epic launch URI</option>
+          <option value="steam">Steam game</option>
+          <option value="epic">Epic game</option>
+          <option value="microsoftStore">Microsoft Store app</option>
           <option value="localExe">Local executable</option>
           <option value="custom">Custom command</option>
         </select>
@@ -747,10 +898,13 @@ function GameForm(props: {
           {props.form.launchType === 'localExe' && (
             <button className="secondary-action browse-button" type="button" disabled={picking === 'exe'} onClick={pickExecutable}>
               <FileUp size={18} />
-              {picking === 'exe' ? 'Browsing...' : 'Browse EXE'}
+              {picking === 'exe' ? 'Browsing...' : 'Browse EXE manually'}
             </button>
           )}
         </div>
+        {props.form.launchType === 'microsoftStore' && (
+          <small className="field-note">Use the AppUserModelId from Choose Installed Game. No hidden WindowsApps EXE path is required.</small>
+        )}
       </div>
       <div className="form-field full">
         <label htmlFor="working-directory">Working directory</label>
@@ -766,10 +920,6 @@ function GameForm(props: {
           </button>
         </div>
       </div>
-      <label className="full">
-        <span>Launch arguments</span>
-        <input value={props.form.launchArguments ?? ''} onChange={(event) => props.onChange('launchArguments', event.target.value)} />
-      </label>
       {pickerError && <p className="error-text full">{pickerError}</p>}
       <label className="checkbox-row full">
         <input
@@ -822,7 +972,9 @@ function ScanPanel(props: { onGamesChanged: (games: GameRecord[]) => void }): JS
           <article key={suggestion.suggestionId} className="suggestion-row">
             <div>
               <strong>{suggestion.title}</strong>
-              <span>{suggestion.source} - {suggestion.confidence} confidence</span>
+              <span>
+                {suggestion.source} - {suggestion.launchMethod} - {suggestionStatusLabel(suggestion.status)}
+              </span>
               <small>{suggestion.notes}</small>
             </div>
             <button

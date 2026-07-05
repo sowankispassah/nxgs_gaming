@@ -1,4 +1,4 @@
-export type LaunchType = 'steam' | 'epic' | 'localExe' | 'custom';
+export type LaunchType = 'steam' | 'epic' | 'microsoftStore' | 'localExe' | 'custom';
 
 export type AvailabilityStatus = 'available' | 'missing' | 'disabled' | 'unknown';
 
@@ -34,8 +34,11 @@ export interface GameInput {
 
 export interface GameSuggestion extends GameInput {
   suggestionId: string;
-  detectionSource: 'steam' | 'epic' | 'folder' | 'start-menu';
+  detectionSource: 'steam' | 'epic' | 'microsoft-store' | 'folder' | 'start-menu';
   confidence: 'high' | 'medium' | 'low';
+  launchMethod: string;
+  status: 'ready' | 'needs-confirmation' | 'unsupported';
+  iconPath?: string;
   notes: string;
 }
 
