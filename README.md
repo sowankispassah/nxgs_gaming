@@ -24,10 +24,12 @@ npm run build:win
 Build artifacts are written to `release/`:
 
 - `release/win-unpacked/NXGS Play.exe`
-- `release/NXGS Play Setup 0.1.0.exe`
-- `release/NXGS Play 0.1.0.exe`
+- `release/NXGS Play Setup.exe`
+- `release/NXGS Play.exe`
 
 This MVP build is unsigned. The Windows package config disables certificate auto-discovery and executable signing/editing so local builds work without Windows symlink privileges.
+
+Release filenames are intentionally stable and do not include the app version. The internal app version remains in `package.json` and is shown in **Admin Settings > Updates**.
 
 ## Check for Updates
 
@@ -57,7 +59,7 @@ Local builds still use `--publish=never`, so packaging does not require release 
 
 - Bump `version` in `package.json`.
 - Run `npm run typecheck`, `npm run build`, and `npm run build:win`.
-- Publish the generated Windows installer/portable artifact to a GitHub Release tagged with the same version, for example `v0.1.1`.
+- Publish the generated Windows installer/portable artifact to a GitHub Release tagged with the same version, for example `v0.1.2`.
 - Add signing credentials and re-enable production signing when ready.
 - Optionally integrate `electron-updater` once releases and signing are stable.
 

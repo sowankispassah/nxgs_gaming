@@ -1,6 +1,6 @@
 {
   "name": "nxgs-play",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Windows-only PC gaming launcher and kiosk MVP.",
   "private": true,
   "main": "out/main/main.js",
@@ -60,10 +60,14 @@
       ]
     },
     "nsis": {
+      "artifactName": "${productName} Setup.${ext}",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "${productName}.${ext}"
     },
     "publish": [
       {
