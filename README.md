@@ -49,7 +49,7 @@ Current behavior:
 - Starts the installer and closes NXGS Play only after the admin clicks install.
 - Shows `Update check failed` with the error message if GitHub cannot be reached, no GitHub Release is published yet, no installer asset is attached, or GitHub returns an unexpected response.
 
-Important: pushing commits to `main` does not create an installable update. Installed copies can only update from a published GitHub Release whose tag is newer than the local app version and whose assets include `NXGS Play Setup.exe`.
+Important: pushing commits to `main` does not create an installable update. Installed copies can only update from a published GitHub Release whose tag is newer than the local app version and whose assets include a Windows installer ending in `Setup.exe`.
 
 The update code is isolated in `src/main/updateService.ts`. It currently uses a controlled GitHub Releases installer download flow; `electron-updater` can replace or extend this later once signing and release publishing are stable.
 
@@ -69,8 +69,8 @@ Release flow:
 - Bump `version` in `package.json`.
 - Run `npm run typecheck`, `npm run build`, and `npm run build:win`.
 - Commit and push the version/build changes.
-- Push a Git tag matching the app version, for example `v0.3.0`.
-- GitHub Actions builds the Windows package and attaches `NXGS Play Setup.exe`, `NXGS Play.exe`, `latest.yml`, and the blockmap to the Release.
+- Push a Git tag matching the app version, for example `v0.3.1`.
+- GitHub Actions builds the Windows package and attaches the setup installer, portable executable, `latest.yml`, and the blockmap to the Release.
 - Installed copies see the update only after the Release exists.
 - Add signing credentials and re-enable production signing when ready.
 - Optionally integrate `electron-updater` once releases and signing are stable.

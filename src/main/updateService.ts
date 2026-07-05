@@ -52,10 +52,15 @@ function findInstallerAsset(assets: GitHubAsset[] = []): GitHubAsset | undefined
     return exactMatch;
   }
 
-  return assets.find((asset) => {
+  const setupInstaller = assets.find((asset) => {
     const assetName = asset.name?.toLowerCase() ?? '';
-    return assetName.endsWith('setup.exe') || assetName.endsWith('.exe');
+    return assetName.endsWith('setup.exe');
   });
+  if (setupInstaller) {
+    return setupInstaller;
+  }
+
+  return assets.find((asset) => asset.name?.toLowerCase().endsWith('.exe'));
 }
 
 function sanitizeAssetName(assetName?: string): string {
