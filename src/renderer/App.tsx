@@ -18,6 +18,7 @@ import {
   Trash2,
   X
 } from 'lucide-react';
+import brandImage from './assets/nxgs-gaming-banner.png';
 import type {
   AppSettings,
   GameInput,
@@ -237,6 +238,7 @@ export function App(): JSX.Element {
   if (bootError) {
     return (
       <main className="boot-state">
+        <img className="boot-logo" src={brandImage} alt="NXGS Gaming" />
         <AlertTriangle size={34} />
         <h1>NXGS Play failed to start</h1>
         <p>{bootError}</p>
@@ -247,7 +249,7 @@ export function App(): JSX.Element {
   if (!initialData || !settings) {
     return (
       <main className="boot-state">
-        <Gamepad2 size={42} />
+        <img className="boot-logo" src={brandImage} alt="NXGS Gaming" />
         <h1>NXGS Play</h1>
         <p>Loading local library...</p>
       </main>
@@ -326,9 +328,12 @@ function HomeScreen(props: {
   return (
     <section className="home-screen">
       <header className="top-bar">
-        <div>
+        <div className="brand-lockup">
+          <img className="brand-logo" src={brandImage} alt="NXGS Gaming" />
+          <div>
           <p className="eyebrow">Windows gaming kiosk</p>
           <h1>NXGS Play</h1>
+          </div>
         </div>
         <div className="top-actions">
           {props.session.status === 'running' && (
@@ -345,7 +350,7 @@ function HomeScreen(props: {
 
       {props.games.length === 0 ? (
         <div className="empty-library">
-          <Gamepad2 size={46} />
+          <img className="empty-brand" src={brandImage} alt="NXGS Gaming" />
           <h2>No games saved</h2>
           <p>Open admin settings with Ctrl+Shift+A and add a game to start the kiosk library.</p>
         </div>
@@ -467,6 +472,7 @@ function AdminScreen(props: {
     <section className="admin-screen">
       <aside className="admin-sidebar">
         <div>
+          <img className="admin-brand-logo" src={brandImage} alt="NXGS Gaming" />
           <p className="eyebrow">Admin mode</p>
           <h1>Settings</h1>
         </div>

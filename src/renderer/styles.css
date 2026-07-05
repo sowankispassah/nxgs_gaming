@@ -67,6 +67,12 @@ button {
   margin: 0;
 }
 
+.boot-logo {
+  width: min(280px, 56vw);
+  max-height: 180px;
+  object-fit: contain;
+}
+
 .home-screen {
   display: flex;
   flex-direction: column;
@@ -93,6 +99,21 @@ button {
 .top-bar h1 {
   font-size: 42px;
   line-height: 1;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 18px;
+}
+
+.brand-logo {
+  width: 118px;
+  height: 74px;
+  border-radius: 8px;
+  object-fit: cover;
+  object-position: center;
 }
 
 .eyebrow {
@@ -317,6 +338,13 @@ button {
   margin: 0;
 }
 
+.empty-brand {
+  width: min(320px, 70vw);
+  max-height: 220px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
 .admin-screen {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
@@ -336,6 +364,15 @@ button {
   display: grid;
   gap: 10px;
   margin-top: 34px;
+}
+
+.admin-brand-logo {
+  width: 150px;
+  height: 102px;
+  margin-bottom: 18px;
+  border-radius: 8px;
+  object-fit: cover;
+  object-position: center;
 }
 
 .admin-sidebar nav button {

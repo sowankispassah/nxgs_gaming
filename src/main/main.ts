@@ -13,6 +13,10 @@ let isQuitting = false;
 
 const store = new DataStore();
 
+function getAppIconPath(): string {
+  return app.isPackaged ? join(process.resourcesPath, 'icon.ico') : join(app.getAppPath(), 'build', 'icon.ico');
+}
+
 function broadcastSession(state: SessionState): void {
   mainWindow?.webContents.send('session:state', state);
 }
@@ -52,6 +56,7 @@ async function createWindow(): Promise<void> {
     title: 'NXGS Play',
     fullscreen: true,
     frame: false,
+    icon: getAppIconPath(),
     autoHideMenuBar: true,
     backgroundColor: '#07090d',
     webPreferences: {
