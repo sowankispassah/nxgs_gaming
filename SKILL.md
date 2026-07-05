@@ -13,6 +13,8 @@ Follow these rules for every future coding change in this project:
 - Keep game launching, detection, session timing, local storage, and update-check logic modular.
 - Do not remove existing features while adding new ones.
 - Keep app versioning clear in `package.json`.
+- Update the `version` field in `package.json` for every completed user-facing change, release change, update-check change, or packaged build. Use semver: patch for fixes/small changes, minor for new features, major for breaking changes.
+- Keep GitHub Release tags aligned with `package.json` versions, using tags like `v0.1.1`.
 - Keep update-check functionality working after every release-related change.
 - Run `npm run typecheck` after code changes.
 - Run `npm run build` after code changes.
