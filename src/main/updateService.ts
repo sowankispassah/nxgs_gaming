@@ -49,9 +49,9 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 
     if (response.status === 404) {
       return {
-        status: 'latest',
+        status: 'failed',
         currentVersion,
-        message: 'You are on the latest version. No GitHub release is published yet.',
+        message: 'No GitHub release is published yet, so NXGS Play cannot determine whether an update is available.',
         checkedAt
       };
     }

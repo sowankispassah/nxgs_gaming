@@ -42,7 +42,7 @@ Current behavior:
 - Queries the latest GitHub Release at `sowankispassah/nxgs_gaming`.
 - Shows `You are on the latest version` when no newer release is found.
 - Shows `New update available` when the latest release tag is greater than the local `package.json` version.
-- Shows `Update check failed` with the error message if GitHub cannot be reached or returns an unexpected response.
+- Shows `Update check failed` with the error message if GitHub cannot be reached, no GitHub Release is published yet, or GitHub returns an unexpected response.
 
 Automatic update download/install is not enabled yet. The update-check code is isolated in `src/main/updateService.ts` so `electron-updater` or a GitHub Releases download flow can be connected later without changing the admin UI contract.
 
