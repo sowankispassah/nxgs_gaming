@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.2",
+    "version":  "0.5.3",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "022d6078d81f933f9f03f7a05f9dfc82e548fc87728bbd2e4a32d4049f17f6d7",
+    "sha256":  "ed350b49672fef069ceda6915fa0be85d79b47c5af712b467670d23d202653d4",
     "required":  false,
-    "notes":  "NXGS Play 0.5.2 fixes update restart shutdown handling so session timers cannot send to a destroyed window."
+    "notes":  "NXGS Play 0.5.3 fixes update install elevation and relaunch behavior for Program Files installations."
 }

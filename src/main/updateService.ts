@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { access, mkdir, rename, rm } from 'node:fs/promises';
+import { access, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type {
   UpdateCheckResult,
@@ -121,6 +121,14 @@ function sanitizeAssetName(assetName?: string, latestVersion?: string): string {
 
 function powershellQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
+}
+
+function isProgramFilesInstall(exePath: string): boolean {
+  const normalized = exePath.toLowerCase();
+  const programFiles = [process.env.ProgramFiles, process.env['ProgramFiles(x86)']]
+    .filter(Boolean)
+    .map((path) => `${path?.toLowerCase().replace(/[\\/]$/, '')}\\`);
+  return programFiles.some((path) => normalized.startsWith(path));
 }
 
 function buildResultFromManifest(manifest: UpdateManifest, currentVersion: string, checkedAt: string): UpdateCheckResult {
@@ -398,22 +406,57 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
     }
 
     const currentExePath = app.getPath('exe');
+    const updatesDirectory = join(app.getPath('temp'), 'NXGS Play Updates');
+    const helperPath = join(updatesDirectory, 'install-update.ps1');
+    const helperLogPath = join(updatesDirectory, 'install-update.log');
+    const requiresElevation = isProgramFilesInstall(currentExePath);
+    const installerArguments = requiresElevation ? '/allusers /S' : '/currentuser /S';
     const script = [
-      '$ErrorActionPreference = "SilentlyContinue"',
+      '$ErrorActionPreference = "Continue"',
       `$pidToWait = ${process.pid}`,
       `$installer = ${powershellQuote(request.installerPath)}`,
       `$appPath = ${powershellQuote(currentExePath)}`,
-      'Wait-Process -Id $pidToWait',
-      '$installProcess = Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru',
+      `$installArgs = ${powershellQuote(installerArguments)}`,
+      `$logPath = ${powershellQuote(helperLogPath)}`,
+      `$requiresElevation = ${requiresElevation ? '$true' : '$false'}`,
+      'function Write-UpdateLog([string]$message) {',
+      '  $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"',
+      '  Add-Content -LiteralPath $logPath -Value "$timestamp $message"',
+      '}',
+      'Write-UpdateLog "Waiting for NXGS Play process $pidToWait to exit."',
+      'Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue',
+      'Write-UpdateLog "Starting installer: $installer $installArgs"',
+      '$startInfo = @{ FilePath = $installer; ArgumentList = $installArgs; Wait = $true; PassThru = $true }',
+      'if ($requiresElevation) {',
+      '  Write-UpdateLog "Program Files install detected; requesting elevation."',
+      '  $startInfo.Verb = "RunAs"',
+      '}',
+      '$installProcess = Start-Process @startInfo',
+      '$exitCode = if ($null -ne $installProcess) { $installProcess.ExitCode } else { $null }',
+      'Write-UpdateLog "Installer finished with exit code $exitCode."',
       'Start-Sleep -Seconds 1',
       'if ((Test-Path -LiteralPath $appPath) -and ($installProcess.ExitCode -eq 0 -or $null -eq $installProcess.ExitCode)) {',
+      '  Write-UpdateLog "Relaunching $appPath."',
       '  Start-Process -FilePath $appPath',
+      '} else {',
+      '  Write-UpdateLog "App relaunch skipped because install failed or app path is missing."',
       '}'
     ].join('; ');
 
+    await mkdir(updatesDirectory, { recursive: true });
+    await writeFile(helperPath, script, 'utf8');
+
     const child = spawn(
       'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', script],
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-WindowStyle',
+        'Hidden',
+        '-File',
+        helperPath
+      ],
       {
         detached: true,
         stdio: 'ignore',
@@ -422,11 +465,16 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
     );
     child.unref();
 
-    await logLine('info', `Started update restart helper for ${request.installerPath}`);
+    await logLine(
+      'info',
+      `Started update restart helper for ${request.installerPath}. Helper log: ${helperLogPath}`
+    );
     return {
       ok: true,
       installerPath: request.installerPath,
-      message: 'Restarting NXGS Play to install the update.'
+      message: isProgramFilesInstall(currentExePath)
+        ? 'Restarting NXGS Play to install the update. Approve the Windows permission prompt if it appears.'
+        : 'Restarting NXGS Play to install the update.'
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
