@@ -123,6 +123,17 @@ function powershellQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function retryableDownloadError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /terminated|fetch failed|network|socket|econnreset|etimedout|timeout|aborted/i.test(message);
+}
+
 function isProgramFilesInstall(exePath: string): boolean {
   const normalized = exePath.toLowerCase();
   const programFiles = [process.env.ProgramFiles, process.env['ProgramFiles(x86)']]
@@ -317,68 +328,87 @@ export async function downloadUpdate(
     }
 
     await mkdir(updatesDirectory, { recursive: true });
-    await rm(partPath, { force: true });
     await rm(installerPath, { force: true });
 
-    const response = await fetch(request.downloadUrl, {
-      headers: {
-        'Cache-Control': 'no-cache',
-        'User-Agent': `NXGS-Play/${app.getVersion()}`
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        await rm(partPath, { force: true });
+
+        const response = await fetch(request.downloadUrl, {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'User-Agent': `NXGS-Play/${app.getVersion()}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Download returned ${response.status} ${response.statusText}`);
+        }
+
+        if (!response.body) {
+          throw new Error('Update download did not include a response body.');
+        }
+
+        const totalBytes = Number(response.headers.get('content-length') || 0) || undefined;
+        const hash = createHash('sha256');
+        const reader = response.body.getReader();
+        stream = createWriteStream(partPath, { flags: 'wx' });
+        let receivedBytes = 0;
+
+        onProgress?.({ receivedBytes, totalBytes, percent: 0 });
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          const chunk = Buffer.from(value);
+          receivedBytes += chunk.length;
+          hash.update(chunk);
+          await writeChunk(stream, chunk);
+
+          const percent = totalBytes ? Math.min(99, Math.round((receivedBytes / totalBytes) * 100)) : 0;
+          onProgress?.({ receivedBytes, totalBytes, percent });
+        }
+
+        await closeStream(stream);
+        stream = null;
+
+        const actualSha256 = hash.digest('hex');
+        if (expectedSha256 && actualSha256 !== expectedSha256) {
+          throw new Error('The downloaded installer failed checksum verification.');
+        }
+
+        await rename(partPath, installerPath);
+        onProgress?.({ receivedBytes, totalBytes, percent: 100 });
+        await logLine('info', `Downloaded verified update installer to ${installerPath}`);
+
+        return {
+          ok: true,
+          installerPath,
+          message: `Update downloaded. Restart when you are ready to install ${request.latestVersion ?? 'the new version'}.`
+        };
+      } catch (error) {
+        if (stream) {
+          stream.destroy();
+          stream = null;
+        }
+        await rm(partPath, { force: true }).catch(() => undefined);
+
+        if (attempt < 3 && retryableDownloadError(error)) {
+          const message = error instanceof Error ? error.message : String(error);
+          await logLine('warn', `Update download attempt ${attempt} failed: ${message}; retrying.`);
+          await delay(attempt * 1000);
+          continue;
+        }
+
+        throw error;
       }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Download returned ${response.status} ${response.statusText}`);
     }
 
-    if (!response.body) {
-      throw new Error('Update download did not include a response body.');
-    }
-
-    const totalBytes = Number(response.headers.get('content-length') || 0) || undefined;
-    const hash = createHash('sha256');
-    const reader = response.body.getReader();
-    stream = createWriteStream(partPath, { flags: 'wx' });
-    let receivedBytes = 0;
-
-    onProgress?.({ receivedBytes, totalBytes, percent: 0 });
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      const chunk = Buffer.from(value);
-      receivedBytes += chunk.length;
-      hash.update(chunk);
-      await writeChunk(stream, chunk);
-
-      const percent = totalBytes ? Math.min(99, Math.round((receivedBytes / totalBytes) * 100)) : 0;
-      onProgress?.({ receivedBytes, totalBytes, percent });
-    }
-
-    await closeStream(stream);
-    stream = null;
-
-    const actualSha256 = hash.digest('hex');
-    if (expectedSha256 && actualSha256 !== expectedSha256) {
-      throw new Error('The downloaded installer failed checksum verification.');
-    }
-
-    await rename(partPath, installerPath);
-    onProgress?.({ receivedBytes, totalBytes, percent: 100 });
-    await logLine('info', `Downloaded verified update installer to ${installerPath}`);
-
-    return {
-      ok: true,
-      installerPath,
-      message: `Update downloaded. Restart when you are ready to install ${request.latestVersion ?? 'the new version'}.`
-    };
+    throw new Error('Update download failed after multiple attempts.');
   } catch (error) {
-    if (stream) {
-      stream.destroy();
-    }
     await rm(partPath, { force: true }).catch(() => undefined);
     const message = error instanceof Error ? error.message : String(error);
     await logLine('error', `Update download failed: ${message}`);

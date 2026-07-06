@@ -790,6 +790,15 @@ select:focus {
   color: #73dec8;
 }
 
+.download-progress.failed {
+  border-color: rgba(255, 93, 108, 0.45);
+}
+
+.download-progress.failed strong,
+.download-progress.failed div:first-child {
+  color: #ff8b96;
+}
+
 .progress-track {
   height: 8px;
   overflow: hidden;

@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.5",
+    "version":  "0.5.6",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "9ffbe2d16f6a592aecdb76b9f77e979f64a808e7e56236b88c4fb54fb91b1d14",
+    "sha256":  "51faaf8310a004525077004199293e1ad6ed44ca94a9e49aea762029df364530",
     "required":  false,
-    "notes":  "NXGS Play 0.5.5 keeps launched games above the Windows taskbar and reinforces borderless fullscreen during startup."
+    "notes":  "NXGS Play 0.5.6 retries interrupted update downloads and shows failed download state correctly."
 }

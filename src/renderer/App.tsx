@@ -1323,6 +1323,11 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
 
   const pending = pendingAction !== null;
   const progressPercent = downloadProgress?.percent ?? 0;
+  const downloadFailed = Boolean(
+    downloadProgress && operationMessage && !operationOk && !downloadedInstallerPath && pendingAction !== 'download'
+  );
+  const downloadProgressLabel =
+    pendingAction === 'download' ? 'Downloading update...' : downloadFailed ? 'Download failed' : 'Download complete';
 
   useEffect(() => window.nxgs.onUpdateDownloadProgress(setDownloadProgress), []);
 
@@ -1441,9 +1446,9 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
         </button>
       )}
       {(pendingAction === 'download' || downloadProgress) && (
-        <div className="download-progress">
+        <div className={`download-progress ${downloadFailed ? 'failed' : ''}`}>
           <div>
-            <span>{pendingAction === 'download' ? 'Downloading update...' : 'Download complete'}</span>
+            <span>{downloadProgressLabel}</span>
             <strong>{progressPercent}%</strong>
           </div>
           <div className="progress-track">
