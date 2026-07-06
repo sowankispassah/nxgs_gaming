@@ -233,7 +233,7 @@ function registerIpc(): void {
     const result = await startUpdateInstaller(request);
     if (result.ok) {
       prepareForQuit();
-      setTimeout(() => app.quit(), 500);
+      setTimeout(() => app.exit(0), 500);
     }
     return result;
   });

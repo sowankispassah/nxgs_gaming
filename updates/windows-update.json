@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.13",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.13/NXGS-Play-Setup.exe",
-    "sha256":  "536711b03e9000598b1bf2857a63520815fa8284c724ea4d777d63167979a0d1",
+    "version":  "0.5.14",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.14/NXGS-Play-Setup.exe",
+    "sha256":  "65e79daa52255f140870951856a3b69bbfe7a09104981eacbf07fbca4e939737",
     "required":  false,
-    "notes":  "NXGS Play 0.5.13 verifies the fixed in-app update restart flow using a fresh release asset URL."
+    "notes":  "NXGS Play 0.5.14 hardens update restart by exiting Electron directly and force-clearing the old process before install."
 }
