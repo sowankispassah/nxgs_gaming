@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.9",
+    "version":  "0.5.10",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "d8cb39fec5b1952e6997cddbe9bc819281da232faef253f2cb999cb82e8cb30f",
+    "sha256":  "c7844a863fd6fbb3b47052de7e5a6940349c273392fc23f55a73ab921d2fad58",
     "required":  false,
-    "notes":  "NXGS Play 0.5.9 starts the update helper without pre-elevation so restart/install can proceed reliably."
+    "notes":  "NXGS Play 0.5.10 verifies the fixed in-app update restart flow."
 }
