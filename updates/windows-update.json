@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.6",
+    "version":  "0.5.7",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "51faaf8310a004525077004199293e1ad6ed44ca94a9e49aea762029df364530",
+    "sha256":  "ea917eed60d9fc9392ea927dc7b24312d1d04b7fc5a600671da5234075b5d3db",
     "required":  false,
-    "notes":  "NXGS Play 0.5.6 retries interrupted update downloads and shows failed download state correctly."
+    "notes":  "NXGS Play 0.5.7 verifies the update helper starts before closing the app and improves restart/install logging."
 }

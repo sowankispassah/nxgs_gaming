@@ -123,10 +123,27 @@ function powershellQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+function powershellArray(values: string[]): string {
+  return `@(${values.map(powershellQuote).join(', ')})`;
+}
+
 async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+async function waitForFile(path: string, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      await access(path);
+      return true;
+    } catch {
+      await delay(250);
+    }
+  }
+  return false;
 }
 
 function retryableDownloadError(error: unknown): boolean {
@@ -439,61 +456,95 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
     const updatesDirectory = join(app.getPath('temp'), 'NXGS Play Updates');
     const helperPath = join(updatesDirectory, 'install-update.ps1');
     const helperLogPath = join(updatesDirectory, 'install-update.log');
+    const helperStartedPath = join(updatesDirectory, 'install-update.started');
     const requiresElevation = isProgramFilesInstall(currentExePath);
-    const installerArguments = requiresElevation ? '/allusers /S' : '/currentuser /S';
+    const installerArguments = requiresElevation ? '/S /allusers' : '/S /currentuser';
     const script = [
-      '$ErrorActionPreference = "Continue"',
+      '$ErrorActionPreference = "Stop"',
       `$pidToWait = ${process.pid}`,
       `$installer = ${powershellQuote(request.installerPath)}`,
       `$appPath = ${powershellQuote(currentExePath)}`,
       `$installArgs = ${powershellQuote(installerArguments)}`,
       `$logPath = ${powershellQuote(helperLogPath)}`,
-      `$requiresElevation = ${requiresElevation ? '$true' : '$false'}`,
+      `$startedPath = ${powershellQuote(helperStartedPath)}`,
       'function Write-UpdateLog([string]$message) {',
       '  $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"',
       '  Add-Content -LiteralPath $logPath -Value "$timestamp $message"',
       '}',
-      'Write-UpdateLog "Waiting for NXGS Play process $pidToWait to exit."',
-      'Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue',
-      'Write-UpdateLog "Starting installer: $installer $installArgs"',
-      '$startInfo = @{ FilePath = $installer; ArgumentList = $installArgs; Wait = $true; PassThru = $true }',
-      'if ($requiresElevation) {',
-      '  Write-UpdateLog "Program Files install detected; requesting elevation."',
-      '  $startInfo.Verb = "RunAs"',
+      'try {',
+      '  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $logPath) | Out-Null',
+      '  Set-Content -LiteralPath $startedPath -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")',
+      '  Write-UpdateLog "Update helper started."',
+      '  Write-UpdateLog "Waiting for NXGS Play process $pidToWait to exit."',
+      '  Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue',
+      '  Write-UpdateLog "Starting installer: $installer $installArgs"',
+      '  $installProcess = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru',
+      '  $exitCode = if ($null -ne $installProcess) { $installProcess.ExitCode } else { -1 }',
+      '  Write-UpdateLog "Installer finished with exit code $exitCode."',
+      '} catch {',
+      '  $exitCode = -1',
+      '  Write-UpdateLog "Installer failed: $($_.Exception.Message)"',
+      '} finally {',
+      '  Start-Sleep -Seconds 1',
+      '  if (Test-Path -LiteralPath $appPath) {',
+      '    Write-UpdateLog "Relaunching $appPath."',
+      '    try {',
+      '      Start-Process -FilePath explorer.exe -ArgumentList $appPath',
+      '    } catch {',
+      '      Start-Process -FilePath $appPath',
+      '    }',
+      '  } else {',
+      '    Write-UpdateLog "App relaunch skipped because app path is missing."',
+      '  }',
       '}',
-      '$installProcess = Start-Process @startInfo',
-      '$exitCode = if ($null -ne $installProcess) { $installProcess.ExitCode } else { $null }',
-      'Write-UpdateLog "Installer finished with exit code $exitCode."',
-      'Start-Sleep -Seconds 1',
-      'if ((Test-Path -LiteralPath $appPath) -and ($installProcess.ExitCode -eq 0 -or $null -eq $installProcess.ExitCode)) {',
-      '  Write-UpdateLog "Relaunching $appPath."',
-      '  Start-Process -FilePath $appPath',
-      '} else {',
-      '  Write-UpdateLog "App relaunch skipped because install failed or app path is missing."',
-      '}'
-    ].join('; ');
+      'exit $exitCode'
+    ].join('\r\n');
 
     await mkdir(updatesDirectory, { recursive: true });
+    await rm(helperStartedPath, { force: true });
+    await rm(helperLogPath, { force: true });
     await writeFile(helperPath, script, 'utf8');
 
-    const child = spawn(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-WindowStyle',
-        'Hidden',
-        '-File',
-        helperPath
-      ],
-      {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true
-      }
-    );
+    const helperArguments = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', helperPath];
+    const child = requiresElevation
+      ? spawn(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-Command',
+            [
+              '$ErrorActionPreference = "Stop"',
+              `Start-Process -FilePath ${powershellQuote('powershell.exe')} -ArgumentList ${powershellArray(
+                helperArguments
+              )} -Verb RunAs -WindowStyle Hidden`
+            ].join('; ')
+          ],
+          {
+            detached: false,
+            stdio: 'ignore',
+            windowsHide: false
+          }
+        )
+      : spawn('powershell.exe', helperArguments, {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true
+        });
     child.unref();
+
+    const helperStarted = await waitForFile(helperStartedPath, requiresElevation ? 90000 : 10000);
+    if (!helperStarted) {
+      const message = requiresElevation
+        ? 'The update installer did not start. Approve the Windows permission prompt, then try Restart Now again.'
+        : 'The update installer helper did not start.';
+      await logLine('error', `Update install failed: ${message}`);
+      return {
+        ok: false,
+        message
+      };
+    }
 
     await logLine(
       'info',
