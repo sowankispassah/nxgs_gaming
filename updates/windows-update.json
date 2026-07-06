@@ -1,7 +1,7 @@
 {
-    "version":  "0.4.2",
+    "version":  "0.5.1",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "b43b9ad54082843f75b8bcf9cac1518c6aad92f5e2b5a323c4c374fe7702fe7a",
+    "sha256":  "ab037df306bb67c66eac81d98305b8bf1abcc6bb525222d11c1fdbf480b4b509",
     "required":  false,
-    "notes":  "NXGS Play 0.4.2 keeps update downloads in-app, verifies the installer, and prompts Restart Now when ready."
+    "notes":  "NXGS Play 0.5.1 improves kiosk game window control and full-screen launch behavior."
 }
