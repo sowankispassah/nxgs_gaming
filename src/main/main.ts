@@ -65,17 +65,32 @@ function showOpenDialog(options: OpenDialogOptions): Promise<OpenDialogReturnVal
   return mainWindow ? dialog.showOpenDialog(mainWindow, options) : dialog.showOpenDialog(options);
 }
 
+function getLiveMainWindow(): BrowserWindow | null {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return null;
+  }
+  return mainWindow;
+}
+
+function sendToRenderer(channel: string, ...args: unknown[]): void {
+  const window = getLiveMainWindow();
+  if (!window || window.webContents.isDestroyed()) {
+    return;
+  }
+  window.webContents.send(channel, ...args);
+}
+
 function broadcastSession(state: SessionState): void {
-  mainWindow?.webContents.send('session:state', state);
+  sendToRenderer('session:state', state);
 }
 
 function broadcastActiveGame(): void {
-  mainWindow?.webContents.send('activeGame:state', launcher.activeState);
+  sendToRenderer('activeGame:state', launcher.activeState);
 }
 
 function returnToShellHome(): void {
   void launcher.returnToHome().then(() => applyKioskSettings(store.getSettings()));
-  mainWindow?.webContents.send('shell:home');
+  sendToRenderer('shell:home');
 }
 
 const sessionTimer = new SessionTimer({
@@ -106,11 +121,18 @@ const launcher = new GameLauncher(
 );
 
 function applyKioskSettings(settings: AppSettings): void {
-  if (!mainWindow) {
+  const window = getLiveMainWindow();
+  if (!window) {
     return;
   }
-  mainWindow.setAlwaysOnTop(settings.kiosk.alwaysOnTop);
-  mainWindow.setFullScreen(true);
+  window.setAlwaysOnTop(settings.kiosk.alwaysOnTop);
+  window.setFullScreen(true);
+}
+
+function prepareForQuit(): void {
+  isQuitting = true;
+  sessionTimer.stop('idle', false);
+  globalShortcut.unregisterAll();
 }
 
 async function createWindow(): Promise<void> {
@@ -133,9 +155,10 @@ async function createWindow(): Promise<void> {
     const settings = store.getSettings();
     if (!isQuitting && settings.kiosk.preventClose) {
       event.preventDefault();
-      mainWindow?.show();
-      mainWindow?.focus();
-      mainWindow?.webContents.send('session:state', {
+      const window = getLiveMainWindow();
+      window?.show();
+      window?.focus();
+      sendToRenderer('session:state', {
         ...sessionTimer.current,
         message: 'Admin PIN is required to exit NXGS Play.'
       });
@@ -146,8 +169,9 @@ async function createWindow(): Promise<void> {
     const settings = store.getSettings();
     if (settings.kiosk.refocusOnBlur && !launcher.active) {
       setTimeout(() => {
-        mainWindow?.show();
-        mainWindow?.focus();
+        const window = getLiveMainWindow();
+        window?.show();
+        window?.focus();
       }, 500);
     }
   });
@@ -198,14 +222,16 @@ function registerIpc(): void {
 
   ipcMain.handle('updates:download', async (event, request: UpdateDownloadRequest) =>
     downloadUpdate(request, (progress) => {
-      event.sender.send('updates:downloadProgress', progress);
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('updates:downloadProgress', progress);
+      }
     })
   );
 
   ipcMain.handle('updates:install', async (_event, request: UpdateInstallRequest) => {
     const result = await startUpdateInstaller(request);
     if (result.ok) {
-      isQuitting = true;
+      prepareForQuit();
       setTimeout(() => app.quit(), 500);
     }
     return result;
@@ -306,7 +332,7 @@ function registerIpc(): void {
     if (!store.verifyPin(pin)) {
       return { ok: false };
     }
-    isQuitting = true;
+    prepareForQuit();
     app.quit();
     return { ok: true };
   });
@@ -329,10 +355,11 @@ app.on('activate', () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    prepareForQuit();
     app.quit();
   }
 });
 
 app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
+  prepareForQuit();
 });

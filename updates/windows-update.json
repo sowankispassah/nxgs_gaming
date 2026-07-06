@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.1",
+    "version":  "0.5.2",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "ab037df306bb67c66eac81d98305b8bf1abcc6bb525222d11c1fdbf480b4b509",
+    "sha256":  "022d6078d81f933f9f03f7a05f9dfc82e548fc87728bbd2e4a32d4049f17f6d7",
     "required":  false,
-    "notes":  "NXGS Play 0.5.1 improves kiosk game window control and full-screen launch behavior."
+    "notes":  "NXGS Play 0.5.2 fixes update restart shutdown handling so session timers cannot send to a destroyed window."
 }
