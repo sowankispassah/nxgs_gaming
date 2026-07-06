@@ -17,6 +17,8 @@ Follow these rules for every future coding change in this project:
 - Keep GitHub Release tags aligned with `package.json` versions, using tags like `v0.1.1`.
 - Do not treat a pushed commit as an app update; the Admin update button can only detect/install a published GitHub Release with `windows-update.json` and a newer manifest version.
 - For updater changes, confirm the release asset name expected by the app still matches the packaged installer name, currently `NXGS-Play-Setup.exe`.
+- Keep Windows release artifact filenames stable: `NXGS-Play-Setup.exe`, `NXGS-Play-Setup.exe.blockmap`, `NXGS-Play.exe`, and `latest.yml`.
+- Always clean generated release artifacts before a Windows package build by running `npm run clean:release` directly or through `npm run build:win`; never leave old space-named or version-named installer files in `release`.
 - For release builds, generate or verify `updates/windows-update.json` with the installer download URL and SHA-256 checksum.
 - Keep update-check functionality working after every release-related change.
 - Run `npm run typecheck` after code changes.

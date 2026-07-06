@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.3",
+    "version":  "0.5.4",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "ed350b49672fef069ceda6915fa0be85d79b47c5af712b467670d23d202653d4",
+    "sha256":  "40e9f1cd5bea8f86b87c49cc49077f5898bbd010c5c0595f1df0bb312b4190bc",
     "required":  false,
-    "notes":  "NXGS Play 0.5.3 fixes update install elevation and relaunch behavior for Program Files installations."
+    "notes":  "NXGS Play 0.5.4 keeps Windows release artifacts clean and uses stable installer filenames for future updates."
 }
