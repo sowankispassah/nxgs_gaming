@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.10",
+    "version":  "0.5.11",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "c7844a863fd6fbb3b47052de7e5a6940349c273392fc23f55a73ab921d2fad58",
+    "sha256":  "67df77eee2dc2cb840cf686854043e3f977885286408648b795121b5bdfb8d99",
     "required":  false,
-    "notes":  "NXGS Play 0.5.10 verifies the fixed in-app update restart flow."
+    "notes":  "NXGS Play 0.5.11 fixes the update restart helper command so the downloaded installer can start reliably."
 }

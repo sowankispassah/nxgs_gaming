@@ -119,10 +119,6 @@ function sanitizeAssetName(assetName?: string, latestVersion?: string): string {
   return cleanName.toLowerCase().endsWith('.exe') ? cleanName : fallbackName;
 }
 
-function powershellQuote(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
 async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -153,6 +149,48 @@ function isProgramFilesInstall(exePath: string): boolean {
     .filter(Boolean)
     .map((path) => `${path?.toLowerCase().replace(/[\\/]$/, '')}\\`);
   return programFiles.some((path) => normalized.startsWith(path));
+}
+
+function commandProcessorPath(): string {
+  const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+  return process.env.ComSpec || join(systemRoot, 'System32', 'cmd.exe');
+}
+
+function cmdSetValue(value: string): string {
+  return value
+    .replace(/\^/g, '^^')
+    .replace(/%/g, '%%')
+    .replace(/&/g, '^&')
+    .replace(/\|/g, '^|')
+    .replace(/</g, '^<')
+    .replace(/>/g, '^>')
+    .replace(/"/g, '');
+}
+
+async function spawnDetached(command: string, args: string[]): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(command, args, {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    let settled = false;
+
+    child.once('error', (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    });
+
+    child.once('spawn', () => {
+      if (!settled) {
+        settled = true;
+        child.unref();
+        resolve();
+      }
+    });
+  });
 }
 
 function buildResultFromManifest(manifest: UpdateManifest, currentVersion: string, checkedAt: string): UpdateCheckResult {
@@ -450,51 +488,43 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
 
     const currentExePath = app.getPath('exe');
     const updatesDirectory = join(app.getPath('temp'), 'NXGS Play Updates');
-    const helperPath = join(updatesDirectory, 'install-update.ps1');
+    const helperPath = join(updatesDirectory, 'install-update.cmd');
     const helperLogPath = join(updatesDirectory, 'install-update.log');
     const helperStartedPath = join(updatesDirectory, 'install-update.started');
     const requiresElevation = isProgramFilesInstall(currentExePath);
     const installerArguments = requiresElevation ? '/S /allusers' : '/S /currentuser';
     const script = [
-      '$ErrorActionPreference = "Stop"',
-      `$pidToWait = ${process.pid}`,
-      `$installer = ${powershellQuote(request.installerPath)}`,
-      `$appPath = ${powershellQuote(currentExePath)}`,
-      `$installArgs = ${powershellQuote(installerArguments)}`,
-      `$logPath = ${powershellQuote(helperLogPath)}`,
-      `$startedPath = ${powershellQuote(helperStartedPath)}`,
-      'function Write-UpdateLog([string]$message) {',
-      '  $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"',
-      '  Add-Content -LiteralPath $logPath -Value "$timestamp $message"',
-      '}',
-      'try {',
-      '  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $logPath) | Out-Null',
-      '  Set-Content -LiteralPath $startedPath -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")',
-      '  Write-UpdateLog "Update helper started."',
-      '  Write-UpdateLog "Current app path: $appPath"',
-      '  Write-UpdateLog "Waiting for NXGS Play process $pidToWait to exit."',
-      '  Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue',
-      '  Write-UpdateLog "Starting installer: $installer $installArgs"',
-      '  $installProcess = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru',
-      '  $exitCode = if ($null -ne $installProcess) { $installProcess.ExitCode } else { -1 }',
-      '  Write-UpdateLog "Installer finished with exit code $exitCode."',
-      '} catch {',
-      '  $exitCode = -1',
-      '  Write-UpdateLog "Installer failed: $($_.Exception.Message)"',
-      '} finally {',
-      '  Start-Sleep -Seconds 1',
-      '  if (Test-Path -LiteralPath $appPath) {',
-      '    Write-UpdateLog "Relaunching $appPath."',
-      '    try {',
-      '      Start-Process -FilePath $appPath',
-      '    } catch {',
-      '      Write-UpdateLog "Relaunch failed: $($_.Exception.Message)"',
-      '    }',
-      '  } else {',
-      '    Write-UpdateLog "App relaunch skipped because app path is missing."',
-      '  }',
-      '}',
-      'exit $exitCode'
+      '@echo off',
+      'setlocal DisableDelayedExpansion',
+      `set "pidToWait=${process.pid}"`,
+      `set "installer=${cmdSetValue(request.installerPath)}"`,
+      `set "appPath=${cmdSetValue(currentExePath)}"`,
+      `set "installArgs=${cmdSetValue(installerArguments)}"`,
+      `set "logPath=${cmdSetValue(helperLogPath)}"`,
+      `set "startedPath=${cmdSetValue(helperStartedPath)}"`,
+      'if not exist "%~dp0" mkdir "%~dp0" >nul 2>nul',
+      '> "%startedPath%" echo %date% %time%',
+      '>> "%logPath%" echo %date% %time% Update helper started.',
+      '>> "%logPath%" echo %date% %time% Current app path: "%appPath%"',
+      '>> "%logPath%" echo %date% %time% Waiting for NXGS Play process %pidToWait% to exit.',
+      ':wait_for_nxgs',
+      'tasklist /FI "PID eq %pidToWait%" /NH 2>nul | findstr /C:"%pidToWait%" >nul',
+      'if not errorlevel 1 (',
+      '  ping 127.0.0.1 -n 2 >nul',
+      '  goto wait_for_nxgs',
+      ')',
+      '>> "%logPath%" echo %date% %time% Starting installer: "%installer%" %installArgs%',
+      'start "" /wait "%installer%" %installArgs%',
+      'set "exitCode=%ERRORLEVEL%"',
+      '>> "%logPath%" echo %date% %time% Installer finished with exit code %exitCode%.',
+      'ping 127.0.0.1 -n 2 >nul',
+      'if exist "%appPath%" (',
+      '  >> "%logPath%" echo %date% %time% Relaunching "%appPath%".',
+      '  start "" "%appPath%"',
+      ') else (',
+      '  >> "%logPath%" echo %date% %time% App relaunch skipped because app path is missing.',
+      ')',
+      'exit /b %exitCode%'
     ].join('\r\n');
 
     await mkdir(updatesDirectory, { recursive: true });
@@ -502,13 +532,8 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
     await rm(helperLogPath, { force: true });
     await writeFile(helperPath, script, 'utf8');
 
-    const helperArguments = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', helperPath];
-    const child = spawn('powershell.exe', helperArguments, {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
-    });
-    child.unref();
+    await logLine('info', `Starting update helper ${helperPath}`);
+    await spawnDetached(commandProcessorPath(), ['/d', '/c', helperPath]);
 
     const helperStarted = await waitForFile(helperStartedPath, 10000);
     if (!helperStarted) {
