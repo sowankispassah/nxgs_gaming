@@ -216,6 +216,7 @@ async function runActivationCommand(
 
   const maximize = launchMode !== 'normal';
   const useBorderless = launchMode !== 'normal';
+  const keepTopMost = launchMode !== 'normal';
   const script = `
 Add-Type @"
 using System;
@@ -271,6 +272,7 @@ $flags = 0x0001 -bor 0x0002 -bor 0x0040
 $topMost = [IntPtr](-1)
 $notTopMost = [IntPtr](-2)
 $useBorderless = ${useBorderless ? '$true' : '$false'}
+$keepTopMost = ${keepTopMost ? '$true' : '$false'}
 $compensateFrameChrome = ${compensateFrameChrome ? '$true' : '$false'}
 [Win32]::AllowSetForegroundWindow(-1) | Out-Null
 [Win32]::OpenIcon($hwnd) | Out-Null
@@ -311,7 +313,9 @@ if ($useBorderless) {
   }
 }
 [Win32]::SetWindowPos($hwnd, $topMost, 0, 0, 0, 0, $flags) | Out-Null
-[Win32]::SetWindowPos($hwnd, $notTopMost, 0, 0, 0, 0, $flags) | Out-Null
+if (-not $keepTopMost) {
+  [Win32]::SetWindowPos($hwnd, $notTopMost, 0, 0, 0, 0, $flags) | Out-Null
+}
 [Win32]::BringWindowToTop($hwnd) | Out-Null
 [Win32]::SetForegroundWindow($hwnd) | Out-Null
 Start-Sleep -Milliseconds 160

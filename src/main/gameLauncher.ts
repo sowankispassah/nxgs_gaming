@@ -38,8 +38,10 @@ export class GameLauncher {
   private activeGame: GameRecord | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
   private monitor: NodeJS.Timeout | null = null;
+  private reinforceTimers: NodeJS.Timeout[] = [];
   private activeWindow: GameWindowInfo | null = null;
   private activeProcessId: number | null = null;
+  private gameInForeground = false;
   private state: ActiveGameState = {
     status: 'idle',
     updatedAt: new Date().toISOString()
@@ -73,6 +75,8 @@ export class GameLauncher {
     this.activeGame = game;
     this.activeWindow = null;
     this.activeProcessId = null;
+    this.gameInForeground = false;
+    this.clearReinforcementTimers();
     this.setActiveState({
       status: 'launching',
       game,
@@ -181,6 +185,8 @@ export class GameLauncher {
       await this.revealGameWindow(window, this.launchMode(game));
       this.activeWindow = window;
       this.activeProcessId = window.processId;
+      this.gameInForeground = true;
+      this.scheduleGameWindowReinforcement(game, window, this.launchMode(game));
       this.setActiveState({
         status: 'running',
         game,
@@ -225,6 +231,19 @@ export class GameLauncher {
 
   async returnToHome(): Promise<GameControlResult> {
     const game = this.activeGame;
+    if (game) {
+      try {
+        const window = await this.getActiveWindow(game);
+        if (window) {
+          this.gameInForeground = false;
+          await minimizeGameWindow(window);
+          this.activeWindow = window;
+          this.activeProcessId = window.processId;
+        }
+      } catch (error) {
+        await logLine('warn', `Return home minimize failed for ${game.title}: ${String(error)}`);
+      }
+    }
     this.focusLauncher();
     if (game) {
       this.setActiveState({
@@ -243,6 +262,8 @@ export class GameLauncher {
     this.child = null;
     this.activeWindow = null;
     this.activeProcessId = null;
+    this.gameInForeground = false;
+    this.clearReinforcementTimers();
     this.setActiveState({
       status: 'idle'
     });
@@ -255,6 +276,7 @@ export class GameLauncher {
     }
     window.show();
     window.setFullScreen(true);
+    window.setAlwaysOnTop(true, 'screen-saver');
     window.moveTop();
     window.focus();
   }
@@ -302,6 +324,8 @@ export class GameLauncher {
     });
 
     await this.revealGameWindow(window, launchMode);
+    this.gameInForeground = true;
+    this.scheduleGameWindowReinforcement(game, window, launchMode);
     this.setActiveState({
       status: 'running',
       game,
@@ -425,6 +449,8 @@ export class GameLauncher {
       this.activeProcessId = window.processId;
       this.showLaunchShield();
       await this.revealGameWindow(window, this.launchMode(game));
+      this.gameInForeground = true;
+      this.scheduleGameWindowReinforcement(game, window, this.launchMode(game));
       this.setActiveState({
         status: 'running',
         game,
@@ -478,6 +504,8 @@ export class GameLauncher {
     this.activeGame = null;
     this.activeWindow = null;
     this.activeProcessId = null;
+    this.gameInForeground = false;
+    this.clearReinforcementTimers();
     this.setActiveState({
       status: 'idle',
       message: `${game.title} exited.`
@@ -492,6 +520,7 @@ export class GameLauncher {
       clearInterval(this.monitor);
       this.monitor = null;
     }
+    this.clearReinforcementTimers();
     if (closeGame) {
       await this.closeActiveGame(false);
     }
@@ -549,6 +578,47 @@ export class GameLauncher {
 
   private launchMode(game: GameRecord): GameLaunchMode {
     return game.launchMode ?? 'borderlessPreferred';
+  }
+
+  private scheduleGameWindowReinforcement(game: GameRecord, window: GameWindowInfo, launchMode: GameLaunchMode): void {
+    this.clearReinforcementTimers();
+    if (launchMode === 'normal') {
+      return;
+    }
+
+    for (const delayMs of [700, 1800, 3500]) {
+      const timer = setTimeout(() => {
+        void this.reinforceGameWindow(game, window, launchMode);
+      }, delayMs);
+      this.reinforceTimers.push(timer);
+    }
+  }
+
+  private async reinforceGameWindow(game: GameRecord, window: GameWindowInfo, launchMode: GameLaunchMode): Promise<void> {
+    if (!this.gameInForeground || this.activeGame?.id !== game.id) {
+      return;
+    }
+
+    try {
+      const currentWindow =
+        (await findGameWindow({
+          pid: window.processId,
+          processName: game.processName,
+          titleHint: game.title
+        })) ?? window;
+      await activateGameWindow(currentWindow, launchMode);
+      this.activeWindow = currentWindow;
+      this.activeProcessId = currentWindow.processId;
+    } catch (error) {
+      await logLine('warn', `Borderless reinforcement failed for ${game.title}: ${String(error)}`);
+    }
+  }
+
+  private clearReinforcementTimers(): void {
+    for (const timer of this.reinforceTimers) {
+      clearTimeout(timer);
+    }
+    this.reinforceTimers = [];
   }
 
   private showLaunchShield(): void {

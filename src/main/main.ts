@@ -125,7 +125,8 @@ function applyKioskSettings(settings: AppSettings): void {
   if (!window) {
     return;
   }
-  window.setAlwaysOnTop(settings.kiosk.alwaysOnTop);
+  const shouldStayOnTop = settings.kiosk.alwaysOnTop || Boolean(launcher.active);
+  window.setAlwaysOnTop(shouldStayOnTop, shouldStayOnTop ? 'screen-saver' : undefined);
   window.setFullScreen(true);
 }
 
