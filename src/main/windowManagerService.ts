@@ -20,6 +20,12 @@ export interface GameWindowSearch {
 
 type WindowCommand = 'foreground' | 'maximize' | 'restore' | 'minimize' | 'close';
 
+interface ActivationOptions {
+  foreground: boolean;
+  topMost: boolean;
+  applyBorderless: boolean;
+}
+
 interface WindowActivationState {
   foregroundHandle: number;
   isForeground: boolean;
@@ -208,15 +214,17 @@ function parseActivationState(raw: string): WindowActivationState | null {
 async function runActivationCommand(
   handle: number,
   launchMode: GameLaunchMode,
-  compensateFrameChrome = false
+  compensateFrameChrome = false,
+  options: Partial<ActivationOptions> = {}
 ): Promise<WindowActivationState | null> {
   if (process.platform !== 'win32' || !Number.isFinite(handle) || handle <= 0) {
     return null;
   }
 
-  const maximize = launchMode !== 'normal';
-  const useBorderless = launchMode !== 'normal';
-  const keepTopMost = launchMode !== 'normal';
+  const useBorderless = launchMode !== 'normal' && options.applyBorderless !== false;
+  const foreground = options.foreground ?? true;
+  const topMost = options.topMost ?? launchMode !== 'normal';
+  const overscanPx = useBorderless ? 2 : 0;
   const script = `
 Add-Type @"
 using System;
@@ -239,6 +247,7 @@ public struct MONITORINFO {
 public static class Win32 {
   [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int dwProcessId);
   [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int nIndex);
@@ -272,34 +281,45 @@ $flags = 0x0001 -bor 0x0002 -bor 0x0040
 $topMost = [IntPtr](-1)
 $notTopMost = [IntPtr](-2)
 $useBorderless = ${useBorderless ? '$true' : '$false'}
-$keepTopMost = ${keepTopMost ? '$true' : '$false'}
+$activateForeground = ${foreground ? '$true' : '$false'}
+$useTopMost = ${topMost ? '$true' : '$false'}
+$overscanPx = ${overscanPx}
 $compensateFrameChrome = ${compensateFrameChrome ? '$true' : '$false'}
 [Win32]::AllowSetForegroundWindow(-1) | Out-Null
 [Win32]::OpenIcon($hwnd) | Out-Null
 [Win32]::ShowWindow($hwnd, 9) | Out-Null
 Start-Sleep -Milliseconds 80
-${maximize ? '[Win32]::ShowWindow($hwnd, 3) | Out-Null' : '[Win32]::ShowWindowAsync($hwnd, 9) | Out-Null'}
+[Win32]::ShowWindowAsync($hwnd, 9) | Out-Null
 if ($useBorderless) {
   $gwlStyle = -16
   $gwlExStyle = -20
   $wsPopup = 0x80000000L
+  $wsVisible = 0x10000000L
   $wsOverlappedWindow = 0x00CF0000L
-  $borderExStyles = 0x00000001L -bor 0x00000100L -bor 0x00000200L -bor 0x00040000L
+  $borderExStyles = 0x00000001L -bor 0x00000100L -bor 0x00000200L -bor 0x00020000L -bor 0x00040000L
   $style = [Win32]::GetWindowLongPtr($hwnd, $gwlStyle).ToInt64()
   $exStyle = [Win32]::GetWindowLongPtr($hwnd, $gwlExStyle).ToInt64()
-  $newStyle = ($style -band (-bnot $wsOverlappedWindow)) -bor $wsPopup
+  $newStyle = ($style -band (-bnot $wsOverlappedWindow)) -bor $wsPopup -bor $wsVisible
   $newExStyle = $exStyle -band (-bnot $borderExStyles)
   [Win32]::SetWindowLongPtr($hwnd, $gwlStyle, [IntPtr]$newStyle) | Out-Null
   [Win32]::SetWindowLongPtr($hwnd, $gwlExStyle, [IntPtr]$newExStyle) | Out-Null
+  try {
+    $disable = 1
+    $cornerAttr = 33
+    $borderColorAttr = 34
+    $colorNone = -2
+    [Win32]::DwmSetWindowAttribute($hwnd, $cornerAttr, [ref]$disable, 4) | Out-Null
+    [Win32]::DwmSetWindowAttribute($hwnd, $borderColorAttr, [ref]$colorNone, 4) | Out-Null
+  } catch {}
 
   $monitor = [Win32]::MonitorFromWindow($hwnd, 2)
   $monitorInfo = New-Object MONITORINFO
   $monitorInfo.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type][MONITORINFO])
   if ([Win32]::GetMonitorInfo($monitor, [ref]$monitorInfo)) {
-    $x = $monitorInfo.rcMonitor.Left
-    $y = $monitorInfo.rcMonitor.Top
-    $width = $monitorInfo.rcMonitor.Right - $monitorInfo.rcMonitor.Left
-    $height = $monitorInfo.rcMonitor.Bottom - $monitorInfo.rcMonitor.Top
+    $x = $monitorInfo.rcMonitor.Left - $overscanPx
+    $y = $monitorInfo.rcMonitor.Top - $overscanPx
+    $width = ($monitorInfo.rcMonitor.Right - $monitorInfo.rcMonitor.Left) + ($overscanPx * 2)
+    $height = ($monitorInfo.rcMonitor.Bottom - $monitorInfo.rcMonitor.Top) + ($overscanPx * 2)
     $chromeOffset = 0
     if ($compensateFrameChrome) {
       $chromeOffset = [Math]::Max(
@@ -309,15 +329,22 @@ if ($useBorderless) {
     }
     $y = $y - $chromeOffset
     $height = $height + $chromeOffset
-    [Win32]::SetWindowPos($hwnd, [IntPtr]::Zero, $x, $y, $width, $height, 0x0020 -bor 0x0040) | Out-Null
+    $sizeFlags = 0x0020 -bor 0x0040
+    if (-not $activateForeground) {
+      $sizeFlags = $sizeFlags -bor 0x0010
+    }
+    [Win32]::SetWindowPos($hwnd, [IntPtr]::Zero, $x, $y, $width, $height, $sizeFlags) | Out-Null
   }
 }
-[Win32]::SetWindowPos($hwnd, $topMost, 0, 0, 0, 0, $flags) | Out-Null
-if (-not $keepTopMost) {
+if ($useTopMost) {
+  [Win32]::SetWindowPos($hwnd, $topMost, 0, 0, 0, 0, $flags) | Out-Null
+} else {
   [Win32]::SetWindowPos($hwnd, $notTopMost, 0, 0, 0, 0, $flags) | Out-Null
 }
-[Win32]::BringWindowToTop($hwnd) | Out-Null
-[Win32]::SetForegroundWindow($hwnd) | Out-Null
+if ($activateForeground) {
+  [Win32]::BringWindowToTop($hwnd) | Out-Null
+  [Win32]::SetForegroundWindow($hwnd) | Out-Null
+}
 Start-Sleep -Milliseconds 160
 $foreground = [Win32]::GetForegroundWindow()
 $rect = New-Object RECT
@@ -337,6 +364,18 @@ $rect = New-Object RECT
   return parseActivationState(await runPowerShell(script));
 }
 
+export async function prepareGameWindowForReveal(
+  window: GameWindowInfo,
+  launchMode: GameLaunchMode = 'maximized'
+): Promise<void> {
+  const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
+  await runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
+    foreground: false,
+    topMost: false,
+    applyBorderless: true
+  });
+}
+
 export async function activateGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode = 'maximized'): Promise<void> {
   const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
   const firstAttempt = await runActivationCommand(window.handle, launchMode, compensateFrameChrome);
@@ -350,6 +389,14 @@ export async function activateGameWindow(window: GameWindowInfo, launchMode: Gam
   }
 
   throw new Error('Windows did not restore the game window. Try Resume Game again or use the game taskbar icon.');
+}
+
+export async function keepGameWindowOnTop(window: GameWindowInfo): Promise<void> {
+  await runActivationCommand(window.handle, 'normal', false, {
+    foreground: true,
+    topMost: true,
+    applyBorderless: false
+  });
 }
 
 export async function restoreGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode = 'maximized'): Promise<void> {

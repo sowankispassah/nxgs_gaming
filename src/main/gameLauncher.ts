@@ -9,8 +9,10 @@ import {
   activateGameWindow,
   closeGameWindow,
   findGameWindow,
+  keepGameWindowOnTop,
   type GameWindowInfo,
   minimizeGameWindow,
+  prepareGameWindowForReveal,
   waitForGameWindow
 } from './windowManagerService';
 
@@ -586,7 +588,7 @@ export class GameLauncher {
       return;
     }
 
-    for (const delayMs of [700, 1800, 3500]) {
+    for (const delayMs of [900, 1800, 3000]) {
       const timer = setTimeout(() => {
         void this.reinforceGameWindow(game, window, launchMode);
       }, delayMs);
@@ -606,7 +608,7 @@ export class GameLauncher {
           processName: game.processName,
           titleHint: game.title
         })) ?? window;
-      await activateGameWindow(currentWindow, launchMode);
+      await keepGameWindowOnTop(currentWindow);
       this.activeWindow = currentWindow;
       this.activeProcessId = currentWindow.processId;
     } catch (error) {
@@ -639,11 +641,21 @@ export class GameLauncher {
 
   private async revealGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode): Promise<void> {
     try {
+      this.showLaunchShield();
+      if (launchMode !== 'normal') {
+        for (const delayMs of [0, 320, 520]) {
+          if (delayMs > 0) {
+            await delay(delayMs);
+          }
+          await prepareGameWindowForReveal(window, launchMode);
+          this.showLaunchShield();
+        }
+        await delay(180);
+      }
       await activateGameWindow(window, launchMode);
     } finally {
       this.releaseLaunchShield();
     }
-    await activateGameWindow(window, launchMode);
   }
 
   private setActiveState(state: Omit<ActiveGameState, 'updatedAt'>): void {
