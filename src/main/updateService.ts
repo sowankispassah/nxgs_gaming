@@ -123,10 +123,6 @@ function powershellQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function powershellArray(values: string[]): string {
-  return `@(${values.map(powershellQuote).join(', ')})`;
-}
-
 async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -475,6 +471,7 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
       '  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $logPath) | Out-Null',
       '  Set-Content -LiteralPath $startedPath -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")',
       '  Write-UpdateLog "Update helper started."',
+      '  Write-UpdateLog "Current app path: $appPath"',
       '  Write-UpdateLog "Waiting for NXGS Play process $pidToWait to exit."',
       '  Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue',
       '  Write-UpdateLog "Starting installer: $installer $installArgs"',
@@ -489,9 +486,9 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
       '  if (Test-Path -LiteralPath $appPath) {',
       '    Write-UpdateLog "Relaunching $appPath."',
       '    try {',
-      '      Start-Process -FilePath explorer.exe -ArgumentList $appPath',
-      '    } catch {',
       '      Start-Process -FilePath $appPath',
+      '    } catch {',
+      '      Write-UpdateLog "Relaunch failed: $($_.Exception.Message)"',
       '    }',
       '  } else {',
       '    Write-UpdateLog "App relaunch skipped because app path is missing."',
@@ -506,39 +503,16 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
     await writeFile(helperPath, script, 'utf8');
 
     const helperArguments = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', helperPath];
-    const child = requiresElevation
-      ? spawn(
-          'powershell.exe',
-          [
-            '-NoProfile',
-            '-ExecutionPolicy',
-            'Bypass',
-            '-Command',
-            [
-              '$ErrorActionPreference = "Stop"',
-              `Start-Process -FilePath ${powershellQuote('powershell.exe')} -ArgumentList ${powershellArray(
-                helperArguments
-              )} -Verb RunAs -WindowStyle Hidden`
-            ].join('; ')
-          ],
-          {
-            detached: false,
-            stdio: 'ignore',
-            windowsHide: false
-          }
-        )
-      : spawn('powershell.exe', helperArguments, {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: true
-        });
+    const child = spawn('powershell.exe', helperArguments, {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
     child.unref();
 
-    const helperStarted = await waitForFile(helperStartedPath, requiresElevation ? 90000 : 10000);
+    const helperStarted = await waitForFile(helperStartedPath, 10000);
     if (!helperStarted) {
-      const message = requiresElevation
-        ? 'The update installer did not start. Approve the Windows permission prompt, then try Restart Now again.'
-        : 'The update installer helper did not start.';
+      const message = 'The update installer helper did not start. NXGS Play stayed open so you can try again.';
       await logLine('error', `Update install failed: ${message}`);
       return {
         ok: false,

@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.8",
+    "version":  "0.5.9",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/latest/download/NXGS-Play-Setup.exe",
-    "sha256":  "a8a30a1978db3c33598def783464e15dec2c0f3f9d98522bbf5b2f8a9ac73b97",
+    "sha256":  "d8cb39fec5b1952e6997cddbe9bc819281da232faef253f2cb999cb82e8cb30f",
     "required":  false,
-    "notes":  "NXGS Play 0.5.8 hides unstable game startup behind the launch shield and prevents visible borderless resize flicker."
+    "notes":  "NXGS Play 0.5.9 starts the update helper without pre-elevation so restart/install can proceed reliably."
 }
