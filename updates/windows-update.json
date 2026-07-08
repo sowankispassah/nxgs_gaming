@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.15",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.15/NXGS-Play-Setup.exe",
-    "sha256":  "c9bbfb0c7b8be6077b4113d354e379fceecde37c0b8e36ad12bac22f40efead5",
+    "version":  "0.5.16",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.16/NXGS-Play-Setup.exe",
+    "sha256":  "2fdc6d50f5437e8d5fb85d009996c1c54f16831c7f86119afd64e1eeeb95e2a8",
     "required":  false,
-    "notes":  "NXGS Play 0.5.15 verifies the hardened in-app update restart flow."
+    "notes":  "NXGS Play 0.5.16 hides the Windows taskbar during foreground game sessions and returns home when a game window is closed."
 }

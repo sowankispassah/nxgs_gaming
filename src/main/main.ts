@@ -7,6 +7,7 @@ import { scanInstalledGames } from './gameScanner';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
+import { setWindowsTaskbarVisible } from './windowManagerService';
 import type {
   AppSettings,
   FilePickerResult,
@@ -133,6 +134,7 @@ function applyKioskSettings(settings: AppSettings): void {
 function prepareForQuit(): void {
   isQuitting = true;
   sessionTimer.stop('idle', false);
+  void setWindowsTaskbarVisible(true);
   globalShortcut.unregisterAll();
 }
 
@@ -141,6 +143,7 @@ async function createWindow(): Promise<void> {
     title: 'NXGS Play',
     fullscreen: true,
     frame: false,
+    skipTaskbar: true,
     icon: getAppIconPath(),
     autoHideMenuBar: true,
     backgroundColor: '#07090d',

@@ -13,6 +13,7 @@ import {
   type GameWindowInfo,
   minimizeGameWindow,
   prepareGameWindowForReveal,
+  setWindowsTaskbarVisible,
   waitForGameWindow
 } from './windowManagerService';
 
@@ -44,6 +45,7 @@ export class GameLauncher {
   private activeWindow: GameWindowInfo | null = null;
   private activeProcessId: number | null = null;
   private gameInForeground = false;
+  private taskbarSuppressed = false;
   private state: ActiveGameState = {
     status: 'idle',
     updatedAt: new Date().toISOString()
@@ -78,6 +80,7 @@ export class GameLauncher {
     this.activeWindow = null;
     this.activeProcessId = null;
     this.gameInForeground = false;
+    this.restoreWindowsTaskbar();
     this.clearReinforcementTimers();
     this.setActiveState({
       status: 'launching',
@@ -85,6 +88,7 @@ export class GameLauncher {
       message: `Preparing ${game.title} for full-screen launch...`,
       windowDetected: false
     });
+    await this.suppressWindowsTaskbar();
     this.showLaunchShield();
     await delay(160);
     await logLine('info', `Launching ${game.title} using ${game.launchType}: ${game.launchCommand}`);
@@ -104,6 +108,7 @@ export class GameLauncher {
       await this.activateLaunchedGame(game);
     } catch (error) {
       this.releaseLaunchShield();
+      this.restoreWindowsTaskbar();
       throw error;
     }
   }
@@ -184,6 +189,7 @@ export class GameLauncher {
 
     try {
       this.showLaunchShield();
+      await this.suppressWindowsTaskbar();
       await this.revealGameWindow(window, this.launchMode(game));
       this.activeWindow = window;
       this.activeProcessId = window.processId;
@@ -216,6 +222,7 @@ export class GameLauncher {
 
     try {
       await minimizeGameWindow(window);
+      this.restoreWindowsTaskbar();
       this.focusLauncher();
       this.setActiveState({
         status: 'running',
@@ -246,6 +253,7 @@ export class GameLauncher {
         await logLine('warn', `Return home minimize failed for ${game.title}: ${String(error)}`);
       }
     }
+    this.restoreWindowsTaskbar();
     this.focusLauncher();
     if (game) {
       this.setActiveState({
@@ -265,6 +273,7 @@ export class GameLauncher {
     this.activeWindow = null;
     this.activeProcessId = null;
     this.gameInForeground = false;
+    this.restoreWindowsTaskbar();
     this.clearReinforcementTimers();
     this.setActiveState({
       status: 'idle'
@@ -297,6 +306,7 @@ export class GameLauncher {
     if (!window) {
       await logLine('warn', `No main game window detected for ${game.title}; leaving NXGS Play visible.`);
       this.releaseLaunchShield();
+      this.restoreWindowsTaskbar();
       this.setActiveState({
         status: 'running',
         game,
@@ -325,7 +335,21 @@ export class GameLauncher {
       windowDetected: true
     });
 
-    await this.revealGameWindow(window, launchMode);
+    try {
+      await this.revealGameWindow(window, launchMode);
+    } catch (error) {
+      const currentWindow = await findGameWindow({
+        pid: window.processId,
+        processName: game.processName,
+        titleHint: game.title
+      });
+      if (!currentWindow) {
+        await logLine('info', `${game.title} closed before full-screen activation completed.`);
+        this.handleGameExit(game);
+        return;
+      }
+      throw error;
+    }
     this.gameInForeground = true;
     this.scheduleGameWindowReinforcement(game, window, launchMode);
     this.setActiveState({
@@ -450,6 +474,7 @@ export class GameLauncher {
       this.activeWindow = window;
       this.activeProcessId = window.processId;
       this.showLaunchShield();
+      await this.suppressWindowsTaskbar();
       await this.revealGameWindow(window, this.launchMode(game));
       this.gameInForeground = true;
       this.scheduleGameWindowReinforcement(game, window, this.launchMode(game));
@@ -477,19 +502,49 @@ export class GameLauncher {
     }
 
     let seenRunning = false;
+    let seenWindow = Boolean(this.activeWindow);
+    let missingWindowTicks = 0;
+    let checkInFlight = false;
     this.monitor = setInterval(() => {
+      if (checkInFlight) {
+        return;
+      }
+      checkInFlight = true;
       const processCheck = game.processName ? isProcessRunning(game.processName) : Promise.resolve(false);
       const pidCheck = this.activeProcessId ? isProcessRunningByPid(this.activeProcessId) : Promise.resolve(false);
-      void Promise.all([processCheck, pidCheck])
-        .then((running) => {
-          const isRunning = running.some(Boolean);
+      const expectedWindow = this.activeWindow;
+      const windowCheck = expectedWindow
+        ? findGameWindow({
+            pid: expectedWindow.processId,
+            processName: game.processName,
+            titleHint: game.title
+          })
+        : Promise.resolve(null);
+
+      void Promise.all([processCheck, pidCheck, windowCheck])
+        .then(([processRunning, pidRunning, currentWindow]) => {
+          const isRunning = processRunning || pidRunning;
           seenRunning ||= isRunning;
-          if (seenRunning && !isRunning) {
+          if (currentWindow) {
+            seenWindow = true;
+            missingWindowTicks = 0;
+            this.activeWindow = currentWindow;
+            this.activeProcessId = currentWindow.processId;
+          } else if (seenWindow && expectedWindow) {
+            missingWindowTicks += 1;
+          }
+
+          const processExited = seenRunning && !isRunning;
+          const windowClosed = seenWindow && missingWindowTicks >= 2;
+          if (processExited || windowClosed) {
             this.handleGameExit(game);
           }
         })
         .catch((error) => {
           void logLine('warn', `Process monitor failed for ${game.title}: ${String(error)}`);
+        })
+        .finally(() => {
+          checkInFlight = false;
         });
     }, 3000);
   }
@@ -507,6 +562,7 @@ export class GameLauncher {
     this.activeWindow = null;
     this.activeProcessId = null;
     this.gameInForeground = false;
+    this.restoreWindowsTaskbar();
     this.clearReinforcementTimers();
     this.setActiveState({
       status: 'idle',
@@ -555,17 +611,13 @@ export class GameLauncher {
       return;
     }
 
-    const processChecks = await Promise.all([
-      game.processName ? isProcessRunning(game.processName) : Promise.resolve(false),
-      this.activeProcessId ? isProcessRunningByPid(this.activeProcessId) : Promise.resolve(false)
-    ]);
     const window = await findGameWindow({
       pid: this.activeProcessId ?? this.child?.pid,
       processName: game.processName,
       titleHint: game.title
     });
 
-    if (!processChecks.some(Boolean) && !window) {
+    if (!window) {
       this.handleGameExit(game);
       return;
     }
@@ -588,7 +640,7 @@ export class GameLauncher {
       return;
     }
 
-    for (const delayMs of [900, 1800, 3000]) {
+    for (const delayMs of [250, 600, 1000, 1600, 2400, 3600, 5200, 7600, 10000]) {
       const timer = setTimeout(() => {
         void this.reinforceGameWindow(game, window, launchMode);
       }, delayMs);
@@ -608,7 +660,7 @@ export class GameLauncher {
           processName: game.processName,
           titleHint: game.title
         })) ?? window;
-      await keepGameWindowOnTop(currentWindow);
+      await keepGameWindowOnTop(currentWindow, launchMode);
       this.activeWindow = currentWindow;
       this.activeProcessId = currentWindow.processId;
     } catch (error) {
@@ -621,6 +673,30 @@ export class GameLauncher {
       clearTimeout(timer);
     }
     this.reinforceTimers = [];
+  }
+
+  private async suppressWindowsTaskbar(): Promise<void> {
+    if (this.taskbarSuppressed) {
+      return;
+    }
+
+    this.taskbarSuppressed = true;
+    try {
+      await setWindowsTaskbarVisible(false);
+    } catch (error) {
+      await logLine('warn', `Could not hide Windows taskbar during game launch: ${String(error)}`);
+    }
+  }
+
+  private restoreWindowsTaskbar(): void {
+    if (!this.taskbarSuppressed) {
+      return;
+    }
+
+    this.taskbarSuppressed = false;
+    void setWindowsTaskbarVisible(true).catch((error) => {
+      void logLine('warn', `Could not restore Windows taskbar after game session: ${String(error)}`);
+    });
   }
 
   private showLaunchShield(): void {
@@ -641,18 +717,27 @@ export class GameLauncher {
 
   private async revealGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode): Promise<void> {
     try {
+      await this.suppressWindowsTaskbar();
       this.showLaunchShield();
       if (launchMode !== 'normal') {
-        for (const delayMs of [0, 320, 520]) {
+        for (const delayMs of [0, 220, 420, 700]) {
           if (delayMs > 0) {
             await delay(delayMs);
           }
           await prepareGameWindowForReveal(window, launchMode);
           this.showLaunchShield();
         }
-        await delay(180);
+        await delay(220);
       }
       await activateGameWindow(window, launchMode);
+      if (launchMode !== 'normal') {
+        await delay(260);
+        await prepareGameWindowForReveal(window, launchMode);
+        this.showLaunchShield();
+        await delay(140);
+        await activateGameWindow(window, launchMode);
+        await delay(140);
+      }
     } finally {
       this.releaseLaunchShield();
     }

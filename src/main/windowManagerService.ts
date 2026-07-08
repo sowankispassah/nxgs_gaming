@@ -37,6 +37,43 @@ interface WindowActivationState {
   y: number;
 }
 
+export async function setWindowsTaskbarVisible(visible: boolean): Promise<void> {
+  if (process.platform !== 'win32') {
+    return;
+  }
+
+  const command = visible ? 5 : 0;
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class TaskbarWin32 {
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+$command = ${command}
+$classes = @("Shell_TrayWnd", "Shell_SecondaryTrayWnd")
+foreach ($class in $classes) {
+  $main = [TaskbarWin32]::FindWindow($class, $null)
+  if ($main -ne [IntPtr]::Zero) {
+    [TaskbarWin32]::ShowWindow($main, $command) | Out-Null
+  }
+
+  $after = [IntPtr]::Zero
+  while ($true) {
+    $hwnd = [TaskbarWin32]::FindWindowEx([IntPtr]::Zero, $after, $class, $null)
+    if ($hwnd -eq [IntPtr]::Zero) { break }
+    [TaskbarWin32]::ShowWindow($hwnd, $command) | Out-Null
+    $after = $hwnd
+  }
+}
+`;
+
+  await runPowerShell(script);
+}
+
 function powershellQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -391,11 +428,15 @@ export async function activateGameWindow(window: GameWindowInfo, launchMode: Gam
   throw new Error('Windows did not restore the game window. Try Resume Game again or use the game taskbar icon.');
 }
 
-export async function keepGameWindowOnTop(window: GameWindowInfo): Promise<void> {
-  await runActivationCommand(window.handle, 'normal', false, {
+export async function keepGameWindowOnTop(
+  window: GameWindowInfo,
+  launchMode: GameLaunchMode = 'maximized'
+): Promise<void> {
+  const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
+  await runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
     foreground: true,
     topMost: true,
-    applyBorderless: false
+    applyBorderless: launchMode !== 'normal'
   });
 }
 
