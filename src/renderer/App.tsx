@@ -24,6 +24,7 @@ import {
 import brandImage from './assets/nxgs-gaming-banner.png';
 import type {
   ActiveGameState,
+  AppDiagnostics,
   AppSettings,
   GameInput,
   GameRecord,
@@ -131,6 +132,8 @@ export function App(): JSX.Element {
   const [activeGame, setActiveGame] = useState<ActiveGameState>(EMPTY_ACTIVE_GAME);
   const [bootError, setBootError] = useState('');
   const [cursorHidden, setCursorHidden] = useState(false);
+  const [homeOverlayRequestId, setHomeOverlayRequestId] = useState(0);
+  const [emergencyCloseRequestId, setEmergencyCloseRequestId] = useState(0);
 
   const enabledGames = useMemo(() => games.filter((game) => game.enabled), [games]);
   const selectedGame = enabledGames[selectedIndex] ?? null;
@@ -163,10 +166,16 @@ export function App(): JSX.Element {
         setView('home');
       }
     });
-    const unsubscribeShellHome = window.nxgs.onShellHome(() => {
+    const unsubscribeShellHome = window.nxgs.onShellHome((event) => {
       setConfirmGame(null);
       setPinOpen(false);
       setView('home');
+      if (event.openActiveGamePanel) {
+        setHomeOverlayRequestId((value) => value + 1);
+      }
+      if (event.emergencyClose) {
+        setEmergencyCloseRequestId((value) => value + 1);
+      }
     });
 
     return () => {
@@ -266,12 +275,37 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     let lastInput = 0;
+    let lastHomeInput = 0;
+    let lastControllerKey = '';
     const interval = window.setInterval(() => {
       const pad = navigator.getGamepads?.()[0];
+      const controllerKey = pad ? `${pad.id}:${pad.mapping}:${pad.buttons.length}` : 'none';
+      if (controllerKey !== lastControllerKey) {
+        lastControllerKey = controllerKey;
+        void window.nxgs.reportControllerState({
+          detected: Boolean(pad),
+          homeSupported: pad && pad.buttons.length > 16 ? 'unknown' : 'no',
+          name: pad?.id
+        });
+      }
       if (!pad || Date.now() - lastInput < 180) {
         return;
       }
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
+      const guidePressed = pressed(16) || pressed(17);
+      const optionsSharePressed = pressed(8) && pressed(9);
+      const shoulderOptionsPressed = pressed(4) && pressed(5) && pressed(9);
+      if ((guidePressed || optionsSharePressed || shoulderOptionsPressed) && Date.now() - lastHomeInput > 900) {
+        lastInput = Date.now();
+        lastHomeInput = Date.now();
+        void window.nxgs.reportControllerState({
+          detected: true,
+          homeSupported: guidePressed ? 'yes' : 'unknown',
+          name: pad.id
+        });
+        void window.nxgs.requestShellHome(guidePressed ? 'controller-home' : 'controller-combo');
+        return;
+      }
       if (pressed(15) || pad.axes[0] > 0.65 || pad.axes[1] > 0.65) {
         lastInput = Date.now();
         moveSelection(1);
@@ -319,6 +353,8 @@ export function App(): JSX.Element {
           selectedGame={selectedGame}
           session={session}
           activeGame={activeGame}
+          homeOverlayRequestId={homeOverlayRequestId}
+          emergencyCloseRequestId={emergencyCloseRequestId}
           onOpenAdmin={() => setPinOpen(true)}
           onSelectGame={setConfirmGame}
         />
@@ -379,6 +415,8 @@ function HomeScreen(props: {
   selectedGame: GameRecord | null;
   session: SessionState;
   activeGame: ActiveGameState;
+  homeOverlayRequestId: number;
+  emergencyCloseRequestId: number;
   onOpenAdmin: () => void;
   onSelectGame: (game: GameRecord) => void;
 }): JSX.Element {
@@ -450,14 +488,25 @@ function HomeScreen(props: {
           </div>
         </>
       )}
-      <ActiveGameDock activeGame={props.activeGame} />
+      <ActiveGameDock
+        activeGame={props.activeGame}
+        openRequestId={props.homeOverlayRequestId}
+        emergencyCloseRequestId={props.emergencyCloseRequestId}
+      />
     </section>
   );
 }
 
-function ActiveGameDock(props: { activeGame: ActiveGameState }): JSX.Element | null {
+function ActiveGameDock(props: {
+  activeGame: ActiveGameState;
+  openRequestId: number;
+  emergencyCloseRequestId: number;
+}): JSX.Element | null {
   const [open, setOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [forceCloseOpen, setForceCloseOpen] = useState(false);
+  const [forcePin, setForcePin] = useState('');
+  const [pendingForce, setPendingForce] = useState(false);
   const [pendingAction, setPendingAction] = useState<'resume' | 'minimize' | 'close' | null>(null);
   const [message, setMessage] = useState('');
   const game = props.activeGame.game;
@@ -466,14 +515,36 @@ function ActiveGameDock(props: { activeGame: ActiveGameState }): JSX.Element | n
     if (!game) {
       setOpen(false);
       setConfirmClose(false);
+      setForceCloseOpen(false);
+      setForcePin('');
       setPendingAction(null);
       setMessage('');
     }
   }, [game]);
 
+  useEffect(() => {
+    if (game && props.openRequestId > 0) {
+      setOpen(true);
+    }
+  }, [game, props.openRequestId]);
+
+  useEffect(() => {
+    if (game && props.emergencyCloseRequestId > 0) {
+      setOpen(true);
+      setConfirmClose(true);
+    }
+  }, [game, props.emergencyCloseRequestId]);
+
   if (!game || props.activeGame.status === 'idle') {
     return null;
   }
+
+  const statusLabel =
+    props.activeGame.status === 'launching'
+      ? 'Launching'
+      : props.activeGame.windowState === 'minimized'
+        ? 'Minimized'
+        : 'Running';
 
   const runControl = async (
     action: 'resume' | 'minimize' | 'close',
@@ -487,7 +558,8 @@ function ActiveGameDock(props: { activeGame: ActiveGameState }): JSX.Element | n
         setMessage(result.error ?? 'Game control failed.');
       } else if (action === 'close') {
         setConfirmClose(false);
-        setOpen(false);
+        setForceCloseOpen(true);
+        setMessage('Close requested. If the game stays open, use admin Force Close.');
       }
     } finally {
       setPendingAction(null);
@@ -505,7 +577,10 @@ function ActiveGameDock(props: { activeGame: ActiveGameState }): JSX.Element | n
         <div className="active-game-thumb">
           {game.coverImagePath ? <img src={coverUrl(game.coverImagePath)} alt="" /> : <Gamepad2 size={24} />}
         </div>
-        <span>{props.activeGame.status === 'launching' ? 'Launching' : 'Running'}</span>
+        <div className="active-game-tile-meta">
+          <strong>{game.title}</strong>
+          <span>{statusLabel}</span>
+        </div>
       </button>
       {open && (
         <div className="active-game-panel">
@@ -517,7 +592,7 @@ function ActiveGameDock(props: { activeGame: ActiveGameState }): JSX.Element | n
           {message && <p className="error-text">{message}</p>}
           {confirmClose ? (
             <div className="active-game-actions">
-              <span>Close this game?</span>
+              <span>Close {game.title}?</span>
               <button className="secondary-action" type="button" disabled={pendingAction !== null} onClick={() => setConfirmClose(false)}>
                 Cancel
               </button>
@@ -554,6 +629,34 @@ function ActiveGameDock(props: { activeGame: ActiveGameState }): JSX.Element | n
               </button>
             </div>
           )}
+          {forceCloseOpen && (
+            <div className="force-close-box">
+              <label>
+                <span>Admin PIN for Force Close</span>
+                <input type="password" value={forcePin} onChange={(event) => setForcePin(event.target.value)} />
+              </label>
+              <button
+                className="danger-action"
+                type="button"
+                disabled={pendingForce}
+                onClick={async () => {
+                  setPendingForce(true);
+                  setMessage('');
+                  try {
+                    const result = await window.nxgs.forceCloseGame(forcePin);
+                    if (!result.ok) {
+                      setMessage('Invalid admin PIN.');
+                    }
+                  } finally {
+                    setPendingForce(false);
+                  }
+                }}
+              >
+                <Power size={18} />
+                {pendingForce ? 'Force closing...' : 'Force Close'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -568,6 +671,10 @@ function GameTransitionOverlay(props: { activeGame: ActiveGameState }): JSX.Elem
         <p className="eyebrow">{props.activeGame.status === 'closing' ? 'Closing game' : 'Launching game'}</p>
         <h2>{props.activeGame.game?.title ?? 'Game'}</h2>
         <span>{props.activeGame.message ?? 'Preparing the game window...'}</span>
+        <div className="launch-help">
+          <span>Press Ctrl + Shift + H or F10 to return to NXGS.</span>
+          <span>Press controller Home or Options + Share to open NXGS when supported by Windows.</span>
+        </div>
       </div>
     </div>
   );
@@ -1209,10 +1316,29 @@ function KioskSettingsPanel(props: {
   onSettingsChanged: (settings: AppSettings) => void;
 }): JSX.Element {
   const [settings, setSettings] = useState(props.settings);
+  const [diagnostics, setDiagnostics] = useState<AppDiagnostics>(props.initialData.diagnostics);
   const [exitPin, setExitPin] = useState('');
   const [pending, setPending] = useState(false);
+  const [pendingDiagnostics, setPendingDiagnostics] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [message, setMessage] = useState('');
+
+  const refreshDiagnostics = async (): Promise<void> => {
+    setPendingDiagnostics(true);
+    try {
+      setDiagnostics(await window.nxgs.getDiagnostics());
+    } finally {
+      setPendingDiagnostics(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshDiagnostics();
+    const interval = window.setInterval(() => {
+      void window.nxgs.getDiagnostics().then(setDiagnostics);
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   return (
     <section className="panel narrow-panel">
@@ -1286,6 +1412,36 @@ function KioskSettingsPanel(props: {
         <span>{props.initialData.logsPath}</span>
       </div>
 
+      <div className="diagnostics-block">
+        <div className="diagnostics-header">
+          <strong>Diagnostics</strong>
+          <button className="secondary-action" type="button" disabled={pendingDiagnostics} onClick={refreshDiagnostics}>
+            <RefreshCw size={16} />
+            {pendingDiagnostics ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+        <div className="diagnostics-grid">
+          <DiagnosticItem label="Ctrl + Shift + H" value={diagnostics.shortcuts.homeRegistered ? 'yes' : 'no'} />
+          <DiagnosticItem label="F10" value={diagnostics.shortcuts.f10Registered ? 'yes' : 'no'} />
+          <DiagnosticItem label="Ctrl + Shift + X" value={diagnostics.shortcuts.emergencyCloseRegistered ? 'yes' : 'no'} />
+          <DiagnosticItem label="Controller detected" value={diagnostics.controller.detected ? 'yes' : 'no'} />
+          <DiagnosticItem label="Controller Home" value={diagnostics.controller.homeSupported} />
+          <DiagnosticItem label="Current game" value={diagnostics.activeGame.title ?? 'none'} />
+          <DiagnosticItem label="Game process ID" value={diagnostics.activeGame.processId?.toString() ?? 'none'} />
+          <DiagnosticItem label="Game window handle" value={diagnostics.activeGame.windowHandle?.toString() ?? 'none'} />
+        </div>
+        <p className="field-note">
+          PS button detection depends on Windows/controller driver. Use Ctrl+Shift+H or F10 as reliable fallback.
+        </p>
+        {diagnostics.shortcuts.failures.length > 0 && (
+          <div className="diagnostics-warning">
+            {diagnostics.shortcuts.failures.map((failure) => (
+              <span key={failure}>{failure}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="danger-zone">
         <label>
           <span>PIN to exit application</span>
@@ -1309,6 +1465,15 @@ function KioskSettingsPanel(props: {
         </button>
       </div>
     </section>
+  );
+}
+
+function DiagnosticItem(props: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="diagnostic-item">
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </div>
   );
 }
 

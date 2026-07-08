@@ -342,16 +342,19 @@ button {
 
 .active-game-tile {
   display: grid;
-  width: 86px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  width: min(320px, calc(100vw - 104px));
   min-height: 86px;
-  place-items: center;
-  gap: 5px;
+  align-items: center;
+  gap: 12px;
   border: 2px solid rgba(115, 222, 200, 0.46);
   border-radius: 8px;
   background: rgba(8, 14, 18, 0.9);
   color: #dffdf7;
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
   cursor: pointer;
+  padding: 12px;
+  text-align: left;
 }
 
 .active-game-tile.selected,
@@ -378,7 +381,22 @@ button {
   object-fit: cover;
 }
 
-.active-game-tile span {
+.active-game-tile-meta {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.active-game-tile-meta strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-game-tile-meta span {
+  color: #73dec8;
   font-size: 12px;
   font-weight: 850;
 }
@@ -421,6 +439,23 @@ button {
   font-weight: 850;
 }
 
+.force-close-box {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) max-content;
+  align-items: end;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 14px;
+}
+
+.force-close-box label {
+  display: grid;
+  gap: 7px;
+  color: #d7deea;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .game-transition-overlay {
   position: fixed;
   inset: 0;
@@ -445,6 +480,20 @@ button {
   margin-top: 12px;
   color: #aab4c3;
   font-size: 18px;
+}
+
+.launch-help {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+  color: #d7fff6;
+  font-weight: 750;
+}
+
+.launch-help span {
+  margin: 0;
+  color: inherit;
+  font-size: 15px;
 }
 
 .empty-library {
@@ -707,7 +756,8 @@ select:focus {
   color: #ff8f8f;
 }
 
-.storage-block {
+.storage-block,
+.diagnostics-block {
   display: grid;
   gap: 7px;
   margin-top: 22px;
@@ -717,6 +767,56 @@ select:focus {
   color: #b8c0cc;
   font-size: 12px;
   word-break: break-all;
+}
+
+.diagnostics-block {
+  gap: 14px;
+}
+
+.diagnostics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diagnostics-header .secondary-action {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.diagnostic-item {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 10px;
+  word-break: break-word;
+}
+
+.diagnostic-item span {
+  color: #aab4c3;
+  font-size: 12px;
+}
+
+.diagnostic-item strong {
+  color: #fff;
+  font-size: 13px;
+}
+
+.diagnostics-warning {
+  display: grid;
+  gap: 6px;
+  color: #ffd166;
+  font-size: 12px;
 }
 
 .version-block,

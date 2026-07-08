@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppSettings,
   ActiveGameState,
+  AppDiagnostics,
+  ControllerStateReport,
   FilePickerResult,
   GameControlResult,
   GameInput,
@@ -9,6 +11,8 @@ import type {
   LaunchRequest,
   LaunchResult,
   SessionState,
+  ShellHomeEvent,
+  ShellHomeReason,
   UpdateCheckResult,
   UpdateDownloadProgress,
   UpdateDownloadRequest,
@@ -19,6 +23,10 @@ import type {
 
 const api = {
   getInitialData: (): Promise<InitialData> => ipcRenderer.invoke('app:getInitialData'),
+  getDiagnostics: (): Promise<AppDiagnostics> => ipcRenderer.invoke('app:getDiagnostics'),
+  reportControllerState: (report: ControllerStateReport): Promise<AppDiagnostics> =>
+    ipcRenderer.invoke('input:controllerState', report),
+  requestShellHome: (reason: ShellHomeReason): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:homeRequest', reason),
   verifyPin: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('auth:verifyPin', pin),
   saveGame: (game: GameInput) => ipcRenderer.invoke('games:save', game),
   deleteGame: (id: string) => ipcRenderer.invoke('games:delete', id),
@@ -60,8 +68,8 @@ const api = {
       ipcRenderer.removeListener('activeGame:state', listener);
     };
   },
-  onShellHome: (callback: () => void) => {
-    const listener = () => callback();
+  onShellHome: (callback: (event: ShellHomeEvent) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, event: ShellHomeEvent) => callback(event);
     ipcRenderer.on('shell:home', listener);
     return () => {
       ipcRenderer.removeListener('shell:home', listener);

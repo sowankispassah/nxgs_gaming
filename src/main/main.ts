@@ -9,11 +9,15 @@ import { SessionTimer } from './sessionTimer';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
 import { setWindowsTaskbarVisible } from './windowManagerService';
 import type {
+  AppDiagnostics,
   AppSettings,
+  ControllerStateReport,
   FilePickerResult,
   GameControlResult,
   GameInput,
   LaunchRequest,
+  ShellHomeEvent,
+  ShellHomeReason,
   SessionState,
   UpdateDownloadRequest,
   UpdateInstallRequest
@@ -21,6 +25,16 @@ import type {
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
+let controllerDiagnostics: AppDiagnostics['controller'] = {
+  detected: false,
+  homeSupported: 'unknown'
+};
+const shortcutDiagnostics: AppDiagnostics['shortcuts'] = {
+  homeRegistered: false,
+  f10Registered: false,
+  emergencyCloseRegistered: false,
+  failures: []
+};
 
 const store = new DataStore();
 
@@ -89,9 +103,59 @@ function broadcastActiveGame(): void {
   sendToRenderer('activeGame:state', launcher.activeState);
 }
 
-function returnToShellHome(): void {
-  void launcher.returnToHome().then(() => applyKioskSettings(store.getSettings()));
-  sendToRenderer('shell:home');
+function buildDiagnostics(): AppDiagnostics {
+  return {
+    shortcuts: {
+      ...shortcutDiagnostics,
+      failures: [...shortcutDiagnostics.failures]
+    },
+    controller: controllerDiagnostics,
+    activeGame: launcher.diagnosticState
+  };
+}
+
+function sendShellHome(event: ShellHomeEvent): void {
+  sendToRenderer('shell:home', event);
+}
+
+function returnToShellHome(reason: ShellHomeReason = 'system'): void {
+  void logLine('info', `Shell home requested by ${reason}.`);
+  void launcher.returnToHome().then(() => {
+    applyKioskSettings(store.getSettings());
+    sendShellHome({
+      reason,
+      openActiveGamePanel: Boolean(launcher.active),
+      emergencyClose: reason === 'emergency-close'
+    });
+  });
+}
+
+function requestEmergencyCloseOverlay(): void {
+  void logLine('warn', 'Emergency close shortcut requested for the active game.');
+  returnToShellHome('emergency-close');
+}
+
+function registerShortcut(
+  accelerator: string,
+  label: keyof Pick<AppDiagnostics['shortcuts'], 'homeRegistered' | 'f10Registered' | 'emergencyCloseRegistered'>,
+  handler: () => void
+): void {
+  const registered = globalShortcut.register(accelerator, handler);
+  shortcutDiagnostics[label] = registered;
+  const message = `${accelerator} global shortcut ${registered ? 'registered' : 'failed to register'}.`;
+  if (registered) {
+    void logLine('info', message);
+    return;
+  }
+  shortcutDiagnostics.failures.push(message);
+  void logLine('warn', message);
+}
+
+function registerGlobalShortcuts(): void {
+  shortcutDiagnostics.failures = [];
+  registerShortcut('CommandOrControl+Shift+H', 'homeRegistered', () => returnToShellHome('global-home'));
+  registerShortcut('F10', 'f10Registered', () => returnToShellHome('global-f10'));
+  registerShortcut('CommandOrControl+Shift+X', 'emergencyCloseRegistered', requestEmergencyCloseOverlay);
 }
 
 const sessionTimer = new SessionTimer({
@@ -199,8 +263,24 @@ function registerIpc(): void {
     dataPath: store.path,
     logsPath: getLogPath(),
     isPackaged: app.isPackaged,
-    activeGame: launcher.activeState
+    activeGame: launcher.activeState,
+    diagnostics: buildDiagnostics()
   }));
+
+  ipcMain.handle('app:getDiagnostics', () => buildDiagnostics());
+
+  ipcMain.handle('input:controllerState', (_event, report: ControllerStateReport) => {
+    controllerDiagnostics = {
+      ...report,
+      lastInputAt: new Date().toISOString()
+    };
+    return buildDiagnostics();
+  });
+
+  ipcMain.handle('shell:homeRequest', (_event, reason: ShellHomeReason = 'renderer-request') => {
+    returnToShellHome(reason);
+    return { ok: true };
+  });
 
   ipcMain.handle('auth:verifyPin', (_event, pin: string) => ({ ok: store.verifyPin(pin) }));
 
@@ -346,8 +426,7 @@ app.whenReady().then(async () => {
   await store.init();
   registerIpc();
   await createWindow();
-  globalShortcut.register('CommandOrControl+Shift+H', returnToShellHome);
-  globalShortcut.register('F10', returnToShellHome);
+  registerGlobalShortcuts();
   await logLine('info', 'NXGS Play started.');
 });
 

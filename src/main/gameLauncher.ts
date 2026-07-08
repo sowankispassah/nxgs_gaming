@@ -2,7 +2,7 @@ import { BrowserWindow, shell } from 'electron';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { ActiveGameState, GameControlResult, GameLaunchMode, GameRecord } from '../shared/types';
+import type { ActiveGameState, AppDiagnostics, GameControlResult, GameLaunchMode, GameRecord } from '../shared/types';
 import { logLine } from './logger';
 import { closeProcessByName, closeProcessByPid, isProcessRunning, isProcessRunningByPid } from './windowsProcess';
 import {
@@ -64,6 +64,16 @@ export class GameLauncher {
     return this.state;
   }
 
+  get diagnosticState(): AppDiagnostics['activeGame'] {
+    return {
+      title: this.activeGame?.title,
+      processId: this.activeProcessId ?? undefined,
+      windowHandle: this.activeWindow?.handle,
+      windowDetected: Boolean(this.activeWindow),
+      status: this.state.status
+    };
+  }
+
   async launch(game: GameRecord): Promise<void> {
     if (process.platform !== 'win32') {
       throw new Error('NXGS Play game launching is only supported on Windows.');
@@ -86,7 +96,8 @@ export class GameLauncher {
       status: 'launching',
       game,
       message: `Preparing ${game.title} for full-screen launch...`,
-      windowDetected: false
+      windowDetected: false,
+      windowState: 'unknown'
     });
     await this.suppressWindowsTaskbar();
     this.showLaunchShield();
@@ -199,7 +210,8 @@ export class GameLauncher {
         status: 'running',
         game,
         message: `${game.title} is running.`,
-        windowDetected: true
+        windowDetected: true,
+        windowState: 'foreground'
       });
       return { ok: true };
     } catch (error) {
@@ -228,7 +240,8 @@ export class GameLauncher {
         status: 'running',
         game,
         message: `${game.title} is minimized.`,
-        windowDetected: true
+        windowDetected: true,
+        windowState: 'minimized'
       });
       return { ok: true };
     } catch (error) {
@@ -260,7 +273,8 @@ export class GameLauncher {
         status: 'running',
         game,
         message: `${game.title} is running in the background.`,
-        windowDetected: Boolean(this.activeWindow)
+        windowDetected: Boolean(this.activeWindow),
+        windowState: this.activeWindow ? 'minimized' : 'unknown'
       });
     }
     return { ok: true };
@@ -311,7 +325,8 @@ export class GameLauncher {
         status: 'running',
         game,
         message: `${game.title} launched. Game window detection is still best-effort.`,
-        windowDetected: false
+        windowDetected: false,
+        windowState: 'unknown'
       });
       return;
     }
@@ -332,7 +347,8 @@ export class GameLauncher {
       status: 'launching',
       game,
       message: `Preparing ${game.title} borderless full-screen view...`,
-      windowDetected: true
+      windowDetected: true,
+      windowState: 'unknown'
     });
 
     try {
@@ -356,7 +372,8 @@ export class GameLauncher {
       status: 'running',
       game,
       message: `${game.title} is running.`,
-      windowDetected: true
+      windowDetected: true,
+      windowState: 'foreground'
     });
   }
 
@@ -466,7 +483,8 @@ export class GameLauncher {
           status: 'running',
           game,
           message,
-          windowDetected: false
+          windowDetected: false,
+          windowState: 'unknown'
         });
         return { ok: false, error: message };
       }
@@ -482,7 +500,8 @@ export class GameLauncher {
         status: 'running',
         game,
         message: `${game.title} was activated through Windows shell.`,
-        windowDetected: true
+        windowDetected: true,
+        windowState: 'foreground'
       });
       return { ok: true };
     } catch (fallbackError) {
@@ -626,7 +645,8 @@ export class GameLauncher {
       status: 'running',
       game,
       message: `${game.title} did not close yet. Admin force close is available from settings if needed.`,
-      windowDetected: Boolean(window)
+      windowDetected: Boolean(window),
+      windowState: window ? 'background' : 'unknown'
     });
   }
 

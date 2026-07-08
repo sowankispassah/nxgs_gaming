@@ -74,6 +74,7 @@ export interface InitialData {
   logsPath: string;
   isPackaged: boolean;
   activeGame: ActiveGameState;
+  diagnostics: AppDiagnostics;
 }
 
 export interface SessionState {
@@ -103,12 +104,60 @@ export interface GameControlResult {
 
 export type ActiveGameStatus = 'idle' | 'launching' | 'running' | 'returning' | 'closing' | 'error';
 
+export type ActiveGameWindowState = 'foreground' | 'minimized' | 'background' | 'unknown';
+
 export interface ActiveGameState {
   status: ActiveGameStatus;
   game?: GameRecord;
   message?: string;
   windowDetected?: boolean;
+  windowState?: ActiveGameWindowState;
   updatedAt: string;
+}
+
+export type ControllerHomeSupport = 'yes' | 'no' | 'unknown';
+
+export interface AppDiagnostics {
+  shortcuts: {
+    homeRegistered: boolean;
+    f10Registered: boolean;
+    emergencyCloseRegistered: boolean;
+    failures: string[];
+  };
+  controller: {
+    detected: boolean;
+    homeSupported: ControllerHomeSupport;
+    name?: string;
+    lastInputAt?: string;
+  };
+  activeGame: {
+    title?: string;
+    processId?: number;
+    windowHandle?: number;
+    windowDetected: boolean;
+    status: ActiveGameStatus;
+  };
+}
+
+export interface ControllerStateReport {
+  detected: boolean;
+  homeSupported: ControllerHomeSupport;
+  name?: string;
+}
+
+export type ShellHomeReason =
+  | 'global-home'
+  | 'global-f10'
+  | 'controller-home'
+  | 'controller-combo'
+  | 'emergency-close'
+  | 'renderer-request'
+  | 'system';
+
+export interface ShellHomeEvent {
+  reason: ShellHomeReason;
+  openActiveGamePanel: boolean;
+  emergencyClose: boolean;
 }
 
 export interface VerifyPinResult {

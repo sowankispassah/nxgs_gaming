@@ -13,6 +13,18 @@ Default admin shortcut: `Ctrl+Shift+A`
 
 Default admin PIN: `1234`
 
+## Home Overlay Controls
+
+Global shortcuts are registered from the Electron main process so they can work while a game window is focused:
+
+- `Ctrl+Shift+H`: return to the NXGS home overlay.
+- `F10`: return to the NXGS home overlay.
+- `Ctrl+Shift+X`: emergency close flow. NXGS comes forward and asks for confirmation before closing the active game.
+
+When a game is active, the home overlay shows an active game tile with Resume, Minimize, and Close controls. Controller Home/Guide support is best effort because Windows, Steam Input, DS4Windows, and controller drivers may hide the PS button from normal apps. NXGS also watches for `Options + Share` and `L1 + R1 + Options` when the controller is visible through the browser Gamepad API. Use `Ctrl+Shift+H` or `F10` as the reliable fallback.
+
+Admin diagnostics in **Settings > Kiosk** show whether the global shortcuts registered, whether a controller is detected, and the current game process/window identifiers.
+
 ## Build Windows App
 
 ```powershell

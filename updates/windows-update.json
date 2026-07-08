@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.16",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.16/NXGS-Play-Setup.exe",
-    "sha256":  "2fdc6d50f5437e8d5fb85d009996c1c54f16831c7f86119afd64e1eeeb95e2a8",
+    "version":  "0.5.17",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.17/NXGS-Play-Setup.exe",
+    "sha256":  "89aa8ffe8edd1a1984c7ba296a1b87b7294f0015c8789a93599c9c9d73d0f4fe",
     "required":  false,
-    "notes":  "NXGS Play 0.5.16 hides the Windows taskbar during foreground game sessions and returns home when a game window is closed."
+    "notes":  "NXGS Play 0.5.17 adds main-process Home shortcuts, emergency close confirmation, active game overlay controls, and kiosk diagnostics."
 }
