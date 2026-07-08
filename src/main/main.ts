@@ -1,20 +1,23 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { DataStore } from './database';
 import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
+import { KioskInputService } from './kioskInputService';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
 import { setWindowsTaskbarVisible } from './windowManagerService';
 import type {
+  AdminUnlockRequest,
   AppDiagnostics,
   AppSettings,
   ControllerStateReport,
   FilePickerResult,
   GameControlResult,
   GameInput,
+  KioskMode,
   LaunchRequest,
   ShellHomeEvent,
   ShellHomeReason,
@@ -25,15 +28,10 @@ import type {
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
+let taskbarHiddenByKiosk = false;
 let controllerDiagnostics: AppDiagnostics['controller'] = {
   detected: false,
   homeSupported: 'unknown'
-};
-const shortcutDiagnostics: AppDiagnostics['shortcuts'] = {
-  homeRegistered: false,
-  f10Registered: false,
-  emergencyCloseRegistered: false,
-  failures: []
 };
 
 const store = new DataStore();
@@ -104,13 +102,17 @@ function broadcastActiveGame(): void {
 }
 
 function buildDiagnostics(): AppDiagnostics {
+  const inputDiagnostics = kioskInput.diagnostics;
+  const window = getLiveMainWindow();
   return {
-    shortcuts: {
-      ...shortcutDiagnostics,
-      failures: [...shortcutDiagnostics.failures]
-    },
+    shortcuts: inputDiagnostics.shortcuts,
     controller: controllerDiagnostics,
-    activeGame: launcher.diagnosticState
+    activeGame: launcher.diagnosticState,
+    kiosk: {
+      ...inputDiagnostics.kiosk,
+      taskbarHidden: taskbarHiddenByKiosk || launcher.taskbarHidden,
+      alwaysOnTop: Boolean(window?.isAlwaysOnTop())
+    }
   };
 }
 
@@ -135,27 +137,11 @@ function requestEmergencyCloseOverlay(): void {
   returnToShellHome('emergency-close');
 }
 
-function registerShortcut(
-  accelerator: string,
-  label: keyof Pick<AppDiagnostics['shortcuts'], 'homeRegistered' | 'f10Registered' | 'emergencyCloseRegistered'>,
-  handler: () => void
-): void {
-  const registered = globalShortcut.register(accelerator, handler);
-  shortcutDiagnostics[label] = registered;
-  const message = `${accelerator} global shortcut ${registered ? 'registered' : 'failed to register'}.`;
-  if (registered) {
-    void logLine('info', message);
-    return;
-  }
-  shortcutDiagnostics.failures.push(message);
-  void logLine('warn', message);
-}
-
-function registerGlobalShortcuts(): void {
-  shortcutDiagnostics.failures = [];
-  registerShortcut('CommandOrControl+Shift+H', 'homeRegistered', () => returnToShellHome('global-home'));
-  registerShortcut('F10', 'f10Registered', () => returnToShellHome('global-f10'));
-  registerShortcut('CommandOrControl+Shift+X', 'emergencyCloseRegistered', requestEmergencyCloseOverlay);
+function requestAdminUnlock(request: AdminUnlockRequest): void {
+  void launcher.returnToHome().then(() => {
+    applyKioskSettings(store.getSettings());
+    sendToRenderer('kiosk:adminUnlockRequested', request);
+  });
 }
 
 const sessionTimer = new SessionTimer({
@@ -185,12 +171,45 @@ const launcher = new GameLauncher(
   }
 );
 
+const kioskInput = new KioskInputService({
+  onHome: returnToShellHome,
+  onAdminUnlockRequest: requestAdminUnlock,
+  onEmergencyClose: requestEmergencyCloseOverlay
+});
+
+function setKioskMode(mode: KioskMode): void {
+  kioskInput.setMode(mode);
+  applyKioskSettings(store.getSettings());
+}
+
+function setKioskTaskbarHidden(hidden: boolean, reason: string): void {
+  taskbarHiddenByKiosk = hidden;
+  void setWindowsTaskbarVisible(!hidden).catch((error) => {
+    void logLine('warn', `Could not ${hidden ? 'hide' : 'restore'} Windows taskbar for ${reason}: ${String(error)}`);
+  });
+}
+
 function applyKioskSettings(settings: AppSettings): void {
   const window = getLiveMainWindow();
   if (!window) {
     return;
   }
-  const shouldStayOnTop = settings.kiosk.alwaysOnTop || Boolean(launcher.active);
+
+  if (kioskInput.currentMode === 'admin') {
+    launcher.restoreTaskbarForAdmin();
+    setKioskTaskbarHidden(false, 'admin mode');
+    window.setSkipTaskbar(false);
+    window.setAlwaysOnTop(false);
+    window.setFullScreen(false);
+    window.maximize();
+    window.show();
+    window.focus();
+    return;
+  }
+
+  setKioskTaskbarHidden(true, 'customer mode');
+  const shouldStayOnTop = settings.kiosk.alwaysOnTop || launcher.activeState.status === 'homeOverlayOpen';
+  window.setSkipTaskbar(true);
   window.setAlwaysOnTop(shouldStayOnTop, shouldStayOnTop ? 'screen-saver' : undefined);
   window.setFullScreen(true);
 }
@@ -199,7 +218,7 @@ function prepareForQuit(): void {
   isQuitting = true;
   sessionTimer.stop('idle', false);
   void setWindowsTaskbarVisible(true);
-  globalShortcut.unregisterAll();
+  kioskInput.unregisterAll();
 }
 
 async function createWindow(): Promise<void> {
@@ -235,7 +254,7 @@ async function createWindow(): Promise<void> {
 
   mainWindow.on('blur', () => {
     const settings = store.getSettings();
-    if (settings.kiosk.refocusOnBlur && !launcher.active) {
+    if (kioskInput.currentMode === 'customer' && settings.kiosk.refocusOnBlur && !launcher.active) {
       setTimeout(() => {
         const window = getLiveMainWindow();
         window?.show();
@@ -244,6 +263,7 @@ async function createWindow(): Promise<void> {
     }
   });
 
+  kioskInput.attachWindow(mainWindow);
   applyKioskSettings(store.getSettings());
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -268,6 +288,16 @@ function registerIpc(): void {
   }));
 
   ipcMain.handle('app:getDiagnostics', () => buildDiagnostics());
+
+  ipcMain.handle('kiosk:setMode', (_event, mode: KioskMode) => {
+    setKioskMode(mode);
+    return buildDiagnostics();
+  });
+
+  ipcMain.handle('kiosk:setAdminPinActive', (_event, active: boolean) => {
+    kioskInput.setAdminPinActive(active);
+    return { ok: true };
+  });
 
   ipcMain.handle('input:controllerState', (_event, report: ControllerStateReport) => {
     controllerDiagnostics = {
@@ -371,6 +401,7 @@ function registerIpc(): void {
       await logLine('error', `Launch request failed: ${message}`);
       sessionTimer.setError(message);
       launcher.focusLauncher();
+      applyKioskSettings(store.getSettings());
       return { ok: false, error: message };
     }
   });
@@ -404,12 +435,14 @@ function registerIpc(): void {
     await launcher.clearActive();
     sessionTimer.stop('idle');
     launcher.focusLauncher();
+    applyKioskSettings(store.getSettings());
     return { ok: true };
   });
 
   ipcMain.handle('session:clearExpired', async () => {
     await launcher.clearActive();
     sessionTimer.stop('idle');
+    applyKioskSettings(store.getSettings());
   });
 
   ipcMain.handle('app:exit', (_event, pin: string) => {
@@ -426,7 +459,7 @@ app.whenReady().then(async () => {
   await store.init();
   registerIpc();
   await createWindow();
-  registerGlobalShortcuts();
+  kioskInput.register();
   await logLine('info', 'NXGS Play started.');
 });
 

@@ -15,15 +15,20 @@ Default admin PIN: `1234`
 
 ## Home Overlay Controls
 
-Global shortcuts are registered from the Electron main process so they can work while a game window is focused:
+NXGS Play uses a layered kiosk input path from the Electron main process:
 
 - `Ctrl+Shift+H`: return to the NXGS home overlay.
 - `F10`: return to the NXGS home overlay.
 - `Ctrl+Shift+X`: emergency close flow. NXGS comes forward and asks for confirmation before closing the active game.
+- `Ctrl+Shift+A`: request the admin PIN screen.
 
-When a game is active, the home overlay shows an active game tile with Resume, Minimize, and Close controls. Controller Home/Guide support is best effort because Windows, Steam Input, DS4Windows, and controller drivers may hide the PS button from normal apps. NXGS also watches for `Options + Share` and `L1 + R1 + Options` when the controller is visible through the browser Gamepad API. Use `Ctrl+Shift+H` or `F10` as the reliable fallback.
+When a game is active, the home overlay shows an active game tile with Resume, Minimize, and Close controls. Home is idempotent, so repeated Home presses bring NXGS forward without minimizing the game or duplicating overlays. Resume hides the NXGS BrowserWindow after the game is foreground again so the bottom dock does not remain over the game.
 
-Admin diagnostics in **Settings > Kiosk** show whether the global shortcuts registered, whether a controller is detected, and the current game process/window identifiers.
+Customer mode is controller-first. Controller Home/Guide support is best effort because Windows, Steam Input, DS4Windows, and controller drivers may hide the PS button from normal apps. NXGS also watches for `Options + Share` and `L1 + R1 + Options` when the controller is visible through the browser Gamepad API. `Ctrl+Shift+H` and `F10` remain test fallbacks.
+
+Restricted keyboard/pointer input in customer mode brings NXGS forward and shows the admin PIN screen. Correct PIN switches to admin mode, restores the taskbar, disables always-on-top, and allows normal PC controls. Returning from admin mode switches back to full-screen customer kiosk mode and hides the taskbar again.
+
+Admin diagnostics in **Settings > Kiosk** show customer/admin mode, active game state, game process/window identifiers, shortcut registration, controller state, taskbar hidden state, always-on-top state, last Home trigger, and last restricted input.
 
 ## Build Windows App
 

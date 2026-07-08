@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  AdminUnlockRequest,
   AppSettings,
   ActiveGameState,
   AppDiagnostics,
@@ -8,6 +9,7 @@ import type {
   GameControlResult,
   GameInput,
   InitialData,
+  KioskMode,
   LaunchRequest,
   LaunchResult,
   SessionState,
@@ -24,6 +26,8 @@ import type {
 const api = {
   getInitialData: (): Promise<InitialData> => ipcRenderer.invoke('app:getInitialData'),
   getDiagnostics: (): Promise<AppDiagnostics> => ipcRenderer.invoke('app:getDiagnostics'),
+  setKioskMode: (mode: KioskMode): Promise<AppDiagnostics> => ipcRenderer.invoke('kiosk:setMode', mode),
+  setAdminPinActive: (active: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('kiosk:setAdminPinActive', active),
   reportControllerState: (report: ControllerStateReport): Promise<AppDiagnostics> =>
     ipcRenderer.invoke('input:controllerState', report),
   requestShellHome: (reason: ShellHomeReason): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:homeRequest', reason),
@@ -73,6 +77,13 @@ const api = {
     ipcRenderer.on('shell:home', listener);
     return () => {
       ipcRenderer.removeListener('shell:home', listener);
+    };
+  },
+  onAdminUnlockRequested: (callback: (request: AdminUnlockRequest) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: AdminUnlockRequest) => callback(request);
+    ipcRenderer.on('kiosk:adminUnlockRequested', listener);
+    return () => {
+      ipcRenderer.removeListener('kiosk:adminUnlockRequested', listener);
     };
   }
 };

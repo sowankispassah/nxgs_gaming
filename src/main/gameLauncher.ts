@@ -46,6 +46,7 @@ export class GameLauncher {
   private activeProcessId: number | null = null;
   private gameInForeground = false;
   private taskbarSuppressed = false;
+  private operationInFlight: 'launch' | 'home' | 'resume' | 'minimize' | 'close' | null = null;
   private state: ActiveGameState = {
     status: 'idle',
     updatedAt: new Date().toISOString()
@@ -64,13 +65,18 @@ export class GameLauncher {
     return this.state;
   }
 
+  get taskbarHidden(): boolean {
+    return this.taskbarSuppressed;
+  }
+
   get diagnosticState(): AppDiagnostics['activeGame'] {
     return {
       title: this.activeGame?.title,
       processId: this.activeProcessId ?? undefined,
       windowHandle: this.activeWindow?.handle,
       windowDetected: Boolean(this.activeWindow),
-      status: this.state.status
+      status: this.state.status,
+      windowState: this.state.windowState
     };
   }
 
@@ -78,33 +84,38 @@ export class GameLauncher {
     if (process.platform !== 'win32') {
       throw new Error('NXGS Play game launching is only supported on Windows.');
     }
-    if (!game.enabled) {
-      throw new Error(`${game.title} is disabled.`);
-    }
-    if (!game.launchCommand.trim()) {
-      throw new Error(`${game.title} does not have a launch command.`);
+
+    if (this.operationInFlight) {
+      throw new Error(`Game action already in progress: ${this.operationInFlight}.`);
     }
 
-    await this.stopMonitoring(false);
-    this.activeGame = game;
-    this.activeWindow = null;
-    this.activeProcessId = null;
-    this.gameInForeground = false;
-    this.restoreWindowsTaskbar();
-    this.clearReinforcementTimers();
-    this.setActiveState({
-      status: 'launching',
-      game,
-      message: `Preparing ${game.title} for full-screen launch...`,
-      windowDetected: false,
-      windowState: 'unknown'
-    });
-    await this.suppressWindowsTaskbar();
-    this.showLaunchShield();
-    await delay(160);
-    await logLine('info', `Launching ${game.title} using ${game.launchType}: ${game.launchCommand}`);
-
+    this.operationInFlight = 'launch';
     try {
+      if (!game.enabled) {
+        throw new Error(`${game.title} is disabled.`);
+      }
+      if (!game.launchCommand.trim()) {
+        throw new Error(`${game.title} does not have a launch command.`);
+      }
+
+      await this.stopMonitoring(false);
+      this.activeGame = game;
+      this.activeWindow = null;
+      this.activeProcessId = null;
+      this.gameInForeground = false;
+      this.clearReinforcementTimers();
+      this.setActiveState({
+        status: 'launching',
+        game,
+        message: `Preparing ${game.title} for full-screen launch...`,
+        windowDetected: false,
+        windowState: 'unknown'
+      });
+      await this.suppressWindowsTaskbar();
+      this.showLaunchShield();
+      await delay(160);
+      await logLine('info', `Launching ${game.title} using ${game.launchType}: ${game.launchCommand}`);
+
       if (game.launchType === 'localExe') {
         await this.launchExecutable(game);
       } else if (game.launchType === 'steam' || game.launchType === 'epic') {
@@ -119,86 +130,138 @@ export class GameLauncher {
       await this.activateLaunchedGame(game);
     } catch (error) {
       this.releaseLaunchShield();
-      this.restoreWindowsTaskbar();
+      this.focusLauncher();
+      this.setActiveState({
+        status: 'error',
+        game,
+        message: error instanceof Error ? error.message : String(error),
+        windowDetected: Boolean(this.activeWindow),
+        windowState: this.activeWindow ? 'background' : 'unknown'
+      });
       throw error;
+    } finally {
+      if (this.operationInFlight === 'launch') {
+        this.operationInFlight = null;
+      }
     }
   }
 
   async closeActiveGame(force: boolean): Promise<void> {
+    if (this.operationInFlight) {
+      await logLine('info', `Ignoring close request while ${this.operationInFlight} is in progress.`);
+      return;
+    }
+
     const game = this.activeGame;
     if (!game) {
       return;
     }
 
+    this.operationInFlight = 'close';
     await logLine('info', `${force ? 'Force closing' : 'Closing'} ${game.title}`);
-    this.setActiveState({
-      status: 'closing',
-      game,
-      message: `Closing ${game.title}...`,
-      windowDetected: Boolean(this.activeWindow)
-    });
-    const errors: string[] = [];
+    try {
+      this.setActiveState({
+        status: 'closing',
+        game,
+        message: `Closing ${game.title}...`,
+        windowDetected: Boolean(this.activeWindow),
+        windowState: this.state.windowState
+      });
+      const errors: string[] = [];
 
-    if (!force && this.activeWindow) {
-      try {
-        await closeGameWindow(this.activeWindow);
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error));
+      if (!force && this.activeWindow) {
+        try {
+          await closeGameWindow(this.activeWindow);
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error));
+        }
       }
-    }
 
-    if (force && this.child?.pid) {
-      try {
-        await closeProcessByPid(this.child.pid, force);
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error));
+      if (force && this.child?.pid) {
+        try {
+          await closeProcessByPid(this.child.pid, force);
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error));
+        }
       }
-    }
 
-    if (force && this.activeProcessId) {
-      try {
-        await closeProcessByPid(this.activeProcessId, true);
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error));
+      if (force && this.activeProcessId) {
+        try {
+          await closeProcessByPid(this.activeProcessId, true);
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error));
+        }
       }
-    }
 
-    if (game.processName && (force || !this.activeWindow)) {
-      try {
-        await closeProcessByName(game.processName, force);
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error));
+      if (game.processName && (force || !this.activeWindow)) {
+        try {
+          await closeProcessByName(game.processName, force);
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error));
+        }
       }
-    }
 
-    if (errors.length > 0) {
-      await logLine('warn', `Close game errors for ${game.title}: ${errors.join(' | ')}`);
-    }
+      if (errors.length > 0) {
+        await logLine('warn', `Close game errors for ${game.title}: ${errors.join(' | ')}`);
+      }
 
-    if (!force) {
-      setTimeout(() => {
-        void this.checkGracefulCloseResult(game);
-      }, 2500);
+      if (!force) {
+        setTimeout(() => {
+          void this.checkGracefulCloseResult(game);
+        }, 2500);
+      }
+    } finally {
+      if (this.operationInFlight === 'close') {
+        this.operationInFlight = null;
+      }
     }
   }
 
   async resumeActiveGame(): Promise<GameControlResult> {
+    if (this.operationInFlight) {
+      await logLine('info', `Ignoring resume request while ${this.operationInFlight} is in progress.`);
+      return { ok: false, error: `Another game action is already in progress: ${this.operationInFlight}.` };
+    }
+
     const game = this.activeGame;
     if (!game) {
       return { ok: false, error: 'No game is currently running.' };
     }
 
-    if (game.launchType === 'microsoftStore') {
-      return this.resumeMicrosoftStoreApp(game);
-    }
+    this.operationInFlight = 'resume';
+    this.setActiveState({
+      status: 'resuming',
+      game,
+      message: `Resuming ${game.title}...`,
+      windowDetected: Boolean(this.activeWindow),
+      windowState: this.activeWindow ? 'background' : 'unknown'
+    });
 
-    const window = await this.getActiveWindow(game);
-    if (!window) {
-      await logLine('warn', `Resume requested for ${game.title}, but no game window was found.`);
-      return { ok: false, error: 'NXGS Play could not find the running game window.' };
+    if (game.launchType === 'microsoftStore') {
+      try {
+        return await this.resumeMicrosoftStoreApp(game);
+      } finally {
+        if (this.operationInFlight === 'resume') {
+          this.operationInFlight = null;
+        }
+      }
     }
 
     try {
+      const window = await this.getActiveWindow(game);
+      if (!window) {
+        const message = 'NXGS Play could not find the running game window.';
+        await logLine('warn', `Resume requested for ${game.title}, but no game window was found.`);
+        this.setActiveState({
+          status: 'homeOverlayOpen',
+          game,
+          message,
+          windowDetected: false,
+          windowState: 'unknown'
+        });
+        return { ok: false, error: message };
+      }
+
       this.showLaunchShield();
       await this.suppressWindowsTaskbar();
       await this.revealGameWindow(window, this.launchMode(game));
@@ -213,31 +276,68 @@ export class GameLauncher {
         windowDetected: true,
         windowState: 'foreground'
       });
+      this.hideLauncherForGame();
       return { ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await logLine('warn', `Native resume failed for ${game.title}: ${message}`);
+      this.focusLauncher();
+      this.setActiveState({
+        status: 'homeOverlayOpen',
+        game,
+        message,
+        windowDetected: Boolean(this.activeWindow),
+        windowState: this.activeWindow ? 'background' : 'unknown'
+      });
       return { ok: false, error: message };
+    } finally {
+      if (this.operationInFlight === 'resume') {
+        this.operationInFlight = null;
+      }
     }
   }
 
   async minimizeActiveGame(): Promise<GameControlResult> {
+    if (this.operationInFlight) {
+      await logLine('info', `Ignoring minimize request while ${this.operationInFlight} is in progress.`);
+      return { ok: false, error: `Another game action is already in progress: ${this.operationInFlight}.` };
+    }
+
     const game = this.activeGame;
     if (!game) {
       return { ok: false, error: 'No game is currently running.' };
     }
 
-    const window = await this.getActiveWindow(game);
-    if (!window) {
-      return { ok: false, error: 'NXGS Play could not find the running game window.' };
-    }
-
+    this.operationInFlight = 'minimize';
     try {
+      this.setActiveState({
+        status: 'minimizing',
+        game,
+        message: `Minimizing ${game.title}...`,
+        windowDetected: Boolean(this.activeWindow),
+        windowState: this.activeWindow ? 'background' : 'unknown'
+      });
+      const window = await this.getActiveWindow(game);
+      if (!window) {
+        const message = 'NXGS Play could not find the running game window.';
+        this.setActiveState({
+          status: 'homeOverlayOpen',
+          game,
+          message,
+          windowDetected: false,
+          windowState: 'unknown'
+        });
+        return { ok: false, error: message };
+      }
+
       await minimizeGameWindow(window);
-      this.restoreWindowsTaskbar();
+      this.gameInForeground = false;
+      this.activeWindow = window;
+      this.activeProcessId = window.processId;
+      this.clearReinforcementTimers();
       this.focusLauncher();
       this.setActiveState({
-        status: 'running',
+        status: 'minimized',
         game,
         message: `${game.title} is minimized.`,
         windowDetected: true,
@@ -248,36 +348,56 @@ export class GameLauncher {
       const message = error instanceof Error ? error.message : String(error);
       await logLine('warn', `Minimize failed for ${game.title}: ${message}`);
       return { ok: false, error: message };
+    } finally {
+      if (this.operationInFlight === 'minimize') {
+        this.operationInFlight = null;
+      }
     }
   }
 
   async returnToHome(): Promise<GameControlResult> {
+    if (this.operationInFlight === 'home') {
+      return { ok: true };
+    }
+
+    if (this.operationInFlight) {
+      await logLine('info', `Home requested while ${this.operationInFlight} is in progress; focusing launcher only.`);
+      this.focusLauncher();
+      return { ok: true };
+    }
+
+    this.operationInFlight = 'home';
     const game = this.activeGame;
-    if (game) {
-      try {
-        const window = await this.getActiveWindow(game);
-        if (window) {
-          this.gameInForeground = false;
-          await minimizeGameWindow(window);
-          this.activeWindow = window;
-          this.activeProcessId = window.processId;
+    try {
+      if (game) {
+        try {
+          const window = await this.getActiveWindow(game);
+          if (window) {
+            this.activeWindow = window;
+            this.activeProcessId = window.processId;
+          }
+        } catch (error) {
+          await logLine('warn', `Return home window lookup failed for ${game.title}: ${String(error)}`);
         }
-      } catch (error) {
-        await logLine('warn', `Return home minimize failed for ${game.title}: ${String(error)}`);
+      }
+      this.gameInForeground = false;
+      this.clearReinforcementTimers();
+      this.focusLauncher();
+      if (game) {
+        this.setActiveState({
+          status: 'homeOverlayOpen',
+          game,
+          message: `${game.title} is still running. Choose Resume, Minimize, or Close.`,
+          windowDetected: Boolean(this.activeWindow),
+          windowState: this.activeWindow ? 'background' : 'unknown'
+        });
+      }
+      return { ok: true };
+    } finally {
+      if (this.operationInFlight === 'home') {
+        this.operationInFlight = null;
       }
     }
-    this.restoreWindowsTaskbar();
-    this.focusLauncher();
-    if (game) {
-      this.setActiveState({
-        status: 'running',
-        game,
-        message: `${game.title} is running in the background.`,
-        windowDetected: Boolean(this.activeWindow),
-        windowState: this.activeWindow ? 'minimized' : 'unknown'
-      });
-    }
-    return { ok: true };
   }
 
   async clearActive(): Promise<void> {
@@ -287,7 +407,6 @@ export class GameLauncher {
     this.activeWindow = null;
     this.activeProcessId = null;
     this.gameInForeground = false;
-    this.restoreWindowsTaskbar();
     this.clearReinforcementTimers();
     this.setActiveState({
       status: 'idle'
@@ -306,6 +425,10 @@ export class GameLauncher {
     window.focus();
   }
 
+  restoreTaskbarForAdmin(): void {
+    this.restoreWindowsTaskbar();
+  }
+
   private async activateLaunchedGame(game: GameRecord): Promise<void> {
     const window = await waitForGameWindow(
       {
@@ -320,9 +443,8 @@ export class GameLauncher {
     if (!window) {
       await logLine('warn', `No main game window detected for ${game.title}; leaving NXGS Play visible.`);
       this.releaseLaunchShield();
-      this.restoreWindowsTaskbar();
       this.setActiveState({
-        status: 'running',
+        status: 'homeOverlayOpen',
         game,
         message: `${game.title} launched. Game window detection is still best-effort.`,
         windowDetected: false,
@@ -375,6 +497,7 @@ export class GameLauncher {
       windowDetected: true,
       windowState: 'foreground'
     });
+    this.hideLauncherForGame();
   }
 
   private async launchExecutable(game: GameRecord): Promise<void> {
@@ -480,7 +603,7 @@ export class GameLauncher {
         const message = 'Windows accepted the app activation, but NXGS Play could not find the game window.';
         await logLine('warn', `${game.title}: ${message}`);
         this.setActiveState({
-          status: 'running',
+          status: 'homeOverlayOpen',
           game,
           message,
           windowDetected: false,
@@ -503,6 +626,7 @@ export class GameLauncher {
         windowDetected: true,
         windowState: 'foreground'
       });
+      this.hideLauncherForGame();
       return { ok: true };
     } catch (fallbackError) {
       const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
@@ -581,10 +705,9 @@ export class GameLauncher {
     this.activeWindow = null;
     this.activeProcessId = null;
     this.gameInForeground = false;
-    this.restoreWindowsTaskbar();
     this.clearReinforcementTimers();
     this.setActiveState({
-      status: 'idle',
+      status: 'closed',
       message: `${game.title} exited.`
     });
     void logLine('info', `${game.title} exited; returning to launcher.`);
@@ -642,7 +765,7 @@ export class GameLauncher {
     }
 
     this.setActiveState({
-      status: 'running',
+      status: 'homeOverlayOpen',
       game,
       message: `${game.title} did not close yet. Admin force close is available from settings if needed.`,
       windowDetected: Boolean(window),
@@ -696,10 +819,6 @@ export class GameLauncher {
   }
 
   private async suppressWindowsTaskbar(): Promise<void> {
-    if (this.taskbarSuppressed) {
-      return;
-    }
-
     this.taskbarSuppressed = true;
     try {
       await setWindowsTaskbarVisible(false);
@@ -733,6 +852,15 @@ export class GameLauncher {
 
   private releaseLaunchShield(): void {
     this.windowProvider()?.setAlwaysOnTop(false);
+  }
+
+  private hideLauncherForGame(): void {
+    const window = this.windowProvider();
+    if (!window || window.isDestroyed()) {
+      return;
+    }
+    window.setAlwaysOnTop(false);
+    window.hide();
   }
 
   private async revealGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode): Promise<void> {

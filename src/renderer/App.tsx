@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -24,6 +24,7 @@ import {
 import brandImage from './assets/nxgs-gaming-banner.png';
 import type {
   ActiveGameState,
+  AdminUnlockRequest,
   AppDiagnostics,
   AppSettings,
   GameInput,
@@ -134,9 +135,32 @@ export function App(): JSX.Element {
   const [cursorHidden, setCursorHidden] = useState(false);
   const [homeOverlayRequestId, setHomeOverlayRequestId] = useState(0);
   const [emergencyCloseRequestId, setEmergencyCloseRequestId] = useState(0);
+  const [adminUnlockRequest, setAdminUnlockRequest] = useState<AdminUnlockRequest | null>(null);
 
   const enabledGames = useMemo(() => games.filter((game) => game.enabled), [games]);
   const selectedGame = enabledGames[selectedIndex] ?? null;
+
+  const openAdminPin = useCallback((request?: Partial<AdminUnlockRequest>) => {
+    setAdminUnlockRequest({
+      source: request?.source ?? 'ui',
+      key: request?.key,
+      message: request?.message ?? 'Enter Admin PIN to unlock PC controls.',
+      requestedAt: request?.requestedAt ?? new Date().toISOString()
+    });
+    setPinOpen(true);
+    void window.nxgs.setAdminPinActive(true);
+  }, []);
+
+  const closeAdminPin = useCallback(() => {
+    setPinOpen(false);
+    setAdminUnlockRequest(null);
+    void window.nxgs.setAdminPinActive(false);
+  }, []);
+
+  const returnToCustomerHome = useCallback(() => {
+    setView('home');
+    void window.nxgs.setKioskMode('customer');
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -162,13 +186,13 @@ export function App(): JSX.Element {
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
       setActiveGame(next);
-      if (next.status === 'launching' || next.status === 'returning') {
+      if (next.status === 'launching' || next.status === 'closed') {
         setView('home');
       }
     });
     const unsubscribeShellHome = window.nxgs.onShellHome((event) => {
       setConfirmGame(null);
-      setPinOpen(false);
+      closeAdminPin();
       setView('home');
       if (event.openActiveGamePanel) {
         setHomeOverlayRequestId((value) => value + 1);
@@ -177,14 +201,23 @@ export function App(): JSX.Element {
         setEmergencyCloseRequestId((value) => value + 1);
       }
     });
+    const unsubscribeAdminUnlock = window.nxgs.onAdminUnlockRequested((request) => {
+      setConfirmGame(null);
+      setView('home');
+      setAdminUnlockRequest(request);
+      setPinOpen(true);
+      setHomeOverlayRequestId((value) => value + 1);
+      void window.nxgs.setAdminPinActive(true);
+    });
 
     return () => {
       mounted = false;
       unsubscribeSession();
       unsubscribeActiveGame();
       unsubscribeShellHome();
+      unsubscribeAdminUnlock();
     };
-  }, []);
+  }, [closeAdminPin]);
 
   useEffect(() => {
     if (selectedIndex >= enabledGames.length) {
@@ -240,19 +273,34 @@ export function App(): JSX.Element {
       return;
     }
     if (pinOpen) {
-      setPinOpen(false);
+      closeAdminPin();
       return;
     }
     if (view === 'admin') {
-      setView('home');
+      returnToCustomerHome();
     }
-  }, [confirmGame, pinOpen, view]);
+  }, [closeAdminPin, confirmGame, pinOpen, returnToCustomerHome, view]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault();
-        setPinOpen(true);
+        openAdminPin({ source: 'admin shortcut', key: 'Ctrl+Shift+A' });
+        return;
+      }
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'h') {
+        event.preventDefault();
+        void window.nxgs.requestShellHome('global-home');
+        return;
+      }
+      if (event.key === 'F10') {
+        event.preventDefault();
+        void window.nxgs.requestShellHome('global-f10');
+        return;
+      }
+      if (view !== 'admin' && !pinOpen) {
+        event.preventDefault();
+        openAdminPin({ source: 'restricted keyboard input', key: event.key });
         return;
       }
       if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
@@ -271,7 +319,19 @@ export function App(): JSX.Element {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [acceptSelection, back, moveSelection]);
+  }, [acceptSelection, back, moveSelection, openAdminPin, pinOpen, view]);
+
+  const handleCustomerPointer = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (view === 'admin' || pinOpen) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      openAdminPin({ source: 'restricted pointer input', key: event.pointerType });
+    },
+    [openAdminPin, pinOpen, view]
+  );
 
   useEffect(() => {
     let lastInput = 0;
@@ -345,7 +405,7 @@ export function App(): JSX.Element {
   }
 
   return (
-    <main className={`app-shell ${cursorHidden ? 'cursor-hidden' : ''}`}>
+    <main className={`app-shell ${cursorHidden ? 'cursor-hidden' : ''}`} onPointerDownCapture={handleCustomerPointer}>
       {view === 'home' ? (
         <HomeScreen
           games={enabledGames}
@@ -355,7 +415,7 @@ export function App(): JSX.Element {
           activeGame={activeGame}
           homeOverlayRequestId={homeOverlayRequestId}
           emergencyCloseRequestId={emergencyCloseRequestId}
-          onOpenAdmin={() => setPinOpen(true)}
+          onOpenAdmin={() => openAdminPin({ source: 'settings button' })}
           onSelectGame={setConfirmGame}
         />
       ) : (
@@ -365,7 +425,7 @@ export function App(): JSX.Element {
           initialData={initialData}
           onGamesChanged={setGames}
           onSettingsChanged={setSettings}
-          onClose={() => setView('home')}
+          onClose={returnToCustomerHome}
         />
       )}
 
@@ -381,15 +441,17 @@ export function App(): JSX.Element {
       {pinOpen && (
         <PinDialog
           title="Admin PIN"
+          message={adminUnlockRequest?.message}
           actionLabel="Unlock"
           pendingLabel="Checking..."
-          onClose={() => setPinOpen(false)}
+          onClose={closeAdminPin}
           onSubmit={async (pin) => {
             const result = await window.nxgs.verifyPin(pin);
             if (!result.ok) {
               return false;
             }
-            setPinOpen(false);
+            closeAdminPin();
+            await window.nxgs.setKioskMode('admin');
             setView('admin');
             return true;
           }}
@@ -404,7 +466,9 @@ export function App(): JSX.Element {
           }}
         />
       )}
-      {(activeGame.status === 'launching' || activeGame.status === 'closing') && <GameTransitionOverlay activeGame={activeGame} />}
+      {(['launching', 'resuming', 'minimizing', 'closing'] as ActiveGameState['status'][]).includes(activeGame.status) && (
+        <GameTransitionOverlay activeGame={activeGame} />
+      )}
     </main>
   );
 }
@@ -542,14 +606,25 @@ function ActiveGameDock(props: {
   const statusLabel =
     props.activeGame.status === 'launching'
       ? 'Launching'
-      : props.activeGame.windowState === 'minimized'
-        ? 'Minimized'
-        : 'Running';
+      : props.activeGame.status === 'resuming'
+        ? 'Resuming'
+        : props.activeGame.status === 'minimizing'
+          ? 'Minimizing'
+          : props.activeGame.status === 'minimized' || props.activeGame.windowState === 'minimized'
+            ? 'Minimized'
+            : props.activeGame.status === 'homeOverlayOpen'
+              ? 'Active'
+              : props.activeGame.status === 'closing'
+                ? 'Closing'
+                : 'Running';
 
   const runControl = async (
     action: 'resume' | 'minimize' | 'close',
     control: () => Promise<{ ok: boolean; error?: string }>
   ): Promise<void> => {
+    if (pendingAction !== null) {
+      return;
+    }
     setPendingAction(action);
     setMessage('');
     try {
@@ -560,6 +635,8 @@ function ActiveGameDock(props: {
         setConfirmClose(false);
         setForceCloseOpen(true);
         setMessage('Close requested. If the game stays open, use admin Force Close.');
+      } else if (action === 'resume') {
+        setOpen(false);
       }
     } finally {
       setPendingAction(null);
@@ -610,7 +687,7 @@ function ActiveGameDock(props: {
               <button
                 className="primary-action"
                 type="button"
-                disabled={pendingAction !== null}
+                disabled={pendingAction !== null || props.activeGame.status === 'resuming' || props.activeGame.status === 'closing'}
                 onClick={() => runControl('resume', window.nxgs.resumeActiveGame)}
               >
                 <Play size={18} />
@@ -619,12 +696,17 @@ function ActiveGameDock(props: {
               <button
                 className="secondary-action"
                 type="button"
-                disabled={pendingAction !== null}
+                disabled={pendingAction !== null || props.activeGame.status === 'minimizing' || props.activeGame.status === 'closing'}
                 onClick={() => runControl('minimize', window.nxgs.minimizeActiveGame)}
               >
                 {pendingAction === 'minimize' ? 'Minimizing...' : 'Minimize Game'}
               </button>
-              <button className="danger-action" type="button" disabled={pendingAction !== null} onClick={() => setConfirmClose(true)}>
+              <button
+                className="danger-action"
+                type="button"
+                disabled={pendingAction !== null || props.activeGame.status === 'closing'}
+                onClick={() => setConfirmClose(true)}
+              >
                 Close Game
               </button>
             </div>
@@ -1421,17 +1503,29 @@ function KioskSettingsPanel(props: {
           </button>
         </div>
         <div className="diagnostics-grid">
+          <DiagnosticItem label="Current mode" value={diagnostics.kiosk.mode} />
           <DiagnosticItem label="Ctrl + Shift + H" value={diagnostics.shortcuts.homeRegistered ? 'yes' : 'no'} />
           <DiagnosticItem label="F10" value={diagnostics.shortcuts.f10Registered ? 'yes' : 'no'} />
           <DiagnosticItem label="Ctrl + Shift + X" value={diagnostics.shortcuts.emergencyCloseRegistered ? 'yes' : 'no'} />
+          <DiagnosticItem label="Ctrl + Shift + A" value={diagnostics.shortcuts.adminUnlockRegistered ? 'yes' : 'no'} />
+          <DiagnosticItem label="Restricted shortcuts" value={diagnostics.shortcuts.restrictedRegisteredCount.toString()} />
           <DiagnosticItem label="Controller detected" value={diagnostics.controller.detected ? 'yes' : 'no'} />
           <DiagnosticItem label="Controller Home" value={diagnostics.controller.homeSupported} />
+          <DiagnosticItem label="Active game state" value={diagnostics.activeGame.status} />
           <DiagnosticItem label="Current game" value={diagnostics.activeGame.title ?? 'none'} />
           <DiagnosticItem label="Game process ID" value={diagnostics.activeGame.processId?.toString() ?? 'none'} />
           <DiagnosticItem label="Game window handle" value={diagnostics.activeGame.windowHandle?.toString() ?? 'none'} />
+          <DiagnosticItem label="Game window detected" value={diagnostics.activeGame.windowDetected ? 'yes' : 'no'} />
+          <DiagnosticItem label="Game window state" value={diagnostics.activeGame.windowState ?? 'unknown'} />
+          <DiagnosticItem label="Taskbar hidden" value={diagnostics.kiosk.taskbarHidden ? 'yes' : 'no'} />
+          <DiagnosticItem label="Always on top" value={diagnostics.kiosk.alwaysOnTop ? 'yes' : 'no'} />
+          <DiagnosticItem label="Last Home trigger" value={diagnostics.kiosk.lastHomeTrigger ?? 'none'} />
+          <DiagnosticItem label="Last restricted input" value={diagnostics.kiosk.lastRestrictedInput ?? 'none'} />
+          <DiagnosticItem label="Last input error" value={diagnostics.kiosk.lastInputError ?? 'none'} />
         </div>
         <p className="field-note">
-          PS button detection depends on Windows/controller driver. Use Ctrl+Shift+H or F10 as reliable fallback.
+          Controller Home depends on Windows/controller driver. Ctrl+Shift+H and F10 are test fallbacks; production kiosk
+          lockdown still requires Windows Assigned Access, Shell Launcher, Group Policy, or a restricted Windows user.
         </p>
         {diagnostics.shortcuts.failures.length > 0 && (
           <div className="diagnostics-warning">
@@ -1665,6 +1759,7 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
 
 function PinDialog(props: {
   title: string;
+  message?: string;
   actionLabel: string;
   pendingLabel: string;
   onClose: () => void;
@@ -1697,6 +1792,7 @@ function PinDialog(props: {
         </button>
         <Lock size={34} />
         <h2>{props.title}</h2>
+        {props.message && <p className="muted">{props.message}</p>}
         <input autoFocus type="password" value={pin} onChange={(event) => setPin(event.target.value)} />
         {error && <p className="error-text">{error}</p>}
         <button className="primary-action wide" type="submit" disabled={pending}>

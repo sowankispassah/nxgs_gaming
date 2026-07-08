@@ -102,7 +102,17 @@ export interface GameControlResult {
   error?: string;
 }
 
-export type ActiveGameStatus = 'idle' | 'launching' | 'running' | 'returning' | 'closing' | 'error';
+export type ActiveGameStatus =
+  | 'idle'
+  | 'launching'
+  | 'running'
+  | 'homeOverlayOpen'
+  | 'minimizing'
+  | 'minimized'
+  | 'resuming'
+  | 'closing'
+  | 'closed'
+  | 'error';
 
 export type ActiveGameWindowState = 'foreground' | 'minimized' | 'background' | 'unknown';
 
@@ -117,11 +127,15 @@ export interface ActiveGameState {
 
 export type ControllerHomeSupport = 'yes' | 'no' | 'unknown';
 
+export type KioskMode = 'customer' | 'admin';
+
 export interface AppDiagnostics {
   shortcuts: {
     homeRegistered: boolean;
     f10Registered: boolean;
     emergencyCloseRegistered: boolean;
+    adminUnlockRegistered: boolean;
+    restrictedRegisteredCount: number;
     failures: string[];
   };
   controller: {
@@ -136,6 +150,15 @@ export interface AppDiagnostics {
     windowHandle?: number;
     windowDetected: boolean;
     status: ActiveGameStatus;
+    windowState?: ActiveGameWindowState;
+  };
+  kiosk: {
+    mode: KioskMode;
+    taskbarHidden: boolean;
+    alwaysOnTop: boolean;
+    lastHomeTrigger?: ShellHomeReason;
+    lastRestrictedInput?: string;
+    lastInputError?: string;
   };
 }
 
@@ -158,6 +181,13 @@ export interface ShellHomeEvent {
   reason: ShellHomeReason;
   openActiveGamePanel: boolean;
   emergencyClose: boolean;
+}
+
+export interface AdminUnlockRequest {
+  source: string;
+  key?: string;
+  message: string;
+  requestedAt: string;
 }
 
 export interface VerifyPinResult {
