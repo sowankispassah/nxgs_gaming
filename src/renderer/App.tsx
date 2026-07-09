@@ -588,7 +588,7 @@ function ActiveGameDock(props: {
     }
   }, [game, props.emergencyCloseRequestId]);
 
-  if (!game || props.activeGame.status === 'idle') {
+  if (!game || props.activeGame.status === 'idle' || props.activeGame.status === 'closed' || props.activeGame.status === 'error') {
     return null;
   }
 
@@ -627,9 +627,10 @@ function ActiveGameDock(props: {
         }
         setMessage(result.error ?? 'Game control failed.');
       } else if (action === 'close') {
+        setOpen(false);
         setConfirmClose(false);
-        setForceCloseOpen(true);
-        setMessage('Close requested. If the game stays open, use admin Force Close.');
+        setForceCloseOpen(false);
+        setMessage('');
       }
     } finally {
       setPendingAction(null);

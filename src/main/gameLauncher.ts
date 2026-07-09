@@ -146,7 +146,7 @@ export class GameLauncher {
     }
   }
 
-  async closeActiveGame(force: boolean): Promise<void> {
+  async closeActiveGame(force: boolean, options: { retireActiveSession?: boolean } = {}): Promise<void> {
     if (this.operationInFlight) {
       await logLine('info', `Ignoring close request while ${this.operationInFlight} is in progress.`);
       return;
@@ -158,6 +158,7 @@ export class GameLauncher {
     }
 
     this.operationInFlight = 'close';
+    const retireActiveSession = options.retireActiveSession ?? force;
     await logLine('info', `${force ? 'Force closing' : 'Closing'} ${game.title}`);
     try {
       this.setActiveState({
@@ -205,7 +206,9 @@ export class GameLauncher {
         await logLine('warn', `Close game errors for ${game.title}: ${errors.join(' | ')}`);
       }
 
-      if (!force) {
+      if (retireActiveSession) {
+        this.finishActiveGameSession(game, `${game.title} close requested.`, false);
+      } else if (!force) {
         setTimeout(() => {
           void this.checkGracefulCloseResult(game);
         }, 2500);
@@ -250,6 +253,14 @@ export class GameLauncher {
     try {
       const window = await this.getActiveWindow(game);
       if (!window) {
+        const stillRunning = await this.isGameStillRunning(game);
+        if (!stillRunning) {
+          const message = `${game.title} is no longer running.`;
+          await logLine('info', `Resume requested for ${game.title}, but the game is no longer running.`);
+          this.finishActiveGameSession(game, message);
+          return { ok: false, error: message };
+        }
+
         const message = 'NXGS Play could not find the running game window.';
         await logLine('warn', `Resume requested for ${game.title}, but no game window was found.`);
         this.setActiveState({
@@ -374,6 +385,9 @@ export class GameLauncher {
           if (window) {
             this.activeWindow = window;
             this.activeProcessId = window.processId;
+          } else if (!(await this.isGameStillRunning(game))) {
+            this.finishActiveGameSession(game, `${game.title} is no longer running.`);
+            return { ok: true };
           }
         } catch (error) {
           await logLine('warn', `Return home window lookup failed for ${game.title}: ${String(error)}`);
@@ -440,6 +454,12 @@ export class GameLauncher {
     );
 
     if (!window) {
+      if (!(await this.isGameStillRunning(game))) {
+        await logLine('info', `${game.title} exited before a controllable game window was detected.`);
+        this.finishActiveGameSession(game, `${game.title} exited.`);
+        return;
+      }
+
       await logLine('warn', `No main game window detected for ${game.title}; leaving NXGS Play visible.`);
       this.releaseLaunchShield();
       this.setActiveState({
@@ -586,28 +606,13 @@ export class GameLauncher {
 
   private async resumeMicrosoftStoreApp(game: GameRecord): Promise<GameControlResult> {
     try {
-      await logLine('info', `Retrying Microsoft Store activation for ${game.title}`);
-      await this.launchMicrosoftStoreApp(game);
-      const window = await waitForGameWindow(
-        {
-          pid: this.activeProcessId ?? this.child?.pid,
-          processName: game.processName,
-          titleHint: game.title
-        },
-        8000,
-        200
-      );
+      await logLine('info', `Resuming Microsoft Store window for ${game.title}`);
+      const window = await this.getActiveWindow(game);
 
       if (!window) {
-        const message = 'Windows accepted the app activation, but NXGS Play could not find the game window.';
+        const message = `${game.title} is no longer running.`;
         await logLine('warn', `${game.title}: ${message}`);
-        this.setActiveState({
-          status: 'homeOverlayOpen',
-          game,
-          message,
-          windowDetected: false,
-          windowState: 'unknown'
-        });
+        this.finishActiveGameSession(game, message);
         return { ok: false, error: message };
       }
 
@@ -691,6 +696,10 @@ export class GameLauncher {
   }
 
   private handleGameExit(game: GameRecord): void {
+    this.finishActiveGameSession(game, `${game.title} exited.`);
+  }
+
+  private finishActiveGameSession(game: GameRecord, message: string, focusLauncher = true): void {
     if (this.activeGame?.id !== game.id) {
       return;
     }
@@ -706,11 +715,31 @@ export class GameLauncher {
     this.clearReinforcementTimers();
     this.setActiveState({
       status: 'closed',
-      message: `${game.title} exited.`
+      message
     });
-    void logLine('info', `${game.title} exited; returning to launcher.`);
-    this.focusLauncher();
+    void logLine('info', `${message} Returning to launcher.`);
+    if (focusLauncher) {
+      this.focusLauncher();
+    }
     this.events.onGameExited(game);
+  }
+
+  private async isGameStillRunning(game: GameRecord): Promise<boolean> {
+    const checks: Promise<boolean>[] = [];
+    if (game.processName) {
+      checks.push(isProcessRunning(game.processName));
+    }
+    if (this.activeProcessId) {
+      checks.push(isProcessRunningByPid(this.activeProcessId));
+    }
+    if (this.child?.pid) {
+      checks.push(isProcessRunningByPid(this.child.pid));
+    }
+    if (checks.length === 0) {
+      return false;
+    }
+    const results = await Promise.all(checks);
+    return results.some(Boolean);
   }
 
   private async stopMonitoring(closeGame: boolean): Promise<void> {

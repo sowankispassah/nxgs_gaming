@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.20",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.20/NXGS-Play-Setup.exe",
-    "sha256":  "686359aea876cd63f64cc40a21183edfc3238ef29ed367e2383c3da0e551cfdf",
+    "version":  "0.5.21",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.21/NXGS-Play-Setup.exe",
+    "sha256":  "014ca21086e91a175731f7586a64eb589c1b2bf769ce4e0aa524070562aaed44",
     "required":  false,
-    "notes":  "NXGS Play 0.5.20 prevents the launcher loading shield from reappearing after game activation and hides NXGS earlier during Resume to avoid bottom bar artifacts."
+    "notes":  "NXGS Play 0.5.21 clears closed game sessions immediately, removes stale Resume/Force Close controls after Close Game, and prevents Microsoft Store Resume from relaunching a closed app."
 }

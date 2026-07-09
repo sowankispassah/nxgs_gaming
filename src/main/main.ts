@@ -418,7 +418,7 @@ function registerIpc(): void {
 
   ipcMain.handle('game:closeActive', async (): Promise<GameControlResult> => {
     try {
-      await launcher.closeActiveGame(false);
+      await launcher.closeActiveGame(false, { retireActiveSession: true });
       launcher.focusLauncher();
       applyKioskSettings(store.getSettings());
       return { ok: true };
