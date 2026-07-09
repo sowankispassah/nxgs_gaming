@@ -13,12 +13,15 @@ type KioskInputEvents = {
   onEmergencyClose: () => void;
 };
 
-const RESTRICTED_SHORTCUTS = [
+const BLOCKED_SYSTEM_SHORTCUTS = [
   'Alt+F4',
   'Alt+Tab',
   'Alt+Space',
   'CommandOrControl+Escape',
-  'CommandOrControl+Shift+Escape',
+  'CommandOrControl+Shift+Escape'
+] as const;
+
+const ADMIN_UNLOCK_SYSTEM_KEYS = [
   'Meta',
   'Super'
 ] as const;
@@ -114,8 +117,10 @@ export class KioskInputService {
         return;
       }
 
-      event.preventDefault();
-      this.requestAdminUnlock('restricted keyboard input', describeInput(input));
+      if (this.isWindowsSystemInput(input)) {
+        event.preventDefault();
+        this.requestAdminUnlock('Windows Home key', describeInput(input));
+      }
     });
   }
 
@@ -165,11 +170,9 @@ export class KioskInputService {
       return;
     }
 
-    for (const accelerator of RESTRICTED_SHORTCUTS) {
+    for (const accelerator of BLOCKED_SYSTEM_SHORTCUTS) {
       try {
-        const registered = globalShortcut.register(accelerator, () =>
-          this.requestAdminUnlock('restricted global shortcut', accelerator)
-        );
+        const registered = globalShortcut.register(accelerator, () => this.blockSystemShortcut(accelerator));
         if (registered) {
           this.restrictedRegistered.add(accelerator);
         } else {
@@ -179,6 +182,26 @@ export class KioskInputService {
         }
       } catch (error) {
         const message = `${accelerator} restricted shortcut failed: ${error instanceof Error ? error.message : String(error)}`;
+        this.shortcutDiagnostics.failures.push(message);
+        this.lastInputError = message;
+        void logLine('warn', message);
+      }
+    }
+
+    for (const accelerator of ADMIN_UNLOCK_SYSTEM_KEYS) {
+      try {
+        const registered = globalShortcut.register(accelerator, () =>
+          this.requestAdminUnlock('Windows Home key', accelerator)
+        );
+        if (registered) {
+          this.restrictedRegistered.add(accelerator);
+        } else {
+          const message = `${accelerator} admin unlock shortcut failed to register.`;
+          this.shortcutDiagnostics.failures.push(message);
+          void logLine('warn', message);
+        }
+      } catch (error) {
+        const message = `${accelerator} admin unlock shortcut failed: ${error instanceof Error ? error.message : String(error)}`;
         this.shortcutDiagnostics.failures.push(message);
         this.lastInputError = message;
         void logLine('warn', message);
@@ -227,4 +250,21 @@ export class KioskInputService {
   private isAdminInput(input: Electron.Input): boolean {
     return input.control && input.shift && input.key.toLowerCase() === 'a';
   }
+
+  private isWindowsSystemInput(input: Electron.Input): boolean {
+    const key = input.key.toLowerCase();
+    return input.meta || key === 'meta' || key === 'super' || key === 'os' || key === 'win' || key === 'windows';
+  }
+
+  private blockSystemShortcut(accelerator: string): void {
+    if (this.mode !== 'customer') {
+      return;
+    }
+
+    this.lastRestrictedAt = Date.now();
+    this.lastRestrictedInput = `blocked system shortcut: ${accelerator}`;
+    void logLine('warn', `Blocked customer-mode system shortcut without opening Admin PIN: ${accelerator}.`);
+    this.events.onHome('system');
+  }
 }
+

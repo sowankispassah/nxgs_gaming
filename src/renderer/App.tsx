@@ -114,6 +114,11 @@ function coverUrl(path: string): string {
   return `file:///${path.replace(/\\/g, '/')}`;
 }
 
+function isWindowsSystemKey(event: KeyboardEvent): boolean {
+  const key = event.key.toLowerCase();
+  return event.metaKey || key === 'meta' || key === 'super' || key === 'os' || key === 'win' || key === 'windows';
+}
+
 function normalizeForm(game?: GameRecord | GameInput): GameInput {
   return {
     ...EMPTY_GAME,
@@ -298,9 +303,9 @@ export function App(): JSX.Element {
         void window.nxgs.requestShellHome('global-f10');
         return;
       }
-      if (view !== 'admin' && !pinOpen) {
+      if (view !== 'admin' && !pinOpen && isWindowsSystemKey(event)) {
         event.preventDefault();
-        openAdminPin({ source: 'restricted keyboard input', key: event.key });
+        openAdminPin({ source: 'Windows Home key', key: event.key });
         return;
       }
       if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
@@ -1857,3 +1862,4 @@ function ExpiredDialog(props: { session: SessionState; onDismiss: () => Promise<
     </div>
   );
 }
+

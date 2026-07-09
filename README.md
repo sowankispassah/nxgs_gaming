@@ -26,7 +26,7 @@ When a game is active, the home overlay shows an active game tile with Resume, M
 
 Customer mode is controller-first. Controller Home/Guide support is best effort because Windows, Steam Input, DS4Windows, and controller drivers may hide the PS button from normal apps. NXGS also watches for `Options + Share` and `L1 + R1 + Options` when the controller is visible through the browser Gamepad API. `Ctrl+Shift+H` and `F10` remain test fallbacks.
 
-Restricted keyboard/system input in customer mode brings NXGS forward and shows the admin PIN screen. Normal mouse clicks still select games, buttons, and active-game controls. Correct PIN switches to admin mode, restores the taskbar, disables always-on-top, and allows normal PC controls. Returning from admin mode switches back to full-screen customer kiosk mode and hides the taskbar again.
+Keyboard navigation remains active in customer mode, so arrow keys, Enter, Escape/B, `Ctrl+Shift+H`, and `F10` do not open the admin PIN. The admin PIN appears for the explicit admin shortcut (`Ctrl+Shift+A`) and Windows/System key escape attempts. Other blocked system shortcuts are intercepted without forcing the PIN screen. Normal mouse clicks still select games, buttons, and active-game controls. Correct PIN switches to admin mode, restores the taskbar, disables always-on-top, and allows normal PC controls. Returning from admin mode switches back to full-screen customer kiosk mode and hides the taskbar again.
 
 Admin diagnostics in **Settings > Kiosk** show customer/admin mode, active game state, game process/window identifiers, shortcut registration, controller state, taskbar hidden state, always-on-top state, last Home trigger, and last restricted input.
 
@@ -143,3 +143,4 @@ The data layer is a simple local JSON database for MVP reliability and easy insp
 - Add payment/session entitlement integration behind the existing timer boundary.
 - Add stronger Windows lockdown through Assigned Access, Shell Launcher, Group Policy, AppLocker or WDAC, and restricted Windows user accounts.
 - Add automated Electron smoke tests and a mock process launcher for session-flow tests.
+
