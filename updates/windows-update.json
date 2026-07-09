@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.18",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.18/NXGS-Play-Setup.exe",
-    "sha256":  "69e588d90261afc2615792c87fa5ab5cd0df712af7953d8439cb047346acfbfa",
+    "version":  "0.5.19",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.19/NXGS-Play-Setup.exe",
+    "sha256":  "f841a71f6c50bcf097ccaeb18f39833a34187f825db878ec3a552e20f633cf07",
     "required":  false,
-    "notes":  "NXGS Play 0.5.18 adds a dedicated kiosk input service, customer/admin mode switching, restricted-input PIN prompts, idempotent Home behavior, and safer active game resume/minimize/close state handling."
+    "notes":  "NXGS Play 0.5.19 allows normal mouse selection in customer mode while keeping keyboard/system input routed to the Admin PIN flow."
 }

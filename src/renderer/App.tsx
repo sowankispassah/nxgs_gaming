@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -321,17 +321,6 @@ export function App(): JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [acceptSelection, back, moveSelection, openAdminPin, pinOpen, view]);
 
-  const handleCustomerPointer = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (view === 'admin' || pinOpen) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      openAdminPin({ source: 'restricted pointer input', key: event.pointerType });
-    },
-    [openAdminPin, pinOpen, view]
-  );
 
   useEffect(() => {
     let lastInput = 0;
@@ -405,7 +394,7 @@ export function App(): JSX.Element {
   }
 
   return (
-    <main className={`app-shell ${cursorHidden ? 'cursor-hidden' : ''}`} onPointerDownCapture={handleCustomerPointer}>
+    <main className={`app-shell ${cursorHidden ? 'cursor-hidden' : ''}`}>
       {view === 'home' ? (
         <HomeScreen
           games={enabledGames}

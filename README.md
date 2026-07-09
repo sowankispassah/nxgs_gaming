@@ -26,7 +26,7 @@ When a game is active, the home overlay shows an active game tile with Resume, M
 
 Customer mode is controller-first. Controller Home/Guide support is best effort because Windows, Steam Input, DS4Windows, and controller drivers may hide the PS button from normal apps. NXGS also watches for `Options + Share` and `L1 + R1 + Options` when the controller is visible through the browser Gamepad API. `Ctrl+Shift+H` and `F10` remain test fallbacks.
 
-Restricted keyboard/pointer input in customer mode brings NXGS forward and shows the admin PIN screen. Correct PIN switches to admin mode, restores the taskbar, disables always-on-top, and allows normal PC controls. Returning from admin mode switches back to full-screen customer kiosk mode and hides the taskbar again.
+Restricted keyboard/system input in customer mode brings NXGS forward and shows the admin PIN screen. Normal mouse clicks still select games, buttons, and active-game controls. Correct PIN switches to admin mode, restores the taskbar, disables always-on-top, and allows normal PC controls. Returning from admin mode switches back to full-screen customer kiosk mode and hides the taskbar again.
 
 Admin diagnostics in **Settings > Kiosk** show customer/admin mode, active game state, game process/window identifiers, shortcut registration, controller state, taskbar hidden state, always-on-top state, last Home trigger, and last restricted input.
 
