@@ -262,9 +262,8 @@ export class GameLauncher {
         return { ok: false, error: message };
       }
 
-      this.showLaunchShield();
       await this.suppressWindowsTaskbar();
-      await this.revealGameWindow(window, this.launchMode(game));
+      await this.revealGameWindow(window, this.launchMode(game), false);
       this.activeWindow = window;
       this.activeProcessId = window.processId;
       this.gameInForeground = true;
@@ -614,9 +613,8 @@ export class GameLauncher {
 
       this.activeWindow = window;
       this.activeProcessId = window.processId;
-      this.showLaunchShield();
       await this.suppressWindowsTaskbar();
-      await this.revealGameWindow(window, this.launchMode(game));
+      await this.revealGameWindow(window, this.launchMode(game), false);
       this.gameInForeground = true;
       this.scheduleGameWindowReinforcement(game, window, this.launchMode(game));
       this.setActiveState({
@@ -863,28 +861,36 @@ export class GameLauncher {
     window.hide();
   }
 
-  private async revealGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode): Promise<void> {
+  private async revealGameWindow(
+    window: GameWindowInfo,
+    launchMode: GameLaunchMode,
+    shieldDuringPreparation = true
+  ): Promise<void> {
     try {
       await this.suppressWindowsTaskbar();
-      this.showLaunchShield();
+      if (shieldDuringPreparation) {
+        this.showLaunchShield();
+      } else {
+        this.hideLauncherForGame();
+      }
       if (launchMode !== 'normal') {
         for (const delayMs of [0, 220, 420, 700]) {
           if (delayMs > 0) {
             await delay(delayMs);
           }
           await prepareGameWindowForReveal(window, launchMode);
-          this.showLaunchShield();
+          if (shieldDuringPreparation) {
+            this.showLaunchShield();
+          }
         }
         await delay(220);
       }
+      this.hideLauncherForGame();
+      await delay(80);
       await activateGameWindow(window, launchMode);
       if (launchMode !== 'normal') {
         await delay(260);
-        await prepareGameWindowForReveal(window, launchMode);
-        this.showLaunchShield();
-        await delay(140);
-        await activateGameWindow(window, launchMode);
-        await delay(140);
+        await keepGameWindowOnTop(window, launchMode);
       }
     } finally {
       this.releaseLaunchShield();

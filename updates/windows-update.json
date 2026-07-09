@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.19",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.19/NXGS-Play-Setup.exe",
-    "sha256":  "f841a71f6c50bcf097ccaeb18f39833a34187f825db878ec3a552e20f633cf07",
+    "version":  "0.5.20",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.20/NXGS-Play-Setup.exe",
+    "sha256":  "686359aea876cd63f64cc40a21183edfc3238ef29ed367e2383c3da0e551cfdf",
     "required":  false,
-    "notes":  "NXGS Play 0.5.19 allows normal mouse selection in customer mode while keeping keyboard/system input routed to the Admin PIN flow."
+    "notes":  "NXGS Play 0.5.20 prevents the launcher loading shield from reappearing after game activation and hides NXGS earlier during Resume to avoid bottom bar artifacts."
 }

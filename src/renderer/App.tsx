@@ -455,7 +455,7 @@ export function App(): JSX.Element {
           }}
         />
       )}
-      {(['launching', 'resuming', 'minimizing', 'closing'] as ActiveGameState['status'][]).includes(activeGame.status) && (
+      {(['launching', 'closing'] as ActiveGameState['status'][]).includes(activeGame.status) && (
         <GameTransitionOverlay activeGame={activeGame} />
       )}
     </main>
@@ -614,18 +614,22 @@ function ActiveGameDock(props: {
     if (pendingAction !== null) {
       return;
     }
+    if (action === 'resume') {
+      setOpen(false);
+    }
     setPendingAction(action);
     setMessage('');
     try {
       const result = await control();
       if (!result.ok) {
+        if (action === 'resume') {
+          setOpen(true);
+        }
         setMessage(result.error ?? 'Game control failed.');
       } else if (action === 'close') {
         setConfirmClose(false);
         setForceCloseOpen(true);
         setMessage('Close requested. If the game stays open, use admin Force Close.');
-      } else if (action === 'resume') {
-        setOpen(false);
       }
     } finally {
       setPendingAction(null);
