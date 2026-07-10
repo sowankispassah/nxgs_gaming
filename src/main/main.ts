@@ -16,6 +16,7 @@ import type {
   ControllerStateReport,
   FilePickerResult,
   GameControlResult,
+  GameImageKind,
   GameInput,
   KioskMode,
   LaunchRequest,
@@ -373,9 +374,9 @@ function registerIpc(): void {
     return result;
   });
 
-  ipcMain.handle('dialog:selectImageFile', async (): Promise<FilePickerResult> => {
+  ipcMain.handle('dialog:selectImageFile', async (_event, imageKind: GameImageKind = 'cover'): Promise<FilePickerResult> => {
     const result = await showOpenDialog({
-      title: 'Select Cover Image',
+      title: imageKind === 'avatar' ? 'Select Avatar Image' : 'Select Cover / Background Image',
       properties: ['openFile'],
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
     });

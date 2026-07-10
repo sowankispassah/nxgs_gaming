@@ -7,6 +7,7 @@ import type {
   ControllerStateReport,
   FilePickerResult,
   GameControlResult,
+  GameImageKind,
   GameInput,
   InitialData,
   KioskMode,
@@ -41,7 +42,8 @@ const api = {
     ipcRenderer.invoke('updates:download', request),
   installUpdate: (request: UpdateInstallRequest): Promise<UpdateDownloadResult> =>
     ipcRenderer.invoke('updates:install', request),
-  selectImageFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectImageFile'),
+  selectImageFile: (imageKind: GameImageKind = 'cover'): Promise<FilePickerResult> =>
+    ipcRenderer.invoke('dialog:selectImageFile', imageKind),
   selectExecutableFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectExecutableFile'),
   selectFolder: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectFolder'),
   launchGame: (request: LaunchRequest): Promise<LaunchResult> => ipcRenderer.invoke('game:launch', request),

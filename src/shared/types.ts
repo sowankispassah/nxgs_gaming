@@ -5,6 +5,7 @@ export type AvailabilityStatus = 'available' | 'missing' | 'disabled' | 'unknown
 export interface GameRecord {
   id: string;
   title: string;
+  avatarImagePath: string;
   coverImagePath: string;
   source: string;
   availabilityStatus: AvailabilityStatus;
@@ -24,6 +25,7 @@ export type GameLaunchMode = 'normal' | 'maximized' | 'fullscreen' | 'borderless
 export interface GameInput {
   id?: string;
   title: string;
+  avatarImagePath?: string;
   coverImagePath?: string;
   source?: string;
   availabilityStatus?: AvailabilityStatus;
@@ -205,6 +207,8 @@ export interface FilePickerResult {
   directory?: string;
   error?: string;
 }
+
+export type GameImageKind = 'avatar' | 'cover';
 
 export type UpdateCheckStatus = 'latest' | 'available' | 'failed';
 

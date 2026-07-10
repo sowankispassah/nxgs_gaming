@@ -16,12 +16,16 @@ import {
   RefreshCw,
   Save,
   Search,
-  Settings,
   Timer,
   Trash2,
   X
 } from 'lucide-react';
 import brandImage from './assets/nxgs-gaming-banner.png';
+import {
+  ConsoleHome,
+  type ConsoleFocusSection,
+  type ConsoleTab
+} from './components/ConsoleHome';
 import type {
   ActiveGameState,
   AdminUnlockRequest,
@@ -48,6 +52,7 @@ const EMPTY_SESSION: SessionState = {
 
 const EMPTY_GAME: GameInput = {
   title: '',
+  avatarImagePath: '',
   coverImagePath: '',
   source: 'Manual',
   availabilityStatus: 'unknown',
@@ -93,17 +98,6 @@ function suggestionStatusLabel(status: GameSuggestion['status']): string {
   return 'unsupported';
 }
 
-function formatTime(seconds: number): string {
-  const safeSeconds = Math.max(0, seconds);
-  const hours = Math.floor(safeSeconds / 3600);
-  const minutes = Math.floor((safeSeconds % 3600) / 60);
-  const secs = safeSeconds % 60;
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  }
-  return `${minutes}:${String(secs).padStart(2, '0')}`;
-}
-
 function coverUrl(path: string): string {
   if (!path) {
     return '';
@@ -131,6 +125,8 @@ export function App(): JSX.Element {
   const [games, setGames] = useState<GameRecord[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [view, setView] = useState<View>('home');
+  const [homeTab, setHomeTab] = useState<ConsoleTab>('games');
+  const [homeFocusSection, setHomeFocusSection] = useState<ConsoleFocusSection>('games');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [confirmGame, setConfirmGame] = useState<GameRecord | null>(null);
   const [pinOpen, setPinOpen] = useState(false);
@@ -228,7 +224,10 @@ export function App(): JSX.Element {
     if (selectedIndex >= enabledGames.length) {
       setSelectedIndex(Math.max(0, enabledGames.length - 1));
     }
-  }, [enabledGames.length, selectedIndex]);
+    if (initialData && enabledGames.length === 0 && homeFocusSection === 'games') {
+      setHomeFocusSection('tabs');
+    }
+  }, [enabledGames.length, homeFocusSection, initialData, selectedIndex]);
 
   useEffect(() => {
     if (!settings) {
@@ -256,21 +255,43 @@ export function App(): JSX.Element {
     };
   }, [settings]);
 
-  const moveSelection = useCallback(
+  const moveHorizontal = useCallback(
     (delta: number) => {
-      if (enabledGames.length === 0 || view !== 'home' || confirmGame || pinOpen) {
+      if (view !== 'home' || confirmGame || pinOpen) {
         return;
       }
-      setSelectedIndex((index) => (index + delta + enabledGames.length) % enabledGames.length);
+      if (homeFocusSection === 'tabs') {
+        setHomeTab((tab) => (tab === 'games' ? 'media' : 'games'));
+        return;
+      }
+      if (homeFocusSection === 'games' && homeTab === 'games' && enabledGames.length > 0) {
+        setSelectedIndex((index) => (index + delta + enabledGames.length) % enabledGames.length);
+      }
     },
-    [confirmGame, enabledGames.length, pinOpen, view]
+    [confirmGame, enabledGames.length, homeFocusSection, homeTab, pinOpen, view]
+  );
+
+  const moveVertical = useCallback(
+    (delta: number) => {
+      if (view !== 'home' || confirmGame || pinOpen) {
+        return;
+      }
+      const sections: ConsoleFocusSection[] = homeTab === 'games' && enabledGames.length > 0
+        ? ['tabs', 'games', 'content']
+        : ['tabs', 'content'];
+      setHomeFocusSection((current) => {
+        const index = Math.max(0, sections.indexOf(current));
+        return sections[Math.max(0, Math.min(sections.length - 1, index + delta))];
+      });
+    },
+    [confirmGame, enabledGames.length, homeTab, pinOpen, view]
   );
 
   const acceptSelection = useCallback(() => {
-    if (view === 'home' && selectedGame && !confirmGame && !pinOpen) {
+    if (view === 'home' && homeTab === 'games' && homeFocusSection === 'games' && selectedGame && !confirmGame && !pinOpen) {
       setConfirmGame(selectedGame);
     }
-  }, [confirmGame, pinOpen, selectedGame, view]);
+  }, [confirmGame, homeFocusSection, homeTab, pinOpen, selectedGame, view]);
 
   const back = useCallback(() => {
     if (confirmGame) {
@@ -283,8 +304,17 @@ export function App(): JSX.Element {
     }
     if (view === 'admin') {
       returnToCustomerHome();
+      return;
     }
-  }, [closeAdminPin, confirmGame, pinOpen, returnToCustomerHome, view]);
+    if (homeTab === 'media') {
+      setHomeTab('games');
+      setHomeFocusSection(enabledGames.length > 0 ? 'games' : 'tabs');
+      return;
+    }
+    if (homeFocusSection !== 'games' && enabledGames.length > 0) {
+      setHomeFocusSection('games');
+    }
+  }, [closeAdminPin, confirmGame, enabledGames.length, homeFocusSection, homeTab, pinOpen, returnToCustomerHome, view]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -298,12 +328,18 @@ export function App(): JSX.Element {
         openAdminPin({ source: 'Windows Home key', key: event.key });
         return;
       }
-      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      if (event.key === 'ArrowRight') {
         event.preventDefault();
-        moveSelection(1);
-      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        moveHorizontal(1);
+      } else if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        moveSelection(-1);
+        moveHorizontal(-1);
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveVertical(1);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveVertical(-1);
       } else if (event.key === 'Enter') {
         event.preventDefault();
         acceptSelection();
@@ -314,7 +350,7 @@ export function App(): JSX.Element {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [acceptSelection, back, moveSelection, openAdminPin, pinOpen, view]);
+  }, [acceptSelection, back, moveHorizontal, moveVertical, openAdminPin, pinOpen, view]);
 
 
   useEffect(() => {
@@ -350,12 +386,18 @@ export function App(): JSX.Element {
         void window.nxgs.requestShellHome(guidePressed ? 'controller-home' : 'controller-combo');
         return;
       }
-      if (pressed(15) || pad.axes[0] > 0.65 || pad.axes[1] > 0.65) {
+      if (pressed(15) || pad.axes[0] > 0.65) {
         lastInput = Date.now();
-        moveSelection(1);
-      } else if (pressed(14) || pad.axes[0] < -0.65 || pad.axes[1] < -0.65) {
+        moveHorizontal(1);
+      } else if (pressed(14) || pad.axes[0] < -0.65) {
         lastInput = Date.now();
-        moveSelection(-1);
+        moveHorizontal(-1);
+      } else if (pressed(13) || pad.axes[1] > 0.65) {
+        lastInput = Date.now();
+        moveVertical(1);
+      } else if (pressed(12) || pad.axes[1] < -0.65) {
+        lastInput = Date.now();
+        moveVertical(-1);
       } else if (pressed(0)) {
         lastInput = Date.now();
         acceptSelection();
@@ -365,7 +407,7 @@ export function App(): JSX.Element {
       }
     }, 90);
     return () => window.clearInterval(interval);
-  }, [acceptSelection, back, moveSelection]);
+  }, [acceptSelection, back, moveHorizontal, moveVertical]);
 
   if (bootError) {
     return (
@@ -391,14 +433,24 @@ export function App(): JSX.Element {
   return (
     <main className={`app-shell ${cursorHidden ? 'cursor-hidden' : ''}`}>
       {view === 'home' ? (
-        <HomeScreen
+        <ConsoleHome
           games={enabledGames}
           selectedIndex={selectedIndex}
           selectedGame={selectedGame}
           session={session}
           activeGame={activeGame}
+          activeTab={homeTab}
+          focusSection={homeFocusSection}
           homeOverlayRequestId={homeOverlayRequestId}
           emergencyCloseRequestId={emergencyCloseRequestId}
+          onTabChange={(tab) => {
+            setHomeTab(tab);
+            setHomeFocusSection(tab === 'games' && enabledGames.length > 0 ? 'games' : 'tabs');
+          }}
+          onHighlightGame={(index) => {
+            setSelectedIndex(index);
+            setHomeFocusSection('games');
+          }}
           onOpenAdmin={() => openAdminPin({ source: 'settings button' })}
           onSelectGame={setConfirmGame}
         />
@@ -454,284 +506,6 @@ export function App(): JSX.Element {
         <GameTransitionOverlay activeGame={activeGame} />
       )}
     </main>
-  );
-}
-
-function HomeScreen(props: {
-  games: GameRecord[];
-  selectedIndex: number;
-  selectedGame: GameRecord | null;
-  session: SessionState;
-  activeGame: ActiveGameState;
-  homeOverlayRequestId: number;
-  emergencyCloseRequestId: number;
-  onOpenAdmin: () => void;
-  onSelectGame: (game: GameRecord) => void;
-}): JSX.Element {
-  return (
-    <section className="home-screen">
-      <header className="top-bar">
-        <div className="brand-lockup">
-          <img className="brand-logo" src={brandImage} alt="NXGS Gaming" />
-          <div>
-          <p className="eyebrow">Windows gaming kiosk</p>
-          <h1>NXGS Play</h1>
-          </div>
-        </div>
-        <div className="top-actions">
-          {props.session.status === 'running' && (
-            <div className={`timer-pill ${props.session.warningFiveMinutes ? 'warning' : ''}`}>
-              <Timer size={18} />
-              {formatTime(props.session.remainingSeconds)}
-            </div>
-          )}
-          <button className="icon-button" type="button" title="Admin settings" onClick={props.onOpenAdmin}>
-            <Settings size={22} />
-          </button>
-        </div>
-      </header>
-
-      {props.games.length === 0 ? (
-        <div className="empty-library">
-          <img className="empty-brand" src={brandImage} alt="NXGS Gaming" />
-          <h2>No games saved</h2>
-          <p>Open admin settings with Ctrl+Shift+A and add a game to start the kiosk library.</p>
-        </div>
-      ) : (
-        <>
-          <div className="featured-panel">
-            <div>
-              <p className="eyebrow">Ready to play</p>
-              <h2>{props.selectedGame?.title}</h2>
-              <p>{props.selectedGame?.source}</p>
-            </div>
-            <button
-              className="primary-action"
-              type="button"
-              onClick={() => props.selectedGame && props.onSelectGame(props.selectedGame)}
-            >
-              <Play size={20} />
-              Play
-            </button>
-          </div>
-
-          <div className="game-rail" aria-label="Game library">
-            {props.games.map((game, index) => (
-              <button
-                key={game.id}
-                className={`game-card ${index === props.selectedIndex ? 'selected' : ''}`}
-                type="button"
-                onClick={() => props.onSelectGame(game)}
-              >
-                <div className="cover">
-                  {game.coverImagePath ? <img src={coverUrl(game.coverImagePath)} alt="" /> : <Gamepad2 size={52} />}
-                </div>
-                <div className="game-card-meta">
-                  <strong>{game.title}</strong>
-                  <span>{game.source || game.launchType}</span>
-                  <small className={`status ${game.availabilityStatus}`}>{game.availabilityStatus}</small>
-                </div>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-      <ActiveGameDock
-        activeGame={props.activeGame}
-        openRequestId={props.homeOverlayRequestId}
-        emergencyCloseRequestId={props.emergencyCloseRequestId}
-      />
-    </section>
-  );
-}
-
-function ActiveGameDock(props: {
-  activeGame: ActiveGameState;
-  openRequestId: number;
-  emergencyCloseRequestId: number;
-}): JSX.Element | null {
-  const [open, setOpen] = useState(false);
-  const [confirmClose, setConfirmClose] = useState(false);
-  const [forceCloseOpen, setForceCloseOpen] = useState(false);
-  const [forcePin, setForcePin] = useState('');
-  const [pendingForce, setPendingForce] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'resume' | 'minimize' | 'close' | null>(null);
-  const [message, setMessage] = useState('');
-  const game = props.activeGame.game;
-  const retryFocus = props.activeGame.status === 'homeOverlayOpen' && props.activeGame.windowDetected === false;
-
-  useEffect(() => {
-    if (!game) {
-      setOpen(false);
-      setConfirmClose(false);
-      setForceCloseOpen(false);
-      setForcePin('');
-      setPendingAction(null);
-      setMessage('');
-    }
-  }, [game]);
-
-  useEffect(() => {
-    if (game && props.openRequestId > 0) {
-      setOpen(true);
-    }
-  }, [game, props.openRequestId]);
-
-  useEffect(() => {
-    if (game && props.emergencyCloseRequestId > 0) {
-      setOpen(true);
-      setConfirmClose(true);
-    }
-  }, [game, props.emergencyCloseRequestId]);
-
-  if (!game || props.activeGame.status === 'idle' || props.activeGame.status === 'closed' || props.activeGame.status === 'error') {
-    return null;
-  }
-
-  const statusLabel =
-    props.activeGame.status === 'launching'
-      ? 'Launching'
-      : props.activeGame.status === 'resuming'
-        ? 'Resuming'
-        : props.activeGame.status === 'minimizing'
-          ? 'Minimizing'
-          : props.activeGame.status === 'minimized' || props.activeGame.windowState === 'minimized'
-            ? 'Minimized'
-            : props.activeGame.status === 'homeOverlayOpen'
-              ? 'Active'
-              : props.activeGame.status === 'closing'
-                ? 'Closing'
-                : 'Running';
-
-  const runControl = async (
-    action: 'resume' | 'minimize' | 'close',
-    control: () => Promise<{ ok: boolean; error?: string }>
-  ): Promise<void> => {
-    if (pendingAction !== null) {
-      return;
-    }
-    if (action === 'resume') {
-      setOpen(false);
-    }
-    setPendingAction(action);
-    setMessage('');
-    try {
-      const result = await control();
-      if (!result.ok) {
-        if (action === 'resume') {
-          setOpen(true);
-        }
-        setMessage(result.error ?? 'Game control failed.');
-      } else if (action === 'close') {
-        setOpen(false);
-        setConfirmClose(false);
-        setForceCloseOpen(false);
-        setMessage('');
-      }
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
-  return (
-    <div className="active-game-dock">
-      <button
-        className={`active-game-tile ${open ? 'selected' : ''}`}
-        type="button"
-        title={game.title}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <div className="active-game-thumb">
-          {game.coverImagePath ? <img src={coverUrl(game.coverImagePath)} alt="" /> : <Gamepad2 size={24} />}
-        </div>
-        <div className="active-game-tile-meta">
-          <strong>{game.title}</strong>
-          <span>{statusLabel}</span>
-        </div>
-      </button>
-      {open && (
-        <div className="active-game-panel">
-          <div>
-            <p className="eyebrow">Active game</p>
-            <strong>{game.title}</strong>
-            <span>{props.activeGame.message ?? 'Running in the background.'}</span>
-          </div>
-          {message && <p className="error-text">{message}</p>}
-          {confirmClose ? (
-            <div className="active-game-actions">
-              <span>Close {game.title}?</span>
-              <button className="secondary-action" type="button" disabled={pendingAction !== null} onClick={() => setConfirmClose(false)}>
-                Cancel
-              </button>
-              <button
-                className="danger-action"
-                type="button"
-                disabled={pendingAction !== null}
-                onClick={() => runControl('close', window.nxgs.closeActiveGame)}
-              >
-                {pendingAction === 'close' ? 'Closing...' : 'Close Game'}
-              </button>
-            </div>
-          ) : (
-            <div className="active-game-actions">
-              <button
-                className="primary-action"
-                type="button"
-                disabled={pendingAction !== null || props.activeGame.status === 'resuming' || props.activeGame.status === 'closing'}
-                onClick={() => runControl('resume', window.nxgs.resumeActiveGame)}
-                >
-                  <Play size={18} />
-                {pendingAction === 'resume' ? 'Focusing...' : retryFocus ? 'Try Focus Again' : 'Resume Game'}
-              </button>
-              <button
-                className="secondary-action"
-                type="button"
-                disabled={pendingAction !== null || props.activeGame.status === 'minimizing' || props.activeGame.status === 'closing'}
-                onClick={() => runControl('minimize', window.nxgs.minimizeActiveGame)}
-              >
-                {pendingAction === 'minimize' ? 'Minimizing...' : 'Minimize Game'}
-              </button>
-              <button
-                className="danger-action"
-                type="button"
-                disabled={pendingAction !== null || props.activeGame.status === 'closing'}
-                onClick={() => setConfirmClose(true)}
-              >
-                Close Game
-              </button>
-            </div>
-          )}
-          {forceCloseOpen && (
-            <div className="force-close-box">
-              <label>
-                <span>Admin PIN for Force Close</span>
-                <input type="password" value={forcePin} onChange={(event) => setForcePin(event.target.value)} />
-              </label>
-              <button
-                className="danger-action"
-                type="button"
-                disabled={pendingForce}
-                onClick={async () => {
-                  setPendingForce(true);
-                  setMessage('');
-                  try {
-                    const result = await window.nxgs.forceCloseGame(forcePin);
-                    if (!result.ok) {
-                      setMessage('Invalid admin PIN.');
-                    }
-                  } finally {
-                    setPendingForce(false);
-                  }
-                }}
-              >
-                <Power size={18} />
-                {pendingForce ? 'Force closing...' : 'Force Close'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -886,6 +660,7 @@ function GameManager(props: { games: GameRecord[]; onGamesChanged: (games: GameR
   const applySuggestion = (suggestion: GameSuggestion): void => {
     setForm({
       title: suggestion.title,
+      avatarImagePath: suggestion.avatarImagePath ?? suggestion.iconPath ?? suggestion.coverImagePath ?? '',
       coverImagePath: suggestion.coverImagePath ?? '',
       source: suggestion.source,
       availabilityStatus: suggestion.availabilityStatus,
@@ -1090,17 +865,17 @@ function GameForm(props: {
   form: GameInput;
   onChange: <K extends keyof GameInput>(key: K, value: GameInput[K]) => void;
 }): JSX.Element {
-  const [picking, setPicking] = useState<'image' | 'exe' | 'folder' | null>(null);
+  const [picking, setPicking] = useState<'avatar' | 'cover' | 'exe' | 'folder' | null>(null);
   const [pickerError, setPickerError] = useState('');
   const sourceValue = SOURCE_OPTIONS.includes((props.form.source ?? '') as (typeof SOURCE_OPTIONS)[number])
     ? props.form.source
     : 'Manual';
 
-  const pickImage = async (): Promise<void> => {
-    setPicking('image');
+  const pickImage = async (imageKind: 'avatar' | 'cover'): Promise<void> => {
+    setPicking(imageKind);
     setPickerError('');
     try {
-      const result = await window.nxgs.selectImageFile();
+      const result = await window.nxgs.selectImageFile(imageKind);
       if (result.canceled) {
         return;
       }
@@ -1108,7 +883,7 @@ function GameForm(props: {
         setPickerError(result.error ?? 'No image file was selected.');
         return;
       }
-      props.onChange('coverImagePath', result.path);
+      props.onChange(imageKind === 'avatar' ? 'avatarImagePath' : 'coverImagePath', result.path);
     } finally {
       setPicking(null);
     }
@@ -1174,24 +949,57 @@ function GameForm(props: {
           ))}
         </select>
       </label>
-      <div className="form-field full">
-        <label htmlFor="cover-image-path">Cover image path</label>
-        <div className="input-with-button">
-          <input
-            id="cover-image-path"
-            value={props.form.coverImagePath ?? ''}
-            onChange={(event) => props.onChange('coverImagePath', event.target.value)}
-          />
-          <button className="secondary-action browse-button" type="button" disabled={picking === 'image'} onClick={pickImage}>
-            <ImageIcon size={18} />
-            {picking === 'image' ? 'Browsing...' : 'Browse Image'}
-          </button>
-        </div>
-        {props.form.coverImagePath && (
-          <div className="cover-preview">
-            <img src={coverUrl(props.form.coverImagePath)} alt="Selected cover preview" />
+      <div className="game-assets full">
+        <div className="form-field asset-field">
+          <label htmlFor="avatar-image-path">Avatar image path</label>
+          <div className="input-with-button">
+            <input
+              id="avatar-image-path"
+              value={props.form.avatarImagePath ?? ''}
+              onChange={(event) => props.onChange('avatarImagePath', event.target.value)}
+            />
+            <button
+              className="secondary-action browse-button"
+              type="button"
+              disabled={picking === 'avatar'}
+              onClick={() => pickImage('avatar')}
+            >
+              <ImageIcon size={18} />
+              {picking === 'avatar' ? 'Browsing...' : 'Browse Avatar'}
+            </button>
           </div>
-        )}
+          <small className="field-note">Square artwork for the customer game row. Falls back to the cover image.</small>
+          {(props.form.avatarImagePath || props.form.coverImagePath) && (
+            <div className="asset-preview avatar-preview">
+              <img src={coverUrl(props.form.avatarImagePath || props.form.coverImagePath || '')} alt="Selected avatar preview" />
+            </div>
+          )}
+        </div>
+        <div className="form-field asset-field">
+          <label htmlFor="cover-image-path">Cover / background image path</label>
+          <div className="input-with-button">
+            <input
+              id="cover-image-path"
+              value={props.form.coverImagePath ?? ''}
+              onChange={(event) => props.onChange('coverImagePath', event.target.value)}
+            />
+            <button
+              className="secondary-action browse-button"
+              type="button"
+              disabled={picking === 'cover'}
+              onClick={() => pickImage('cover')}
+            >
+              <ImageIcon size={18} />
+              {picking === 'cover' ? 'Browsing...' : 'Browse Cover'}
+            </button>
+          </div>
+          <small className="field-note">Wide 16:9 artwork for the console background. Falls back to the avatar image.</small>
+          {(props.form.coverImagePath || props.form.avatarImagePath) && (
+            <div className="asset-preview cover-preview">
+              <img src={coverUrl(props.form.coverImagePath || props.form.avatarImagePath || '')} alt="Selected cover preview" />
+            </div>
+          )}
+        </div>
       </div>
       <label>
         <span>

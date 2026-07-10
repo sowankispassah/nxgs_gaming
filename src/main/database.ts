@@ -47,6 +47,11 @@ function assertExistingDirectory(path: string, label: string): void {
 }
 
 function validateGameInput(input: GameInput): void {
+  const avatarImagePath = input.avatarImagePath?.trim();
+  if (avatarImagePath && !/^https?:\/\//i.test(avatarImagePath)) {
+    assertExistingFile(avatarImagePath, ['.png', '.jpg', '.jpeg', '.webp'], 'Avatar image');
+  }
+
   const coverImagePath = input.coverImagePath?.trim();
   if (coverImagePath && !/^https?:\/\//i.test(coverImagePath)) {
     assertExistingFile(coverImagePath, ['.png', '.jpg', '.jpeg', '.webp'], 'Cover image');
@@ -70,6 +75,7 @@ function normalizeGame(input: GameInput, existing?: GameRecord): GameRecord {
   return {
     id: input.id ?? existing?.id ?? createId('game'),
     title: input.title.trim(),
+    avatarImagePath: input.avatarImagePath?.trim() ?? existing?.avatarImagePath ?? '',
     coverImagePath: input.coverImagePath?.trim() ?? existing?.coverImagePath ?? '',
     source: input.source?.trim() ?? existing?.source ?? 'Manual',
     availabilityStatus,
@@ -98,7 +104,7 @@ export class DataStore {
 
     if (!existsSync(this.databasePath)) {
       this.data = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         settings: DEFAULT_SETTINGS,
         games: []
       };
@@ -109,7 +115,7 @@ export class DataStore {
     const raw = await readFile(this.databasePath, 'utf8');
     const parsed = JSON.parse(raw) as Partial<AppDatabase>;
     this.data = {
-      schemaVersion: parsed.schemaVersion ?? 1,
+      schemaVersion: 2,
       settings: {
         ...DEFAULT_SETTINGS,
         ...(parsed.settings ?? {}),
@@ -118,10 +124,16 @@ export class DataStore {
           ...(parsed.settings?.kiosk ?? {})
         }
       },
-      games: (parsed.games ?? []).map((game) => ({
-        ...game,
-        launchMode: game.launchMode ?? 'borderlessPreferred'
-      }))
+      games: (parsed.games ?? []).map((game) => {
+        const legacyCover = game.coverImagePath ?? '';
+        const avatarImagePath = game.avatarImagePath ?? legacyCover;
+        return {
+          ...game,
+          avatarImagePath,
+          coverImagePath: legacyCover || avatarImagePath,
+          launchMode: game.launchMode ?? 'borderlessPreferred'
+        };
+      })
     };
     await this.persist();
   }
