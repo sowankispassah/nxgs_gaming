@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.24",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.24/NXGS-Play-Setup.exe",
-    "sha256":  "90d7b48488416e6cf3bee0152a36d34c6bb308c6ab78457df27c754fba369014",
+    "version":  "0.6.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.6.0/NXGS-Play-Setup.exe",
+    "sha256":  "e424c65a7c215998b8f0af169de79ccad157c95a461cbbf926688db72196782a",
     "required":  false,
-    "notes":  "NXGS Play 0.5.24 fixes the kiosk Home and Resume focus race, preserves the correct Microsoft Store game window across Home, cancels delayed refocus, and removes duplicate keyboard Home handlers."
+    "notes":  "NXGS Play 0.6.0 adds the console-style customer dashboard, separate avatar and cover artwork, smooth game navigation, live utility controls, and legacy artwork migration while preserving launch, session, and active-game controls."
 }

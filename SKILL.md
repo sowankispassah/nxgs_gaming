@@ -1,6 +1,6 @@
 ---
 name: nxgs-play-project-workflow
-description: Use when working in the NXGS Play project to preserve its standalone Electron/React/TypeScript launcher architecture, validate builds, manage updates, commit successful changes, and push to GitHub when credentials are available.
+description: Use when working in the NXGS Play project to preserve its standalone Electron/React/TypeScript launcher architecture, validate builds, publish packaged updates through GitHub Releases and the live update manifest, commit successful changes, and push to GitHub when credentials are available.
 ---
 
 # NXGS Play Project Workflow
@@ -20,6 +20,11 @@ Follow these rules for every future coding change in this project:
 - Keep Windows release artifact filenames stable: `NXGS-Play-Setup.exe`, `NXGS-Play-Setup.exe.blockmap`, `NXGS-Play.exe`, and `latest.yml`.
 - Always clean generated release artifacts before a Windows package build by running `npm run clean:release` directly or through `npm run build:win`; never leave old space-named or version-named installer files in `release`.
 - For release builds, generate or verify `updates/windows-update.json` with the installer download URL and SHA-256 checksum.
+- Treat every completed packaged user-facing update as a publishable release unless the user explicitly requests a local-only or test build.
+- Publish the matching GitHub Release and all stable artifacts after `npm run build:win` succeeds: `NXGS-Play-Setup.exe`, `NXGS-Play-Setup.exe.blockmap`, `NXGS-Play.exe`, and `latest.yml`.
+- Never update `windows-update.json` to a version whose GitHub Release installer is not already publicly downloadable. Publish assets first, then update and push the manifest.
+- After publishing, verify the GitHub Release tag matches `package.json`, the four expected assets exist, the installer URL returns successfully, and the live raw `windows-update.json` reports the new version, URL, and checksum.
+- A release task is not complete until the GitHub Release, pushed manifest, and live update endpoint are all verified, unless the user explicitly opted out of publication.
 - Keep update-check functionality working after every release-related change.
 - Run `npm run typecheck` after code changes.
 - Run `npm run build` after code changes.
