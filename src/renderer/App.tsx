@@ -568,6 +568,7 @@ function ActiveGameDock(props: {
   const [pendingAction, setPendingAction] = useState<'resume' | 'minimize' | 'close' | null>(null);
   const [message, setMessage] = useState('');
   const game = props.activeGame.game;
+  const retryFocus = props.activeGame.status === 'homeOverlayOpen' && props.activeGame.windowDetected === false;
 
   useEffect(() => {
     if (!game) {
@@ -688,9 +689,9 @@ function ActiveGameDock(props: {
                 type="button"
                 disabled={pendingAction !== null || props.activeGame.status === 'resuming' || props.activeGame.status === 'closing'}
                 onClick={() => runControl('resume', window.nxgs.resumeActiveGame)}
-              >
-                <Play size={18} />
-                {pendingAction === 'resume' ? 'Resuming...' : 'Resume Game'}
+                >
+                  <Play size={18} />
+                {pendingAction === 'resume' ? 'Focusing...' : retryFocus ? 'Try Focus Again' : 'Resume Game'}
               </button>
               <button
                 className="secondary-action"
@@ -1516,6 +1517,8 @@ function KioskSettingsPanel(props: {
           <DiagnosticItem label="Game window handle" value={diagnostics.activeGame.windowHandle?.toString() ?? 'none'} />
           <DiagnosticItem label="Game window detected" value={diagnostics.activeGame.windowDetected ? 'yes' : 'no'} />
           <DiagnosticItem label="Game window state" value={diagnostics.activeGame.windowState ?? 'unknown'} />
+          <DiagnosticItem label="Last handoff error" value={diagnostics.activeGame.lastError ?? 'none'} />
+          <DiagnosticItem label="NXGS visible" value={diagnostics.kiosk.launcherVisible ? 'yes' : 'no'} />
           <DiagnosticItem label="Taskbar hidden" value={diagnostics.kiosk.taskbarHidden ? 'yes' : 'no'} />
           <DiagnosticItem label="Always on top" value={diagnostics.kiosk.alwaysOnTop ? 'yes' : 'no'} />
           <DiagnosticItem label="Last Home trigger" value={diagnostics.kiosk.lastHomeTrigger ?? 'none'} />

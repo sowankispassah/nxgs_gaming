@@ -1,4 +1,4 @@
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, screen, shell } from 'electron';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -33,10 +33,6 @@ function splitArgs(raw: string): string[] {
   return args;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export class GameLauncher {
   private activeGame: GameRecord | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -46,6 +42,7 @@ export class GameLauncher {
   private activeProcessId: number | null = null;
   private gameInForeground = false;
   private taskbarSuppressed = false;
+  private lastHandoffError: string | undefined;
   private operationInFlight: 'launch' | 'home' | 'resume' | 'minimize' | 'close' | null = null;
   private state: ActiveGameState = {
     status: 'idle',
@@ -76,7 +73,8 @@ export class GameLauncher {
       windowHandle: this.activeWindow?.handle,
       windowDetected: Boolean(this.activeWindow),
       status: this.state.status,
-      windowState: this.state.windowState
+      windowState: this.state.windowState,
+      lastError: this.lastHandoffError
     };
   }
 
@@ -103,6 +101,7 @@ export class GameLauncher {
       this.activeWindow = null;
       this.activeProcessId = null;
       this.gameInForeground = false;
+      this.lastHandoffError = undefined;
       this.clearReinforcementTimers();
       this.setActiveState({
         status: 'launching',
@@ -113,8 +112,7 @@ export class GameLauncher {
       });
       await this.suppressWindowsTaskbar();
       this.showLaunchShield();
-      await delay(160);
-      await logLine('info', `Launching ${game.title} using ${game.launchType}: ${game.launchCommand}`);
+      await logLine('info', `Launch clicked for ${game.title}. Launching ${game.launchType}: ${game.launchCommand}`);
 
       if (game.launchType === 'localExe') {
         await this.launchExecutable(game);
@@ -127,8 +125,14 @@ export class GameLauncher {
         await this.launchCustomCommand(game);
       }
 
+      await logLine(
+        'info',
+        `${game.title} launch command accepted${this.activeProcessId ? ` (process ${this.activeProcessId})` : ''}. Waiting for its first visible window.`
+      );
+
       await this.activateLaunchedGame(game);
     } catch (error) {
+      this.lastHandoffError = error instanceof Error ? error.message : String(error);
       this.releaseLaunchShield();
       this.focusLauncher();
       this.setActiveState({
@@ -232,6 +236,7 @@ export class GameLauncher {
     }
 
     this.operationInFlight = 'resume';
+    await logLine('info', `Resume clicked for ${game.title}. Rediscovering the active game window.`);
     this.setActiveState({
       status: 'resuming',
       game,
@@ -239,16 +244,6 @@ export class GameLauncher {
       windowDetected: Boolean(this.activeWindow),
       windowState: this.activeWindow ? 'background' : 'unknown'
     });
-
-    if (game.launchType === 'microsoftStore') {
-      try {
-        return await this.resumeMicrosoftStoreApp(game);
-      } finally {
-        if (this.operationInFlight === 'resume') {
-          this.operationInFlight = null;
-        }
-      }
-    }
 
     try {
       const window = await this.getActiveWindow(game);
@@ -274,7 +269,7 @@ export class GameLauncher {
       }
 
       await this.suppressWindowsTaskbar();
-      await this.revealGameWindow(window, this.launchMode(game), false);
+      await this.handOffToGameWindow(game, window, this.launchMode(game), 'resume');
       this.activeWindow = window;
       this.activeProcessId = window.processId;
       this.gameInForeground = true;
@@ -286,10 +281,12 @@ export class GameLauncher {
         windowDetected: true,
         windowState: 'foreground'
       });
-      this.hideLauncherForGame();
+      this.lastHandoffError = undefined;
+      await logLine('info', `Resume succeeded for ${game.title}; game window is foreground and NXGS Play is hidden.`);
       return { ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      this.lastHandoffError = message;
       await logLine('warn', `Native resume failed for ${game.title}: ${message}`);
       this.focusLauncher();
       this.setActiveState({
@@ -420,6 +417,7 @@ export class GameLauncher {
     this.activeWindow = null;
     this.activeProcessId = null;
     this.gameInForeground = false;
+    this.lastHandoffError = undefined;
     this.clearReinforcementTimers();
     this.setActiveState({
       status: 'idle'
@@ -431,6 +429,8 @@ export class GameLauncher {
     if (!window) {
       return;
     }
+    const display = screen.getDisplayMatching(window.getBounds());
+    window.setBounds(display.bounds);
     window.show();
     window.setFullScreen(true);
     window.setAlwaysOnTop(true, 'screen-saver');
@@ -449,8 +449,9 @@ export class GameLauncher {
         processName: game.processName,
         titleHint: game.title
       },
-      22000,
-      200
+      12000,
+      125,
+      250
     );
 
     if (!window) {
@@ -460,18 +461,22 @@ export class GameLauncher {
         return;
       }
 
-      await logLine('warn', `No main game window detected for ${game.title}; leaving NXGS Play visible.`);
+      const message = `${game.title} started but the window could not be focused. Try Focus Game Again, Return Home, or Close Game.`;
+      this.lastHandoffError = message;
+      await logLine('warn', `Window detection timed out for ${game.title}; keeping NXGS Play visible.`);
       this.releaseLaunchShield();
+      this.focusLauncher();
       this.setActiveState({
         status: 'homeOverlayOpen',
         game,
-        message: `${game.title} launched. Game window detection is still best-effort.`,
+        message,
         windowDetected: false,
         windowState: 'unknown'
       });
       return;
     }
 
+    await logLine('info', `First game window detected for ${game.title}: handle ${window.handle}, process ${window.processId}.`);
     this.activeWindow = window;
     this.activeProcessId = window.processId;
     this.monitorByProcessName(game);
@@ -484,28 +489,28 @@ export class GameLauncher {
       );
     }
 
-    this.setActiveState({
-      status: 'launching',
-      game,
-      message: `Preparing ${game.title} borderless full-screen view...`,
-      windowDetected: true,
-      windowState: 'unknown'
-    });
-
     try {
-      await this.revealGameWindow(window, launchMode);
+      await this.handOffToGameWindow(game, window, launchMode, 'launch');
     } catch (error) {
-      const currentWindow = await findGameWindow({
-        pid: window.processId,
-        processName: game.processName,
-        titleHint: game.title
-      });
-      if (!currentWindow) {
-        await logLine('info', `${game.title} closed before full-screen activation completed.`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.lastHandoffError = message;
+      const currentWindow = await this.getActiveWindow(game);
+      if (!currentWindow && !(await this.isGameStillRunning(game))) {
+        await logLine('info', `${game.title} closed before foreground activation completed.`);
         this.handleGameExit(game);
         return;
       }
-      throw error;
+
+      await logLine('warn', `Launch handoff failed for ${game.title}: ${message}. Keeping NXGS Play visible.`);
+      this.focusLauncher();
+      this.setActiveState({
+        status: 'homeOverlayOpen',
+        game,
+        message: `${game.title} started but NXGS Play could not focus its window. Try Focus Game Again.`,
+        windowDetected: Boolean(currentWindow),
+        windowState: currentWindow ? 'background' : 'unknown'
+      });
+      return;
     }
     this.gameInForeground = true;
     this.scheduleGameWindowReinforcement(game, window, launchMode);
@@ -516,7 +521,8 @@ export class GameLauncher {
       windowDetected: true,
       windowState: 'foreground'
     });
-    this.hideLauncherForGame();
+    this.lastHandoffError = undefined;
+    await logLine('info', `Game window focused for ${game.title}; NXGS Play handoff completed.`);
   }
 
   private async launchExecutable(game: GameRecord): Promise<void> {
@@ -604,40 +610,6 @@ export class GameLauncher {
     }
   }
 
-  private async resumeMicrosoftStoreApp(game: GameRecord): Promise<GameControlResult> {
-    try {
-      await logLine('info', `Resuming Microsoft Store window for ${game.title}`);
-      const window = await this.getActiveWindow(game);
-
-      if (!window) {
-        const message = `${game.title} is no longer running.`;
-        await logLine('warn', `${game.title}: ${message}`);
-        this.finishActiveGameSession(game, message);
-        return { ok: false, error: message };
-      }
-
-      this.activeWindow = window;
-      this.activeProcessId = window.processId;
-      await this.suppressWindowsTaskbar();
-      await this.revealGameWindow(window, this.launchMode(game), false);
-      this.gameInForeground = true;
-      this.scheduleGameWindowReinforcement(game, window, this.launchMode(game));
-      this.setActiveState({
-        status: 'running',
-        game,
-        message: `${game.title} was activated through Windows shell.`,
-        windowDetected: true,
-        windowState: 'foreground'
-      });
-      this.hideLauncherForGame();
-      return { ok: true };
-    } catch (fallbackError) {
-      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      await logLine('warn', `Microsoft Store resume fallback failed for ${game.title}: ${fallbackMessage}`);
-      return { ok: false, error: fallbackMessage };
-    }
-  }
-
   private monitorByProcessName(game: GameRecord): void {
     if (this.monitor) {
       clearInterval(this.monitor);
@@ -712,6 +684,7 @@ export class GameLauncher {
     this.activeWindow = null;
     this.activeProcessId = null;
     this.gameInForeground = false;
+    this.lastHandoffError = undefined;
     this.clearReinforcementTimers();
     this.setActiveState({
       status: 'closed',
@@ -761,6 +734,14 @@ export class GameLauncher {
         titleHint: game.title
       });
       if (stillCurrent) {
+        if (stillCurrent.handle !== this.activeWindow.handle) {
+          await logLine(
+            'info',
+            `Rediscovered ${game.title} window: ${this.activeWindow.handle} -> ${stillCurrent.handle} (process ${stillCurrent.processId}).`
+          );
+        }
+        this.activeWindow = stillCurrent;
+        this.activeProcessId = stillCurrent.processId;
         return stillCurrent;
       }
     }
@@ -772,6 +753,11 @@ export class GameLauncher {
     });
     this.activeWindow = window;
     this.activeProcessId = window?.processId ?? this.activeProcessId;
+    if (window) {
+      await logLine('info', `Rediscovered ${game.title} window handle ${window.handle} for process ${window.processId}.`);
+    } else {
+      await logLine('warn', `Could not rediscover a visible window for ${game.title}.`);
+    }
     return window;
   }
 
@@ -810,7 +796,7 @@ export class GameLauncher {
       return;
     }
 
-    for (const delayMs of [250, 600, 1000, 1600, 2400, 3600, 5200, 7600, 10000]) {
+    for (const delayMs of [2200, 6000]) {
       const timer = setTimeout(() => {
         void this.reinforceGameWindow(game, window, launchMode);
       }, delayMs);
@@ -846,9 +832,13 @@ export class GameLauncher {
   }
 
   private async suppressWindowsTaskbar(): Promise<void> {
+    const wasSuppressed = this.taskbarSuppressed;
     this.taskbarSuppressed = true;
     try {
       await setWindowsTaskbarVisible(false);
+      if (!wasSuppressed) {
+        await logLine('info', 'Windows taskbar hidden for customer game handoff.');
+      }
     } catch (error) {
       await logLine('warn', `Could not hide Windows taskbar during game launch: ${String(error)}`);
     }
@@ -860,9 +850,11 @@ export class GameLauncher {
     }
 
     this.taskbarSuppressed = false;
-    void setWindowsTaskbarVisible(true).catch((error) => {
-      void logLine('warn', `Could not restore Windows taskbar after game session: ${String(error)}`);
-    });
+    void setWindowsTaskbarVisible(true)
+      .then(() => logLine('info', 'Windows taskbar restored for admin or application exit.'))
+      .catch((error) => {
+        void logLine('warn', `Could not restore Windows taskbar after game session: ${String(error)}`);
+      });
   }
 
   private showLaunchShield(): void {
@@ -870,6 +862,8 @@ export class GameLauncher {
     if (!window) {
       return;
     }
+    const display = screen.getDisplayMatching(window.getBounds());
+    window.setBounds(display.bounds);
     window.show();
     window.setFullScreen(true);
     window.setAlwaysOnTop(true, 'screen-saver');
@@ -888,41 +882,43 @@ export class GameLauncher {
     }
     window.setAlwaysOnTop(false);
     window.hide();
+    void logLine('info', 'NXGS Play hidden after confirmed game window handoff.');
   }
 
-  private async revealGameWindow(
+  private async handOffToGameWindow(
+    game: GameRecord,
     window: GameWindowInfo,
     launchMode: GameLaunchMode,
-    shieldDuringPreparation = true
+    reason: 'launch' | 'resume'
   ): Promise<void> {
+    let launcherHidden = false;
     try {
       await this.suppressWindowsTaskbar();
-      if (shieldDuringPreparation) {
-        this.showLaunchShield();
-      } else {
-        this.hideLauncherForGame();
-      }
-      if (launchMode !== 'normal') {
-        for (const delayMs of [0, 220, 420, 700]) {
-          if (delayMs > 0) {
-            await delay(delayMs);
-          }
-          await prepareGameWindowForReveal(window, launchMode);
-          if (shieldDuringPreparation) {
-            this.showLaunchShield();
-          }
-        }
-        await delay(220);
-      }
-      this.hideLauncherForGame();
-      await delay(80);
-      await activateGameWindow(window, launchMode);
-      if (launchMode !== 'normal') {
-        await delay(260);
-        await keepGameWindowOnTop(window, launchMode);
-      }
-    } finally {
+      this.showLaunchShield();
+      await logLine('info', `${reason} handoff for ${game.title}: preparing window ${window.handle} while NXGS Play remains visible.`);
+      await prepareGameWindowForReveal(window, launchMode);
+
+      // The shield stays visible until the native helper has restored and focused the game window.
       this.releaseLaunchShield();
+      await activateGameWindow(window, launchMode);
+      const reinforcement = await keepGameWindowOnTop(window, launchMode);
+      if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
+        throw new Error('Windows did not confirm the game window in the foreground. NXGS Play stayed visible.');
+      }
+
+      this.hideLauncherForGame();
+      launcherHidden = true;
+      await logLine('info', `${reason} handoff for ${game.title}: visible, focused game window confirmed.`);
+    } catch (error) {
+      this.lastHandoffError = error instanceof Error ? error.message : String(error);
+      if (!launcherHidden) {
+        this.showLaunchShield();
+      }
+      throw error;
+    } finally {
+      if (launcherHidden) {
+        this.releaseLaunchShield();
+      }
     }
   }
 

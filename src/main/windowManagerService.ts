@@ -26,7 +26,7 @@ interface ActivationOptions {
   applyBorderless: boolean;
 }
 
-interface WindowActivationState {
+export interface GameWindowActivationState {
   foregroundHandle: number;
   isForeground: boolean;
   isMinimized: boolean;
@@ -166,7 +166,8 @@ if ($selected) {
 export async function waitForGameWindow(
   search: GameWindowSearch,
   timeoutMs = 20000,
-  intervalMs = 500
+  fastIntervalMs = 125,
+  settledIntervalMs = 250
 ): Promise<GameWindowInfo | null> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -174,6 +175,8 @@ export async function waitForGameWindow(
     if (window) {
       return window;
     }
+    const elapsedMs = Date.now() - startedAt;
+    const intervalMs = elapsedMs < 5000 ? fastIntervalMs : settledIntervalMs;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   return null;
@@ -226,13 +229,13 @@ ${commandScript}
   await runPowerShell(script);
 }
 
-function parseActivationState(raw: string): WindowActivationState | null {
+function parseActivationState(raw: string): GameWindowActivationState | null {
   if (!raw) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<WindowActivationState>;
+    const parsed = JSON.parse(raw) as Partial<GameWindowActivationState>;
     return {
       foregroundHandle: Number(parsed.foregroundHandle ?? 0),
       isForeground: Boolean(parsed.isForeground),
@@ -253,7 +256,7 @@ async function runActivationCommand(
   launchMode: GameLaunchMode,
   compensateFrameChrome = false,
   options: Partial<ActivationOptions> = {}
-): Promise<WindowActivationState | null> {
+): Promise<GameWindowActivationState | null> {
   if (process.platform !== 'win32' || !Number.isFinite(handle) || handle <= 0) {
     return null;
   }
@@ -415,25 +418,33 @@ export async function prepareGameWindowForReveal(
 
 export async function activateGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode = 'maximized'): Promise<void> {
   const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
-  const firstAttempt = await runActivationCommand(window.handle, launchMode, compensateFrameChrome);
-  if (firstAttempt && firstAttempt.isVisible && !firstAttempt.isMinimized) {
-    return;
+  let lastAttempt: GameWindowActivationState | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    lastAttempt = await runActivationCommand(window.handle, launchMode, compensateFrameChrome);
+    if (
+      lastAttempt &&
+      lastAttempt.isForeground &&
+      lastAttempt.isVisible &&
+      !lastAttempt.isMinimized &&
+      lastAttempt.width > 32 &&
+      lastAttempt.height > 32
+    ) {
+      return;
+    }
   }
 
-  const secondAttempt = await runActivationCommand(window.handle, launchMode, compensateFrameChrome);
-  if (secondAttempt?.isVisible && !secondAttempt.isMinimized) {
-    return;
-  }
-
-  throw new Error('Windows did not restore the game window. Try Resume Game again or use the game taskbar icon.');
+  const state = lastAttempt
+    ? `visible=${lastAttempt.isVisible}, minimized=${lastAttempt.isMinimized}, foreground=${lastAttempt.isForeground}, size=${lastAttempt.width}x${lastAttempt.height}`
+    : 'no activation state returned';
+  throw new Error(`Windows did not restore and focus the game window (${state}). NXGS Play stayed visible; try Resume Game again.`);
 }
 
 export async function keepGameWindowOnTop(
   window: GameWindowInfo,
   launchMode: GameLaunchMode = 'maximized'
-): Promise<void> {
+): Promise<GameWindowActivationState | null> {
   const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
-  await runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
+  return runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
     foreground: true,
     topMost: true,
     applyBorderless: launchMode !== 'normal'

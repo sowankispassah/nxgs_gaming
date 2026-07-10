@@ -111,7 +111,8 @@ function buildDiagnostics(): AppDiagnostics {
     kiosk: {
       ...inputDiagnostics.kiosk,
       taskbarHidden: taskbarHiddenByKiosk || launcher.taskbarHidden,
-      alwaysOnTop: Boolean(window?.isAlwaysOnTop())
+      alwaysOnTop: Boolean(window?.isAlwaysOnTop()),
+      launcherVisible: Boolean(window?.isVisible())
     }
   };
 }

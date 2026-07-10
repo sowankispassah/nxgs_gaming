@@ -151,11 +151,13 @@ export interface AppDiagnostics {
     windowDetected: boolean;
     status: ActiveGameStatus;
     windowState?: ActiveGameWindowState;
+    lastError?: string;
   };
   kiosk: {
     mode: KioskMode;
     taskbarHidden: boolean;
     alwaysOnTop: boolean;
+    launcherVisible: boolean;
     lastHomeTrigger?: ShellHomeReason;
     lastRestrictedInput?: string;
     lastInputError?: string;

@@ -1,7 +1,7 @@
 {
-    "version":  "0.5.22",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.22/NXGS-Play-Setup.exe",
-    "sha256":  "a99b1739b712e352163f966c76d89b3f9f92765c924bf50b0d46bfed34854b5b",
-    "required":  false,
-    "notes":  "NXGS Play 0.5.22 keeps customer keyboard navigation active, lets Ctrl+Shift+H reach Home without the PIN popup, and only requests Admin PIN for explicit admin or Windows/System key escape inputs."
+  "version": "0.5.23",
+  "downloadUrl": "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.23/NXGS-Play-Setup.exe",
+  "sha256": "95b0bd31e453e8a00176eceb7dc7560e7225f28663c3336578a540f1e4cf0348",
+  "required": false,
+  "notes": "NXGS Play 0.5.23 keeps the fullscreen NXGS shield visible until the game window is restored and foregrounded, speeds up window detection, and keeps Resume Game from exposing the desktop when focus fails."
 }
