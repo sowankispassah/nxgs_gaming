@@ -293,16 +293,6 @@ export function App(): JSX.Element {
         openAdminPin({ source: 'admin shortcut', key: 'Ctrl+Shift+A' });
         return;
       }
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'h') {
-        event.preventDefault();
-        void window.nxgs.requestShellHome('global-home');
-        return;
-      }
-      if (event.key === 'F10') {
-        event.preventDefault();
-        void window.nxgs.requestShellHome('global-f10');
-        return;
-      }
       if (view !== 'admin' && !pinOpen && isWindowsSystemKey(event)) {
         event.preventDefault();
         openAdminPin({ source: 'Windows Home key', key: event.key });
@@ -1517,6 +1507,8 @@ function KioskSettingsPanel(props: {
           <DiagnosticItem label="Game window handle" value={diagnostics.activeGame.windowHandle?.toString() ?? 'none'} />
           <DiagnosticItem label="Game window detected" value={diagnostics.activeGame.windowDetected ? 'yes' : 'no'} />
           <DiagnosticItem label="Game window state" value={diagnostics.activeGame.windowState ?? 'unknown'} />
+          <DiagnosticItem label="Last Home result" value={diagnostics.activeGame.lastHomeResult ?? 'none'} />
+          <DiagnosticItem label="Last Resume result" value={diagnostics.activeGame.lastResumeResult ?? 'none'} />
           <DiagnosticItem label="Last handoff error" value={diagnostics.activeGame.lastError ?? 'none'} />
           <DiagnosticItem label="NXGS visible" value={diagnostics.kiosk.launcherVisible ? 'yes' : 'no'} />
           <DiagnosticItem label="Taskbar hidden" value={diagnostics.kiosk.taskbarHidden ? 'yes' : 'no'} />

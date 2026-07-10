@@ -102,12 +102,6 @@ export class KioskInputService {
         return;
       }
 
-      if (this.isHomeInput(input)) {
-        event.preventDefault();
-        this.triggerHome(input.key === 'F10' ? 'global-f10' : 'global-home');
-        return;
-      }
-
       if (this.isAdminInput(input)) {
         event.preventDefault();
         this.requestAdminUnlock('admin shortcut', 'Ctrl+Shift+A');
@@ -241,11 +235,6 @@ export class KioskInputService {
       message: 'Enter Admin PIN to unlock PC controls.',
       requestedAt: new Date().toISOString()
     });
-  }
-
-  private isHomeInput(input: Electron.Input): boolean {
-    const key = input.key.toLowerCase();
-    return input.key === 'F10' || (input.control && input.shift && key === 'h');
   }
 
   private isAdminInput(input: Electron.Input): boolean {

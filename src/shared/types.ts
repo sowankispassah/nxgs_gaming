@@ -152,6 +152,8 @@ export interface AppDiagnostics {
     status: ActiveGameStatus;
     windowState?: ActiveGameWindowState;
     lastError?: string;
+    lastHomeResult?: string;
+    lastResumeResult?: string;
   };
   kiosk: {
     mode: KioskMode;

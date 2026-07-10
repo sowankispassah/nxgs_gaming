@@ -33,6 +33,13 @@ function splitArgs(raw: string): string[] {
   return args;
 }
 
+class FocusOperationCanceledError extends Error {
+  constructor() {
+    super('Game focus operation was canceled because NXGS Home was opened.');
+    this.name = 'FocusOperationCanceledError';
+  }
+}
+
 export class GameLauncher {
   private activeGame: GameRecord | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -43,6 +50,9 @@ export class GameLauncher {
   private gameInForeground = false;
   private taskbarSuppressed = false;
   private lastHandoffError: string | undefined;
+  private lastHomeResult: string | undefined;
+  private lastResumeResult: string | undefined;
+  private focusGeneration = 0;
   private operationInFlight: 'launch' | 'home' | 'resume' | 'minimize' | 'close' | null = null;
   private state: ActiveGameState = {
     status: 'idle',
@@ -74,7 +84,9 @@ export class GameLauncher {
       windowDetected: Boolean(this.activeWindow),
       status: this.state.status,
       windowState: this.state.windowState,
-      lastError: this.lastHandoffError
+      lastError: this.lastHandoffError,
+      lastHomeResult: this.lastHomeResult,
+      lastResumeResult: this.lastResumeResult
     };
   }
 
@@ -88,6 +100,7 @@ export class GameLauncher {
     }
 
     this.operationInFlight = 'launch';
+    let focusGeneration: number | null = null;
     try {
       if (!game.enabled) {
         throw new Error(`${game.title} is disabled.`);
@@ -110,7 +123,9 @@ export class GameLauncher {
         windowDetected: false,
         windowState: 'unknown'
       });
+      focusGeneration = this.beginFocusOperation('launch', game);
       await this.suppressWindowsTaskbar();
+      this.assertFocusOperationCurrent(focusGeneration, game);
       this.showLaunchShield();
       await logLine('info', `Launch clicked for ${game.title}. Launching ${game.launchType}: ${game.launchCommand}`);
 
@@ -130,8 +145,15 @@ export class GameLauncher {
         `${game.title} launch command accepted${this.activeProcessId ? ` (process ${this.activeProcessId})` : ''}. Waiting for its first visible window.`
       );
 
-      await this.activateLaunchedGame(game);
+      await this.activateLaunchedGame(game, focusGeneration);
     } catch (error) {
+      if (
+        error instanceof FocusOperationCanceledError ||
+        (focusGeneration !== null && !this.isFocusOperationCurrent(focusGeneration, game))
+      ) {
+        await logLine('info', `Launch handoff canceled for ${game.title}; NXGS Home remains open.`);
+        return;
+      }
       this.lastHandoffError = error instanceof Error ? error.message : String(error);
       this.releaseLaunchShield();
       this.focusLauncher();
@@ -244,15 +266,18 @@ export class GameLauncher {
       windowDetected: Boolean(this.activeWindow),
       windowState: this.activeWindow ? 'background' : 'unknown'
     });
+    const focusGeneration = this.beginFocusOperation('resume', game);
 
     try {
       const window = await this.getActiveWindow(game);
+      this.assertFocusOperationCurrent(focusGeneration, game);
       if (!window) {
         const stillRunning = await this.isGameStillRunning(game);
         if (!stillRunning) {
           const message = `${game.title} is no longer running.`;
           await logLine('info', `Resume requested for ${game.title}, but the game is no longer running.`);
           this.finishActiveGameSession(game, message);
+          this.lastResumeResult = message;
           return { ok: false, error: message };
         }
 
@@ -265,15 +290,17 @@ export class GameLauncher {
           windowDetected: false,
           windowState: 'unknown'
         });
+        this.lastResumeResult = message;
         return { ok: false, error: message };
       }
 
       await this.suppressWindowsTaskbar();
-      await this.handOffToGameWindow(game, window, this.launchMode(game), 'resume');
+      this.assertFocusOperationCurrent(focusGeneration, game);
+      await this.handOffToGameWindow(game, window, this.launchMode(game), 'resume', focusGeneration);
+      this.assertFocusOperationCurrent(focusGeneration, game);
       this.activeWindow = window;
       this.activeProcessId = window.processId;
       this.gameInForeground = true;
-      this.scheduleGameWindowReinforcement(game, window, this.launchMode(game));
       this.setActiveState({
         status: 'running',
         game,
@@ -282,11 +309,19 @@ export class GameLauncher {
         windowState: 'foreground'
       });
       this.lastHandoffError = undefined;
+      this.lastResumeResult = `${game.title} restored and focused.`;
       await logLine('info', `Resume succeeded for ${game.title}; game window is foreground and NXGS Play is hidden.`);
       return { ok: true };
     } catch (error) {
+      if (error instanceof FocusOperationCanceledError || !this.isFocusOperationCurrent(focusGeneration, game)) {
+        const message = `Resume canceled because NXGS Home was opened.`;
+        this.lastResumeResult = message;
+        await logLine('info', `${message} ${game.title} was not refocused.`);
+        return { ok: false, error: message };
+      }
       const message = error instanceof Error ? error.message : String(error);
       this.lastHandoffError = message;
+      this.lastResumeResult = message;
       await logLine('warn', `Native resume failed for ${game.title}: ${message}`);
       this.focusLauncher();
       this.setActiveState({
@@ -338,6 +373,10 @@ export class GameLauncher {
       }
 
       await minimizeGameWindow(window);
+      if (this.operationInFlight !== 'minimize') {
+        await logLine('info', `Minimize result for ${game.title} was superseded by Home.`);
+        return { ok: true };
+      }
       this.gameInForeground = false;
       this.activeWindow = window;
       this.activeProcessId = window.processId;
@@ -364,44 +403,75 @@ export class GameLauncher {
 
   async returnToHome(): Promise<GameControlResult> {
     if (this.operationInFlight === 'home') {
-      return { ok: true };
-    }
-
-    if (this.operationInFlight) {
-      await logLine('info', `Home requested while ${this.operationInFlight} is in progress; focusing launcher only.`);
       this.focusLauncher();
       return { ok: true };
     }
 
+    if (this.state.status === 'homeOverlayOpen') {
+      this.lastHomeResult = 'NXGS Home was already open and was refocused.';
+      this.focusLauncher();
+      return { ok: true };
+    }
+
+    const canceledOperation = this.operationInFlight;
+    const stateBeforeHome = this.state.status;
+    this.cancelFocusOperations(`Home requested from ${stateBeforeHome}`);
     this.operationInFlight = 'home';
     const game = this.activeGame;
+    this.lastHomeResult = `Home started from ${stateBeforeHome}.`;
+    await logLine('info', `Home pressed. State before Home: ${stateBeforeHome}.`);
+    if (canceledOperation === 'launch' || canceledOperation === 'resume') {
+      await logLine('info', `Canceled pending ${canceledOperation} focus loop before opening Home.`);
+    }
+
     try {
+      this.gameInForeground = false;
+      this.clearReinforcementTimers();
+      if (game) {
+        this.setActiveState({
+          status: 'homeOverlayOpen',
+          game,
+          message: `${game.title} is still running. Choose Resume or Close.`,
+          windowDetected: Boolean(this.activeWindow),
+          windowState: this.activeWindow ? 'background' : 'unknown'
+        });
+      }
+
+      let minimized = false;
       if (game) {
         try {
           const window = await this.getActiveWindow(game);
           if (window) {
             this.activeWindow = window;
             this.activeProcessId = window.processId;
+            await minimizeGameWindow(window);
+            minimized = true;
+            await logLine('info', `Game minimized for Home: ${game.title}, window ${window.handle}.`);
           } else if (!(await this.isGameStillRunning(game))) {
             this.finishActiveGameSession(game, `${game.title} is no longer running.`);
+            this.lastHomeResult = `${game.title} had already closed; NXGS Home restored.`;
             return { ok: true };
           }
         } catch (error) {
           await logLine('warn', `Return home window lookup failed for ${game.title}: ${String(error)}`);
+          this.lastHandoffError = error instanceof Error ? error.message : String(error);
         }
       }
-      this.gameInForeground = false;
-      this.clearReinforcementTimers();
+
       this.focusLauncher();
       if (game) {
         this.setActiveState({
           status: 'homeOverlayOpen',
           game,
-          message: `${game.title} is still running. Choose Resume, Minimize, or Close.`,
+          message: `${game.title} is still running. Choose Resume or Close.`,
           windowDetected: Boolean(this.activeWindow),
-          windowState: this.activeWindow ? 'background' : 'unknown'
+          windowState: minimized ? 'minimized' : this.activeWindow ? 'background' : 'unknown'
         });
       }
+      this.lastHomeResult = minimized
+        ? `${game?.title ?? 'Game'} minimized; NXGS Home restored and focused.`
+        : 'NXGS Home restored and focused; no controllable game window was found.';
+      await logLine('info', this.lastHomeResult);
       return { ok: true };
     } finally {
       if (this.operationInFlight === 'home') {
@@ -426,23 +496,28 @@ export class GameLauncher {
 
   focusLauncher(): void {
     const window = this.windowProvider();
-    if (!window) {
+    if (!window || window.isDestroyed()) {
       return;
+    }
+    if (window.isMinimized()) {
+      window.restore();
     }
     const display = screen.getDisplayMatching(window.getBounds());
     window.setBounds(display.bounds);
-    window.show();
     window.setFullScreen(true);
+    window.setMenuBarVisibility(false);
+    window.show();
     window.setAlwaysOnTop(true, 'screen-saver');
     window.moveTop();
     window.focus();
+    void logLine('info', 'NXGS Play restored fullscreen and focused for Home.');
   }
 
   restoreTaskbarForAdmin(): void {
     this.restoreWindowsTaskbar();
   }
 
-  private async activateLaunchedGame(game: GameRecord): Promise<void> {
+  private async activateLaunchedGame(game: GameRecord, focusGeneration: number): Promise<void> {
     const window = await waitForGameWindow(
       {
         pid: this.child?.pid,
@@ -451,8 +526,14 @@ export class GameLauncher {
       },
       12000,
       125,
-      250
+      250,
+      () => this.isFocusOperationCurrent(focusGeneration, game)
     );
+
+    if (!this.isFocusOperationCurrent(focusGeneration, game)) {
+      await logLine('info', `Launch polling stopped for ${game.title} because NXGS Home was opened.`);
+      return;
+    }
 
     if (!window) {
       if (!(await this.isGameStillRunning(game))) {
@@ -490,8 +571,12 @@ export class GameLauncher {
     }
 
     try {
-      await this.handOffToGameWindow(game, window, launchMode, 'launch');
+      await this.handOffToGameWindow(game, window, launchMode, 'launch', focusGeneration);
     } catch (error) {
+      if (error instanceof FocusOperationCanceledError || !this.isFocusOperationCurrent(focusGeneration, game)) {
+        await logLine('info', `Launch handoff stopped for ${game.title}; Home owns foreground.`);
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       this.lastHandoffError = message;
       const currentWindow = await this.getActiveWindow(game);
@@ -512,8 +597,8 @@ export class GameLauncher {
       });
       return;
     }
+    this.assertFocusOperationCurrent(focusGeneration, game);
     this.gameInForeground = true;
-    this.scheduleGameWindowReinforcement(game, window, launchMode);
     this.setActiveState({
       status: 'running',
       game,
@@ -742,6 +827,10 @@ export class GameLauncher {
         }
         this.activeWindow = stillCurrent;
         this.activeProcessId = stillCurrent.processId;
+        await logLine(
+          'info',
+          `Using ${game.title} window ${stillCurrent.handle} from ${stillCurrent.processName || 'unknown process'} (${stillCurrent.processId}).`
+        );
         return stillCurrent;
       }
     }
@@ -788,40 +877,6 @@ export class GameLauncher {
 
   private launchMode(game: GameRecord): GameLaunchMode {
     return game.launchMode ?? 'borderlessPreferred';
-  }
-
-  private scheduleGameWindowReinforcement(game: GameRecord, window: GameWindowInfo, launchMode: GameLaunchMode): void {
-    this.clearReinforcementTimers();
-    if (launchMode === 'normal') {
-      return;
-    }
-
-    for (const delayMs of [2200, 6000]) {
-      const timer = setTimeout(() => {
-        void this.reinforceGameWindow(game, window, launchMode);
-      }, delayMs);
-      this.reinforceTimers.push(timer);
-    }
-  }
-
-  private async reinforceGameWindow(game: GameRecord, window: GameWindowInfo, launchMode: GameLaunchMode): Promise<void> {
-    if (!this.gameInForeground || this.activeGame?.id !== game.id) {
-      return;
-    }
-
-    try {
-      const currentWindow =
-        (await findGameWindow({
-          pid: window.processId,
-          processName: game.processName,
-          titleHint: game.title
-        })) ?? window;
-      await keepGameWindowOnTop(currentWindow, launchMode);
-      this.activeWindow = currentWindow;
-      this.activeProcessId = currentWindow.processId;
-    } catch (error) {
-      await logLine('warn', `Borderless reinforcement failed for ${game.title}: ${String(error)}`);
-    }
   }
 
   private clearReinforcementTimers(): void {
@@ -872,7 +927,9 @@ export class GameLauncher {
   }
 
   private releaseLaunchShield(): void {
-    this.windowProvider()?.setAlwaysOnTop(false);
+    const window = this.windowProvider();
+    window?.setAlwaysOnTop(false);
+    window?.blur();
   }
 
   private hideLauncherForGame(): void {
@@ -882,38 +939,46 @@ export class GameLauncher {
     }
     window.setAlwaysOnTop(false);
     window.hide();
-    void logLine('info', 'NXGS Play hidden after confirmed game window handoff.');
+    void logLine('info', 'NXGS Play hidden for the prepared game window foreground transfer.');
   }
 
   private async handOffToGameWindow(
     game: GameRecord,
     window: GameWindowInfo,
     launchMode: GameLaunchMode,
-    reason: 'launch' | 'resume'
+    reason: 'launch' | 'resume',
+    focusGeneration: number
   ): Promise<void> {
     let launcherHidden = false;
     try {
+      this.assertFocusOperationCurrent(focusGeneration, game);
       await this.suppressWindowsTaskbar();
+      this.assertFocusOperationCurrent(focusGeneration, game);
       this.showLaunchShield();
       await logLine('info', `${reason} handoff for ${game.title}: preparing window ${window.handle} while NXGS Play remains visible.`);
       await prepareGameWindowForReveal(window, launchMode);
+      this.assertFocusOperationCurrent(focusGeneration, game);
 
-      // The shield stays visible until the native helper has restored and focused the game window.
+      // The prepared game already covers the display; hiding the shield lets Windows grant it foreground focus.
       this.releaseLaunchShield();
+      this.hideLauncherForGame();
+      launcherHidden = true;
       await activateGameWindow(window, launchMode);
+      this.assertFocusOperationCurrent(focusGeneration, game);
       const reinforcement = await keepGameWindowOnTop(window, launchMode);
+      this.assertFocusOperationCurrent(focusGeneration, game);
       if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
         throw new Error('Windows did not confirm the game window in the foreground. NXGS Play stayed visible.');
       }
 
-      this.hideLauncherForGame();
-      launcherHidden = true;
       await logLine('info', `${reason} handoff for ${game.title}: visible, focused game window confirmed.`);
     } catch (error) {
-      this.lastHandoffError = error instanceof Error ? error.message : String(error);
-      if (!launcherHidden) {
-        this.showLaunchShield();
+      if (error instanceof FocusOperationCanceledError) {
+        throw error;
       }
+      this.lastHandoffError = error instanceof Error ? error.message : String(error);
+      this.showLaunchShield();
+      launcherHidden = false;
       throw error;
     } finally {
       if (launcherHidden) {
@@ -922,11 +987,43 @@ export class GameLauncher {
     }
   }
 
+  private beginFocusOperation(reason: 'launch' | 'resume', game: GameRecord): number {
+    this.focusGeneration += 1;
+    void logLine('info', `${reason} focus generation ${this.focusGeneration} started for ${game.title}.`);
+    return this.focusGeneration;
+  }
+
+  private cancelFocusOperations(reason: string): void {
+    this.focusGeneration += 1;
+    this.gameInForeground = false;
+    this.clearReinforcementTimers();
+    void logLine('info', `Focus generation advanced to ${this.focusGeneration}: ${reason}.`);
+  }
+
+  private isFocusOperationCurrent(focusGeneration: number, game: GameRecord): boolean {
+    return (
+      this.focusGeneration === focusGeneration &&
+      this.activeGame?.id === game.id &&
+      (this.state.status === 'launching' || this.state.status === 'resuming')
+    );
+  }
+
+  private assertFocusOperationCurrent(focusGeneration: number, game: GameRecord): void {
+    if (!this.isFocusOperationCurrent(focusGeneration, game)) {
+      throw new FocusOperationCanceledError();
+    }
+  }
+
   private setActiveState(state: Omit<ActiveGameState, 'updatedAt'>): void {
+    const previousStatus = this.state.status;
     this.state = {
       updatedAt: new Date().toISOString(),
       ...state
     };
+    void logLine(
+      'info',
+      `Active game state ${previousStatus} -> ${this.state.status}${this.state.game ? ` (${this.state.game.title})` : ''}.`
+    );
     this.events.onActiveGameChanged(this.state);
   }
 }

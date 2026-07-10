@@ -1,7 +1,7 @@
 {
-  "version": "0.5.23",
-  "downloadUrl": "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.23/NXGS-Play-Setup.exe",
-  "sha256": "95b0bd31e453e8a00176eceb7dc7560e7225f28663c3336578a540f1e4cf0348",
-  "required": false,
-  "notes": "NXGS Play 0.5.23 keeps the fullscreen NXGS shield visible until the game window is restored and foregrounded, speeds up window detection, and keeps Resume Game from exposing the desktop when focus fails."
+    "version":  "0.5.24",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.5.24/NXGS-Play-Setup.exe",
+    "sha256":  "90d7b48488416e6cf3bee0152a36d34c6bb308c6ab78457df27c754fba369014",
+    "required":  false,
+    "notes":  "NXGS Play 0.5.24 fixes the kiosk Home and Resume focus race, preserves the correct Microsoft Store game window across Home, cancels delayed refocus, and removes duplicate keyboard Home handlers."
 }

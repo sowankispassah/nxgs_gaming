@@ -148,7 +148,7 @@ if (${powershellQuote(titleHint)} -ne "") {
 $selected = $items |
   Sort-Object Id -Unique |
   Where-Object { $_.MainWindowHandle -and $_.MainWindowHandle -ne 0 } |
-  Sort-Object StartTime -Descending |
+  Sort-Object @{ Expression = { if (${pid} -gt 0 -and $_.Id -eq ${pid}) { 0 } else { 1 } }; Ascending = $true }, @{ Expression = { $_.StartTime }; Descending = $true } |
   Select-Object -First 1
 if ($selected) {
   [pscustomobject]@{
@@ -167,11 +167,15 @@ export async function waitForGameWindow(
   search: GameWindowSearch,
   timeoutMs = 20000,
   fastIntervalMs = 125,
-  settledIntervalMs = 250
+  settledIntervalMs = 250,
+  shouldContinue: () => boolean = () => true
 ): Promise<GameWindowInfo | null> {
   const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
+  while (Date.now() - startedAt < timeoutMs && shouldContinue()) {
     const window = await findGameWindow(search);
+    if (!shouldContinue()) {
+      return null;
+    }
     if (window) {
       return window;
     }
@@ -286,20 +290,27 @@ public struct MONITORINFO {
 
 public static class Win32 {
   [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int dwProcessId);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
   [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
   [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int nIndex);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
   [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint dwFlags);
   [DllImport("user32.dll")] public static extern bool OpenIcon(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr SetActiveWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
   [DllImport("user32.dll", EntryPoint="GetWindowLong")] public static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
   [DllImport("user32.dll", EntryPoint="GetWindowLongPtr")] public static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
   [DllImport("user32.dll", EntryPoint="SetWindowLong")] public static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
@@ -382,8 +393,43 @@ if ($useTopMost) {
   [Win32]::SetWindowPos($hwnd, $notTopMost, 0, 0, 0, 0, $flags) | Out-Null
 }
 if ($activateForeground) {
-  [Win32]::BringWindowToTop($hwnd) | Out-Null
-  [Win32]::SetForegroundWindow($hwnd) | Out-Null
+  $foregroundBefore = [Win32]::GetForegroundWindow()
+  [uint32]$targetPid = 0
+  [uint32]$foregroundPid = 0
+  $currentThread = [Win32]::GetCurrentThreadId()
+  $targetThread = [Win32]::GetWindowThreadProcessId($hwnd, [ref]$targetPid)
+  $foregroundThread = [Win32]::GetWindowThreadProcessId($foregroundBefore, [ref]$foregroundPid)
+  $attachedCurrent = $false
+  $attachedForeground = $false
+  try {
+    if ($currentThread -ne $targetThread) {
+      $attachedCurrent = [Win32]::AttachThreadInput($currentThread, $targetThread, $true)
+    }
+    if ($foregroundThread -ne 0 -and $foregroundThread -ne $targetThread) {
+      $attachedForeground = [Win32]::AttachThreadInput($foregroundThread, $targetThread, $true)
+    }
+    [Win32]::AllowSetForegroundWindow([int]$targetPid) | Out-Null
+    [Win32]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+    [Win32]::SwitchToThisWindow($hwnd, $true)
+    [Win32]::BringWindowToTop($hwnd) | Out-Null
+    [Win32]::SetActiveWindow($hwnd) | Out-Null
+    [Win32]::SetForegroundWindow($hwnd) | Out-Null
+    [Win32]::SetFocus($hwnd) | Out-Null
+    [Win32]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    try {
+      $shell = New-Object -ComObject WScript.Shell
+      $shell.AppActivate([int]$targetPid) | Out-Null
+      [Win32]::SetForegroundWindow($hwnd) | Out-Null
+    } catch {}
+  } finally {
+    [Win32]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    if ($attachedForeground) {
+      [Win32]::AttachThreadInput($foregroundThread, $targetThread, $false) | Out-Null
+    }
+    if ($attachedCurrent) {
+      [Win32]::AttachThreadInput($currentThread, $targetThread, $false) | Out-Null
+    }
+  }
 }
 Start-Sleep -Milliseconds 160
 $foreground = [Win32]::GetForegroundWindow()

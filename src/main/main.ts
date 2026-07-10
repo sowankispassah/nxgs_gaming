@@ -121,21 +121,42 @@ function sendShellHome(event: ShellHomeEvent): void {
   sendToRenderer('shell:home', event);
 }
 
-function returnToShellHome(reason: ShellHomeReason = 'system'): void {
+let homeActionInFlight: Promise<void> | null = null;
+
+function openHomeFromGame(reason: ShellHomeReason = 'system'): void {
+  if (homeActionInFlight) {
+    void logLine('info', `Ignored overlapping Home request from ${reason}; current Home action is still running.`);
+    launcher.focusLauncher();
+    return;
+  }
+
   void logLine('info', `Shell home requested by ${reason}.`);
-  void launcher.returnToHome().then(() => {
-    applyKioskSettings(store.getSettings());
-    sendShellHome({
-      reason,
-      openActiveGamePanel: Boolean(launcher.active),
-      emergencyClose: reason === 'emergency-close'
+  homeActionInFlight = launcher
+    .returnToHome()
+    .then((result) => {
+      applyKioskSettings(store.getSettings());
+      sendShellHome({
+        reason,
+        openActiveGamePanel: Boolean(launcher.active),
+        emergencyClose: reason === 'emergency-close'
+      });
+      if (!result.ok) {
+        void logLine('warn', `Home action completed with a warning: ${result.error ?? 'unknown error'}`);
+      }
+    })
+    .catch((error) => {
+      launcher.focusLauncher();
+      applyKioskSettings(store.getSettings());
+      void logLine('error', `Home action failed: ${error instanceof Error ? error.message : String(error)}`);
+    })
+    .finally(() => {
+      homeActionInFlight = null;
     });
-  });
 }
 
 function requestEmergencyCloseOverlay(): void {
   void logLine('warn', 'Emergency close shortcut requested for the active game.');
-  returnToShellHome('emergency-close');
+  openHomeFromGame('emergency-close');
 }
 
 function requestAdminUnlock(request: AdminUnlockRequest): void {
@@ -173,7 +194,7 @@ const launcher = new GameLauncher(
 );
 
 const kioskInput = new KioskInputService({
-  onHome: returnToShellHome,
+  onHome: openHomeFromGame,
   onAdminUnlockRequest: requestAdminUnlock,
   onEmergencyClose: requestEmergencyCloseOverlay
 });
@@ -309,7 +330,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('shell:homeRequest', (_event, reason: ShellHomeReason = 'renderer-request') => {
-    returnToShellHome(reason);
+    openHomeFromGame(reason);
     return { ok: true };
   });
 
