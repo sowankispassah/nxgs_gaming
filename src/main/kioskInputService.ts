@@ -267,4 +267,3 @@ export class KioskInputService {
     this.events.onHome('system');
   }
 }
-

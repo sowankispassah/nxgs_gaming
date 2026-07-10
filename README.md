@@ -143,4 +143,3 @@ The data layer is a simple local JSON database for MVP reliability and easy insp
 - Add payment/session entitlement integration behind the existing timer boundary.
 - Add stronger Windows lockdown through Assigned Access, Shell Launcher, Group Policy, AppLocker or WDAC, and restricted Windows user accounts.
 - Add automated Electron smoke tests and a mock process launcher for session-flow tests.
-
