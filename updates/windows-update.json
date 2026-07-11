@@ -1,7 +1,7 @@
 {
-    "version":  "0.6.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.6.0/NXGS-Play-Setup.exe",
-    "sha256":  "e424c65a7c215998b8f0af169de79ccad157c95a461cbbf926688db72196782a",
+    "version":  "0.7.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.7.0/NXGS-Play-Setup.exe",
+    "sha256":  "d05f306dc0851141a3e6ec818fa7473b8220b7c3104db6bf25c3ccc6c5bdf431",
     "required":  false,
-    "notes":  "NXGS Play 0.6.0 adds the console-style customer dashboard, separate avatar and cover artwork, smooth game navigation, live utility controls, and legacy artwork migration while preserving launch, session, and active-game controls."
+    "notes":  "NXGS Play 0.7.0 adds a PS5-style quick Home overlay and active-game switcher, faster Resume handoff, Launcher Home navigation, and reliable graceful Close detection for Microsoft Store games."
 }
