@@ -1,7 +1,7 @@
 {
-    "version":  "0.9.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.9.1/NXGS-Play-Setup.exe",
-    "sha256":  "ef3c75c301611e6d0c8f0f6ebe9cda851aeb7984650b95b874ce493a5272b32f",
+    "version":  "0.9.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.9.2/NXGS-Play-Setup.exe",
+    "sha256":  "517b6a6359d7289bd4b7ab566b8a82cbe83c195d2bde472e96159323c979097d",
     "required":  false,
-    "notes":  "NXGS Play 0.9.1 keeps the NXGS console shell fullscreen behind every game and repeatedly enforces borderless fullscreen after launch and Resume, preventing the Windows desktop, icons, taskbar, or title bar from being exposed."
+    "notes":  "NXGS Play 0.9.2 makes Ctrl+Shift+H display the switcher immediately, moves slow Store/game window cleanup into a cancellation-aware background task, and keeps Resume, minimize-to-Home, and Close Game responsive."
 }
