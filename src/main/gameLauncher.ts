@@ -513,27 +513,6 @@ export class GameLauncher {
       this.gameInForeground = false;
       this.clearReinforcementTimers();
       if (game) {
-        try {
-          const window = this.activeWindow ?? (await this.getActiveWindow(game));
-          if (window) {
-            this.activeWindow = window;
-            this.activeProcessId = window.processId;
-            await releaseGameWindowTopMost(window);
-            await logLine('info', `Released topmost lock for quick overlay: ${game.title}, window ${window.handle}.`);
-          } else {
-            await logLine(
-              'info',
-              `${game.title} does not have a visible window yet; retaining the active session in the quick overlay.`
-            );
-          }
-        } catch (error) {
-          await logLine('warn', `Return home window lookup failed for ${game.title}: ${String(error)}`);
-          this.lastHandoffError = error instanceof Error ? error.message : String(error);
-        }
-      }
-
-      this.focusLauncher();
-      if (game) {
         this.setActiveState({
           status: 'quickOverlayOpen',
           game,
@@ -541,6 +520,12 @@ export class GameLauncher {
           windowDetected: Boolean(this.activeWindow),
           windowState: this.activeWindow ? 'background' : 'unknown'
         });
+      }
+      // Raise NXGS before any native window lookup so Home always gives immediate visible feedback.
+      this.focusLauncher();
+      if (game) {
+        const homeGeneration = this.focusGeneration;
+        void this.releaseGameWindowsForQuickOverlay(game, homeGeneration);
       }
       this.lastHomeResult = game
         ? `${game.title} remains running; NXGS quick overlay restored and focused.`
@@ -551,6 +536,44 @@ export class GameLauncher {
       if (this.operationInFlight === 'home') {
         this.operationInFlight = null;
       }
+    }
+  }
+
+  private async releaseGameWindowsForQuickOverlay(game: GameRecord, homeGeneration: number): Promise<void> {
+    try {
+      const trackedWindow = this.activeWindow ?? (await this.getActiveWindow(game));
+      if (this.focusGeneration !== homeGeneration || this.state.status !== 'quickOverlayOpen') {
+        return;
+      }
+      const refreshedWindow = await findGameWindow({
+        pid: game.processName?.trim() ? this.activeProcessId ?? this.child?.pid : undefined,
+        processName: game.processName,
+        titleHint: game.title,
+        allowUntitledStoreFrame: game.launchType === 'microsoftStore' && !game.processName?.trim()
+      });
+      const windows = [trackedWindow, refreshedWindow].filter(
+        (candidate, index, candidates): candidate is GameWindowInfo =>
+          Boolean(candidate) && candidates.findIndex((other) => other?.handle === candidate?.handle) === index
+      );
+      for (const window of windows) {
+        if (this.focusGeneration !== homeGeneration || this.state.status !== 'quickOverlayOpen') {
+          return;
+        }
+        await releaseGameWindowTopMost(window);
+        await logLine('info', `Released topmost lock for quick overlay: ${game.title}, window ${window.handle}.`);
+      }
+      const currentWindow = refreshedWindow ?? trackedWindow;
+      if (currentWindow) {
+        this.activeWindow = currentWindow;
+        this.activeProcessId = currentWindow.processId;
+      }
+      if (this.focusGeneration === homeGeneration && this.state.status === 'quickOverlayOpen') {
+        // Raise it again after releasing every game HWND in case Windows reordered the topmost band.
+        this.focusLauncher();
+      }
+    } catch (error) {
+      await logLine('warn', `Return home window lookup failed for ${game.title}: ${String(error)}`);
+      this.lastHandoffError = error instanceof Error ? error.message : String(error);
     }
   }
 
