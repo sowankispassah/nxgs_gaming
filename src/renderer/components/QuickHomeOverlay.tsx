@@ -22,9 +22,10 @@ export function QuickHomeOverlay(props: {
   activeGame: ActiveGameState;
   emergencyCloseRequestId: number;
   onOpenAdmin: (source: string) => void;
+  onDismiss: () => void;
 }): JSX.Element {
   const game = props.activeGame.game;
-  const [selectedNavIndex, setSelectedNavIndex] = useState(1);
+  const [selectedNavIndex, setSelectedNavIndex] = useState(game ? 1 : 0);
   const [menuIndex, setMenuIndex] = useState(0);
   const [focusArea, setFocusArea] = useState<FocusArea>('menu');
   const [confirmClose, setConfirmClose] = useState(false);
@@ -37,7 +38,7 @@ export function QuickHomeOverlay(props: {
   const navItems = useMemo(
     () => [
       { key: 'home', label: 'Launcher Home', icon: <Home size={23} /> },
-      { key: 'game', label: game?.title ?? 'Active game', icon: null },
+      ...(game ? [{ key: 'game', label: game.title, icon: null }] : []),
       { key: 'notifications', label: 'Notifications coming soon', icon: <Bell size={21} /> },
       { key: 'players', label: 'Players coming soon', icon: <UsersRound size={22} /> },
       { key: 'audio', label: 'Audio coming soon', icon: <Music2 size={22} /> },
@@ -49,7 +50,7 @@ export function QuickHomeOverlay(props: {
 
   const closeFailed = /did not close|force close/i.test(props.activeGame.message ?? '');
   const activeNavItem = navItems[selectedNavIndex];
-  const gameSelected = activeNavItem?.key === 'game';
+  const gameSelected = Boolean(game && activeNavItem?.key === 'game');
   const disabled = pendingAction !== null || props.activeGame.status === 'closing';
 
   useEffect(() => {
@@ -100,11 +101,13 @@ export function QuickHomeOverlay(props: {
       const result = await window.nxgs.goToLauncherHome();
       if (!result.ok) {
         setMessage(result.error ?? 'NXGS could not open Launcher Home.');
+      } else {
+        props.onDismiss();
       }
     } finally {
       setPendingAction(null);
     }
-  }, [pendingAction]);
+  }, [pendingAction, props]);
 
   const closeGame = useCallback(async (): Promise<void> => {
     if (pendingAction) {
@@ -189,8 +192,12 @@ export function QuickHomeOverlay(props: {
       setMenuIndex(0);
       return;
     }
+    if (!game) {
+      props.onDismiss();
+      return;
+    }
     void resumeGame();
-  }, [confirmClose, focusArea, menuIndex, resumeGame]);
+  }, [confirmClose, focusArea, game, menuIndex, props, resumeGame]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -293,10 +300,6 @@ export function QuickHomeOverlay(props: {
     return () => window.clearInterval(interval);
   }, [closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, selectMenuAction, selectNavAction, selectedNavIndex]);
 
-  if (!game) {
-    return <div className="quick-home-overlay" />;
-  }
-
   return (
     <section className="quick-home-overlay" aria-label="NXGS quick home overlay">
       <div className="quick-overlay-shade" />
@@ -307,7 +310,7 @@ export function QuickHomeOverlay(props: {
         </time>
       </header>
 
-      {gameSelected && (
+      {gameSelected && game && (
         <section className="quick-game-menu" aria-label={`${game.title} controls`}>
           <div className="quick-game-heading">
             <span className="quick-game-art"><SafeGameImage game={game} kind="avatar" alt="" fallbackSize={28} /></span>
@@ -387,8 +390,8 @@ export function QuickHomeOverlay(props: {
             onMouseEnter={() => { setSelectedNavIndex(index); setFocusArea('navbar'); }}
             onClick={() => selectNavAction(index)}
           >
-            {item.key === 'game' ? <SafeGameImage game={game} kind="avatar" alt="" fallbackSize={25} /> : item.icon}
-            {item.key === 'game' && <span className="active-dot" />}
+            {item.key === 'game' && game ? <SafeGameImage game={game} kind="avatar" alt="" fallbackSize={25} /> : item.icon}
+            {item.key === 'game' && game && <span className="active-dot" />}
           </button>
         ))}
       </nav>

@@ -137,6 +137,7 @@ export function App(): JSX.Element {
   const [cursorHidden, setCursorHidden] = useState(false);
   const [homeOverlayRequestId, setHomeOverlayRequestId] = useState(0);
   const [emergencyCloseRequestId, setEmergencyCloseRequestId] = useState(0);
+  const [quickNavOpen, setQuickNavOpen] = useState(false);
   const [adminUnlockRequest, setAdminUnlockRequest] = useState<AdminUnlockRequest | null>(null);
 
   const enabledGames = useMemo(() => games.filter((game) => game.enabled), [games]);
@@ -188,6 +189,9 @@ export function App(): JSX.Element {
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
       setActiveGame(next);
+      if (['launching', 'running', 'minimizedToHome', 'resuming', 'closing', 'closed', 'error'].includes(next.status)) {
+        setQuickNavOpen(false);
+      }
       if (next.status === 'launching' || next.status === 'minimizedToHome' || next.status === 'closed') {
         setView('home');
       }
@@ -196,6 +200,7 @@ export function App(): JSX.Element {
       setConfirmGame(null);
       closeAdminPin();
       setView('home');
+      setQuickNavOpen(true);
       if (event.openActiveGamePanel) {
         setHomeOverlayRequestId((value) => value + 1);
       }
@@ -206,6 +211,7 @@ export function App(): JSX.Element {
     const unsubscribeAdminUnlock = window.nxgs.onAdminUnlockRequested((request) => {
       setConfirmGame(null);
       setView('home');
+      setQuickNavOpen(false);
       setAdminUnlockRequest(request);
       setPinOpen(true);
       setHomeOverlayRequestId((value) => value + 1);
@@ -319,6 +325,11 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'h') {
+        event.preventDefault();
+        void window.nxgs.requestShellHome('renderer-request');
+        return;
+      }
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault();
         openAdminPin({ source: 'admin shortcut', key: 'Ctrl+Shift+A' });
@@ -434,15 +445,17 @@ export function App(): JSX.Element {
     );
   }
 
-  const quickOverlayVisible = activeGame.status === 'quickOverlayOpen';
+  const activeGameOverlayVisible = activeGame.status === 'quickOverlayOpen';
+  const homeQuickNavVisible = quickNavOpen && !activeGameOverlayVisible;
 
   return (
-    <main className={`app-shell ${quickOverlayVisible ? 'quick-overlay-shell' : ''} ${cursorHidden ? 'cursor-hidden' : ''}`}>
-      {quickOverlayVisible ? (
+    <main className={`app-shell ${activeGameOverlayVisible ? 'quick-overlay-shell' : ''} ${cursorHidden ? 'cursor-hidden' : ''}`}>
+      {activeGameOverlayVisible ? (
         <QuickHomeOverlay
           activeGame={activeGame}
           emergencyCloseRequestId={emergencyCloseRequestId}
           onOpenAdmin={(source) => openAdminPin({ source })}
+          onDismiss={() => setQuickNavOpen(false)}
         />
       ) : view === 'home' ? (
         <ConsoleHome
@@ -474,6 +487,15 @@ export function App(): JSX.Element {
           onGamesChanged={setGames}
           onSettingsChanged={setSettings}
           onClose={returnToCustomerHome}
+        />
+      )}
+
+      {homeQuickNavVisible && (
+        <QuickHomeOverlay
+          activeGame={activeGame}
+          emergencyCloseRequestId={emergencyCloseRequestId}
+          onOpenAdmin={(source) => openAdminPin({ source })}
+          onDismiss={() => setQuickNavOpen(false)}
         />
       )}
 
