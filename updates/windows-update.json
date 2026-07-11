@@ -1,7 +1,7 @@
 {
-    "version":  "0.8.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.8.0/NXGS-Play-Setup.exe",
-    "sha256":  "52889e626f1288b9eae674dddd928ae57f970ac61c3d6209b84ce2ea80a5de92",
+    "version":  "0.9.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.9.0/NXGS-Play-Setup.exe",
+    "sha256":  "842728f9a86b4e0d6fd441fb45b2cd692dc636afe8605cb44dd4cca68a60c703",
     "required":  false,
-    "notes":  "NXGS Play 0.8.0 adds a multi-game quick switcher and keeps NXGS visible until the selected game is confirmed on screen. Failed Resume actions stay recoverable with retry guidance."
+    "notes":  "NXGS Play 0.9.0 adds console-style Settings with live Network status, controller-friendly navigation and diagnostics, a game-art quick overlay, and safer Microsoft Store/multi-game switching with verified retries."
 }
