@@ -435,10 +435,11 @@ export class GameLauncher {
             this.activeProcessId = window.processId;
             await releaseGameWindowTopMost(window);
             await logLine('info', `Released topmost lock for quick overlay: ${game.title}, window ${window.handle}.`);
-          } else if (!(await this.isGameStillRunning(game))) {
-            this.finishActiveGameSession(game, `${game.title} is no longer running.`);
-            this.lastHomeResult = `${game.title} had already closed; NXGS Home restored.`;
-            return { ok: true };
+          } else {
+            await logLine(
+              'info',
+              `${game.title} does not have a visible window yet; retaining the active session in the quick overlay.`
+            );
           }
         } catch (error) {
           await logLine('warn', `Return home window lookup failed for ${game.title}: ${String(error)}`);
@@ -532,15 +533,21 @@ export class GameLauncher {
     }
 
     if (!window) {
-      if (!(await this.isGameStillRunning(game))) {
+      const storeLaunchMayStillBePending = game.launchType === 'microsoftStore' && !game.processName?.trim();
+      if (!(await this.isGameStillRunning(game)) && !storeLaunchMayStillBePending) {
         await logLine('info', `${game.title} exited before a controllable game window was detected.`);
         this.finishActiveGameSession(game, `${game.title} exited.`);
         return;
       }
 
-      const message = `${game.title} started but the window could not be focused. Try Focus Game Again, Return Home, or Close Game.`;
+      const message = storeLaunchMayStillBePending
+        ? `${game.title} is still starting. Choose Resume Game once its window appears.`
+        : `${game.title} started but the window could not be focused. Try Focus Game Again, Return Home, or Close Game.`;
       this.lastHandoffError = message;
-      await logLine('warn', `Window detection timed out for ${game.title}; keeping NXGS Play visible.`);
+      await logLine(
+        'warn',
+        `Window detection timed out for ${game.title}; retaining the active session and keeping NXGS Play visible.`
+      );
       this.releaseLaunchShield();
       this.focusLauncher();
       this.setActiveState({
