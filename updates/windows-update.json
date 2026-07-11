@@ -1,7 +1,7 @@
 {
-    "version":  "0.7.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.7.0/NXGS-Play-Setup.exe",
-    "sha256":  "d05f306dc0851141a3e6ec818fa7473b8220b7c3104db6bf25c3ccc6c5bdf431",
+    "version":  "0.7.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.7.1/NXGS-Play-Setup.exe",
+    "sha256":  "0c8620a4943802736d9b12cee893ef1543e656d8a561420d8c31f3b7e7760a3c",
     "required":  false,
-    "notes":  "NXGS Play 0.7.0 adds a PS5-style quick Home overlay and active-game switcher, faster Resume handoff, Launcher Home navigation, and reliable graceful Close detection for Microsoft Store games."
+    "notes":  "NXGS Play 0.7.1 makes Ctrl+Shift+H show the PS5-style bottom navigation from Launcher Home even when no game is active, while keeping Home visible behind the overlay."
 }
