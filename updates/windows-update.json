@@ -1,7 +1,7 @@
 {
-    "version":  "0.7.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.7.2/NXGS-Play-Setup.exe",
-    "sha256":  "504fe9c61d4726d1e6401d8df6b9b4356ee44dd15d1b8055246a69e276493014",
+    "version":  "0.7.3",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.7.3/NXGS-Play-Setup.exe",
+    "sha256":  "a5fde5ae8d645461a8a5ebfe4d0de194b454816d1a650035c279e0dc505b687f",
     "required":  false,
-    "notes":  "NXGS Play 0.7.2 keeps the active-game icon and Resume controls available when Home is opened during startup or a Microsoft Store game is slow to expose its window."
+    "notes":  "NXGS Play 0.7.3 fixes stale release downloads by refreshing GitHub asset metadata, bypassing cached redirects, and retrying 404 or checksum failures."
 }
