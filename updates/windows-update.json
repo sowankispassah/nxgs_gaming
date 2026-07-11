@@ -1,7 +1,7 @@
 {
-    "version":  "0.7.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.7.3/NXGS-Play-Setup.exe",
-    "sha256":  "a5fde5ae8d645461a8a5ebfe4d0de194b454816d1a650035c279e0dc505b687f",
+    "version":  "0.7.4",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.7.4/NXGS-Play-Setup.exe",
+    "sha256":  "c639737f5556f7fd2c0e34f020149599822639092f7502df0fd22f8353c45b11",
     "required":  false,
-    "notes":  "NXGS Play 0.7.3 fixes stale release downloads by refreshing GitHub asset metadata, bypassing cached redirects, and retrying 404 or checksum failures."
+    "notes":  "NXGS Play 0.7.4 fixes Launcher Home navigation for running Microsoft Store games and keeps the active game available in the bottom switcher for Resume."
 }
