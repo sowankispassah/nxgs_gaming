@@ -1156,6 +1156,15 @@ button {
   color: #f7fbff;
 }
 
+.quick-overlay-game-backdrop {
+  position: absolute;
+  inset: -18px;
+  background-position: center;
+  background-size: cover;
+  filter: saturate(0.86) brightness(0.62);
+  transform: scale(1.025);
+}
+
 .quick-overlay-shade {
   position: absolute;
   inset: 0;
@@ -1469,6 +1478,182 @@ button {
 .active-dot.minimized {
   background: #aab4c3;
   box-shadow: 0 0 8px rgba(170, 180, 195, 0.7);
+}
+
+.console-settings-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  overflow: hidden;
+  background: #090b16;
+  color: #fff;
+}
+
+.console-settings-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(181, 111, 145, 0.38), transparent 42%),
+    radial-gradient(circle at 82% 80%, rgba(42, 66, 119, 0.32), transparent 48%),
+    linear-gradient(135deg, #171521, #080b15 65%);
+  filter: saturate(0.85);
+}
+
+.console-settings-screen > header,
+.console-settings-layout,
+.console-settings-screen > footer {
+  position: relative;
+  z-index: 1;
+}
+
+.console-settings-screen > header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 32px 5vw 18px;
+}
+
+.console-settings-screen > header button,
+.console-settings-detail button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  padding: 11px 16px;
+  font-weight: 760;
+}
+
+.console-settings-screen > header span,
+.settings-detail-title span {
+  color: rgba(226, 234, 246, 0.62);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.console-settings-screen h1,
+.console-settings-screen h2,
+.console-settings-screen h3 {
+  margin: 0;
+}
+
+.console-settings-screen h1 { font-size: clamp(32px, 4vw, 54px); }
+
+.console-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(390px, 46%) minmax(0, 1fr);
+  height: calc(100dvh - 160px);
+  gap: 32px;
+  padding: 0 5vw;
+}
+
+.console-settings-layout > nav {
+  overflow-y: auto;
+  border-radius: 20px;
+  background: rgba(13, 16, 29, 0.54);
+  padding: 10px;
+  backdrop-filter: blur(22px);
+}
+
+.console-settings-layout > nav button {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 24px;
+  width: 100%;
+  min-height: 64px;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(244, 247, 252, 0.82);
+  cursor: pointer;
+  padding: 0 18px;
+  font-size: 20px;
+  text-align: left;
+}
+
+.console-settings-layout > nav button.selected,
+.console-settings-layout > nav button:hover,
+.console-settings-layout > nav button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.92);
+  background: rgba(228, 232, 244, 0.18);
+  color: #fff;
+  outline: none;
+}
+
+.console-settings-detail {
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  background: rgba(9, 12, 24, 0.6);
+  padding: 30px;
+  backdrop-filter: blur(25px);
+}
+
+.settings-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+
+.settings-detail-title h2 { margin-top: 4px; font-size: 32px; }
+
+.settings-status-card,
+.control-room-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(128, 235, 214, 0.24);
+  border-radius: 16px;
+  background: rgba(57, 109, 106, 0.14);
+  padding: 22px;
+}
+
+.settings-status-card span { color: #7fefd8; font-weight: 800; }
+.settings-status-card strong { font-size: 24px; }
+.settings-status-card small { color: rgba(230, 238, 247, 0.68); }
+
+.settings-detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 26px 0 12px;
+}
+
+.settings-detail-heading button { display: inline-flex; align-items: center; gap: 8px; }
+.settings-detail-heading button:disabled { cursor: progress; opacity: 0.62; }
+
+.wifi-network-list,
+.controller-diagnostic-list {
+  display: grid;
+  gap: 9px;
+}
+
+.wifi-network-list > div,
+.controller-diagnostic-list > div {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 13px 4px;
+}
+
+.wifi-network-list span,
+.controller-diagnostic-list span { color: rgba(225, 234, 244, 0.64); }
+
+.controller-diagnostic-list > div { grid-template-columns: minmax(120px, 0.5fr) minmax(0, 1fr); }
+.settings-placeholder { color: rgba(226, 235, 245, 0.7); line-height: 1.65; }
+.control-room-card { justify-items: start; }
+.control-room-card p { color: rgba(231, 238, 247, 0.7); }
+.control-room-card button { background: rgba(113, 240, 215, 0.16); }
+.console-settings-screen > footer { padding: 12px 5vw; color: rgba(226, 234, 244, 0.56); text-align: right; }
+
+@media (max-width: 900px) {
+  .console-settings-layout { grid-template-columns: 1fr; overflow-y: auto; }
+  .console-settings-layout > nav { min-height: 360px; }
 }
 
 .quick-overlay-toast {
@@ -1952,7 +2137,7 @@ select:focus {
   place-items: center;
   background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(10px);
-  z-index: 10;
+  z-index: 100;
 }
 
 .modal-backdrop.urgent {
@@ -2096,6 +2281,34 @@ select:focus {
   gap: 16px;
   justify-items: start;
 }
+
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(76px, 1fr));
+  width: 100%;
+  gap: 8px;
+}
+
+.pin-keypad button {
+  min-height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 780;
+}
+
+.pin-keypad button.selected,
+.pin-keypad button:hover,
+.pin-keypad button:focus-visible {
+  border-color: rgba(126, 241, 219, 0.86);
+  background: rgba(126, 241, 219, 0.18);
+  outline: none;
+}
+
+.pin-keypad button:disabled { cursor: progress; opacity: 0.6; }
 
 .close-button {
   position: absolute;

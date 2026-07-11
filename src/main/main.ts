@@ -5,6 +5,7 @@ import { DataStore } from './database';
 import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
+import { getNetworkStatus } from './networkService';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
@@ -319,6 +320,7 @@ function registerIpc(): void {
   }));
 
   ipcMain.handle('app:getDiagnostics', () => buildDiagnostics());
+  ipcMain.handle('network:getStatus', async () => getNetworkStatus());
 
   ipcMain.handle('kiosk:setMode', (_event, mode: KioskMode) => {
     setKioskMode(mode);

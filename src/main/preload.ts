@@ -11,6 +11,7 @@ import type {
   GameInput,
   InitialData,
   KioskMode,
+  NetworkStatus,
   LaunchRequest,
   LaunchResult,
   SessionState,
@@ -27,6 +28,7 @@ import type {
 const api = {
   getInitialData: (): Promise<InitialData> => ipcRenderer.invoke('app:getInitialData'),
   getDiagnostics: (): Promise<AppDiagnostics> => ipcRenderer.invoke('app:getDiagnostics'),
+  getNetworkStatus: (): Promise<NetworkStatus> => ipcRenderer.invoke('network:getStatus'),
   setKioskMode: (mode: KioskMode): Promise<AppDiagnostics> => ipcRenderer.invoke('kiosk:setMode', mode),
   setAdminPinActive: (active: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('kiosk:setAdminPinActive', active),
   reportControllerState: (report: ControllerStateReport): Promise<AppDiagnostics> =>

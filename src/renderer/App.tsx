@@ -27,6 +27,7 @@ import {
   type ConsoleTab
 } from './components/ConsoleHome';
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
+import { ConsoleSettings } from './components/ConsoleSettings';
 import type {
   ActiveGameState,
   AdminUnlockRequest,
@@ -42,7 +43,7 @@ import type {
   UpdateDownloadProgress
 } from '../shared/types';
 
-type View = 'home' | 'admin';
+type View = 'home' | 'settings' | 'admin';
 type AdminTab = 'games' | 'scan' | 'sessions' | 'kiosk' | 'updates';
 
 const EMPTY_SESSION: SessionState = {
@@ -163,6 +164,12 @@ export function App(): JSX.Element {
   const returnToCustomerHome = useCallback(() => {
     setView('home');
     void window.nxgs.setKioskMode('customer');
+  }, []);
+
+  const openConsoleSettings = useCallback(() => {
+    setConfirmGame(null);
+    setQuickNavOpen(false);
+    setView('settings');
   }, []);
 
   useEffect(() => {
@@ -313,6 +320,10 @@ export function App(): JSX.Element {
       returnToCustomerHome();
       return;
     }
+    if (view === 'settings') {
+      returnToCustomerHome();
+      return;
+    }
     if (homeTab === 'media') {
       setHomeTab('games');
       setHomeFocusSection(enabledGames.length > 0 ? 'games' : 'tabs');
@@ -332,7 +343,7 @@ export function App(): JSX.Element {
       }
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault();
-        openAdminPin({ source: 'admin shortcut', key: 'Ctrl+Shift+A' });
+        openConsoleSettings();
         return;
       }
       if (view !== 'admin' && !pinOpen && isWindowsSystemKey(event)) {
@@ -362,7 +373,7 @@ export function App(): JSX.Element {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [acceptSelection, back, moveHorizontal, moveVertical, openAdminPin, pinOpen, view]);
+  }, [acceptSelection, back, moveHorizontal, moveVertical, openAdminPin, openConsoleSettings, pinOpen, view]);
 
 
   useEffect(() => {
@@ -393,7 +404,9 @@ export function App(): JSX.Element {
         void window.nxgs.reportControllerState({
           detected: true,
           homeSupported: guidePressed ? 'yes' : 'unknown',
-          name: pad.id
+          name: pad.id,
+          lastButtonPressed: guidePressed ? 'PS / Home' : optionsSharePressed ? 'Options + Share' : 'L1 + R1 + Options',
+          lastNavigationAction: 'Open quick switcher'
         });
         void window.nxgs.requestShellHome(guidePressed ? 'controller-home' : 'controller-combo');
         return;
@@ -404,21 +417,27 @@ export function App(): JSX.Element {
       if (pressed(15) || pad.axes[0] > 0.65) {
         lastInput = Date.now();
         moveHorizontal(1);
+        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'D-pad / Stick Right', lastNavigationAction: 'Move right' });
       } else if (pressed(14) || pad.axes[0] < -0.65) {
         lastInput = Date.now();
         moveHorizontal(-1);
+        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'D-pad / Stick Left', lastNavigationAction: 'Move left' });
       } else if (pressed(13) || pad.axes[1] > 0.65) {
         lastInput = Date.now();
         moveVertical(1);
+        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'D-pad / Stick Down', lastNavigationAction: 'Move down' });
       } else if (pressed(12) || pad.axes[1] < -0.65) {
         lastInput = Date.now();
         moveVertical(-1);
+        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'D-pad / Stick Up', lastNavigationAction: 'Move up' });
       } else if (pressed(0)) {
         lastInput = Date.now();
         acceptSelection();
+        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'X / A', lastNavigationAction: 'Select' });
       } else if (pressed(1)) {
         lastInput = Date.now();
         back();
+        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'Circle / B', lastNavigationAction: 'Back' });
       }
     }, 90);
     return () => window.clearInterval(interval);
@@ -454,7 +473,7 @@ export function App(): JSX.Element {
         <QuickHomeOverlay
           activeGame={activeGame}
           emergencyCloseRequestId={emergencyCloseRequestId}
-          onOpenAdmin={(source) => openAdminPin({ source })}
+          onOpenSettings={openConsoleSettings}
           onDismiss={() => setQuickNavOpen(false)}
         />
       ) : view === 'home' ? (
@@ -476,8 +495,13 @@ export function App(): JSX.Element {
             setSelectedIndex(index);
             setHomeFocusSection('games');
           }}
-          onOpenAdmin={() => openAdminPin({ source: 'settings button' })}
+          onOpenAdmin={openConsoleSettings}
           onSelectGame={setConfirmGame}
+        />
+      ) : view === 'settings' ? (
+        <ConsoleSettings
+          onBack={returnToCustomerHome}
+          onControlRoom={() => openAdminPin({ source: 'Control Room', message: 'Enter Admin PIN to open Control Room.' })}
         />
       ) : (
         <AdminScreen
@@ -494,7 +518,7 @@ export function App(): JSX.Element {
         <QuickHomeOverlay
           activeGame={activeGame}
           emergencyCloseRequestId={emergencyCloseRequestId}
-          onOpenAdmin={(source) => openAdminPin({ source })}
+          onOpenSettings={openConsoleSettings}
           onDismiss={() => setQuickNavOpen(false)}
         />
       )}
@@ -630,6 +654,40 @@ function AdminScreen(props: {
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<AdminTab>('games');
+  const adminTabs: AdminTab[] = ['games', 'scan', 'sessions', 'kiosk', 'updates'];
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Escape', 'b', 'B'].includes(event.key)) return;
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
+      event.preventDefault();
+      const delta = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+      if (event.key === 'Escape' || event.key.toLowerCase() === 'b') props.onClose();
+      else setTab((current) => adminTabs[(adminTabs.indexOf(current) + delta + adminTabs.length) % adminTabs.length]);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [props]);
+
+  useEffect(() => {
+    let lastInputAt = 0;
+    const timer = window.setInterval(() => {
+      const pad = navigator.getGamepads?.()[0];
+      if (!pad || Date.now() - lastInputAt < 220) return;
+      const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
+      if (pressed(12) || pressed(14) || pad.axes[0] < -0.65 || pad.axes[1] < -0.65) {
+        lastInputAt = Date.now();
+        setTab((current) => adminTabs[(adminTabs.indexOf(current) - 1 + adminTabs.length) % adminTabs.length]);
+      } else if (pressed(13) || pressed(15) || pad.axes[0] > 0.65 || pad.axes[1] > 0.65) {
+        lastInputAt = Date.now();
+        setTab((current) => adminTabs[(adminTabs.indexOf(current) + 1) % adminTabs.length]);
+      } else if (pressed(1)) {
+        lastInputAt = Date.now();
+        props.onClose();
+      }
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [props]);
 
   return (
     <section className="admin-screen">
@@ -1342,7 +1400,10 @@ function KioskSettingsPanel(props: {
           <DiagnosticItem label="Ctrl + Shift + A" value={diagnostics.shortcuts.adminUnlockRegistered ? 'yes' : 'no'} />
           <DiagnosticItem label="Restricted shortcuts" value={diagnostics.shortcuts.restrictedRegisteredCount.toString()} />
           <DiagnosticItem label="Controller detected" value={diagnostics.controller.detected ? 'yes' : 'no'} />
+          <DiagnosticItem label="Controller name" value={diagnostics.controller.name ?? 'none'} />
           <DiagnosticItem label="Controller Home" value={diagnostics.controller.homeSupported} />
+          <DiagnosticItem label="Last controller button" value={diagnostics.controller.lastButtonPressed ?? 'none'} />
+          <DiagnosticItem label="Last controller action" value={diagnostics.controller.lastNavigationAction ?? 'none'} />
           <DiagnosticItem label="Active game state" value={diagnostics.activeGame.status} />
           <DiagnosticItem label="Current game" value={diagnostics.activeGame.title ?? 'none'} />
           <DiagnosticItem label="Game process ID" value={diagnostics.activeGame.processId?.toString() ?? 'none'} />
@@ -1606,6 +1667,60 @@ function PinDialog(props: {
   const [pin, setPin] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const keypad = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Clear', '0', 'Submit'] as const;
+  const [keypadIndex, setKeypadIndex] = useState(0);
+
+  const submitPin = useCallback(async (): Promise<void> => {
+    if (pending) return;
+    setPending(true);
+    setError('');
+    try {
+      const ok = await props.onSubmit(pin);
+      if (!ok) setError('Invalid PIN.');
+    } finally {
+      setPending(false);
+    }
+  }, [pending, pin, props]);
+
+  const activateKeypad = useCallback((): void => {
+    const key = keypad[keypadIndex];
+    if (key === 'Submit') void submitPin();
+    else if (key === 'Clear') setPin((value) => value.slice(0, -1));
+    else setPin((value) => `${value}${key}`.slice(0, 12));
+  }, [keypad, keypadIndex, submitPin]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'b', 'B'].includes(event.key)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (pending) return;
+      if (event.key === 'ArrowLeft') setKeypadIndex((index) => (index - 1 + keypad.length) % keypad.length);
+      else if (event.key === 'ArrowRight') setKeypadIndex((index) => (index + 1) % keypad.length);
+      else if (event.key === 'ArrowUp') setKeypadIndex((index) => (index - 3 + keypad.length) % keypad.length);
+      else if (event.key === 'ArrowDown') setKeypadIndex((index) => (index + 3) % keypad.length);
+      else if (event.key === 'Enter') activateKeypad();
+      else props.onClose();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [activateKeypad, keypad.length, pending, props]);
+
+  useEffect(() => {
+    let lastInputAt = 0;
+    const timer = window.setInterval(() => {
+      const pad = navigator.getGamepads?.()[0];
+      if (!pad || pending || Date.now() - lastInputAt < 190) return;
+      const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
+      if (pressed(14) || pad.axes[0] < -0.65) { lastInputAt = Date.now(); setKeypadIndex((index) => (index - 1 + keypad.length) % keypad.length); }
+      else if (pressed(15) || pad.axes[0] > 0.65) { lastInputAt = Date.now(); setKeypadIndex((index) => (index + 1) % keypad.length); }
+      else if (pressed(12) || pad.axes[1] < -0.65) { lastInputAt = Date.now(); setKeypadIndex((index) => (index - 3 + keypad.length) % keypad.length); }
+      else if (pressed(13) || pad.axes[1] > 0.65) { lastInputAt = Date.now(); setKeypadIndex((index) => (index + 3) % keypad.length); }
+      else if (pressed(0)) { lastInputAt = Date.now(); activateKeypad(); void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: 'PIN keypad: select' }); }
+      else if (pressed(1)) { lastInputAt = Date.now(); props.onClose(); void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'PIN keypad: cancel' }); }
+    }, 90);
+    return () => window.clearInterval(timer);
+  }, [activateKeypad, keypad.length, pending, props]);
 
   return (
     <div className="modal-backdrop">
@@ -1613,16 +1728,7 @@ function PinDialog(props: {
         className="modal pin-modal"
         onSubmit={async (event) => {
           event.preventDefault();
-          setPending(true);
-          setError('');
-          try {
-            const ok = await props.onSubmit(pin);
-            if (!ok) {
-              setError('Invalid PIN.');
-            }
-          } finally {
-            setPending(false);
-          }
+          await submitPin();
         }}
       >
         <button className="icon-button close-button" type="button" title="Close" onClick={props.onClose} disabled={pending}>
@@ -1632,6 +1738,25 @@ function PinDialog(props: {
         <h2>{props.title}</h2>
         {props.message && <p className="muted">{props.message}</p>}
         <input autoFocus type="password" value={pin} onChange={(event) => setPin(event.target.value)} />
+        <div className="pin-keypad" aria-label="Controller PIN keypad">
+          {keypad.map((key, index) => (
+            <button
+              key={key}
+              type="button"
+              className={index === keypadIndex ? 'selected' : ''}
+              disabled={pending}
+              onMouseEnter={() => setKeypadIndex(index)}
+              onClick={() => {
+                setKeypadIndex(index);
+                if (key === 'Submit') void submitPin();
+                else if (key === 'Clear') setPin((value) => value.slice(0, -1));
+                else setPin((value) => `${value}${key}`.slice(0, 12));
+              }}
+            >
+              {key}
+            </button>
+          ))}
+        </div>
         {error && <p className="error-text">{error}</p>}
         <button className="primary-action wide" type="submit" disabled={pending}>
           <Lock size={18} />

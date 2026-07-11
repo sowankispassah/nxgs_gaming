@@ -85,9 +85,7 @@ export class KioskInputService {
     this.registerShortcut('CommandOrControl+Shift+H', 'homeRegistered', () => this.triggerHome('global-home'));
     this.registerShortcut('F10', 'f10Registered', () => this.triggerHome('global-f10'));
     this.registerShortcut('CommandOrControl+Shift+X', 'emergencyCloseRegistered', () => this.events.onEmergencyClose());
-    this.registerShortcut('CommandOrControl+Shift+A', 'adminUnlockRegistered', () =>
-      this.requestAdminUnlock('admin shortcut', 'Ctrl+Shift+A')
-    );
+    this.shortcutDiagnostics.adminUnlockRegistered = false;
     this.refreshRestrictedShortcuts();
   }
 
@@ -99,12 +97,6 @@ export class KioskInputService {
   attachWindow(window: BrowserWindow): void {
     window.webContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown') {
-        return;
-      }
-
-      if (this.isAdminInput(input)) {
-        event.preventDefault();
-        this.requestAdminUnlock('admin shortcut', 'Ctrl+Shift+A');
         return;
       }
 
@@ -235,10 +227,6 @@ export class KioskInputService {
       message: 'Enter Admin PIN to unlock PC controls.',
       requestedAt: new Date().toISOString()
     });
-  }
-
-  private isAdminInput(input: Electron.Input): boolean {
-    return input.control && input.shift && input.key.toLowerCase() === 'a';
   }
 
   private isWindowsSystemInput(input: Electron.Input): boolean {

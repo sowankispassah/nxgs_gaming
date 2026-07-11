@@ -16,6 +16,7 @@ export interface GameWindowSearch {
   pid?: number;
   processName?: string;
   titleHint?: string;
+  allowUntitledStoreFrame?: boolean;
 }
 
 type WindowCommand = 'foreground' | 'maximize' | 'restore' | 'minimize' | 'close';
@@ -24,6 +25,7 @@ interface ActivationOptions {
   foreground: boolean;
   topMost: boolean;
   applyBorderless: boolean;
+  processActivate: boolean;
 }
 
 export interface GameWindowActivationState {
@@ -120,42 +122,88 @@ export async function findGameWindow(search: GameWindowSearch): Promise<GameWind
   const normalizedName = search.processName ? normalizeProcessName(search.processName).replace(/\.exe$/i, '') : '';
   const pid = Number.isFinite(search.pid) ? Number(search.pid) : 0;
   const titleHint = search.titleHint?.trim().toLowerCase() ?? '';
+  const allowUntitledStoreFrame = Boolean(search.allowUntitledStoreFrame);
   const script = `
 $ErrorActionPreference = "SilentlyContinue"
-$items = @()
-if (${pid} -gt 0) {
-  $pidProcess = Get-Process -Id ${pid}
-  if ($pidProcess) { $items += $pidProcess }
+Add-Type @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class GameWindowSearchWin32 {
+  public delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
+  [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hwnd);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, StringBuilder text, int maxCount);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out WindowRect rect);
 }
-if (${powershellQuote(normalizedName)} -ne "") {
-  $items += Get-Process -Name ${powershellQuote(normalizedName)}
+public struct WindowRect { public int Left; public int Top; public int Right; public int Bottom; }
+"@
+$targetPid = ${pid}
+$targetName = ${powershellQuote(normalizedName)}
+$hint = ${powershellQuote(titleHint)}
+$allowUntitledStoreFrame = ${allowUntitledStoreFrame ? '$true' : '$false'}
+$windows = New-Object System.Collections.Generic.List[object]
+$callback = [GameWindowSearchWin32+EnumWindowsProc]{
+  param([IntPtr]$hwnd, [IntPtr]$lParam)
+  if (-not [GameWindowSearchWin32]::IsWindowVisible($hwnd)) { return $true }
+  $length = [GameWindowSearchWin32]::GetWindowTextLength($hwnd)
+  $text = New-Object System.Text.StringBuilder ([Math]::Max(2, $length + 1))
+  if ($length -gt 0) {
+    [GameWindowSearchWin32]::GetWindowText($hwnd, $text, $text.Capacity) | Out-Null
+  }
+  $title = $text.ToString()
+  $classText = New-Object System.Text.StringBuilder 256
+  [GameWindowSearchWin32]::GetClassName($hwnd, $classText, $classText.Capacity) | Out-Null
+  $className = $classText.ToString()
+  $rect = New-Object WindowRect
+  [GameWindowSearchWin32]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
+  $width = $rect.Right - $rect.Left
+  $height = $rect.Bottom - $rect.Top
+  [uint32]$windowPid = 0
+  [GameWindowSearchWin32]::GetWindowThreadProcessId($hwnd, [ref]$windowPid) | Out-Null
+  $process = Get-Process -Id $windowPid
+  if (-not $process) { return $true }
+  $processName = $process.ProcessName.ToLower()
+  $titleLower = $title.ToLower()
+  $score = 99
+  if ($targetPid -gt 0 -and $windowPid -eq $targetPid) { $score = 0 }
+  elseif ($targetName -ne "" -and $processName -eq $targetName) { $score = 1 }
+  elseif ($hint -ne "" -and ($titleLower -eq $hint -or $titleLower.Contains($hint))) { $score = 2 }
+  elseif (
+    $allowUntitledStoreFrame -and
+    $className -eq "ApplicationFrameWindow" -and
+    $width -gt 300 -and
+    $height -gt 200
+  ) { $score = 3 }
+  if ($score -lt 99) {
+    $windows.Add([pscustomobject]@{
+      handle = [int64]$hwnd
+      processId = [int]$windowPid
+      processName = [string]$process.ProcessName
+      title = [string]$title
+      score = $score
+      started = $process.StartTime
+      order = $windows.Count
+    })
+  }
+  return $true
 }
-if (${powershellQuote(titleHint)} -ne "") {
-  $hint = ${powershellQuote(titleHint)}
-  $terms = @($hint -split '[^a-z0-9]+' | Where-Object { $_.Length -gt 2 } | Select-Object -First 2)
-  $items += Get-Process |
-    Where-Object {
-      if (-not ($_.MainWindowHandle -and $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle)) { return $false }
-      $title = $_.MainWindowTitle.ToLower()
-      if ($title.Contains($hint)) { return $true }
-      if ($terms.Count -eq 0) { return $false }
-      foreach ($term in $terms) {
-        if (-not $title.Contains($term)) { return $false }
-      }
-      return $true
-    }
-}
-$selected = $items |
-  Sort-Object Id -Unique |
-  Where-Object { $_.MainWindowHandle -and $_.MainWindowHandle -ne 0 } |
-  Sort-Object @{ Expression = { if (${pid} -gt 0 -and $_.Id -eq ${pid}) { 0 } else { 1 } }; Ascending = $true }, @{ Expression = { $_.StartTime }; Descending = $true } |
+[GameWindowSearchWin32]::EnumWindows($callback, [IntPtr]::Zero) | Out-Null
+$selected = $windows |
+  Where-Object { $_.processName -notin @('electron', 'chrome', 'msedge') -or $_.score -lt 2 } |
+  Sort-Object score, order, @{ Expression = { $_.started }; Descending = $true } |
   Select-Object -First 1
 if ($selected) {
   [pscustomobject]@{
-    handle = [int64]$selected.MainWindowHandle
-    processId = [int]$selected.Id
-    processName = [string]$selected.ProcessName
-    title = [string]$selected.MainWindowTitle
+    handle = [int64]$selected.handle
+    processId = [int]$selected.processId
+    processName = [string]$selected.processName
+    title = [string]$selected.title
   } | ConvertTo-Json -Compress
 }
 `;
@@ -268,6 +316,7 @@ async function runActivationCommand(
   const useBorderless = launchMode !== 'normal' && options.applyBorderless !== false;
   const foreground = options.foreground ?? true;
   const topMost = options.topMost ?? launchMode !== 'normal';
+  const processActivate = options.processActivate ?? true;
   const overscanPx = useBorderless ? 2 : 0;
   const script = `
 Add-Type @"
@@ -333,6 +382,7 @@ $topMost = [IntPtr](-1)
 $notTopMost = [IntPtr](-2)
 $useBorderless = ${useBorderless ? '$true' : '$false'}
 $activateForeground = ${foreground ? '$true' : '$false'}
+$useProcessActivate = ${processActivate ? '$true' : '$false'}
 $useTopMost = ${topMost ? '$true' : '$false'}
 $overscanPx = ${overscanPx}
 $compensateFrameChrome = ${compensateFrameChrome ? '$true' : '$false'}
@@ -408,19 +458,25 @@ if ($activateForeground) {
     if ($foregroundThread -ne 0 -and $foregroundThread -ne $targetThread) {
       $attachedForeground = [Win32]::AttachThreadInput($foregroundThread, $targetThread, $true)
     }
-    [Win32]::AllowSetForegroundWindow([int]$targetPid) | Out-Null
+    if ($useProcessActivate) {
+      [Win32]::AllowSetForegroundWindow([int]$targetPid) | Out-Null
+    }
     [Win32]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
-    [Win32]::SwitchToThisWindow($hwnd, $true)
+    if ($useProcessActivate) {
+      [Win32]::SwitchToThisWindow($hwnd, $true)
+    }
     [Win32]::BringWindowToTop($hwnd) | Out-Null
     [Win32]::SetActiveWindow($hwnd) | Out-Null
     [Win32]::SetForegroundWindow($hwnd) | Out-Null
     [Win32]::SetFocus($hwnd) | Out-Null
     [Win32]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
-    try {
+    if ($useProcessActivate) {
+      try {
       $shell = New-Object -ComObject WScript.Shell
       $shell.AppActivate([int]$targetPid) | Out-Null
       [Win32]::SetForegroundWindow($hwnd) | Out-Null
-    } catch {}
+      } catch {}
+    }
   } finally {
     [Win32]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
     if ($attachedForeground) {
@@ -458,7 +514,8 @@ export async function prepareGameWindowForReveal(
   await runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
     foreground: false,
     topMost: false,
-    applyBorderless: true
+    applyBorderless: true,
+    processActivate: !isShellHostedStoreFrame(window)
   });
 }
 
@@ -466,7 +523,9 @@ export async function activateGameWindow(window: GameWindowInfo, launchMode: Gam
   const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
   let lastAttempt: GameWindowActivationState | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    lastAttempt = await runActivationCommand(window.handle, launchMode, compensateFrameChrome);
+    lastAttempt = await runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
+      processActivate: !isShellHostedStoreFrame(window)
+    });
     if (
       lastAttempt &&
       lastAttempt.isForeground &&
@@ -493,7 +552,8 @@ export async function keepGameWindowOnTop(
   return runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
     foreground: true,
     topMost: true,
-    applyBorderless: launchMode !== 'normal'
+    applyBorderless: launchMode !== 'normal',
+    processActivate: !isShellHostedStoreFrame(window)
   });
 }
 
@@ -542,6 +602,42 @@ if ([QuickWindowStateWin32]::IsWindow($hwnd) -and [QuickWindowStateWin32]::IsWin
   return (await runPowerShell(script)).trim().toLowerCase() === 'true';
 }
 
+export async function getGameWindowActivationState(
+  window: GameWindowInfo
+): Promise<GameWindowActivationState | null> {
+  if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
+    return null;
+  }
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public struct InspectWindowRect { public int Left; public int Top; public int Right; public int Bottom; }
+public static class InspectGameWindowWin32 {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out InspectWindowRect rect);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+}
+"@
+$hwnd = [IntPtr]${Math.trunc(window.handle)}
+$foreground = [InspectGameWindowWin32]::GetForegroundWindow()
+$rect = New-Object InspectWindowRect
+[InspectGameWindowWin32]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
+[pscustomobject]@{
+  foregroundHandle = [int64]$foreground
+  isForeground = ($foreground -eq $hwnd)
+  isMinimized = [InspectGameWindowWin32]::IsIconic($hwnd)
+  isVisible = [InspectGameWindowWin32]::IsWindowVisible($hwnd)
+  x = [int]$rect.Left
+  y = [int]$rect.Top
+  width = [int]($rect.Right - $rect.Left)
+  height = [int]($rect.Bottom - $rect.Top)
+} | ConvertTo-Json -Compress
+`;
+  return parseActivationState(await runPowerShell(script));
+}
+
 export async function resumeGameWindowFast(
   window: GameWindowInfo,
   launchMode: GameLaunchMode = 'maximized'
@@ -550,7 +646,8 @@ export async function resumeGameWindowFast(
   return runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
     foreground: true,
     topMost: true,
-    applyBorderless: launchMode !== 'normal'
+    applyBorderless: launchMode !== 'normal',
+    processActivate: !isShellHostedStoreFrame(window)
   });
 }
 
@@ -564,4 +661,8 @@ export async function minimizeGameWindow(window: GameWindowInfo): Promise<void> 
 
 export async function closeGameWindow(window: GameWindowInfo): Promise<void> {
   await runWindowCommand(window.handle, 'close');
+}
+
+function isShellHostedStoreFrame(window: GameWindowInfo): boolean {
+  return /^explorer$/i.test(window.processName) && !window.title.trim();
 }

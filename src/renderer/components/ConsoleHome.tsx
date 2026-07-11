@@ -198,7 +198,7 @@ export function UtilityIcons(props: { session: SessionState; onOpenAdmin: () => 
       <button className="console-icon-button" type="button" title="Search" onClick={() => setNotice('Search coming soon')}>
         <Search size={21} />
       </button>
-      <button className="console-icon-button" type="button" title="Admin settings" onClick={props.onOpenAdmin}>
+      <button className="console-icon-button" type="button" title="Settings" aria-label="Settings" onClick={props.onOpenAdmin}>
         <Settings size={21} />
       </button>
       <div className="console-avatar" title="Player profile placeholder" aria-label="Player profile placeholder">

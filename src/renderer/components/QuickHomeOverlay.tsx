@@ -24,10 +24,16 @@ type NavItem = {
 
 const MENU_LABELS = ['Resume Game', 'Go to Launcher Home', 'Close Game'] as const;
 
+function quickOverlayImageUrl(path: string): string {
+  if (!path) return '';
+  if (/^(https?:|file:)/i.test(path)) return path;
+  return `file:///${path.replace(/\\/g, '/')}`;
+}
+
 export function QuickHomeOverlay(props: {
   activeGame: ActiveGameState;
   emergencyCloseRequestId: number;
-  onOpenAdmin: (source: string) => void;
+  onOpenSettings: () => void;
   onDismiss: () => void;
 }): JSX.Element {
   const sessions = useMemo<TrackedGameSessionState[]>(() => {
@@ -85,6 +91,8 @@ export function QuickHomeOverlay(props: {
   const gameSelected = Boolean(selectedSession);
   const closeFailed = /did not close|force close/i.test(selectedSession?.message ?? '');
   const disabled = pendingAction !== null || selectedSession?.status === 'closing';
+  const backgroundGame = sessions.find((session) => session.isActive)?.game ?? sessions[0]?.game;
+  const backgroundImage = quickOverlayImageUrl(backgroundGame?.coverImagePath || backgroundGame?.avatarImagePath || '');
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
@@ -177,26 +185,21 @@ export function QuickHomeOverlay(props: {
     }
   }, [pendingAction, selectedSession]);
 
-  const openProtectedArea = useCallback(
-    async (source: string): Promise<void> => {
-      if (pendingAction) {
+  const openConsoleSettings = useCallback(async (): Promise<void> => {
+    if (pendingAction) return;
+    setPendingAction('admin');
+    setMessage('');
+    try {
+      const result = await window.nxgs.goToLauncherHome();
+      if (!result.ok) {
+        setMessage(result.error ?? 'NXGS could not safely open Settings.');
         return;
       }
-      setPendingAction('admin');
-      setMessage('');
-      try {
-        const result = await window.nxgs.goToLauncherHome();
-        if (!result.ok) {
-          setMessage(result.error ?? 'NXGS could not safely open the protected controls.');
-          return;
-        }
-        props.onOpenAdmin(source);
-      } finally {
-        setPendingAction(null);
-      }
-    },
-    [pendingAction, props]
-  );
+      props.onOpenSettings();
+    } finally {
+      setPendingAction(null);
+    }
+  }, [pendingAction, props]);
 
   const selectMenuAction = useCallback(
     (index: number): void => {
@@ -226,13 +229,15 @@ export function QuickHomeOverlay(props: {
         void goToLauncherHome();
       } else if (item.session) {
         setFocusArea('menu');
-      } else if (item.key === 'settings' || item.key === 'power') {
-        void openProtectedArea(item.key === 'settings' ? 'quick overlay settings' : 'quick overlay power controls');
+      } else if (item.key === 'settings') {
+        void openConsoleSettings();
+      } else if (item.key === 'power') {
+        setNotice('Power controls are available inside Control Room.');
       } else {
         setNotice(item.label);
       }
     },
-    [disabled, goToLauncherHome, navItems, openProtectedArea]
+    [disabled, goToLauncherHome, navItems, openConsoleSettings]
   );
 
   const handleBack = useCallback((): void => {
@@ -319,10 +324,12 @@ export function QuickHomeOverlay(props: {
         lastInputAt = Date.now();
         setSelectedNavKey(navItems[(selectedNavIndex + 1) % navItems.length].key);
         setFocusArea('navbar');
+        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Right', lastNavigationAction: 'Switcher: next item' });
       } else if (pressed(14) || pad.axes[0] < -0.65) {
         lastInputAt = Date.now();
         setSelectedNavKey(navItems[(selectedNavIndex - 1 + navItems.length) % navItems.length].key);
         setFocusArea('navbar');
+        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Left', lastNavigationAction: 'Switcher: previous item' });
       } else if (pressed(13) || pad.axes[1] > 0.65) {
         lastInputAt = Date.now();
         if (focusArea === 'menu') {
@@ -336,6 +343,7 @@ export function QuickHomeOverlay(props: {
         }
       } else if (pressed(0)) {
         lastInputAt = Date.now();
+        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: 'Switcher: select' });
         if (confirmClose) {
           if (menuIndex === 0) void closeGame();
           else setConfirmClose(false);
@@ -347,6 +355,7 @@ export function QuickHomeOverlay(props: {
       } else if (pressed(1)) {
         lastInputAt = Date.now();
         handleBack();
+        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Switcher: back' });
       }
     }, 90);
     return () => window.clearInterval(interval);
@@ -354,6 +363,13 @@ export function QuickHomeOverlay(props: {
 
   return (
     <section className="quick-home-overlay" aria-label="NXGS quick home overlay">
+      {backgroundImage && (
+        <div
+          className="quick-overlay-game-backdrop"
+          style={{ backgroundImage: `url("${backgroundImage.replace(/"/g, '%22')}")` }}
+          aria-hidden="true"
+        />
+      )}
       <div className="quick-overlay-shade" />
       <header className="quick-overlay-header">
         <div className="quick-overlay-brand"><Gamepad2 size={18} /> NXGS Switcher</div>

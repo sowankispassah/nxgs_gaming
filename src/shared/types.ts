@@ -155,6 +155,8 @@ export interface AppDiagnostics {
     homeSupported: ControllerHomeSupport;
     name?: string;
     lastInputAt?: string;
+    lastButtonPressed?: string;
+    lastNavigationAction?: string;
   };
   activeGame: {
     title?: string;
@@ -182,6 +184,24 @@ export interface ControllerStateReport {
   detected: boolean;
   homeSupported: ControllerHomeSupport;
   name?: string;
+  lastButtonPressed?: string;
+  lastNavigationAction?: string;
+}
+
+export interface WifiNetworkSummary {
+  ssid: string;
+  signal?: string;
+  security?: string;
+}
+
+export interface NetworkStatus {
+  supported: boolean;
+  connected: boolean;
+  interfaceName?: string;
+  ssid?: string;
+  signal?: string;
+  availableNetworks: WifiNetworkSummary[];
+  message?: string;
 }
 
 export type ShellHomeReason =

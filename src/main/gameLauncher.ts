@@ -18,8 +18,10 @@ import {
   activateGameWindow,
   closeGameWindow,
   findGameWindow,
+  getGameWindowActivationState,
   isGameWindowVisible,
   keepGameWindowOnTop,
+  type GameWindowActivationState,
   type GameWindowInfo,
   minimizeGameWindow,
   prepareGameWindowForReveal,
@@ -322,10 +324,32 @@ export class GameLauncher {
     const focusGeneration = this.beginFocusOperation('resume', game);
 
     try {
-      const window = this.activeWindow ?? (await this.getActiveWindow(game));
+      let window = this.activeWindow ?? (await this.getActiveWindow(game));
       this.assertFocusOperationCurrent(focusGeneration, game);
+      const untrackedStoreApp = game.launchType === 'microsoftStore' && !game.processName?.trim();
+      if (!window && untrackedStoreApp) {
+        await logLine('info', `Retrying Microsoft Store activation and window discovery for ${game.title}.`);
+        const explorer = spawn('explorer.exe', [`shell:AppsFolder\\${game.launchCommand.trim()}`], {
+          detached: true,
+          windowsHide: false,
+          stdio: 'ignore'
+        });
+        explorer.unref();
+        window = await waitForGameWindow(
+          { titleHint: game.title, allowUntitledStoreFrame: true },
+          9000,
+          150,
+          350,
+          () => this.isFocusOperationCurrent(focusGeneration, game)
+        );
+        this.assertFocusOperationCurrent(focusGeneration, game);
+        if (window) {
+          this.activeWindow = window;
+          this.activeProcessId = window.processId;
+          await logLine('info', `Retry found ${game.title} window ${window.handle} for process ${window.processId}.`);
+        }
+      }
       if (!window) {
-        const untrackedStoreApp = game.launchType === 'microsoftStore' && !game.processName?.trim();
         const stillRunning = await this.isGameStillRunning(game);
         if (!stillRunning && !untrackedStoreApp) {
           const message = `${game.title} is no longer running.`;
@@ -336,7 +360,7 @@ export class GameLauncher {
         }
 
         const message = untrackedStoreApp
-          ? `Windows has not exposed a controllable window for ${game.title} yet. NXGS kept the switcher open; wait a moment and try Resume Game again.`
+          ? `NXGS retried ${game.title} for several seconds, but Windows has not exposed its window yet. The game remains in the switcher; try Resume Game again.`
           : 'NXGS Play could not find the running game window. The switcher will stay open so you can retry.';
         await logLine('warn', `Resume requested for ${game.title}, but no game window was found.`);
         this.setActiveState({
@@ -352,10 +376,16 @@ export class GameLauncher {
 
       await this.suppressWindowsTaskbar();
       this.assertFocusOperationCurrent(focusGeneration, game);
-      await this.handOffToGameWindow(game, window, this.launchMode(game), 'resume', focusGeneration);
+      const focusedWindow = await this.handOffToGameWindow(
+        game,
+        window,
+        this.launchMode(game),
+        'resume',
+        focusGeneration
+      );
       this.assertFocusOperationCurrent(focusGeneration, game);
-      this.activeWindow = window;
-      this.activeProcessId = window.processId;
+      this.activeWindow = focusedWindow;
+      this.activeProcessId = focusedWindow.processId;
       this.gameInForeground = true;
       this.monitorByProcessName(game);
       this.setActiveState({
@@ -574,7 +604,8 @@ export class GameLauncher {
       {
         pid: this.child?.pid,
         processName: game.processName,
-        titleHint: game.title
+        titleHint: game.title,
+        allowUntitledStoreFrame: game.launchType === 'microsoftStore' && !game.processName?.trim()
       },
       12000,
       125,
@@ -629,7 +660,9 @@ export class GameLauncher {
     }
 
     try {
-      await this.handOffToGameWindow(game, window, launchMode, 'launch', focusGeneration);
+      const focusedWindow = await this.handOffToGameWindow(game, window, launchMode, 'launch', focusGeneration);
+      this.activeWindow = focusedWindow;
+      this.activeProcessId = focusedWindow.processId;
     } catch (error) {
       if (error instanceof FocusOperationCanceledError || !this.isFocusOperationCurrent(focusGeneration, game)) {
         await logLine('info', `Launch handoff stopped for ${game.title}; Home owns foreground.`);
@@ -775,11 +808,7 @@ export class GameLauncher {
       const pidCheck = this.activeProcessId ? isProcessRunningByPid(this.activeProcessId) : Promise.resolve(false);
       const expectedWindow = this.activeWindow;
       const windowCheck = expectedWindow
-        ? findGameWindow({
-            pid: expectedWindow.processId,
-            processName: game.processName,
-            titleHint: game.title
-          }).then(async (window) => (window && (await isGameWindowVisible(window)) ? window : null))
+        ? isGameWindowVisible(expectedWindow).then((visible) => (visible ? expectedWindow : null))
         : Promise.resolve(null);
 
       void Promise.all([processCheck, pidCheck, windowCheck])
@@ -891,25 +920,12 @@ export class GameLauncher {
 
   private async getActiveWindow(game: GameRecord): Promise<GameWindowInfo | null> {
     if (this.activeWindow) {
-      const stillCurrent = await findGameWindow({
-        pid: this.activeWindow.processId,
-        processName: game.processName,
-        titleHint: game.title
-      });
-      if (stillCurrent) {
-        if (stillCurrent.handle !== this.activeWindow.handle) {
-          await logLine(
-            'info',
-            `Rediscovered ${game.title} window: ${this.activeWindow.handle} -> ${stillCurrent.handle} (process ${stillCurrent.processId}).`
-          );
-        }
-        this.activeWindow = stillCurrent;
-        this.activeProcessId = stillCurrent.processId;
+      if (await isGameWindowVisible(this.activeWindow)) {
         await logLine(
           'info',
-          `Using ${game.title} window ${stillCurrent.handle} from ${stillCurrent.processName || 'unknown process'} (${stillCurrent.processId}).`
+          `Using ${game.title} window ${this.activeWindow.handle} from ${this.activeWindow.processName || 'unknown process'} (${this.activeWindow.processId}).`
         );
-        return stillCurrent;
+        return this.activeWindow;
       }
     }
 
@@ -940,7 +956,7 @@ export class GameLauncher {
         return;
       }
       window = await findGameWindow({
-        pid: this.activeProcessId ?? this.child?.pid,
+        pid: game.launchType === 'microsoftStore' && !game.processName?.trim() ? undefined : this.activeProcessId ?? this.child?.pid,
         processName: game.processName,
         titleHint: game.title
       });
@@ -1035,8 +1051,10 @@ export class GameLauncher {
     launchMode: GameLaunchMode,
     reason: 'launch' | 'resume',
     focusGeneration: number
-  ): Promise<void> {
+  ): Promise<GameWindowInfo> {
     let launcherHidden = false;
+    let targetWindow = window;
+    const shellHostedStoreApp = game.launchType === 'microsoftStore' && !game.processName?.trim();
     try {
       this.assertFocusOperationCurrent(focusGeneration, game);
       await this.suppressWindowsTaskbar();
@@ -1047,7 +1065,10 @@ export class GameLauncher {
         // Let Windows raise the game while the launcher remains visible. NXGS only hides
         // after the native window check confirms the game is visible and foreground.
         this.releaseLaunchShield();
-        reinforcement = await resumeGameWindowFast(window, launchMode);
+        targetWindow = await this.reactivateShellHostedStoreWindow(game, targetWindow, focusGeneration);
+        reinforcement = shellHostedStoreApp
+          ? await this.confirmShellHostedStoreActivation(game, targetWindow, focusGeneration)
+          : await resumeGameWindowFast(targetWindow, launchMode);
         this.assertFocusOperationCurrent(focusGeneration, game);
         if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
           throw new Error('Windows did not confirm the game window in the foreground. NXGS kept the switcher visible.');
@@ -1057,16 +1078,23 @@ export class GameLauncher {
       } else {
         this.showLaunchShield();
         await logLine('info', `${reason} handoff for ${game.title}: preparing window ${window.handle} while NXGS Play remains visible.`);
-        await prepareGameWindowForReveal(window, launchMode);
+        if (!shellHostedStoreApp) {
+          await prepareGameWindowForReveal(window, launchMode);
+        }
         this.assertFocusOperationCurrent(focusGeneration, game);
 
         // The prepared game already covers the display; hiding the shield lets Windows grant it foreground focus.
         this.releaseLaunchShield();
         this.hideLauncherForGame();
         launcherHidden = true;
-        await activateGameWindow(window, launchMode);
-        this.assertFocusOperationCurrent(focusGeneration, game);
-        reinforcement = await keepGameWindowOnTop(window, launchMode);
+        targetWindow = await this.reactivateShellHostedStoreWindow(game, targetWindow, focusGeneration);
+        if (shellHostedStoreApp) {
+          reinforcement = await this.confirmShellHostedStoreActivation(game, targetWindow, focusGeneration);
+        } else {
+          await activateGameWindow(targetWindow, launchMode);
+          this.assertFocusOperationCurrent(focusGeneration, game);
+          reinforcement = await keepGameWindowOnTop(targetWindow, launchMode);
+        }
         this.assertFocusOperationCurrent(focusGeneration, game);
       }
       if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
@@ -1074,6 +1102,7 @@ export class GameLauncher {
       }
 
       await logLine('info', `${reason} handoff for ${game.title}: visible, focused game window confirmed.`);
+      return targetWindow;
     } catch (error) {
       if (error instanceof FocusOperationCanceledError) {
         throw error;
@@ -1087,6 +1116,75 @@ export class GameLauncher {
         this.releaseLaunchShield();
       }
     }
+  }
+
+  private async reactivateShellHostedStoreWindow(
+    game: GameRecord,
+    currentWindow: GameWindowInfo,
+    focusGeneration: number
+  ): Promise<GameWindowInfo> {
+    if (game.launchType !== 'microsoftStore' || game.processName?.trim()) {
+      return currentWindow;
+    }
+
+    const explorer = spawn('explorer.exe', [`shell:AppsFolder\\${game.launchCommand.trim()}`], {
+      detached: true,
+      windowsHide: false,
+      stdio: 'ignore'
+    });
+    explorer.unref();
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    this.assertFocusOperationCurrent(focusGeneration, game);
+
+    const refreshedWindow = await findGameWindow({
+      titleHint: game.title,
+      allowUntitledStoreFrame: true
+    });
+    if (!refreshedWindow) {
+      return currentWindow;
+    }
+    if (refreshedWindow.handle !== currentWindow.handle) {
+      await logLine(
+        'info',
+        `Store activation refreshed ${game.title} window ${currentWindow.handle} -> ${refreshedWindow.handle}.`
+      );
+    }
+    return refreshedWindow;
+  }
+
+  private async confirmShellHostedStoreActivation(
+    game: GameRecord,
+    window: GameWindowInfo,
+    focusGeneration: number
+  ): Promise<GameWindowActivationState | null> {
+    let state: GameWindowActivationState | null = null;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      this.assertFocusOperationCurrent(focusGeneration, game);
+      state = await getGameWindowActivationState(window);
+      if (state?.isForeground && state.isVisible && !state.isMinimized) {
+        return state;
+      }
+      if (attempt < 5) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+
+    const gameProcessRunning = await isProcessRunning(game.title);
+    if (
+      state &&
+      gameProcessRunning &&
+      state.isVisible &&
+      !state.isMinimized &&
+      state.width > 300 &&
+      state.height > 200
+    ) {
+      await logLine(
+        'info',
+        `Windows kept ${game.title} in a composition-hosted Store frame; NXGS confirmed its process and full-size visible frame after AUMID activation.`
+      );
+      return { ...state, isForeground: true };
+    }
+    return state;
   }
 
   private beginFocusOperation(reason: 'launch' | 'resume', game: GameRecord): number {
