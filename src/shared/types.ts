@@ -117,12 +117,23 @@ export type ActiveGameStatus =
 
 export type ActiveGameWindowState = 'foreground' | 'minimized' | 'background' | 'unknown';
 
+export interface TrackedGameSessionState {
+  game: GameRecord;
+  status: ActiveGameStatus;
+  message?: string;
+  windowDetected: boolean;
+  windowState: ActiveGameWindowState;
+  isActive: boolean;
+  updatedAt: string;
+}
+
 export interface ActiveGameState {
   status: ActiveGameStatus;
   game?: GameRecord;
   message?: string;
   windowDetected?: boolean;
   windowState?: ActiveGameWindowState;
+  sessions?: TrackedGameSessionState[];
   updatedAt: string;
 }
 

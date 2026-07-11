@@ -47,12 +47,13 @@ const api = {
   selectExecutableFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectExecutableFile'),
   selectFolder: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectFolder'),
   launchGame: (request: LaunchRequest): Promise<LaunchResult> => ipcRenderer.invoke('game:launch', request),
-  resumeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:resumeActive'),
+  resumeActiveGame: (gameId?: string): Promise<GameControlResult> => ipcRenderer.invoke('game:resumeActive', gameId),
   minimizeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:minimizeActive'),
   goToLauncherHome: (): Promise<GameControlResult> => ipcRenderer.invoke('game:goToLauncherHome'),
-  closeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:closeActive'),
+  closeActiveGame: (gameId?: string): Promise<GameControlResult> => ipcRenderer.invoke('game:closeActive', gameId),
   exitApp: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('app:exit', pin),
-  forceCloseGame: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('session:forceClose', pin),
+  forceCloseGame: (pin: string, gameId?: string): Promise<VerifyPinResult> =>
+    ipcRenderer.invoke('session:forceClose', pin, gameId),
   clearExpiredSession: (): Promise<void> => ipcRenderer.invoke('session:clearExpired'),
   onSessionState: (callback: (state: SessionState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: SessionState) => callback(state);

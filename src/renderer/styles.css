@@ -1466,6 +1466,11 @@ button {
   box-shadow: 0 0 12px #71f0d7;
 }
 
+.active-dot.minimized {
+  background: #aab4c3;
+  box-shadow: 0 0 8px rgba(170, 180, 195, 0.7);
+}
+
 .quick-overlay-toast {
   position: absolute;
   bottom: 136px;

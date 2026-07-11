@@ -2,7 +2,16 @@ import { BrowserWindow, screen, shell } from 'electron';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { ActiveGameState, AppDiagnostics, GameControlResult, GameLaunchMode, GameRecord } from '../shared/types';
+import type {
+  ActiveGameState,
+  ActiveGameStatus,
+  ActiveGameWindowState,
+  AppDiagnostics,
+  GameControlResult,
+  GameLaunchMode,
+  GameRecord,
+  TrackedGameSessionState
+} from '../shared/types';
 import { logLine } from './logger';
 import { closeProcessByName, closeProcessByPid, isProcessRunning, isProcessRunningByPid } from './windowsProcess';
 import {
@@ -26,6 +35,18 @@ type LauncherEvents = {
   onActiveGameChanged: (state: ActiveGameState) => void;
 };
 
+type StoredGameSession = {
+  game: GameRecord;
+  child: ChildProcessWithoutNullStreams | null;
+  window: GameWindowInfo | null;
+  processId: number | null;
+  status: ActiveGameStatus;
+  message?: string;
+  windowDetected: boolean;
+  windowState: ActiveGameWindowState;
+  updatedAt: string;
+};
+
 function splitArgs(raw: string): string[] {
   const args: string[] = [];
   const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
@@ -44,6 +65,7 @@ class FocusOperationCanceledError extends Error {
 }
 
 export class GameLauncher {
+  private readonly sessions = new Map<string, StoredGameSession>();
   private activeGame: GameRecord | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
   private monitor: NodeJS.Timeout | null = null;
@@ -73,7 +95,11 @@ export class GameLauncher {
   }
 
   get activeState(): ActiveGameState {
-    return this.state;
+    return this.withTrackedSessions(this.state);
+  }
+
+  get hasTrackedGames(): boolean {
+    return this.sessions.size > 0 || Boolean(this.activeGame);
   }
 
   get taskbarHidden(): boolean {
@@ -113,7 +139,9 @@ export class GameLauncher {
         throw new Error(`${game.title} does not have a launch command.`);
       }
 
+      this.storeCurrentSession();
       await this.stopMonitoring(false);
+      this.sessions.delete(game.id);
       this.activeGame = game;
       this.activeWindow = null;
       this.activeProcessId = null;
@@ -176,9 +204,17 @@ export class GameLauncher {
     }
   }
 
-  async closeActiveGame(force: boolean, options: { retireActiveSession?: boolean } = {}): Promise<void> {
+  async closeActiveGame(
+    force: boolean,
+    options: { retireActiveSession?: boolean; gameId?: string } = {}
+  ): Promise<void> {
     if (this.operationInFlight) {
       await logLine('info', `Ignoring close request while ${this.operationInFlight} is in progress.`);
+      return;
+    }
+
+    if (options.gameId && !this.selectTrackedSession(options.gameId)) {
+      await logLine('warn', `Close requested for unknown tracked game ${options.gameId}.`);
       return;
     }
 
@@ -233,6 +269,14 @@ export class GameLauncher {
         }
       }
 
+      if (game.launchType === 'microsoftStore' && !game.processName?.trim() && !this.activeWindow) {
+        try {
+          await closeProcessByName(game.title, force);
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error));
+        }
+      }
+
       if (errors.length > 0) {
         await logLine('warn', `Close game errors for ${game.title}: ${errors.join(' | ')}`);
       }
@@ -251,10 +295,14 @@ export class GameLauncher {
     }
   }
 
-  async resumeActiveGame(): Promise<GameControlResult> {
+  async resumeActiveGame(gameId?: string): Promise<GameControlResult> {
     if (this.operationInFlight) {
       await logLine('info', `Ignoring resume request while ${this.operationInFlight} is in progress.`);
       return { ok: false, error: `Another game action is already in progress: ${this.operationInFlight}.` };
+    }
+
+    if (gameId && !this.selectTrackedSession(gameId)) {
+      return { ok: false, error: 'That game is no longer available in the switcher.' };
     }
 
     const game = this.activeGame;
@@ -262,7 +310,6 @@ export class GameLauncher {
       return { ok: false, error: 'No game is currently running.' };
     }
 
-    const fallbackStatus = this.state.status === 'minimizedToHome' ? 'minimizedToHome' : 'quickOverlayOpen';
     this.operationInFlight = 'resume';
     await logLine('info', `Resume clicked for ${game.title}. Rediscovering the active game window.`);
     this.setActiveState({
@@ -288,29 +335,12 @@ export class GameLauncher {
           return { ok: false, error: message };
         }
 
-        if (untrackedStoreApp) {
-          await this.suppressWindowsTaskbar();
-          this.assertFocusOperationCurrent(focusGeneration, game);
-          this.releaseLaunchShield();
-          this.hideLauncherForGame();
-          this.gameInForeground = true;
-          const message = `${game.title} resumed without a controllable Windows handle.`;
-          this.setActiveState({
-            status: 'running',
-            game,
-            message,
-            windowDetected: false,
-            windowState: 'unknown'
-          });
-          this.lastResumeResult = message;
-          await logLine('info', message);
-          return { ok: true };
-        }
-
-        const message = 'NXGS Play could not find the running game window.';
+        const message = untrackedStoreApp
+          ? `Windows has not exposed a controllable window for ${game.title} yet. NXGS kept the switcher open; wait a moment and try Resume Game again.`
+          : 'NXGS Play could not find the running game window. The switcher will stay open so you can retry.';
         await logLine('warn', `Resume requested for ${game.title}, but no game window was found.`);
         this.setActiveState({
-          status: fallbackStatus,
+          status: 'quickOverlayOpen',
           game,
           message,
           windowDetected: false,
@@ -327,6 +357,7 @@ export class GameLauncher {
       this.activeWindow = window;
       this.activeProcessId = window.processId;
       this.gameInForeground = true;
+      this.monitorByProcessName(game);
       this.setActiveState({
         status: 'running',
         game,
@@ -351,7 +382,7 @@ export class GameLauncher {
       await logLine('warn', `Native resume failed for ${game.title}: ${message}`);
       this.focusLauncher();
       this.setActiveState({
-        status: fallbackStatus,
+        status: 'quickOverlayOpen',
         game,
         message,
         windowDetected: Boolean(this.activeWindow),
@@ -502,6 +533,7 @@ export class GameLauncher {
 
   async clearActive(): Promise<void> {
     await this.stopMonitoring(false);
+    this.sessions.clear();
     this.activeGame = null;
     this.child = null;
     this.activeWindow = null;
@@ -783,7 +815,13 @@ export class GameLauncher {
   }
 
   private finishActiveGameSession(game: GameRecord, message: string, focusLauncher = true): void {
-    if (this.activeGame?.id !== game.id) {
+    const wasActive = this.activeGame?.id === game.id;
+    this.sessions.delete(game.id);
+    if (!wasActive) {
+      this.state = this.withTrackedSessions(this.state);
+      this.events.onActiveGameChanged(this.state);
+      this.events.onGameExited(game);
+      void logLine('info', `${message} Removed ${game.title} from the background switcher list.`);
       return;
     }
     if (this.monitor) {
@@ -797,11 +835,22 @@ export class GameLauncher {
     this.gameInForeground = false;
     this.lastHandoffError = undefined;
     this.clearReinforcementTimers();
-    this.setActiveState({
-      status: 'closed',
-      message
-    });
-    void logLine('info', `${message} Returning to launcher.`);
+    const nextSession = [...this.sessions.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    if (nextSession && this.selectTrackedSession(nextSession.game.id)) {
+      this.setActiveState({
+        status: 'quickOverlayOpen',
+        game: nextSession.game,
+        message: `${message} ${nextSession.game.title} is still available in the switcher.`,
+        windowDetected: nextSession.windowDetected,
+        windowState: nextSession.windowState === 'foreground' ? 'background' : nextSession.windowState
+      });
+    } else {
+      this.setActiveState({
+        status: 'closed',
+        message
+      });
+    }
+    void logLine('info', `${message} ${nextSession ? 'Another game remains available in the switcher.' : 'Returning to launcher.'}`);
     if (focusLauncher) {
       this.focusLauncher();
     }
@@ -886,6 +935,10 @@ export class GameLauncher {
 
     let window: GameWindowInfo | null = null;
     for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (!(await this.isGameStillRunning(game))) {
+        this.handleGameExit(game);
+        return;
+      }
       window = await findGameWindow({
         pid: this.activeProcessId ?? this.child?.pid,
         processName: game.processName,
@@ -991,11 +1044,16 @@ export class GameLauncher {
       let reinforcement;
       if (reason === 'resume') {
         await logLine('info', `Fast resume handoff for ${game.title}: restoring known window ${window.handle}.`);
+        // Let Windows raise the game while the launcher remains visible. NXGS only hides
+        // after the native window check confirms the game is visible and foreground.
         this.releaseLaunchShield();
-        this.hideLauncherForGame();
-        launcherHidden = true;
         reinforcement = await resumeGameWindowFast(window, launchMode);
         this.assertFocusOperationCurrent(focusGeneration, game);
+        if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
+          throw new Error('Windows did not confirm the game window in the foreground. NXGS kept the switcher visible.');
+        }
+        this.hideLauncherForGame();
+        launcherHidden = true;
       } else {
         this.showLaunchShield();
         await logLine('info', `${reason} handoff for ${game.title}: preparing window ${window.handle} while NXGS Play remains visible.`);
@@ -1058,12 +1116,79 @@ export class GameLauncher {
     }
   }
 
+  private storeCurrentSession(): void {
+    if (!this.activeGame || ['idle', 'closed', 'error'].includes(this.state.status)) {
+      return;
+    }
+    this.sessions.set(this.activeGame.id, {
+      game: this.activeGame,
+      child: this.child,
+      window: this.activeWindow,
+      processId: this.activeProcessId,
+      status: this.state.status,
+      message: this.state.message,
+      windowDetected: Boolean(this.activeWindow),
+      windowState: this.state.windowState ?? (this.activeWindow ? 'background' : 'unknown'),
+      updatedAt: this.state.updatedAt
+    });
+  }
+
+  private selectTrackedSession(gameId: string): boolean {
+    if (this.activeGame?.id === gameId) {
+      return true;
+    }
+    this.storeCurrentSession();
+    if (this.monitor) {
+      clearInterval(this.monitor);
+      this.monitor = null;
+    }
+    const session = this.sessions.get(gameId);
+    if (!session) {
+      return false;
+    }
+    this.activeGame = session.game;
+    this.child = session.child;
+    this.activeWindow = session.window;
+    this.activeProcessId = session.processId;
+    this.gameInForeground = session.windowState === 'foreground';
+    this.state = this.withTrackedSessions({
+      status: session.status,
+      game: session.game,
+      message: session.message,
+      windowDetected: session.windowDetected,
+      windowState: session.windowState,
+      updatedAt: session.updatedAt
+    });
+    return true;
+  }
+
+  private withTrackedSessions(state: ActiveGameState): ActiveGameState {
+    const activeId = this.activeGame?.id;
+    const sessions: TrackedGameSessionState[] = [...this.sessions.values()]
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .map((session) => ({
+        game: session.game,
+        status: session.status,
+        message: session.message,
+        windowDetected: session.windowDetected,
+        windowState: session.windowState,
+        isActive: session.game.id === activeId,
+        updatedAt: session.updatedAt
+      }));
+    return {
+      ...state,
+      sessions
+    };
+  }
+
   private setActiveState(state: Omit<ActiveGameState, 'updatedAt'>): void {
     const previousStatus = this.state.status;
     this.state = {
       updatedAt: new Date().toISOString(),
       ...state
     };
+    this.storeCurrentSession();
+    this.state = this.withTrackedSessions(this.state);
     void logLine(
       'info',
       `Active game state ${previousStatus} -> ${this.state.status}${this.state.game ? ` (${this.state.game.title})` : ''}.`

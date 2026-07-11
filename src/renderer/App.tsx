@@ -445,7 +445,7 @@ export function App(): JSX.Element {
     );
   }
 
-  const activeGameOverlayVisible = activeGame.status === 'quickOverlayOpen';
+  const activeGameOverlayVisible = ['quickOverlayOpen', 'resuming', 'closing'].includes(activeGame.status);
   const homeQuickNavVisible = quickNavOpen && !activeGameOverlayVisible;
 
   return (

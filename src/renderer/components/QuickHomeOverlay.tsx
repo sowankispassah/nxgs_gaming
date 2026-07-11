@@ -10,11 +10,17 @@ import {
   UsersRound,
   X
 } from 'lucide-react';
-import type { ActiveGameState } from '../../shared/types';
+import type { ActiveGameState, TrackedGameSessionState } from '../../shared/types';
 import { SafeGameImage } from './ConsoleHome';
 
 type PendingAction = 'resume' | 'home' | 'close' | 'admin' | 'force' | null;
 type FocusArea = 'navbar' | 'menu';
+type NavItem = {
+  key: string;
+  label: string;
+  icon: JSX.Element | null;
+  session?: TrackedGameSessionState;
+};
 
 const MENU_LABELS = ['Resume Game', 'Go to Launcher Home', 'Close Game'] as const;
 
@@ -24,8 +30,27 @@ export function QuickHomeOverlay(props: {
   onOpenAdmin: (source: string) => void;
   onDismiss: () => void;
 }): JSX.Element {
-  const game = props.activeGame.game;
-  const [selectedNavIndex, setSelectedNavIndex] = useState(game ? 1 : 0);
+  const sessions = useMemo<TrackedGameSessionState[]>(() => {
+    if (props.activeGame.sessions?.length) {
+      return props.activeGame.sessions;
+    }
+    if (!props.activeGame.game) {
+      return [];
+    }
+    return [{
+      game: props.activeGame.game,
+      status: props.activeGame.status,
+      message: props.activeGame.message,
+      windowDetected: Boolean(props.activeGame.windowDetected),
+      windowState: props.activeGame.windowState ?? 'unknown',
+      isActive: true,
+      updatedAt: props.activeGame.updatedAt
+    }];
+  }, [props.activeGame]);
+  const initiallyActiveIndex = Math.max(0, sessions.findIndex((session) => session.isActive));
+  const [selectedNavKey, setSelectedNavKey] = useState(
+    sessions.length > 0 ? `game:${sessions[initiallyActiveIndex].game.id}` : 'home'
+  );
   const [menuIndex, setMenuIndex] = useState(0);
   const [focusArea, setFocusArea] = useState<FocusArea>('menu');
   const [confirmClose, setConfirmClose] = useState(false);
@@ -35,23 +60,31 @@ export function QuickHomeOverlay(props: {
   const [forcePin, setForcePin] = useState('');
   const [now, setNow] = useState(() => new Date());
 
-  const navItems = useMemo(
+  const navItems = useMemo<NavItem[]>(
     () => [
       { key: 'home', label: 'Launcher Home', icon: <Home size={23} /> },
-      ...(game ? [{ key: 'game', label: game.title, icon: null }] : []),
+      ...sessions.map((session) => ({
+        key: `game:${session.game.id}`,
+        label: session.game.title,
+        icon: null,
+        session
+      })),
       { key: 'notifications', label: 'Notifications coming soon', icon: <Bell size={21} /> },
       { key: 'players', label: 'Players coming soon', icon: <UsersRound size={22} /> },
       { key: 'audio', label: 'Audio coming soon', icon: <Music2 size={22} /> },
       { key: 'settings', label: 'Protected settings', icon: <Settings size={22} /> },
       { key: 'power', label: 'Protected power controls', icon: <Power size={22} /> }
     ],
-    [game?.title]
+    [sessions]
   );
 
-  const closeFailed = /did not close|force close/i.test(props.activeGame.message ?? '');
+  const selectedNavIndex = Math.max(0, navItems.findIndex((item) => item.key === selectedNavKey));
   const activeNavItem = navItems[selectedNavIndex];
-  const gameSelected = Boolean(game && activeNavItem?.key === 'game');
-  const disabled = pendingAction !== null || props.activeGame.status === 'closing';
+  const selectedSession = activeNavItem?.session;
+  const game = selectedSession?.game;
+  const gameSelected = Boolean(selectedSession);
+  const closeFailed = /did not close|force close/i.test(selectedSession?.message ?? '');
+  const disabled = pendingAction !== null || selectedSession?.status === 'closing';
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
@@ -59,13 +92,25 @@ export function QuickHomeOverlay(props: {
   }, []);
 
   useEffect(() => {
+    setSelectedNavKey((current) => {
+      if (navItems.some((item) => item.key === current)) {
+        return current;
+      }
+      const activeSession = sessions.find((session) => session.isActive);
+      return activeSession ? `game:${activeSession.game.id}` : 'home';
+    });
+  }, [navItems, sessions]);
+
+  useEffect(() => {
     if (props.emergencyCloseRequestId > 0) {
-      setSelectedNavIndex(1);
+      const activeIndex = sessions.findIndex((session) => session.isActive);
+      const selectedSession = sessions[activeIndex >= 0 ? activeIndex : 0];
+      setSelectedNavKey(selectedSession ? `game:${selectedSession.game.id}` : 'home');
       setFocusArea('menu');
       setMenuIndex(2);
       setConfirmClose(true);
     }
-  }, [props.emergencyCloseRequestId]);
+  }, [props.emergencyCloseRequestId, sessions]);
 
   useEffect(() => {
     if (!notice) {
@@ -75,21 +120,26 @@ export function QuickHomeOverlay(props: {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    setMessage('');
+    setConfirmClose(false);
+  }, [selectedNavKey]);
+
   const resumeGame = useCallback(async (): Promise<void> => {
-    if (pendingAction) {
+    if (pendingAction || !selectedSession) {
       return;
     }
     setPendingAction('resume');
     setMessage('');
     try {
-      const result = await window.nxgs.resumeActiveGame();
+      const result = await window.nxgs.resumeActiveGame(selectedSession.game.id);
       if (!result.ok) {
         setMessage(result.error ?? 'NXGS could not resume the game.');
       }
     } finally {
       setPendingAction(null);
     }
-  }, [pendingAction]);
+  }, [pendingAction, selectedSession]);
 
   const goToLauncherHome = useCallback(async (): Promise<void> => {
     if (pendingAction) {
@@ -110,20 +160,22 @@ export function QuickHomeOverlay(props: {
   }, [pendingAction, props]);
 
   const closeGame = useCallback(async (): Promise<void> => {
-    if (pendingAction) {
+    if (pendingAction || !selectedSession) {
       return;
     }
     setPendingAction('close');
     setMessage('');
     try {
-      const result = await window.nxgs.closeActiveGame();
+      const result = await window.nxgs.closeActiveGame(selectedSession.game.id);
       if (!result.ok) {
         setMessage(result.error ?? 'NXGS could not close the game.');
+      } else {
+        setConfirmClose(false);
       }
     } finally {
       setPendingAction(null);
     }
-  }, [pendingAction]);
+  }, [pendingAction, selectedSession]);
 
   const openProtectedArea = useCallback(
     async (source: string): Promise<void> => {
@@ -169,10 +221,10 @@ export function QuickHomeOverlay(props: {
       if (!item || disabled) {
         return;
       }
-      setSelectedNavIndex(index);
+      setSelectedNavKey(item.key);
       if (item.key === 'home') {
         void goToLauncherHome();
-      } else if (item.key === 'game') {
+      } else if (item.session) {
         setFocusArea('menu');
       } else if (item.key === 'settings' || item.key === 'power') {
         void openProtectedArea(item.key === 'settings' ? 'quick overlay settings' : 'quick overlay power controls');
@@ -227,7 +279,7 @@ export function QuickHomeOverlay(props: {
       }
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         const delta = event.key === 'ArrowRight' ? 1 : -1;
-        setSelectedNavIndex((index) => (index + delta + navItems.length) % navItems.length);
+        setSelectedNavKey(navItems[(selectedNavIndex + delta + navItems.length) % navItems.length].key);
         setFocusArea('navbar');
         return;
       }
@@ -265,11 +317,11 @@ export function QuickHomeOverlay(props: {
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
       if (pressed(15) || pad.axes[0] > 0.65) {
         lastInputAt = Date.now();
-        setSelectedNavIndex((index) => (index + 1) % navItems.length);
+        setSelectedNavKey(navItems[(selectedNavIndex + 1) % navItems.length].key);
         setFocusArea('navbar');
       } else if (pressed(14) || pad.axes[0] < -0.65) {
         lastInputAt = Date.now();
-        setSelectedNavIndex((index) => (index - 1 + navItems.length) % navItems.length);
+        setSelectedNavKey(navItems[(selectedNavIndex - 1 + navItems.length) % navItems.length].key);
         setFocusArea('navbar');
       } else if (pressed(13) || pad.axes[1] > 0.65) {
         lastInputAt = Date.now();
@@ -314,10 +366,10 @@ export function QuickHomeOverlay(props: {
         <section className="quick-game-menu" aria-label={`${game.title} controls`}>
           <div className="quick-game-heading">
             <span className="quick-game-art"><SafeGameImage game={game} kind="avatar" alt="" fallbackSize={28} /></span>
-            <div><small>Active game</small><strong>{game.title}</strong></div>
+            <div><small>{selectedSession?.isActive ? 'Active game' : 'Running / minimized game'}</small><strong>{game.title}</strong></div>
           </div>
           {message && <p className="quick-overlay-error">{message}</p>}
-          {!message && props.activeGame.message && <p className="quick-overlay-status">{props.activeGame.message}</p>}
+          {!message && selectedSession?.message && <p className="quick-overlay-status">{selectedSession.message}</p>}
 
           {confirmClose ? (
             <div className="quick-close-confirm">
@@ -364,7 +416,7 @@ export function QuickHomeOverlay(props: {
                   setPendingAction('force');
                   setMessage('');
                   try {
-                    const result = await window.nxgs.forceCloseGame(forcePin);
+                    const result = await window.nxgs.forceCloseGame(forcePin, selectedSession?.game.id);
                     if (!result.ok) setMessage('Invalid admin PIN.');
                   } finally {
                     setPendingAction(null);
@@ -382,16 +434,16 @@ export function QuickHomeOverlay(props: {
         {navItems.map((item, index) => (
           <button
             key={item.key}
-            className={`quick-nav-item ${selectedNavIndex === index ? 'selected' : ''} ${item.key === 'game' ? 'active-game' : ''}`}
+            className={`quick-nav-item ${selectedNavIndex === index ? 'selected' : ''} ${item.session ? 'active-game' : ''}`}
             type="button"
             title={item.label}
             aria-label={item.label}
             disabled={disabled}
-            onMouseEnter={() => { setSelectedNavIndex(index); setFocusArea('navbar'); }}
+            onMouseEnter={() => { setSelectedNavKey(item.key); setFocusArea('navbar'); }}
             onClick={() => selectNavAction(index)}
           >
-            {item.key === 'game' && game ? <SafeGameImage game={game} kind="avatar" alt="" fallbackSize={25} /> : item.icon}
-            {item.key === 'game' && game && <span className="active-dot" />}
+            {item.session ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} /> : item.icon}
+            {item.session && <span className={`active-dot ${item.session.isActive ? '' : 'minimized'}`} />}
           </button>
         ))}
       </nav>

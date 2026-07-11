@@ -132,7 +132,7 @@ function openHomeFromGame(reason: ShellHomeReason = 'system'): void {
   }
 
   void logLine('info', `Shell home requested by ${reason}.`);
-  const hasActiveGame = Boolean(launcher.active);
+  const hasActiveGame = launcher.hasTrackedGames;
   homeActionInFlight = (hasActiveGame ? launcher.openQuickOverlay() : launcher.returnToHome())
     .then((result) => {
       applyKioskSettings(store.getSettings());
@@ -171,7 +171,7 @@ const sessionTimer = new SessionTimer({
   onTick: broadcastSession,
   onExpired: (game) => {
     launcher.focusLauncher();
-    void launcher.closeActiveGame(false);
+    void launcher.closeActiveGame(false, { gameId: game.id });
     void logLine('warn', `Session expired for ${game.title}; requested graceful close.`);
   }
 });
@@ -179,8 +179,10 @@ const sessionTimer = new SessionTimer({
 const launcher = new GameLauncher(
   () => mainWindow,
   {
-    onGameExited: () => {
-      sessionTimer.stop('idle');
+    onGameExited: (game) => {
+      if (sessionTimer.current.gameId === game.id) {
+        sessionTimer.stop('idle');
+      }
       applyKioskSettings(store.getSettings());
     },
     onError: (message) => {
@@ -234,6 +236,7 @@ function applyKioskSettings(settings: AppSettings): void {
   const shouldStayOnTop =
     settings.kiosk.alwaysOnTop ||
     launcher.activeState.status === 'quickOverlayOpen' ||
+    launcher.activeState.status === 'resuming' ||
     launcher.activeState.status === 'closing';
   window.setSkipTaskbar(true);
   window.setAlwaysOnTop(shouldStayOnTop, shouldStayOnTop ? 'screen-saver' : undefined);
@@ -434,7 +437,9 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle('game:resumeActive', async (): Promise<GameControlResult> => launcher.resumeActiveGame());
+  ipcMain.handle('game:resumeActive', async (_event, gameId?: string): Promise<GameControlResult> =>
+    launcher.resumeActiveGame(gameId)
+  );
 
   ipcMain.handle('game:minimizeActive', async (): Promise<GameControlResult> => {
     const result = await launcher.minimizeActiveGame();
@@ -452,9 +457,9 @@ function registerIpc(): void {
     return result;
   });
 
-  ipcMain.handle('game:closeActive', async (): Promise<GameControlResult> => {
+  ipcMain.handle('game:closeActive', async (_event, gameId?: string): Promise<GameControlResult> => {
     try {
-      await launcher.closeActiveGame(false);
+      await launcher.closeActiveGame(false, { gameId });
       launcher.focusLauncher();
       applyKioskSettings(store.getSettings());
       return { ok: true };
@@ -463,13 +468,14 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle('session:forceClose', async (_event, pin: string) => {
+  ipcMain.handle('session:forceClose', async (_event, pin: string, gameId?: string) => {
     if (!store.verifyPin(pin)) {
       return { ok: false };
     }
-    await launcher.closeActiveGame(true);
-    await launcher.clearActive();
-    sessionTimer.stop('idle');
+    await launcher.closeActiveGame(true, { gameId });
+    if (!launcher.hasTrackedGames) {
+      sessionTimer.stop('idle');
+    }
     launcher.focusLauncher();
     applyKioskSettings(store.getSettings());
     return { ok: true };
