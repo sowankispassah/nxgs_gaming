@@ -1,7 +1,7 @@
 {
-    "version":  "0.9.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.9.0/NXGS-Play-Setup.exe",
-    "sha256":  "842728f9a86b4e0d6fd441fb45b2cd692dc636afe8605cb44dd4cca68a60c703",
+    "version":  "0.9.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.9.1/NXGS-Play-Setup.exe",
+    "sha256":  "ef3c75c301611e6d0c8f0f6ebe9cda851aeb7984650b95b874ce493a5272b32f",
     "required":  false,
-    "notes":  "NXGS Play 0.9.0 adds console-style Settings with live Network status, controller-friendly navigation and diagnostics, a game-art quick overlay, and safer Microsoft Store/multi-game switching with verified retries."
+    "notes":  "NXGS Play 0.9.1 keeps the NXGS console shell fullscreen behind every game and repeatedly enforces borderless fullscreen after launch and Resume, preventing the Windows desktop, icons, taskbar, or title bar from being exposed."
 }
