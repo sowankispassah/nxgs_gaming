@@ -1,7 +1,7 @@
 {
-    "version":  "0.7.4",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.7.4/NXGS-Play-Setup.exe",
-    "sha256":  "c639737f5556f7fd2c0e34f020149599822639092f7502df0fd22f8353c45b11",
+    "version":  "0.8.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.8.0/NXGS-Play-Setup.exe",
+    "sha256":  "52889e626f1288b9eae674dddd928ae57f970ac61c3d6209b84ce2ea80a5de92",
     "required":  false,
-    "notes":  "NXGS Play 0.7.4 fixes Launcher Home navigation for running Microsoft Store games and keeps the active game available in the bottom switcher for Resume."
+    "notes":  "NXGS Play 0.8.0 adds a multi-game quick switcher and keeps NXGS visible until the selected game is confirmed on screen. Failed Resume actions stay recoverable with retry guidance."
 }
