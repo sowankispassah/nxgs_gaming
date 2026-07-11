@@ -395,9 +395,10 @@ export class GameLauncher {
         windowDetected: true,
         windowState: 'foreground'
       });
+      this.scheduleGamePresentationReinforcement(game, focusedWindow, this.launchMode(game));
       this.lastHandoffError = undefined;
       this.lastResumeResult = `${game.title} restored and focused.`;
-      await logLine('info', `Resume succeeded for ${game.title}; game window is foreground and NXGS Play is hidden.`);
+      await logLine('info', `Resume succeeded for ${game.title}; game window is foreground over the NXGS shell cover.`);
       return { ok: true };
     } catch (error) {
       if (error instanceof FocusOperationCanceledError || !this.isFocusOperationCurrent(focusGeneration, game)) {
@@ -697,6 +698,7 @@ export class GameLauncher {
       windowDetected: true,
       windowState: 'foreground'
     });
+    this.scheduleGamePresentationReinforcement(game, this.activeWindow ?? window, launchMode);
     this.lastHandoffError = undefined;
     await logLine('info', `Game window focused for ${game.title}; NXGS Play handoff completed.`);
   }
@@ -1031,18 +1033,18 @@ export class GameLauncher {
 
   private releaseLaunchShield(): void {
     const window = this.windowProvider();
-    window?.setAlwaysOnTop(false);
-    window?.blur();
-  }
-
-  private hideLauncherForGame(): void {
-    const window = this.windowProvider();
     if (!window || window.isDestroyed()) {
       return;
     }
+    const display = screen.getDisplayMatching(window.getBounds());
+    window.setBounds(display.bounds);
+    window.setFullScreen(true);
+    window.setMenuBarVisibility(false);
+    if (!window.isVisible()) {
+      window.showInactive();
+    }
     window.setAlwaysOnTop(false);
-    window.hide();
-    void logLine('info', 'NXGS Play hidden for the prepared game window foreground transfer.');
+    window.blur();
   }
 
   private async handOffToGameWindow(
@@ -1052,7 +1054,6 @@ export class GameLauncher {
     reason: 'launch' | 'resume',
     focusGeneration: number
   ): Promise<GameWindowInfo> {
-    let launcherHidden = false;
     let targetWindow = window;
     const shellHostedStoreApp = game.launchType === 'microsoftStore' && !game.processName?.trim();
     try {
@@ -1062,8 +1063,7 @@ export class GameLauncher {
       let reinforcement;
       if (reason === 'resume') {
         await logLine('info', `Fast resume handoff for ${game.title}: restoring known window ${window.handle}.`);
-        // Let Windows raise the game while the launcher remains visible. NXGS only hides
-        // after the native window check confirms the game is visible and foreground.
+        // NXGS remains fullscreen behind the game so the Windows shell is never exposed.
         this.releaseLaunchShield();
         targetWindow = await this.reactivateShellHostedStoreWindow(game, targetWindow, focusGeneration);
         reinforcement = shellHostedStoreApp
@@ -1073,8 +1073,6 @@ export class GameLauncher {
         if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
           throw new Error('Windows did not confirm the game window in the foreground. NXGS kept the switcher visible.');
         }
-        this.hideLauncherForGame();
-        launcherHidden = true;
       } else {
         this.showLaunchShield();
         await logLine('info', `${reason} handoff for ${game.title}: preparing window ${window.handle} while NXGS Play remains visible.`);
@@ -1083,10 +1081,8 @@ export class GameLauncher {
         }
         this.assertFocusOperationCurrent(focusGeneration, game);
 
-        // The prepared game already covers the display; hiding the shield lets Windows grant it foreground focus.
+        // Keep NXGS visible as the console shell cover while Windows grants the game foreground focus.
         this.releaseLaunchShield();
-        this.hideLauncherForGame();
-        launcherHidden = true;
         targetWindow = await this.reactivateShellHostedStoreWindow(game, targetWindow, focusGeneration);
         if (shellHostedStoreApp) {
           reinforcement = await this.confirmShellHostedStoreActivation(game, targetWindow, focusGeneration);
@@ -1102,6 +1098,7 @@ export class GameLauncher {
       }
 
       await logLine('info', `${reason} handoff for ${game.title}: visible, focused game window confirmed.`);
+      await logLine('info', `NXGS Play remains fullscreen behind ${game.title} as the protected console shell cover.`);
       return targetWindow;
     } catch (error) {
       if (error instanceof FocusOperationCanceledError) {
@@ -1109,12 +1106,26 @@ export class GameLauncher {
       }
       this.lastHandoffError = error instanceof Error ? error.message : String(error);
       this.showLaunchShield();
-      launcherHidden = false;
       throw error;
-    } finally {
-      if (launcherHidden) {
-        this.releaseLaunchShield();
-      }
+    }
+  }
+
+  private scheduleGamePresentationReinforcement(
+    game: GameRecord,
+    window: GameWindowInfo,
+    launchMode: GameLaunchMode
+  ): void {
+    this.clearReinforcementTimers();
+    for (const delayMs of [250, 750, 1500, 3000, 5000]) {
+      const timer = setTimeout(() => {
+        if (this.activeGame?.id !== game.id || this.state.status !== 'running' || !this.gameInForeground) {
+          return;
+        }
+        void keepGameWindowOnTop(window, launchMode).catch((error) => {
+          void logLine('warn', `Could not reinforce protected fullscreen for ${game.title}: ${String(error)}`);
+        });
+      }, delayMs);
+      this.reinforceTimers.push(timer);
     }
   }
 
