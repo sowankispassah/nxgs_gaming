@@ -237,6 +237,7 @@ export interface UpdateDownloadRequest {
 export interface UpdateDownloadResult {
   ok: boolean;
   installerPath?: string;
+  sha256?: string;
   message: string;
 }
 

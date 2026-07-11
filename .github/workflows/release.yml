@@ -1,9 +1,12 @@
 name: Release NXGS Play
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to rebuild intentionally (for example v0.7.3)
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -37,13 +40,14 @@ jobs:
         run: |
           ./scripts/generate-update-manifest.ps1 `
             -Installer "release/NXGS-Play-Setup.exe" `
-            -DownloadUrl "https://github.com/${{ github.repository }}/releases/latest/download/NXGS-Play-Setup.exe" `
+            -DownloadUrl "https://github.com/${{ github.repository }}/releases/download/${{ inputs.release_tag }}/NXGS-Play-Setup.exe" `
             -Output "updates/windows-update.json" `
-            -Notes "NXGS Play ${env:GITHUB_REF_NAME} is ready to install."
+            -Notes "NXGS Play ${{ inputs.release_tag }} is ready to install."
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.release_tag }}
           files: |
             release/NXGS-Play-Setup.exe
             release/NXGS-Play-Setup.exe.blockmap

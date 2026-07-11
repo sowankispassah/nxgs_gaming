@@ -1411,6 +1411,7 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
   const [pendingAction, setPendingAction] = useState<'check' | 'download' | 'install' | null>(null);
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
   const [downloadedInstallerPath, setDownloadedInstallerPath] = useState('');
+  const [downloadedInstallerSha256, setDownloadedInstallerSha256] = useState('');
   const [downloadProgress, setDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
   const [restartPromptOpen, setRestartPromptOpen] = useState(false);
   const [operationMessage, setOperationMessage] = useState('');
@@ -1439,7 +1440,7 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
     try {
       const install = await window.nxgs.installUpdate({
         installerPath: downloadedInstallerPath,
-        sha256: result?.sha256
+        sha256: downloadedInstallerSha256 || result?.sha256
       });
       setOperationMessage(install.message);
       setOperationOk(install.ok);
@@ -1529,6 +1530,7 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
               setOperationOk(download.ok);
               if (download.ok && download.installerPath) {
                 setDownloadedInstallerPath(download.installerPath);
+                setDownloadedInstallerSha256(download.sha256 ?? result.sha256 ?? '');
                 setRestartPromptOpen(true);
               }
             } finally {

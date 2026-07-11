@@ -140,7 +140,72 @@ async function waitForFile(path: string, timeoutMs: number): Promise<boolean> {
 
 function retryableDownloadError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /terminated|fetch failed|network|socket|econnreset|etimedout|timeout|aborted/i.test(message);
+  return /terminated|fetch failed|network|socket|econnreset|etimedout|timeout|aborted|404|blob does not exist|checksum verification|download size/i.test(
+    message
+  );
+}
+
+interface ResolvedInstallerDownload {
+  downloadUrl: string;
+  sha256?: string;
+  size?: number;
+}
+
+function cacheBustedUrl(value: string, attempt: number): string {
+  const url = new URL(value);
+  url.searchParams.set('nxgs_download', `${Date.now()}-${attempt}`);
+  return url.toString();
+}
+
+async function resolveInstallerDownload(request: UpdateDownloadRequest): Promise<ResolvedInstallerDownload> {
+  const fallback: ResolvedInstallerDownload = {
+    downloadUrl: request.downloadUrl,
+    sha256: validSha256(request.sha256)
+  };
+
+  try {
+    const response = await fetch(`${LATEST_RELEASE_URL}?nxgs_refresh=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'Cache-Control': 'no-cache, no-store',
+        'User-Agent': `NXGS-Play/${app.getVersion()}`
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`GitHub asset refresh returned ${response.status} ${response.statusText}`);
+    }
+
+    const release = (await response.json()) as GitHubRelease;
+    const releaseVersion = normalizeVersion(release.tag_name ?? release.name ?? '');
+    const requestedVersion = normalizeVersion(request.latestVersion ?? '');
+    if (requestedVersion && releaseVersion !== requestedVersion) {
+      throw new Error(`Latest release changed from ${requestedVersion} to ${releaseVersion || 'unknown'}. Check again first.`);
+    }
+
+    const asset = findInstallerAsset(release.assets);
+    const downloadUrl = asset?.browser_download_url;
+    const sha256 = digestToSha256(asset?.digest);
+    if (!downloadUrl || !trustedHttpsUrl(downloadUrl) || !sha256) {
+      throw new Error('GitHub did not return a trusted installer asset and digest.');
+    }
+
+    if (fallback.sha256 && fallback.sha256 !== sha256) {
+      await logLine('warn', 'Release installer changed after the update check; using the refreshed GitHub asset checksum.');
+    }
+
+    return {
+      downloadUrl,
+      sha256,
+      size: typeof asset?.size === 'number' && asset.size > 0 ? asset.size : undefined
+    };
+  } catch (error) {
+    await logLine(
+      'warn',
+      `Could not refresh GitHub installer metadata; using the checked manifest asset: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return fallback;
+  }
 }
 
 function isProgramFilesInstall(exePath: string): boolean {
@@ -366,7 +431,6 @@ export async function downloadUpdate(
   request: UpdateDownloadRequest,
   onProgress?: (progress: UpdateDownloadProgress) => void
 ): Promise<UpdateDownloadResult> {
-  const expectedSha256 = validSha256(request.sha256);
   const assetName = sanitizeAssetName(request.assetName, request.latestVersion);
   const updatesDirectory = join(app.getPath('temp'), 'NXGS Play Updates');
   const installerPath = join(updatesDirectory, assetName);
@@ -384,10 +448,14 @@ export async function downloadUpdate(
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
         await rm(partPath, { force: true });
+        const resolved = await resolveInstallerDownload(request);
+        const expectedSha256 = resolved.sha256;
+        const downloadUrl = cacheBustedUrl(resolved.downloadUrl, attempt);
 
-        const response = await fetch(request.downloadUrl, {
+        const response = await fetch(downloadUrl, {
+          cache: 'no-store',
           headers: {
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-cache, no-store',
             'User-Agent': `NXGS-Play/${app.getVersion()}`
           }
         });
@@ -400,7 +468,7 @@ export async function downloadUpdate(
           throw new Error('Update download did not include a response body.');
         }
 
-        const totalBytes = Number(response.headers.get('content-length') || 0) || undefined;
+        const totalBytes = Number(response.headers.get('content-length') || 0) || resolved.size;
         const hash = createHash('sha256');
         const reader = response.body.getReader();
         stream = createWriteStream(partPath, { flags: 'wx' });
@@ -426,6 +494,10 @@ export async function downloadUpdate(
         await closeStream(stream);
         stream = null;
 
+        if (resolved.size && receivedBytes !== resolved.size) {
+          throw new Error(`The downloaded installer size did not match GitHub (${receivedBytes} of ${resolved.size} bytes).`);
+        }
+
         const actualSha256 = hash.digest('hex');
         if (expectedSha256 && actualSha256 !== expectedSha256) {
           throw new Error('The downloaded installer failed checksum verification.');
@@ -438,6 +510,7 @@ export async function downloadUpdate(
         return {
           ok: true,
           installerPath,
+          sha256: actualSha256,
           message: `Update downloaded. Restart when you are ready to install ${request.latestVersion ?? 'the new version'}.`
         };
       } catch (error) {
