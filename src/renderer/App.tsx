@@ -26,6 +26,7 @@ import {
   type ConsoleFocusSection,
   type ConsoleTab
 } from './components/ConsoleHome';
+import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 import type {
   ActiveGameState,
   AdminUnlockRequest,
@@ -187,7 +188,7 @@ export function App(): JSX.Element {
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
       setActiveGame(next);
-      if (next.status === 'launching' || next.status === 'closed') {
+      if (next.status === 'launching' || next.status === 'minimizedToHome' || next.status === 'closed') {
         setView('home');
       }
     });
@@ -386,6 +387,9 @@ export function App(): JSX.Element {
         void window.nxgs.requestShellHome(guidePressed ? 'controller-home' : 'controller-combo');
         return;
       }
+      if (activeGame.status === 'quickOverlayOpen') {
+        return;
+      }
       if (pressed(15) || pad.axes[0] > 0.65) {
         lastInput = Date.now();
         moveHorizontal(1);
@@ -407,7 +411,7 @@ export function App(): JSX.Element {
       }
     }, 90);
     return () => window.clearInterval(interval);
-  }, [acceptSelection, back, moveHorizontal, moveVertical]);
+  }, [acceptSelection, activeGame.status, back, moveHorizontal, moveVertical]);
 
   if (bootError) {
     return (
@@ -430,9 +434,17 @@ export function App(): JSX.Element {
     );
   }
 
+  const quickOverlayVisible = activeGame.status === 'quickOverlayOpen';
+
   return (
-    <main className={`app-shell ${cursorHidden ? 'cursor-hidden' : ''}`}>
-      {view === 'home' ? (
+    <main className={`app-shell ${quickOverlayVisible ? 'quick-overlay-shell' : ''} ${cursorHidden ? 'cursor-hidden' : ''}`}>
+      {quickOverlayVisible ? (
+        <QuickHomeOverlay
+          activeGame={activeGame}
+          emergencyCloseRequestId={emergencyCloseRequestId}
+          onOpenAdmin={(source) => openAdminPin({ source })}
+        />
+      ) : view === 'home' ? (
         <ConsoleHome
           games={enabledGames}
           selectedIndex={selectedIndex}
@@ -502,7 +514,7 @@ export function App(): JSX.Element {
           }}
         />
       )}
-      {(['launching', 'closing'] as ActiveGameState['status'][]).includes(activeGame.status) && (
+      {activeGame.status === 'launching' && (
         <GameTransitionOverlay activeGame={activeGame} />
       )}
     </main>

@@ -49,6 +49,7 @@ const api = {
   launchGame: (request: LaunchRequest): Promise<LaunchResult> => ipcRenderer.invoke('game:launch', request),
   resumeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:resumeActive'),
   minimizeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:minimizeActive'),
+  goToLauncherHome: (): Promise<GameControlResult> => ipcRenderer.invoke('game:goToLauncherHome'),
   closeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:closeActive'),
   exitApp: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('app:exit', pin),
   forceCloseGame: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('session:forceClose', pin),

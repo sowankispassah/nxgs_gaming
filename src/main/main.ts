@@ -132,13 +132,13 @@ function openHomeFromGame(reason: ShellHomeReason = 'system'): void {
   }
 
   void logLine('info', `Shell home requested by ${reason}.`);
-  homeActionInFlight = launcher
-    .returnToHome()
+  const hasActiveGame = Boolean(launcher.active);
+  homeActionInFlight = (hasActiveGame ? launcher.openQuickOverlay() : launcher.returnToHome())
     .then((result) => {
       applyKioskSettings(store.getSettings());
       sendShellHome({
         reason,
-        openActiveGamePanel: Boolean(launcher.active),
+        openActiveGamePanel: false,
         emergencyClose: reason === 'emergency-close'
       });
       if (!result.ok) {
@@ -231,7 +231,10 @@ function applyKioskSettings(settings: AppSettings): void {
   }
 
   setKioskTaskbarHidden(true, 'customer mode');
-  const shouldStayOnTop = settings.kiosk.alwaysOnTop || launcher.activeState.status === 'homeOverlayOpen';
+  const shouldStayOnTop =
+    settings.kiosk.alwaysOnTop ||
+    launcher.activeState.status === 'quickOverlayOpen' ||
+    launcher.activeState.status === 'closing';
   window.setSkipTaskbar(true);
   window.setAlwaysOnTop(shouldStayOnTop, shouldStayOnTop ? 'screen-saver' : undefined);
   window.setFullScreen(true);
@@ -249,10 +252,12 @@ async function createWindow(): Promise<void> {
     title: 'NXGS Play',
     fullscreen: true,
     frame: false,
+    transparent: true,
+    hasShadow: false,
     skipTaskbar: true,
     icon: getAppIconPath(),
     autoHideMenuBar: true,
-    backgroundColor: '#07090d',
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/preload.mjs'),
       contextIsolation: true,
@@ -439,9 +444,17 @@ function registerIpc(): void {
     return result;
   });
 
+  ipcMain.handle('game:goToLauncherHome', async (): Promise<GameControlResult> => {
+    const result = await launcher.returnToHome();
+    if (result.ok) {
+      applyKioskSettings(store.getSettings());
+    }
+    return result;
+  });
+
   ipcMain.handle('game:closeActive', async (): Promise<GameControlResult> => {
     try {
-      await launcher.closeActiveGame(false, { retireActiveSession: true });
+      await launcher.closeActiveGame(false);
       launcher.focusLauncher();
       applyKioskSettings(store.getSettings());
       return { ok: true };

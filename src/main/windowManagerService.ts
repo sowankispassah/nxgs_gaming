@@ -497,6 +497,63 @@ export async function keepGameWindowOnTop(
   });
 }
 
+export async function releaseGameWindowTopMost(window: GameWindowInfo): Promise<void> {
+  if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
+    return;
+  }
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class QuickOverlayWin32 {
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+}
+"@
+$hwnd = [IntPtr]${Math.trunc(window.handle)}
+$notTopMost = [IntPtr](-2)
+$flags = 0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040
+[QuickOverlayWin32]::SetWindowPos($hwnd, $notTopMost, 0, 0, 0, 0, $flags) | Out-Null
+`;
+  await runPowerShell(script);
+}
+
+export async function isGameWindowVisible(window: GameWindowInfo): Promise<boolean> {
+  if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
+    return false;
+  }
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public struct QuickWindowRect { public int Left; public int Top; public int Right; public int Bottom; }
+public static class QuickWindowStateWin32 {
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out QuickWindowRect rect);
+}
+"@
+$hwnd = [IntPtr]${Math.trunc(window.handle)}
+$rect = New-Object QuickWindowRect
+$hasRect = [QuickWindowStateWin32]::GetWindowRect($hwnd, [ref]$rect)
+$width = if ($hasRect) { $rect.Right - $rect.Left } else { 0 }
+$height = if ($hasRect) { $rect.Bottom - $rect.Top } else { 0 }
+if ([QuickWindowStateWin32]::IsWindow($hwnd) -and [QuickWindowStateWin32]::IsWindowVisible($hwnd) -and $width -gt 32 -and $height -gt 32) { "true" } else { "false" }
+`;
+  return (await runPowerShell(script)).trim().toLowerCase() === 'true';
+}
+
+export async function resumeGameWindowFast(
+  window: GameWindowInfo,
+  launchMode: GameLaunchMode = 'maximized'
+): Promise<GameWindowActivationState | null> {
+  const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
+  return runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
+    foreground: true,
+    topMost: true,
+    applyBorderless: launchMode !== 'normal'
+  });
+}
+
 export async function restoreGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode = 'maximized'): Promise<void> {
   await activateGameWindow(window, launchMode);
 }

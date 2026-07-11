@@ -27,6 +27,12 @@ body,
   background: #07090d;
 }
 
+html,
+body,
+#root {
+  background: transparent;
+}
+
 button,
 input,
 select {
@@ -51,6 +57,10 @@ button {
     radial-gradient(circle at 70% 20%, rgba(29, 168, 139, 0.28), transparent 34%),
     radial-gradient(circle at 20% 70%, rgba(216, 56, 78, 0.18), transparent 30%),
     #07090d;
+}
+
+.app-shell.quick-overlay-shell {
+  background: transparent;
 }
 
 .cursor-hidden {
@@ -1133,6 +1143,352 @@ button {
 .console-force-link:focus-visible {
   color: #ffc3c9;
   outline: none;
+}
+
+.quick-home-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  background: transparent;
+  color: #f7fbff;
+}
+
+.quick-overlay-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 55%, rgba(5, 12, 20, 0.08), rgba(3, 8, 14, 0.34) 66%, rgba(3, 7, 13, 0.56)),
+    linear-gradient(180deg, rgba(2, 6, 11, 0.16), rgba(2, 6, 11, 0.42));
+  backdrop-filter: blur(3px) saturate(0.8);
+  animation: quick-overlay-fade 180ms ease both;
+}
+
+@keyframes quick-overlay-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.quick-overlay-header {
+  position: absolute;
+  top: 34px;
+  right: 54px;
+  left: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(241, 248, 255, 0.88);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.7);
+}
+
+.quick-overlay-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.quick-overlay-header time {
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.quick-game-menu {
+  position: absolute;
+  bottom: 154px;
+  left: 50%;
+  display: grid;
+  width: min(360px, calc(100vw - 36px));
+  gap: 13px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(13, 23, 37, 0.88), rgba(5, 11, 20, 0.82));
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.52), 0 0 0 1px rgba(121, 244, 220, 0.07) inset;
+  padding: 19px;
+  backdrop-filter: blur(28px) saturate(1.2);
+  transform: translateX(-82%);
+  animation: quick-menu-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes quick-menu-in {
+  from { opacity: 0; transform: translateX(-82%) translateY(18px) scale(0.97); }
+  to { opacity: 1; transform: translateX(-82%) translateY(0) scale(1); }
+}
+
+.quick-game-heading {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.quick-game-art {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(139, 248, 225, 0.38);
+  border-radius: 13px;
+  background: #111b28;
+}
+
+.quick-game-art img,
+.quick-game-art .nxgs-image-placeholder {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.quick-game-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.quick-game-heading small {
+  color: #8bf5df;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.quick-game-heading strong {
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-overlay-status,
+.quick-overlay-error {
+  margin: 0;
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.quick-overlay-status {
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(222, 234, 245, 0.7);
+}
+
+.quick-overlay-error {
+  border: 1px solid rgba(255, 116, 130, 0.32);
+  background: rgba(112, 19, 31, 0.2);
+  color: #ffb7c0;
+}
+
+.quick-game-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.quick-game-actions button,
+.quick-close-confirm button,
+.quick-force-close button {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #f3f7fb;
+  cursor: pointer;
+  padding: 0 13px;
+  font-size: 14px;
+  font-weight: 720;
+  text-align: left;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.quick-game-actions button.focused,
+.quick-game-actions button:hover,
+.quick-close-confirm button.focused,
+.quick-close-confirm button:hover {
+  border-color: rgba(151, 251, 231, 0.58);
+  background: rgba(226, 250, 246, 0.16);
+  outline: none;
+  transform: translateX(3px);
+}
+
+.quick-game-actions button:disabled,
+.quick-close-confirm button:disabled,
+.quick-force-close button:disabled,
+.quick-nav-item:disabled {
+  cursor: progress;
+  opacity: 0.64;
+}
+
+.quick-close-confirm {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 13px;
+}
+
+.quick-close-confirm > span {
+  color: rgba(221, 231, 241, 0.66);
+  font-size: 12px;
+}
+
+.quick-close-confirm > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.quick-close-confirm button {
+  justify-content: center;
+  text-align: center;
+}
+
+.quick-force-close {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: end;
+  gap: 9px;
+  border-top: 1px solid rgba(255, 116, 130, 0.22);
+  padding-top: 13px;
+}
+
+.quick-force-close label {
+  display: grid;
+  gap: 6px;
+  color: #ffc3ca;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.quick-force-close input {
+  height: 40px;
+}
+
+.quick-force-close button {
+  min-height: 40px;
+  background: rgba(190, 38, 57, 0.7);
+}
+
+.quick-navbar {
+  position: absolute;
+  bottom: 36px;
+  left: 50%;
+  display: flex;
+  min-height: 82px;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 25px;
+  background: rgba(5, 12, 21, 0.74);
+  box-shadow: 0 20px 65px rgba(0, 0, 0, 0.45);
+  padding: 9px 12px;
+  backdrop-filter: blur(28px) saturate(1.25);
+  transform: translateX(-50%);
+  animation: quick-navbar-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes quick-navbar-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(24px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.quick-nav-item {
+  position: relative;
+  display: grid;
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 17px;
+  background: transparent;
+  color: rgba(234, 242, 250, 0.72);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.quick-nav-item:hover,
+.quick-nav-item.selected {
+  border-color: rgba(149, 251, 230, 0.64);
+  background: rgba(219, 249, 244, 0.13);
+  box-shadow: 0 0 0 3px rgba(107, 239, 212, 0.1), 0 8px 24px rgba(0, 0, 0, 0.28);
+  color: #fff;
+  outline: none;
+  transform: translateY(-5px) scale(1.07);
+}
+
+.quick-nav-item.active-game {
+  width: 66px;
+  height: 66px;
+  flex-basis: 66px;
+  border-radius: 18px;
+  background: #111a27;
+}
+
+.quick-nav-item.active-game img,
+.quick-nav-item.active-game .nxgs-image-placeholder {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.quick-nav-item.active-game::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, transparent 60%, rgba(3, 8, 14, 0.56));
+  content: '';
+}
+
+.active-dot {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  width: 8px;
+  height: 8px;
+  border: 2px solid #0b1420;
+  border-radius: 50%;
+  background: #71f0d7;
+  box-shadow: 0 0 12px #71f0d7;
+}
+
+.quick-overlay-toast {
+  position: absolute;
+  bottom: 136px;
+  left: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(6, 13, 23, 0.88);
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4);
+  padding: 10px 14px;
+  color: #dce8f3;
+  font-size: 12px;
+  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+}
+
+.quick-overlay-hint {
+  position: absolute;
+  right: 28px;
+  bottom: 10px;
+  color: rgba(218, 230, 240, 0.52);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
 .admin-screen {

@@ -46,7 +46,7 @@ function formatSessionTime(seconds: number): string {
     : `${minutes}:${String(secs).padStart(2, '0')}`;
 }
 
-function SafeGameImage(props: {
+export function SafeGameImage(props: {
   game: GameRecord;
   kind: 'avatar' | 'cover';
   alt: string;
@@ -393,10 +393,10 @@ function ActiveGameDock(props: {
   const [forceCloseOpen, setForceCloseOpen] = useState(false);
   const [forcePin, setForcePin] = useState('');
   const [pendingForce, setPendingForce] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'resume' | 'minimize' | 'close' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'resume' | 'close' | null>(null);
   const [message, setMessage] = useState('');
   const game = props.activeGame.game;
-  const retryFocus = props.activeGame.status === 'homeOverlayOpen' && props.activeGame.windowDetected === false;
+  const retryFocus = props.activeGame.windowDetected === false;
 
   useEffect(() => {
     if (!game) {
@@ -431,18 +431,16 @@ function ActiveGameDock(props: {
       ? 'Launching'
       : props.activeGame.status === 'resuming'
         ? 'Resuming'
-        : props.activeGame.status === 'minimizing'
-          ? 'Minimizing'
-          : props.activeGame.status === 'minimized' || props.activeGame.windowState === 'minimized'
-            ? 'Minimized'
-            : props.activeGame.status === 'homeOverlayOpen'
-              ? 'Active'
-              : props.activeGame.status === 'closing'
-                ? 'Closing'
-                : 'Running';
+        : props.activeGame.status === 'minimizedToHome' || props.activeGame.windowState === 'minimized'
+          ? 'Minimized'
+          : props.activeGame.status === 'quickOverlayOpen'
+            ? 'Active'
+            : props.activeGame.status === 'closing'
+              ? 'Closing'
+              : 'Running';
 
   const runControl = async (
-    action: 'resume' | 'minimize' | 'close',
+    action: 'resume' | 'close',
     control: () => Promise<{ ok: boolean; error?: string }>
   ): Promise<void> => {
     if (pendingAction !== null) {
@@ -522,14 +520,6 @@ function ActiveGameDock(props: {
                 {pendingAction === 'resume' ? 'Focusing...' : retryFocus ? 'Try Focus Again' : 'Resume Game'}
               </button>
               <button
-                className="secondary-action"
-                type="button"
-                disabled={pendingAction !== null || props.activeGame.status === 'minimizing' || props.activeGame.status === 'closing'}
-                onClick={() => runControl('minimize', window.nxgs.minimizeActiveGame)}
-              >
-                {pendingAction === 'minimize' ? 'Minimizing...' : 'Minimize Game'}
-              </button>
-              <button
                 className="danger-action"
                 type="button"
                 disabled={pendingAction !== null || props.activeGame.status === 'closing'}
@@ -537,9 +527,11 @@ function ActiveGameDock(props: {
               >
                 Close Game
               </button>
-              <button className="console-force-link" type="button" onClick={() => setForceCloseOpen((value) => !value)}>
-                Admin force close
-              </button>
+              {/did not close|force close/i.test(`${message} ${props.activeGame.message ?? ''}`) && (
+                <button className="console-force-link" type="button" onClick={() => setForceCloseOpen((value) => !value)}>
+                  Admin force close
+                </button>
+              )}
             </div>
           )}
           {forceCloseOpen && (
