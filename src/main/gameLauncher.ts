@@ -278,13 +278,33 @@ export class GameLauncher {
       const window = this.activeWindow ?? (await this.getActiveWindow(game));
       this.assertFocusOperationCurrent(focusGeneration, game);
       if (!window) {
+        const untrackedStoreApp = game.launchType === 'microsoftStore' && !game.processName?.trim();
         const stillRunning = await this.isGameStillRunning(game);
-        if (!stillRunning) {
+        if (!stillRunning && !untrackedStoreApp) {
           const message = `${game.title} is no longer running.`;
           await logLine('info', `Resume requested for ${game.title}, but the game is no longer running.`);
           this.finishActiveGameSession(game, message);
           this.lastResumeResult = message;
           return { ok: false, error: message };
+        }
+
+        if (untrackedStoreApp) {
+          await this.suppressWindowsTaskbar();
+          this.assertFocusOperationCurrent(focusGeneration, game);
+          this.releaseLaunchShield();
+          this.hideLauncherForGame();
+          this.gameInForeground = true;
+          const message = `${game.title} resumed without a controllable Windows handle.`;
+          this.setActiveState({
+            status: 'running',
+            game,
+            message,
+            windowDetected: false,
+            windowState: 'unknown'
+          });
+          this.lastResumeResult = message;
+          await logLine('info', message);
+          return { ok: true };
         }
 
         const message = 'NXGS Play could not find the running game window.';
@@ -356,20 +376,23 @@ export class GameLauncher {
       return { ok: false, error: 'No game is currently running.' };
     }
 
-    const fallbackStatus = this.state.status === 'quickOverlayOpen' ? 'quickOverlayOpen' : 'minimizedToHome';
     this.operationInFlight = 'minimize';
     try {
       const window = this.activeWindow ?? (await this.getActiveWindow(game));
       if (!window) {
-        const message = 'NXGS Play could not find the running game window.';
+        const message = `${game.title} remains active, but Windows did not expose a controllable window. Returning to Launcher Home.`;
+        this.gameInForeground = false;
+        this.clearReinforcementTimers();
+        this.focusLauncher();
         this.setActiveState({
-          status: fallbackStatus,
+          status: 'minimizedToHome',
           game,
           message,
           windowDetected: false,
           windowState: 'unknown'
         });
-        return { ok: false, error: message };
+        await logLine('info', `Home retained ${game.title} without a controllable window.`);
+        return { ok: true };
       }
 
       await minimizeGameWindow(window);
@@ -795,6 +818,9 @@ export class GameLauncher {
     }
     if (this.child?.pid) {
       checks.push(isProcessRunningByPid(this.child.pid));
+    }
+    if (game.launchType === 'microsoftStore' && !game.processName?.trim()) {
+      checks.push(isProcessRunning(game.title));
     }
     if (checks.length === 0) {
       return false;
