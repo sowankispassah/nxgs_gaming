@@ -1,7 +1,7 @@
 {
-    "version":  "0.9.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.9.2/NXGS-Play-Setup.exe",
-    "sha256":  "517b6a6359d7289bd4b7ab566b8a82cbe83c195d2bde472e96159323c979097d",
+    "version":  "0.9.3",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.9.3/NXGS-Play-Setup.exe",
+    "sha256":  "c005c752d212f0da7d5e6f795b138aba78bc37d6d8487dd0f46bfba67da8a6d9",
     "required":  false,
-    "notes":  "NXGS Play 0.9.2 makes Ctrl+Shift+H display the switcher immediately, moves slow Store/game window cleanup into a cancellation-aware background task, and keeps Resume, minimize-to-Home, and Close Game responsive."
+    "notes":  "Fixed running games disappearing from the Home switcher after visiting Admin Control. Minimized games now remain tracked until their process exits and can be resumed after returning Home."
 }
