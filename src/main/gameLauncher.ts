@@ -820,9 +820,8 @@ export class GameLauncher {
       return;
     }
 
-    let seenRunning = false;
-    let seenWindow = Boolean(this.activeWindow);
-    let missingWindowTicks = 0;
+    let seenReliableProcess = false;
+    let missingProcessTicks = 0;
     let checkInFlight = false;
     this.monitor = setInterval(() => {
       if (checkInFlight) {
@@ -830,28 +829,36 @@ export class GameLauncher {
       }
       checkInFlight = true;
       const processCheck = game.processName ? isProcessRunning(game.processName) : Promise.resolve(false);
-      const pidCheck = this.activeProcessId ? isProcessRunningByPid(this.activeProcessId) : Promise.resolve(false);
       const expectedWindow = this.activeWindow;
+      const shellHostedPid = Boolean(expectedWindow && /^(explorer|applicationframehost)$/i.test(expectedWindow.processName));
+      const pidCheck = this.activeProcessId && !shellHostedPid
+        ? isProcessRunningByPid(this.activeProcessId)
+        : Promise.resolve(false);
+      const storeTitleCheck = game.launchType === 'microsoftStore' && !game.processName?.trim()
+        ? isProcessRunning(game.title)
+        : Promise.resolve(false);
       const windowCheck = expectedWindow
         ? isGameWindowVisible(expectedWindow).then((visible) => (visible ? expectedWindow : null))
         : Promise.resolve(null);
 
-      void Promise.all([processCheck, pidCheck, windowCheck])
-        .then(([processRunning, pidRunning, currentWindow]) => {
-          const isRunning = processRunning || pidRunning;
-          seenRunning ||= isRunning;
+      void Promise.all([processCheck, pidCheck, storeTitleCheck, windowCheck])
+        .then(([processRunning, pidRunning, storeTitleRunning, currentWindow]) => {
+          const reliableProcessRunning = processRunning || pidRunning || storeTitleRunning;
+          if (reliableProcessRunning) {
+            seenReliableProcess = true;
+            missingProcessTicks = 0;
+          } else if (seenReliableProcess) {
+            missingProcessTicks += 1;
+          }
           if (currentWindow) {
-            seenWindow = true;
-            missingWindowTicks = 0;
             this.activeWindow = currentWindow;
             this.activeProcessId = currentWindow.processId;
-          } else if (seenWindow && expectedWindow) {
-            missingWindowTicks += 1;
           }
 
-          const processExited = seenRunning && !isRunning;
-          const windowClosed = seenWindow && missingWindowTicks >= 2;
-          if (processExited || windowClosed) {
+          // A minimized, hidden, or shell-reparented window is not an exit. Retire the
+          // session only after a process identity that was previously observed running
+          // has disappeared across consecutive checks.
+          if (seenReliableProcess && missingProcessTicks >= 2) {
             this.handleGameExit(game);
           }
         })

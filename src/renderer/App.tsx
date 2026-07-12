@@ -163,7 +163,12 @@ export function App(): JSX.Element {
 
   const returnToCustomerHome = useCallback(() => {
     setView('home');
-    void window.nxgs.setKioskMode('customer');
+    setQuickNavOpen(false);
+    void (async () => {
+      await window.nxgs.setKioskMode('customer');
+      const data = await window.nxgs.getInitialData();
+      setActiveGame(data.activeGame);
+    })();
   }, []);
 
   const openConsoleSettings = useCallback(() => {
