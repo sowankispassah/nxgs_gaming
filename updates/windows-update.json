@@ -1,7 +1,7 @@
 {
-    "version":  "0.10.6",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.10.6/NXGS-Play-Setup.exe",
-    "sha256":  "760b3dc84d5107095df8864aacc23bbe6cf62c5e2c390f0bcc78ecbf833a0d26",
+    "version":  "0.11.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.11.0/NXGS-Play-Setup.exe",
+    "sha256":  "358c50a8e32dfca16dfb07be9a70d3f31fdd029741cf1049574aff90aa6c5031",
     "required":  false,
-    "notes":  "Exit Full Screen now restores a resizable admin desktop window with visible taskbar and cursor. Return to Locked Mode restores fullscreen kiosk behavior."
+    "notes":  "Wi-Fi switching and Bluetooth controller management are now available inside NXGS."
 }
