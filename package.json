@@ -10,10 +10,76 @@
     "type": "git",
     "url": "https://github.com/sowankispassah/nxgs_gaming.git"
   },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "clean:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-artifacts.ps1",
+    "build:win": "npm run clean:release && electron-vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --publish=never",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "cross-env": "^10.1.0",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "com.nxgs.play",
+    "productName": "NXGS Play",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "build/native-kiosk-hook.ps1",
+        "to": "native-kiosk-hook.ps1"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false,
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "artifactName": "NXGS-Play-Setup.${ext}",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "NXGS-Play.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sowankispassah",
+        "repo": "nxgs_gaming"
+      }
+    ]
   }
 }
