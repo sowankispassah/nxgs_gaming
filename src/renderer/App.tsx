@@ -223,22 +223,11 @@ export function App(): JSX.Element {
         setEmergencyCloseRequestId((value) => value + 1);
       }
     });
-    const unsubscribeAdminUnlock = window.nxgs.onAdminUnlockRequested((request) => {
-      setConfirmGame(null);
-      setView('home');
-      setQuickNavOpen(false);
-      setAdminUnlockRequest(request);
-      setPinOpen(true);
-      setHomeOverlayRequestId((value) => value + 1);
-      void window.nxgs.setAdminPinActive(true);
-    });
-
     return () => {
       mounted = false;
       unsubscribeSession();
       unsubscribeActiveGame();
       unsubscribeShellHome();
-      unsubscribeAdminUnlock();
     };
   }, [closeAdminPin]);
 
@@ -557,16 +546,7 @@ export function App(): JSX.Element {
             }
             setPinOpen(false);
             setAdminUnlockRequest(null);
-            if (adminUnlockRequest?.source === 'Control Room') {
-              const openResult = await window.nxgs.performKioskAdminAction('openManagement');
-              if (!openResult.ok) {
-                await window.nxgs.performKioskAdminAction('returnLocked');
-                return true;
-              }
-              setView('admin');
-            } else {
-              setAdminOptionsOpen(true);
-            }
+            setAdminOptionsOpen(true);
             return true;
           }}
         />

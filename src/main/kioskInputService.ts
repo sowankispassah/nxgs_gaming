@@ -1,5 +1,5 @@
 import { BrowserWindow, globalShortcut } from 'electron';
-import type { AdminUnlockRequest, AppDiagnostics, KioskMode, ShellHomeReason } from '../shared/types';
+import type { AppDiagnostics, KioskMode, ShellHomeReason } from '../shared/types';
 import { logLine } from './logger';
 import { NativeKioskHook } from './nativeKioskHook';
 
@@ -10,7 +10,7 @@ type ShortcutLabel = keyof Pick<
 
 type KioskInputEvents = {
   onHome: (reason: ShellHomeReason) => void;
-  onAdminUnlockRequest: (request: AdminUnlockRequest) => void;
+  onRestrictedInput: (input: string) => void;
   onEmergencyClose: () => void;
 };
 
@@ -48,9 +48,7 @@ export class KioskInputService {
     restrictedRegisteredCount: 0,
     failures: []
   };
-  private readonly nativeHook = new NativeKioskHook((input) =>
-    this.requestAdminUnlock('Native Windows input guard', input)
-  );
+  private readonly nativeHook = new NativeKioskHook((input) => this.blockRestrictedInput('Native Windows input guard', input));
 
   constructor(private readonly events: KioskInputEvents) {}
 
@@ -109,7 +107,7 @@ export class KioskInputService {
       const restrictedInput = this.getRestrictedInput(input);
       if (restrictedInput) {
         event.preventDefault();
-        this.requestAdminUnlock(restrictedInput.source, describeInput(input));
+        this.blockRestrictedInput(restrictedInput.source, describeInput(input));
       }
     });
   }
@@ -141,11 +139,11 @@ export class KioskInputService {
     this.refreshRestrictedShortcuts();
   }
 
-  requestUnlockAfterFocusEscape(key: string): void {
+  handleFocusEscape(key: string): void {
     if (this.mode !== 'customer' || this.adminControlsUnlocked) {
       return;
     }
-    this.requestAdminUnlock('Window switching attempt', key);
+    this.blockRestrictedInput('Window switching attempt', key);
   }
 
   private registerShortcut(accelerator: string, label: ShortcutLabel, handler: () => void): void {
@@ -212,8 +210,8 @@ export class KioskInputService {
     this.events.onHome(reason);
   }
 
-  private requestAdminUnlock(source: string, key: string): void {
-    if (this.mode === 'admin' || this.adminPinActive) {
+  private blockRestrictedInput(source: string, key: string): void {
+    if (this.mode !== 'customer' || this.adminControlsUnlocked) {
       return;
     }
 
@@ -224,14 +222,8 @@ export class KioskInputService {
 
     this.lastRestrictedAt = now;
     this.lastRestrictedInput = `${source}: ${key}`;
-    this.setAdminPinActive(true);
-    void logLine('warn', `Admin PIN requested by ${this.lastRestrictedInput}.`);
-    this.events.onAdminUnlockRequest({
-      source,
-      key,
-      message: 'Enter Admin PIN to unlock PC controls.',
-      requestedAt: new Date().toISOString()
-    });
+    void logLine('info', `Silently blocked customer input: ${this.lastRestrictedInput}.`);
+    this.events.onRestrictedInput(this.lastRestrictedInput);
   }
 
   private isWindowsSystemInput(input: Electron.Input): boolean {
@@ -262,6 +254,6 @@ export class KioskInputService {
       return;
     }
 
-    this.requestAdminUnlock('Restricted customer shortcut', accelerator);
+    this.blockRestrictedInput('Restricted customer shortcut', accelerator);
   }
 }

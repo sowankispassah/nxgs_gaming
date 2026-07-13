@@ -11,7 +11,6 @@ import { SessionTimer } from './sessionTimer';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
 import { setWindowsTaskbarVisible } from './windowManagerService';
 import type {
-  AdminUnlockRequest,
   AppDiagnostics,
   AppSettings,
   ControllerStateReport,
@@ -164,12 +163,16 @@ function requestEmergencyCloseOverlay(): void {
   openHomeFromGame('emergency-close');
 }
 
-function requestAdminUnlock(request: AdminUnlockRequest): void {
-  kioskInput.setAdminPinActive(true);
-  launcher.focusLauncher();
+function handleRestrictedCustomerInput(input: string): void {
+  void logLine('info', `Keeping NXGS focused after blocked input: ${input}.`);
   applyKioskSettings(store.getSettings());
-  sendToRenderer('kiosk:adminUnlockRequested', request);
-  void launcher.returnToHome().then(() => applyKioskSettings(store.getSettings()));
+  for (const delay of [0, 80, 220]) {
+    setTimeout(() => {
+      const window = getLiveMainWindow();
+      window?.show();
+      window?.focus();
+    }, delay);
+  }
 }
 
 const sessionTimer = new SessionTimer({
@@ -203,7 +206,7 @@ const launcher = new GameLauncher(
 
 const kioskInput = new KioskInputService({
   onHome: openHomeFromGame,
-  onAdminUnlockRequest: requestAdminUnlock,
+  onRestrictedInput: handleRestrictedCustomerInput,
   onEmergencyClose: requestEmergencyCloseOverlay
 });
 
@@ -337,15 +340,7 @@ async function createWindow(): Promise<void> {
     const settings = store.getSettings();
     if (!isQuitting && (kioskInput.currentMode === 'customer' || settings.kiosk.preventClose)) {
       event.preventDefault();
-      const window = getLiveMainWindow();
-      window?.show();
-      window?.focus();
-      requestAdminUnlock({
-        source: 'Close request',
-        key: 'Alt+F4 / window close',
-        message: 'Enter Admin PIN to unlock NXGS controls.',
-        requestedAt: new Date().toISOString()
-      });
+      handleRestrictedCustomerInput('Close request: Alt+F4 / window close');
     }
   });
 
@@ -357,14 +352,7 @@ async function createWindow(): Promise<void> {
       launcher.activeState.status
     );
     if (kioskInput.currentMode === 'customer' && !kioskInput.isAdminPinActive && !gameShouldOwnForeground) {
-      kioskInput.requestUnlockAfterFocusEscape('Launcher lost focus');
-      for (const delay of [0, 80, 220]) {
-        setTimeout(() => {
-          const window = getLiveMainWindow();
-          window?.show();
-          window?.focus();
-        }, delay);
-      }
+      kioskInput.handleFocusEscape('Launcher lost focus');
     }
   });
 
