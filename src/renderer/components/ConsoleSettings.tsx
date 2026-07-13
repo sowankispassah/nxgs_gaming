@@ -19,6 +19,7 @@ import {
   Search,
   Settings,
   Speaker,
+  Trash2,
   Unplug,
   Users,
   Wifi,
@@ -73,7 +74,11 @@ const EMPTY_BLUETOOTH: BluetoothStatus = {
 };
 
 function focusableDetailActions(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLElement>('.console-settings-detail [data-settings-action]'))
+  const confirmation = document.querySelector<HTMLElement>('.wifi-forget-confirmation');
+  const contextMenu = document.querySelector<HTMLElement>('.wifi-context-menu');
+  const scope = confirmation ?? contextMenu ?? document.querySelector<HTMLElement>('.console-settings-detail');
+  if (!scope) return [];
+  return Array.from(scope.querySelectorAll<HTMLElement>('[data-settings-action]'))
     .filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length > 0);
 }
 
@@ -81,9 +86,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailMode, setDetailMode] = useState(false);
   const [network, setNetwork] = useState<NetworkStatus>(EMPTY_NETWORK);
-  const [networkPending, setNetworkPending] = useState<'refresh' | 'connect' | 'disconnect' | null>(null);
+  const [networkPending, setNetworkPending] = useState<'refresh' | 'connect' | 'disconnect' | 'forget' | null>(null);
   const [networkFeedback, setNetworkFeedback] = useState<Feedback | null>(null);
   const [selectedWifi, setSelectedWifi] = useState<WifiNetworkSummary | null>(null);
+  const [forgetWifiTarget, setForgetWifiTarget] = useState<WifiNetworkSummary | null>(null);
+  const [wifiContextMenu, setWifiContextMenu] = useState<{ wifi: WifiNetworkSummary; x: number; y: number } | null>(null);
   const [wifiPassword, setWifiPassword] = useState('');
   const [showWifiPassword, setShowWifiPassword] = useState(false);
   const [bluetooth, setBluetooth] = useState<BluetoothStatus>(EMPTY_BLUETOOTH);
@@ -102,6 +109,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     try {
       const next = await window.nxgs.scanWifiNetworks();
       setNetwork(next);
+      setSelectedWifi((current) => current ? next.availableNetworks.find((item) => item.ssid === current.ssid) ?? null : null);
       setNetworkFeedback(next.supported
         ? next.connected && next.connectivity !== 'internet'
           ? { tone: 'warning', message: next.message ?? 'No internet / limited connection' }
@@ -149,8 +157,25 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   useEffect(() => {
     setDetailMode(false);
     setSelectedWifi(null);
+    setForgetWifiTarget(null);
+    setWifiContextMenu(null);
     setWifiPassword('');
   }, [selectedIndex]);
+
+  useEffect(() => {
+    if (!wifiContextMenu) return;
+    const close = (event: PointerEvent): void => {
+      if (event.target instanceof Element && event.target.closest('.wifi-context-menu')) return;
+      setWifiContextMenu(null);
+    };
+    const closeOnBlur = (): void => setWifiContextMenu(null);
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('blur', closeOnBlur, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('blur', closeOnBlur);
+    };
+  }, [wifiContextMenu]);
 
   useEffect(() => {
     let mounted = true;
@@ -195,6 +220,13 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       if (props.inputBlocked) return;
       if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'b', 'B'].includes(event.key)) return;
       if (detailMode) {
+        if ((event.key === 'Escape' || event.key === 'b' || event.key === 'B') && (forgetWifiTarget || wifiContextMenu)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setForgetWifiTarget(null);
+          setWifiContextMenu(null);
+          return;
+        }
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
           event.preventDefault();
           event.stopImmediatePropagation();
@@ -219,7 +251,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activateSelected, detailMode, leaveDetail, moveDetailFocus, props]);
+  }, [activateSelected, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, wifiContextMenu]);
 
   useEffect(() => {
     let lastInputAt = 0;
@@ -237,7 +269,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           moveDetailFocus(1);
         } else if (pressed(14) || pressed(1)) {
           lastInputAt = Date.now();
-          leaveDetail();
+          if (forgetWifiTarget || wifiContextMenu) {
+            setForgetWifiTarget(null);
+            setWifiContextMenu(null);
+          } else {
+            leaveDetail();
+          }
         } else if (pressed(0)) {
           lastInputAt = Date.now();
           const active = document.activeElement;
@@ -263,7 +300,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       }
     }, 90);
     return () => window.clearInterval(timer);
-  }, [activateSelected, detailMode, leaveDetail, moveDetailFocus, props, selected.label]);
+  }, [activateSelected, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, selected.label, wifiContextMenu]);
 
   const performWifiConnect = useCallback(async (wifi: WifiNetworkSummary, password?: string): Promise<void> => {
     if (networkBusy.current) return;
@@ -273,8 +310,8 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     try {
       const result = await window.nxgs.connectWifi({ ssid: wifi.ssid, password });
       setNetwork(result.network);
+      setSelectedWifi(result.network.availableNetworks.find((item) => item.ssid === wifi.ssid) ?? wifi);
       if (result.ok) {
-        setSelectedWifi(null);
         setWifiPassword('');
         setNetworkFeedback({
           tone: result.network.connectivity === 'internet' ? 'success' : 'warning',
@@ -293,16 +330,37 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   }, []);
 
   const selectWifi = useCallback((wifi: WifiNetworkSummary): void => {
-    if (networkBusy.current || (network.connected && network.ssid === wifi.ssid)) return;
-    if (wifi.requiresPassword && !wifi.saved) {
-      setSelectedWifi(wifi);
+    if (networkBusy.current) return;
+    const alreadySelected = selectedWifi?.ssid === wifi.ssid;
+    setSelectedWifi(wifi);
+    setWifiContextMenu(null);
+    if (!alreadySelected) {
       setWifiPassword('');
-      setNetworkFeedback({ tone: 'info', message: `Enter the password for ${wifi.ssid}.` });
-      window.setTimeout(() => document.querySelector<HTMLInputElement>('#nxgs-wifi-password')?.focus(), 0);
-      return;
+      setShowWifiPassword(false);
+      setNetworkFeedback({ tone: 'info', message: `${wifi.ssid} selected. Choose an action below.` });
+    } else {
+      window.setTimeout(() => document.querySelector<HTMLElement>('#selected-wifi-primary-action')?.focus(), 0);
     }
-    void performWifiConnect(wifi);
-  }, [network.connected, network.ssid, performWifiConnect]);
+  }, [selectedWifi?.ssid]);
+
+  const openWifiContextMenu = useCallback((wifi: WifiNetworkSummary, clientX: number, clientY: number): void => {
+    const detail = document.querySelector<HTMLElement>('.console-settings-detail');
+    const bounds = detail?.getBoundingClientRect();
+    const scrollLeft = detail?.scrollLeft ?? 0;
+    const scrollTop = detail?.scrollTop ?? 0;
+    const x = bounds ? clientX - bounds.left + scrollLeft : clientX;
+    const y = bounds ? clientY - bounds.top + scrollTop : clientY;
+    const maxX = detail ? scrollLeft + detail.clientWidth - 230 : window.innerWidth - 230;
+    const maxY = detail ? scrollTop + detail.clientHeight - 90 : window.innerHeight - 90;
+    setSelectedWifi(wifi);
+    setWifiPassword('');
+    setWifiContextMenu({
+      wifi,
+      x: Math.max(scrollLeft + 8, Math.min(x, maxX)),
+      y: Math.max(scrollTop + 8, Math.min(y, maxY))
+    });
+    window.setTimeout(() => document.querySelector<HTMLButtonElement>('.wifi-context-menu [role="menuitem"]')?.focus(), 0);
+  }, []);
 
   const disconnectNetwork = useCallback(async (): Promise<void> => {
     if (networkBusy.current) return;
@@ -312,6 +370,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     try {
       const result = await window.nxgs.disconnectWifi();
       setNetwork(result.network);
+      setSelectedWifi((current) => current ? result.network.availableNetworks.find((item) => item.ssid === current.ssid) ?? current : null);
       setNetworkFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
     } catch (error) {
       setNetworkFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to disconnect.' });
@@ -320,6 +379,34 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       setNetworkPending(null);
     }
   }, []);
+
+  const requestForgetWifi = useCallback((wifi: WifiNetworkSummary): void => {
+    if (!wifi.saved || networkBusy.current) return;
+    setWifiContextMenu(null);
+    setForgetWifiTarget(wifi);
+    window.setTimeout(() => document.querySelector<HTMLButtonElement>('#wifi-forget-cancel')?.focus(), 0);
+  }, []);
+
+  const forgetSelectedWifi = useCallback(async (): Promise<void> => {
+    if (!forgetWifiTarget || networkBusy.current) return;
+    networkBusy.current = true;
+    setNetworkPending('forget');
+    setNetworkFeedback({ tone: 'info', message: `Forgetting ${forgetWifiTarget.ssid}...` });
+    try {
+      const result = await window.nxgs.forgetWifi(forgetWifiTarget.ssid);
+      setNetwork(result.network);
+      setSelectedWifi(result.network.availableNetworks.find((item) => item.ssid === forgetWifiTarget.ssid) ?? null);
+      setWifiPassword('');
+      setNetworkFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
+      setForgetWifiTarget(null);
+    } catch (error) {
+      setNetworkFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to forget this network.' });
+      setForgetWifiTarget(null);
+    } finally {
+      networkBusy.current = false;
+      setNetworkPending(null);
+    }
+  }, [forgetWifiTarget]);
 
   const handleBluetoothDevice = useCallback(async (device: BluetoothDeviceSummary): Promise<void> => {
     if (bluetoothBusy.current) return;
@@ -343,6 +430,8 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
 
   const detail = useMemo(() => {
     if (selected.key === 'network') {
+      const selectedConnected = Boolean(selectedWifi && network.connected && network.ssid === selectedWifi.ssid);
+      const selectedNeedsPassword = Boolean(selectedWifi?.requiresPassword && !selectedWifi.saved && !selectedConnected);
       const connectedLabel = networkPending === 'connect'
         ? 'Connecting...'
         : network.connected
@@ -354,12 +443,6 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             <span>{connectedLabel}</span>
             <strong>{network.ssid ?? network.interfaceName ?? 'Wi-Fi'}</strong>
             <small>{network.signal ? `Signal ${network.signal}` : network.message ?? 'Choose a network below.'}</small>
-            {network.connected && (
-              <button data-settings-action type="button" disabled={networkPending !== null} onClick={() => void disconnectNetwork()}>
-                {networkPending === 'disconnect' ? <LoaderCircle size={17} className="spin" /> : <WifiOff size={17} />}
-                {networkPending === 'disconnect' ? 'Disconnecting...' : 'Disconnect'}
-              </button>
-            )}
           </div>
           {networkFeedback && <div className={`settings-feedback ${networkFeedback.tone}`} role="status">{networkFeedback.message}</div>}
           <div className="settings-detail-heading">
@@ -370,40 +453,82 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             </button>
           </div>
           {selectedWifi && (
-            <div className="wifi-password-panel">
-              <div><LockKeyhole size={22} /><strong>{selectedWifi.ssid}</strong><span>Password required</span></div>
-              <label htmlFor="nxgs-wifi-password">Wi-Fi password</label>
-              <div className="wifi-password-input">
-                <input
-                  data-settings-action
-                  id="nxgs-wifi-password"
-                  type={showWifiPassword ? 'text' : 'password'}
-                  value={wifiPassword}
-                  disabled={networkPending !== null}
-                  autoComplete="current-password"
-                  onChange={(event) => setWifiPassword(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && wifiPassword) void performWifiConnect(selectedWifi, wifiPassword);
-                  }}
-                />
-                <button data-settings-action type="button" disabled={networkPending !== null} aria-label={showWifiPassword ? 'Hide password' : 'Show password'} onClick={() => setShowWifiPassword((shown) => !shown)}>
-                  {showWifiPassword ? <EyeOff size={19} /> : <Eye size={19} />}
-                </button>
+            <div className="wifi-selected-panel">
+              <div className="wifi-selected-title">
+                {selectedConnected ? <CheckCircle2 size={24} /> : <Wifi size={24} />}
+                <span><small>Selected network</small><strong>{selectedWifi.ssid}</strong></span>
+                <span className={selectedConnected ? 'connected' : ''}>{selectedConnected ? 'Connected' : selectedWifi.saved ? 'Saved' : 'Available'}</span>
               </div>
+              <div className="wifi-selected-details">
+                <span>Signal<strong>{selectedWifi.signal ?? 'Unknown'}</strong></span>
+                <span>Security<strong>{selectedWifi.security ?? 'Open'}</strong></span>
+                <span>Profile<strong>{selectedWifi.saved ? 'Saved' : 'Not saved'}</strong></span>
+              </div>
+              {selectedNeedsPassword && (
+                <div className="wifi-password-panel">
+                  <label htmlFor="nxgs-wifi-password">Password for {selectedWifi.ssid}</label>
+                  <div className="wifi-password-input">
+                    <input
+                      data-settings-action
+                      id="nxgs-wifi-password"
+                      type={showWifiPassword ? 'text' : 'password'}
+                      value={wifiPassword}
+                      disabled={networkPending !== null}
+                      autoComplete="current-password"
+                      onChange={(event) => setWifiPassword(event.target.value)}
+                    />
+                    <button data-settings-action type="button" disabled={networkPending !== null} aria-label={showWifiPassword ? 'Hide password' : 'Show password'} onClick={() => setShowWifiPassword((shown) => !shown)}>
+                      {showWifiPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="settings-action-row">
-                <button data-settings-action type="button" disabled={networkPending !== null || !wifiPassword} onClick={() => void performWifiConnect(selectedWifi, wifiPassword)}>
-                  {networkPending === 'connect' ? <LoaderCircle size={17} className="spin" /> : <Wifi size={17} />}
-                  {networkPending === 'connect' ? 'Connecting...' : 'Connect'}
-                </button>
-                <button data-settings-action type="button" disabled={networkPending !== null} onClick={() => { setSelectedWifi(null); setWifiPassword(''); }}>Cancel</button>
+                {selectedConnected ? (
+                  <button id="selected-wifi-primary-action" data-settings-action type="button" disabled={networkPending !== null} onClick={() => void disconnectNetwork()}>
+                    {networkPending === 'disconnect' ? <LoaderCircle size={17} className="spin" /> : <WifiOff size={17} />}
+                    {networkPending === 'disconnect' ? 'Disconnecting...' : 'Disconnect'}
+                  </button>
+                ) : (
+                  <button id="selected-wifi-primary-action" data-settings-action type="button" disabled={networkPending !== null || (selectedNeedsPassword && !wifiPassword)} onClick={() => void performWifiConnect(selectedWifi, selectedNeedsPassword ? wifiPassword : undefined)}>
+                    {networkPending === 'connect' ? <LoaderCircle size={17} className="spin" /> : <Wifi size={17} />}
+                    {networkPending === 'connect' ? 'Connecting...' : 'Connect'}
+                  </button>
+                )}
+                {selectedWifi.saved && (
+                  <button className="danger" data-settings-action type="button" disabled={networkPending !== null} onClick={() => requestForgetWifi(selectedWifi)}>
+                    <Trash2 size={17} /> Forget Network
+                  </button>
+                )}
               </div>
             </div>
           )}
           <div className="wifi-network-list">
             {network.availableNetworks.length > 0 ? network.availableNetworks.map((item) => {
               const connected = network.connected && network.ssid === item.ssid;
+              const isSelected = selectedWifi?.ssid === item.ssid;
               return (
-                <button data-settings-action key={item.ssid} type="button" disabled={networkPending !== null || connected} className={connected ? 'connected' : ''} onClick={() => selectWifi(item)}>
+                <button
+                  data-settings-action
+                  key={item.ssid}
+                  type="button"
+                  disabled={networkPending !== null}
+                  aria-pressed={isSelected}
+                  aria-haspopup="menu"
+                  className={`${connected ? 'connected ' : ''}${isSelected ? 'selected' : ''}`.trim()}
+                  onClick={() => selectWifi(item)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openWifiContextMenu(item, event.clientX, event.clientY);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+                    event.preventDefault();
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    openWifiContextMenu(item, bounds.right - 12, bounds.bottom - 4);
+                  }}
+                >
                   {connected ? <CheckCircle2 size={20} /> : <Wifi size={20} />}
                   <span><strong>{item.ssid}</strong><small>{item.security ?? 'Open network'}{item.saved ? ' · Saved' : ''}</small></span>
                   <span>{connected ? 'Connected' : item.signal ?? 'Available'}</span>
@@ -412,6 +537,31 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
               );
             }) : <p className="settings-placeholder">No Wi-Fi networks found. Select Refresh to scan again.</p>}
           </div>
+          {wifiContextMenu && (
+            <div className="wifi-context-menu" role="menu" style={{ left: wifiContextMenu.x, top: wifiContextMenu.y }}>
+              <strong>{wifiContextMenu.wifi.ssid}</strong>
+              <button className="danger" data-settings-action type="button" role="menuitem" disabled={!wifiContextMenu.wifi.saved || networkPending !== null} onClick={() => requestForgetWifi(wifiContextMenu.wifi)}>
+                <Trash2 size={17} /> Forget Network
+              </button>
+            </div>
+          )}
+          {forgetWifiTarget && (
+            <div className="wifi-confirmation-backdrop" role="presentation">
+              <div className="wifi-forget-confirmation" role="dialog" aria-modal="true" aria-labelledby="wifi-forget-title" aria-describedby="wifi-forget-description">
+                <Trash2 size={30} />
+                <h3 id="wifi-forget-title">Forget this Wi-Fi network?</h3>
+                <strong>{forgetWifiTarget.ssid}</strong>
+                <p id="wifi-forget-description">The saved password will be removed. You will need to enter it again next time.</p>
+                <div className="settings-action-row">
+                  <button id="wifi-forget-cancel" data-settings-action type="button" disabled={networkPending === 'forget'} onClick={() => setForgetWifiTarget(null)}>Cancel</button>
+                  <button className="danger" data-settings-action type="button" disabled={networkPending === 'forget'} onClick={() => void forgetSelectedWifi()}>
+                    {networkPending === 'forget' ? <LoaderCircle size={17} className="spin" /> : <Trash2 size={17} />}
+                    {networkPending === 'forget' ? 'Forgetting...' : 'Forget Network'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </SettingsDetail>
       );
     }
@@ -464,7 +614,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls. It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [bluetooth, bluetoothFeedback, bluetoothPending, diagnostics, disconnectNetwork, handleBluetoothDevice, network, networkFeedback, networkPending, performWifiConnect, props.onControlRoom, refreshBluetooth, refreshNetwork, selected, selectedWifi, selectWifi, showWifiPassword, wifiPassword]);
+  }, [bluetooth, bluetoothFeedback, bluetoothPending, diagnostics, disconnectNetwork, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshBluetooth, refreshNetwork, requestForgetWifi, selected, selectedWifi, selectWifi, showWifiPassword, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">

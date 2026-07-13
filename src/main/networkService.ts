@@ -288,3 +288,44 @@ export async function disconnectWifi(): Promise<WifiActionResult> {
     };
   }
 }
+
+export async function forgetWifi(ssid: string): Promise<WifiActionResult> {
+  const before = await getNetworkStatus();
+  if (typeof ssid !== 'string' || ssid.length < 1 || ssid.length > 32) {
+    return { ok: false, status: 'failed', message: 'Select a valid saved Wi-Fi network.', network: before };
+  }
+
+  const selected = before.availableNetworks.find((network) => network.ssid === ssid);
+  if (selected && !selected.saved) {
+    return { ok: true, status: 'forgotten', message: `${ssid} is not saved.`, network: before };
+  }
+
+  try {
+    await netsh([
+      'wlan',
+      'delete',
+      'profile',
+      `name=${ssid}`,
+      ...(before.interfaceName ? [`interface=${before.interfaceName}`] : [])
+    ]);
+    const network = await getNetworkStatus();
+    const stillSaved = network.availableNetworks.some((candidate) => candidate.ssid === ssid && candidate.saved);
+    if (stillSaved) {
+      return { ok: false, status: 'failed', message: 'Windows did not remove the saved Wi-Fi profile.', network };
+    }
+    return {
+      ok: true,
+      status: 'forgotten',
+      message: `Forgot ${ssid}. A password will be required the next time you connect.`,
+      network
+    };
+  } catch (error) {
+    const network = await getNetworkStatus();
+    return {
+      ok: false,
+      status: 'failed',
+      message: error instanceof Error ? error.message : String(error),
+      network
+    };
+  }
+}

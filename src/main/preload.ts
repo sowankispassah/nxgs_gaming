@@ -39,6 +39,7 @@ const api = {
   scanWifiNetworks: (): Promise<NetworkStatus> => ipcRenderer.invoke('network:scan'),
   connectWifi: (request: WifiConnectRequest): Promise<WifiActionResult> => ipcRenderer.invoke('network:connect', request),
   disconnectWifi: (): Promise<WifiActionResult> => ipcRenderer.invoke('network:disconnect'),
+  forgetWifi: (ssid: string): Promise<WifiActionResult> => ipcRenderer.invoke('network:forget', ssid),
   getBluetoothStatus: (): Promise<BluetoothStatus> => ipcRenderer.invoke('bluetooth:getStatus'),
   scanBluetoothDevices: (): Promise<BluetoothStatus> => ipcRenderer.invoke('bluetooth:scan'),
   pairBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> => ipcRenderer.invoke('bluetooth:pair', deviceId),

@@ -6,7 +6,7 @@ import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
 import { disconnectBluetoothDevice, pairBluetoothDevice, scanBluetoothDevices } from './bluetoothService';
-import { connectWifi, disconnectWifi, getNetworkStatus } from './networkService';
+import { connectWifi, disconnectWifi, forgetWifi, getNetworkStatus } from './networkService';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
@@ -426,6 +426,7 @@ function registerIpc(): void {
   ipcMain.handle('network:scan', async () => getNetworkStatus());
   ipcMain.handle('network:connect', async (_event, request: WifiConnectRequest) => connectWifi(request));
   ipcMain.handle('network:disconnect', async () => disconnectWifi());
+  ipcMain.handle('network:forget', async (_event, ssid: string) => forgetWifi(ssid));
   ipcMain.handle('bluetooth:getStatus', async () => scanBluetoothDevices());
   ipcMain.handle('bluetooth:scan', async () => scanBluetoothDevices());
   ipcMain.handle('bluetooth:pair', async (_event, deviceId: string) => {

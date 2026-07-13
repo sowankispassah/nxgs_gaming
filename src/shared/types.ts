@@ -233,6 +233,7 @@ export interface WifiConnectRequest {
 export type WifiActionStatus =
   | 'connected'
   | 'disconnected'
+  | 'forgotten'
   | 'incorrect-password'
   | 'failed';
 
