@@ -1,7 +1,7 @@
 {
-    "version":  "0.9.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.9.3/NXGS-Play-Setup.exe",
-    "sha256":  "c005c752d212f0da7d5e6f795b138aba78bc37d6d8487dd0f46bfba67da8a6d9",
+    "version":  "0.10.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.10.0/NXGS-Play-Setup.exe",
+    "sha256":  "477fcd1e6dac8f62d4080ce9386fdc36e46cc7abfda8393d805676287666be93",
     "required":  false,
-    "notes":  "Fixed running games disappearing from the Home switcher after visiting Admin Control. Minimized games now remain tracked until their process exits and can be resumed after returning Home."
+    "notes":  "Added customer-mode lockdown. Restricted Windows shortcuts are suppressed and open an Admin PIN prompt; verified admins can minimize, exit fullscreen, open Management, close NXGS, or restore locked mode."
 }
