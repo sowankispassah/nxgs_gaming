@@ -1,7 +1,7 @@
 {
-    "version":  "0.10.5",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.10.5/NXGS-Play-Setup.exe",
-    "sha256":  "0a924303836e30bdadb9683fb3a5de643cf4b993658a01323514e1ca7f787ee3",
+    "version":  "0.10.6",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.10.6/NXGS-Play-Setup.exe",
+    "sha256":  "760b3dc84d5107095df8864aacc23bbe6cf62c5e2c390f0bcc78ecbf833a0d26",
     "required":  false,
-    "notes":  "Fixed the Control Room PIN Enter-key conflict by preventing the Settings screen behind the modal from intercepting keyboard or controller input."
+    "notes":  "Exit Full Screen now restores a resizable admin desktop window with visible taskbar and cursor. Return to Locked Mode restores fullscreen kiosk behavior."
 }
