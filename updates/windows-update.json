@@ -1,7 +1,7 @@
 {
-    "version":  "0.10.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.10.3/NXGS-Play-Setup.exe",
-    "sha256":  "58c877df5055b6d0275b820ce8b00b87ed4518155d64cd198d9e8bc40918d406",
+    "version":  "0.10.4",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.10.4/NXGS-Play-Setup.exe",
+    "sha256":  "cc530ddf46e01cda50fa7b87356c2af4745151cf23a552031bc8459592278c51",
     "required":  false,
-    "notes":  "Customer shortcuts are now silently blocked. Admin PIN access is available only through Settings and Control Room, with protected admin options shown after successful verification."
+    "notes":  "Fixed keyboard PIN submission so Enter, numpad Enter, and Return submit the Control Room PIN like clicking Unlock."
 }
