@@ -2144,6 +2144,42 @@ select:focus {
   background: rgba(88, 8, 16, 0.72);
 }
 
+.admin-options-backdrop {
+  background: rgba(3, 8, 18, 0.82);
+}
+
+.admin-options-modal {
+  width: min(620px, calc(100vw - 40px));
+  border-color: rgba(83, 220, 204, 0.35);
+  border-radius: 18px;
+  background: rgba(17, 24, 33, 0.97);
+}
+
+.admin-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0 14px;
+}
+
+.admin-options-grid button {
+  min-height: 54px;
+  justify-content: center;
+}
+
+.admin-lockdown-note {
+  margin: 16px 0 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 620px) {
+  .admin-options-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .modal {
   position: relative;
   width: min(560px, calc(100vw - 40px));

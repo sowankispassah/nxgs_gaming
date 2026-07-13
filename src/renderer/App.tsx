@@ -37,6 +37,7 @@ import type {
   GameRecord,
   GameSuggestion,
   InitialData,
+  KioskAdminAction,
   LaunchType,
   SessionState,
   UpdateCheckResult,
@@ -140,6 +141,7 @@ export function App(): JSX.Element {
   const [emergencyCloseRequestId, setEmergencyCloseRequestId] = useState(0);
   const [quickNavOpen, setQuickNavOpen] = useState(false);
   const [adminUnlockRequest, setAdminUnlockRequest] = useState<AdminUnlockRequest | null>(null);
+  const [adminOptionsOpen, setAdminOptionsOpen] = useState(false);
 
   const enabledGames = useMemo(() => games.filter((game) => game.enabled), [games]);
   const selectedGame = enabledGames[selectedIndex] ?? null;
@@ -158,12 +160,13 @@ export function App(): JSX.Element {
   const closeAdminPin = useCallback(() => {
     setPinOpen(false);
     setAdminUnlockRequest(null);
-    void window.nxgs.setAdminPinActive(false);
+    void window.nxgs.performKioskAdminAction('returnLocked');
   }, []);
 
   const returnToCustomerHome = useCallback(() => {
     setView('home');
     setQuickNavOpen(false);
+    setAdminOptionsOpen(false);
     void (async () => {
       await window.nxgs.setKioskMode('customer');
       const data = await window.nxgs.getInitialData();
@@ -545,14 +548,48 @@ export function App(): JSX.Element {
           pendingLabel="Checking..."
           onClose={closeAdminPin}
           onSubmit={async (pin) => {
-            const result = await window.nxgs.verifyPin(pin);
+            const result = await window.nxgs.unlockKioskAdminActions(pin);
             if (!result.ok) {
-              return false;
+              setPinOpen(false);
+              setAdminUnlockRequest(null);
+              await window.nxgs.performKioskAdminAction('returnLocked');
+              return true;
             }
-            closeAdminPin();
-            await window.nxgs.setKioskMode('admin');
-            setView('admin');
+            setPinOpen(false);
+            setAdminUnlockRequest(null);
+            if (adminUnlockRequest?.source === 'Control Room') {
+              const openResult = await window.nxgs.performKioskAdminAction('openManagement');
+              if (!openResult.ok) {
+                await window.nxgs.performKioskAdminAction('returnLocked');
+                return true;
+              }
+              setView('admin');
+            } else {
+              setAdminOptionsOpen(true);
+            }
             return true;
+          }}
+        />
+      )}
+
+      {adminOptionsOpen && (
+        <AdminOptionsDialog
+          onAction={async (action) => {
+            const result = await window.nxgs.performKioskAdminAction(action);
+            if (!result.ok) {
+              throw new Error(result.error ?? 'Admin action failed.');
+            }
+            if (action === 'openManagement') {
+              setView('admin');
+            } else if (action === 'returnLocked') {
+              setView('home');
+              setQuickNavOpen(false);
+              const data = await window.nxgs.getInitialData();
+              setActiveGame(data.activeGame);
+            }
+            if (action !== 'closeApp') {
+              setAdminOptionsOpen(false);
+            }
           }}
         />
       )}
@@ -569,6 +606,75 @@ export function App(): JSX.Element {
         <GameTransitionOverlay activeGame={activeGame} />
       )}
     </main>
+  );
+}
+
+function AdminOptionsDialog(props: { onAction: (action: KioskAdminAction) => Promise<void> }): JSX.Element {
+  const [pendingAction, setPendingAction] = useState<KioskAdminAction | null>(null);
+  const [error, setError] = useState('');
+  const actions: Array<{ action: KioskAdminAction; label: string; pendingLabel: string }> = [
+    { action: 'minimize', label: 'Minimize App', pendingLabel: 'Minimizing...' },
+    { action: 'exitFullscreen', label: 'Exit Full Screen', pendingLabel: 'Exiting...' },
+    { action: 'openManagement', label: 'Open Management', pendingLabel: 'Opening...' },
+    { action: 'closeApp', label: 'Close NXGS', pendingLabel: 'Closing...' }
+  ];
+
+  const runAction = useCallback(async (action: KioskAdminAction): Promise<void> => {
+    if (pendingAction) return;
+    setPendingAction(action);
+    setError('');
+    try {
+      await props.onAction(action);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : String(actionError));
+      setPendingAction(null);
+    }
+  }, [pendingAction, props]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void runAction('returnLocked');
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [runAction]);
+
+  return (
+    <div className="modal-backdrop admin-options-backdrop">
+      <section className="modal admin-options-modal" aria-label="Admin options">
+        <p className="eyebrow">Admin unlocked</p>
+        <h2>Options</h2>
+        <div className="admin-options-grid">
+          {actions.map(({ action, label, pendingLabel }) => (
+            <button
+              key={action}
+              type="button"
+              className="secondary-action"
+              disabled={Boolean(pendingAction)}
+              onClick={() => void runAction(action)}
+            >
+              {pendingAction === action ? pendingLabel : label}
+            </button>
+          ))}
+        </div>
+        {error && <p className="error-text">{error}</p>}
+        <button
+          type="button"
+          className="primary-action wide"
+          disabled={Boolean(pendingAction)}
+          onClick={() => void runAction('returnLocked')}
+        >
+          {pendingAction === 'returnLocked' ? 'Locking...' : 'Return to Locked Mode'}
+        </button>
+        <p className="admin-lockdown-note">
+          Ctrl+Alt+Del is protected by Windows. Production devices should also use Assigned Access, Shell Launcher,
+          Group Policy, or a restricted Windows kiosk account.
+        </p>
+      </section>
+    </div>
   );
 }
 

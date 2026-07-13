@@ -141,6 +141,18 @@ export type ControllerHomeSupport = 'yes' | 'no' | 'unknown';
 
 export type KioskMode = 'customer' | 'admin';
 
+export type KioskAdminAction =
+  | 'minimize'
+  | 'exitFullscreen'
+  | 'openManagement'
+  | 'closeApp'
+  | 'returnLocked';
+
+export interface KioskAdminActionResult {
+  ok: boolean;
+  error?: string;
+}
+
 export interface AppDiagnostics {
   shortcuts: {
     homeRegistered: boolean;

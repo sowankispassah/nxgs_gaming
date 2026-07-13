@@ -9,6 +9,8 @@ import type {
   GameControlResult,
   GameImageKind,
   GameInput,
+  KioskAdminAction,
+  KioskAdminActionResult,
   InitialData,
   KioskMode,
   NetworkStatus,
@@ -31,6 +33,9 @@ const api = {
   getNetworkStatus: (): Promise<NetworkStatus> => ipcRenderer.invoke('network:getStatus'),
   setKioskMode: (mode: KioskMode): Promise<AppDiagnostics> => ipcRenderer.invoke('kiosk:setMode', mode),
   setAdminPinActive: (active: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('kiosk:setAdminPinActive', active),
+  unlockKioskAdminActions: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('kiosk:unlockAdminActions', pin),
+  performKioskAdminAction: (action: KioskAdminAction): Promise<KioskAdminActionResult> =>
+    ipcRenderer.invoke('kiosk:performAdminAction', action),
   reportControllerState: (report: ControllerStateReport): Promise<AppDiagnostics> =>
     ipcRenderer.invoke('input:controllerState', report),
   requestShellHome: (reason: ShellHomeReason): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:homeRequest', reason),

@@ -19,6 +19,8 @@ import type {
   GameControlResult,
   GameImageKind,
   GameInput,
+  KioskAdminAction,
+  KioskAdminActionResult,
   KioskMode,
   LaunchRequest,
   ShellHomeEvent,
@@ -31,6 +33,7 @@ import type {
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let taskbarHiddenByKiosk = false;
+let kioskAdminActionGranted = false;
 let controllerDiagnostics: AppDiagnostics['controller'] = {
   detected: false,
   homeSupported: 'unknown'
@@ -162,10 +165,11 @@ function requestEmergencyCloseOverlay(): void {
 }
 
 function requestAdminUnlock(request: AdminUnlockRequest): void {
-  void launcher.returnToHome().then(() => {
-    applyKioskSettings(store.getSettings());
-    sendToRenderer('kiosk:adminUnlockRequested', request);
-  });
+  kioskInput.setAdminPinActive(true);
+  launcher.focusLauncher();
+  applyKioskSettings(store.getSettings());
+  sendToRenderer('kiosk:adminUnlockRequested', request);
+  void launcher.returnToHome().then(() => applyKioskSettings(store.getSettings()));
 }
 
 const sessionTimer = new SessionTimer({
@@ -204,8 +208,58 @@ const kioskInput = new KioskInputService({
 });
 
 function setKioskMode(mode: KioskMode): void {
+  if (mode === 'customer') {
+    kioskAdminActionGranted = false;
+  }
   kioskInput.setMode(mode);
   applyKioskSettings(store.getSettings());
+}
+
+function returnToLockedMode(): void {
+  kioskAdminActionGranted = false;
+  kioskInput.setAdminPinActive(false);
+  kioskInput.setAdminControlsUnlocked(false);
+  setKioskMode('customer');
+  const window = getLiveMainWindow();
+  window?.show();
+  window?.focus();
+}
+
+function performKioskAdminAction(action: KioskAdminAction): KioskAdminActionResult {
+  if (action === 'returnLocked') {
+    returnToLockedMode();
+    return { ok: true };
+  }
+  if (!kioskAdminActionGranted) {
+    return { ok: false, error: 'Admin PIN verification is required.' };
+  }
+
+  const window = getLiveMainWindow();
+  if (!window) {
+    return { ok: false, error: 'NXGS window is unavailable.' };
+  }
+
+  kioskAdminActionGranted = false;
+  if (action === 'closeApp') {
+    prepareForQuit();
+    setTimeout(() => app.quit(), 50);
+    return { ok: true };
+  }
+
+  setKioskMode('admin');
+  kioskInput.setAdminPinActive(false);
+  kioskInput.setAdminControlsUnlocked(false);
+  if (action === 'minimize') {
+    window.minimize();
+  } else if (action === 'exitFullscreen') {
+    window.setFullScreen(false);
+    window.show();
+    window.focus();
+  } else if (action === 'openManagement') {
+    window.show();
+    window.focus();
+  }
+  return { ok: true };
 }
 
 function setKioskTaskbarHidden(hidden: boolean, reason: string): void {
@@ -272,26 +326,31 @@ async function createWindow(): Promise<void> {
 
   mainWindow.on('close', (event) => {
     const settings = store.getSettings();
-    if (!isQuitting && settings.kiosk.preventClose) {
+    if (!isQuitting && (kioskInput.currentMode === 'customer' || settings.kiosk.preventClose)) {
       event.preventDefault();
       const window = getLiveMainWindow();
       window?.show();
       window?.focus();
-      sendToRenderer('session:state', {
-        ...sessionTimer.current,
-        message: 'Admin PIN is required to exit NXGS Play.'
+      requestAdminUnlock({
+        source: 'Close request',
+        key: 'Alt+F4 / window close',
+        message: 'Enter Admin PIN to unlock NXGS controls.',
+        requestedAt: new Date().toISOString()
       });
     }
   });
 
   mainWindow.on('blur', () => {
-    const settings = store.getSettings();
-    if (kioskInput.currentMode === 'customer' && settings.kiosk.refocusOnBlur && !launcher.active) {
-      setTimeout(() => {
-        const window = getLiveMainWindow();
-        window?.show();
-        window?.focus();
-      }, 500);
+    const gameShouldOwnForeground = ['launching', 'running', 'resuming'].includes(launcher.activeState.status);
+    if (kioskInput.currentMode === 'customer' && !kioskInput.isAdminPinActive && !gameShouldOwnForeground) {
+      kioskInput.requestUnlockAfterFocusEscape('Launcher lost focus');
+      for (const delay of [0, 80, 220]) {
+        setTimeout(() => {
+          const window = getLiveMainWindow();
+          window?.show();
+          window?.focus();
+        }, delay);
+      }
     }
   });
 
@@ -323,6 +382,9 @@ function registerIpc(): void {
   ipcMain.handle('network:getStatus', async () => getNetworkStatus());
 
   ipcMain.handle('kiosk:setMode', (_event, mode: KioskMode) => {
+    if (mode !== 'customer') {
+      throw new Error('Admin mode requires a verified kiosk admin action.');
+    }
     setKioskMode(mode);
     return buildDiagnostics();
   });
@@ -331,6 +393,21 @@ function registerIpc(): void {
     kioskInput.setAdminPinActive(active);
     return { ok: true };
   });
+
+  ipcMain.handle('kiosk:unlockAdminActions', (_event, pin: string) => {
+    const ok = store.verifyPin(pin);
+    kioskAdminActionGranted = ok;
+    kioskInput.setAdminPinActive(ok);
+    kioskInput.setAdminControlsUnlocked(ok);
+    if (!ok) {
+      returnToLockedMode();
+    }
+    return { ok };
+  });
+
+  ipcMain.handle('kiosk:performAdminAction', (_event, action: KioskAdminAction) =>
+    performKioskAdminAction(action)
+  );
 
   ipcMain.handle('input:controllerState', (_event, report: ControllerStateReport) => {
     controllerDiagnostics = {

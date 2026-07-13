@@ -1,6 +1,7 @@
 import { BrowserWindow, globalShortcut } from 'electron';
 import type { AdminUnlockRequest, AppDiagnostics, KioskMode, ShellHomeReason } from '../shared/types';
 import { logLine } from './logger';
+import { NativeKioskHook } from './nativeKioskHook';
 
 type ShortcutLabel = keyof Pick<
   AppDiagnostics['shortcuts'],
@@ -14,16 +15,8 @@ type KioskInputEvents = {
 };
 
 const BLOCKED_SYSTEM_SHORTCUTS = [
-  'Alt+F4',
-  'Alt+Tab',
-  'Alt+Space',
-  'CommandOrControl+Escape',
-  'CommandOrControl+Shift+Escape'
-] as const;
-
-const ADMIN_UNLOCK_SYSTEM_KEYS = [
-  'Meta',
-  'Super'
+  'Escape',
+  'CommandOrControl+Tab'
 ] as const;
 
 function describeInput(input: Electron.Input): string {
@@ -40,6 +33,7 @@ function describeInput(input: Electron.Input): string {
 export class KioskInputService {
   private mode: KioskMode = 'customer';
   private adminPinActive = false;
+  private adminControlsUnlocked = false;
   private lastHomeAt = 0;
   private lastRestrictedAt = 0;
   private lastHomeTrigger: ShellHomeReason | undefined;
@@ -54,6 +48,9 @@ export class KioskInputService {
     restrictedRegisteredCount: 0,
     failures: []
   };
+  private readonly nativeHook = new NativeKioskHook((input) =>
+    this.requestAdminUnlock('Native Windows input guard', input)
+  );
 
   constructor(private readonly events: KioskInputEvents) {}
 
@@ -80,6 +77,10 @@ export class KioskInputService {
     return this.mode;
   }
 
+  get isAdminPinActive(): boolean {
+    return this.adminPinActive;
+  }
+
   register(): void {
     this.shortcutDiagnostics.failures = [];
     this.registerShortcut('CommandOrControl+Shift+H', 'homeRegistered', () => this.triggerHome('global-home'));
@@ -90,6 +91,7 @@ export class KioskInputService {
   }
 
   unregisterAll(): void {
+    this.nativeHook.stop();
     globalShortcut.unregisterAll();
     this.restrictedRegistered.clear();
   }
@@ -100,13 +102,14 @@ export class KioskInputService {
         return;
       }
 
-      if (this.mode === 'admin' || this.adminPinActive) {
+      if (this.mode === 'admin' || this.adminControlsUnlocked) {
         return;
       }
 
-      if (this.isWindowsSystemInput(input)) {
+      const restrictedInput = this.getRestrictedInput(input);
+      if (restrictedInput) {
         event.preventDefault();
-        this.requestAdminUnlock('Windows Home key', describeInput(input));
+        this.requestAdminUnlock(restrictedInput.source, describeInput(input));
       }
     });
   }
@@ -118,13 +121,31 @@ export class KioskInputService {
     this.mode = mode;
     if (mode === 'admin') {
       this.adminPinActive = false;
+    } else {
+      this.adminControlsUnlocked = false;
     }
     this.refreshRestrictedShortcuts();
     void logLine('info', `Kiosk input mode changed to ${mode}.`);
   }
 
   setAdminPinActive(active: boolean): void {
+    if (this.adminPinActive === active) {
+      return;
+    }
     this.adminPinActive = active;
+  }
+
+  setAdminControlsUnlocked(unlocked: boolean): void {
+    if (this.adminControlsUnlocked === unlocked) return;
+    this.adminControlsUnlocked = unlocked;
+    this.refreshRestrictedShortcuts();
+  }
+
+  requestUnlockAfterFocusEscape(key: string): void {
+    if (this.mode !== 'customer' || this.adminControlsUnlocked) {
+      return;
+    }
+    this.requestAdminUnlock('Window switching attempt', key);
   }
 
   private registerShortcut(accelerator: string, label: ShortcutLabel, handler: () => void): void {
@@ -153,9 +174,12 @@ export class KioskInputService {
     }
     this.restrictedRegistered.clear();
 
-    if (this.mode !== 'customer') {
+    if (this.mode !== 'customer' || this.adminPinActive) {
+      this.nativeHook.stop();
       return;
     }
+
+    this.nativeHook.start();
 
     for (const accelerator of BLOCKED_SYSTEM_SHORTCUTS) {
       try {
@@ -175,25 +199,6 @@ export class KioskInputService {
       }
     }
 
-    for (const accelerator of ADMIN_UNLOCK_SYSTEM_KEYS) {
-      try {
-        const registered = globalShortcut.register(accelerator, () =>
-          this.requestAdminUnlock('Windows Home key', accelerator)
-        );
-        if (registered) {
-          this.restrictedRegistered.add(accelerator);
-        } else {
-          const message = `${accelerator} admin unlock shortcut failed to register.`;
-          this.shortcutDiagnostics.failures.push(message);
-          void logLine('warn', message);
-        }
-      } catch (error) {
-        const message = `${accelerator} admin unlock shortcut failed: ${error instanceof Error ? error.message : String(error)}`;
-        this.shortcutDiagnostics.failures.push(message);
-        this.lastInputError = message;
-        void logLine('warn', message);
-      }
-    }
   }
 
   private triggerHome(reason: ShellHomeReason): void {
@@ -208,7 +213,7 @@ export class KioskInputService {
   }
 
   private requestAdminUnlock(source: string, key: string): void {
-    if (this.mode === 'admin') {
+    if (this.mode === 'admin' || this.adminPinActive) {
       return;
     }
 
@@ -219,7 +224,7 @@ export class KioskInputService {
 
     this.lastRestrictedAt = now;
     this.lastRestrictedInput = `${source}: ${key}`;
-    this.adminPinActive = true;
+    this.setAdminPinActive(true);
     void logLine('warn', `Admin PIN requested by ${this.lastRestrictedInput}.`);
     this.events.onAdminUnlockRequest({
       source,
@@ -234,14 +239,29 @@ export class KioskInputService {
     return input.meta || key === 'meta' || key === 'super' || key === 'os' || key === 'win' || key === 'windows';
   }
 
+  private getRestrictedInput(input: Electron.Input): { source: string } | null {
+    if (this.isWindowsSystemInput(input)) {
+      return { source: 'Windows key' };
+    }
+
+    const key = input.key.toLowerCase();
+    if (key === 'escape') {
+      return { source: 'Restricted customer input' };
+    }
+    if (input.alt && (key === 'tab' || key === 'f4' || key === ' ' || key === 'space')) {
+      return { source: 'Window switching attempt' };
+    }
+    if (input.control && (key === 'tab' || key === 'escape')) {
+      return { source: 'Window switching attempt' };
+    }
+    return null;
+  }
+
   private blockSystemShortcut(accelerator: string): void {
     if (this.mode !== 'customer') {
       return;
     }
 
-    this.lastRestrictedAt = Date.now();
-    this.lastRestrictedInput = `blocked system shortcut: ${accelerator}`;
-    void logLine('warn', `Blocked customer-mode system shortcut without opening Admin PIN: ${accelerator}.`);
-    this.events.onHome('system');
+    this.requestAdminUnlock('Restricted customer shortcut', accelerator);
   }
 }
