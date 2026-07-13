@@ -49,7 +49,7 @@ const EMPTY_NETWORK: NetworkStatus = {
   availableNetworks: []
 };
 
-export function ConsoleSettings(props: { onBack: () => void; onControlRoom: () => void }): JSX.Element {
+export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => void; onControlRoom: () => void }): JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [network, setNetwork] = useState<NetworkStatus>(EMPTY_NETWORK);
   const [networkPending, setNetworkPending] = useState(false);
@@ -93,6 +93,7 @@ export function ConsoleSettings(props: { onBack: () => void; onControlRoom: () =
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (props.inputBlocked) return;
       if (!['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'b', 'B'].includes(event.key)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -108,6 +109,7 @@ export function ConsoleSettings(props: { onBack: () => void; onControlRoom: () =
   useEffect(() => {
     let lastInputAt = 0;
     const timer = window.setInterval(() => {
+      if (props.inputBlocked) return;
       const pad = navigator.getGamepads?.()[0];
       if (!pad || Date.now() - lastInputAt < 190) return;
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);

@@ -111,11 +111,6 @@ function coverUrl(path: string): string {
   return `file:///${path.replace(/\\/g, '/')}`;
 }
 
-function isWindowsSystemKey(event: KeyboardEvent): boolean {
-  const key = event.key.toLowerCase();
-  return event.metaKey || key === 'meta' || key === 'super' || key === 'os' || key === 'win' || key === 'windows';
-}
-
 function normalizeForm(game?: GameRecord | GameInput): GameInput {
   return {
     ...EMPTY_GAME,
@@ -333,6 +328,7 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (pinOpen || adminOptionsOpen) return;
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'h') {
         event.preventDefault();
         void window.nxgs.requestShellHome('renderer-request');
@@ -341,11 +337,6 @@ export function App(): JSX.Element {
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault();
         openConsoleSettings();
-        return;
-      }
-      if (view !== 'admin' && !pinOpen && isWindowsSystemKey(event)) {
-        event.preventDefault();
-        openAdminPin({ source: 'Windows Home key', key: event.key });
         return;
       }
       if (event.key === 'ArrowRight') {
@@ -370,7 +361,7 @@ export function App(): JSX.Element {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [acceptSelection, back, moveHorizontal, moveVertical, openAdminPin, openConsoleSettings, pinOpen, view]);
+  }, [acceptSelection, adminOptionsOpen, back, moveHorizontal, moveVertical, openConsoleSettings, pinOpen, view]);
 
 
   useEffect(() => {
@@ -497,6 +488,7 @@ export function App(): JSX.Element {
         />
       ) : view === 'settings' ? (
         <ConsoleSettings
+          inputBlocked={pinOpen || adminOptionsOpen}
           onBack={returnToCustomerHome}
           onControlRoom={() => openAdminPin({ source: 'Control Room', message: 'Enter Admin PIN to open Control Room.' })}
         />
