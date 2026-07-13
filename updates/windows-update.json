@@ -1,7 +1,7 @@
 {
-    "version":  "0.10.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.10.1/NXGS-Play-Setup.exe",
-    "sha256":  "2d6d0a9fd2a1ad2fc81dc7f39f375425c7b73ceb81119876d69beb8913dfccec",
+    "version":  "0.10.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.10.2/NXGS-Play-Setup.exe",
+    "sha256":  "fcd4e548ceda49eb8f7e06dd7ae67bf7f7345547c8284bf12afed57274897bee",
     "required":  false,
-    "notes":  "Fixed the incorrect Admin PIN prompt after closing a game from the NXGS switcher. Customer-mode shortcut lockdown remains active."
+    "notes":  "Fixed taskbar restoration before closing NXGS from admin options, and made keyboard Enter submit the PIN."
 }
