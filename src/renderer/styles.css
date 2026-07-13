@@ -1614,6 +1614,18 @@ button {
 .settings-status-card span { color: #7fefd8; font-weight: 800; }
 .settings-status-card strong { font-size: 24px; }
 .settings-status-card small { color: rgba(230, 238, 247, 0.68); }
+.settings-status-card.warning {
+  border-color: rgba(255, 196, 92, 0.3);
+  background: rgba(125, 89, 30, 0.16);
+}
+.settings-status-card.warning > span { color: #ffd078; }
+.settings-status-card > button {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
 
 .settings-detail-heading {
   display: flex;
@@ -1623,26 +1635,110 @@ button {
 }
 
 .settings-detail-heading button { display: inline-flex; align-items: center; gap: 8px; }
-.settings-detail-heading button:disabled { cursor: progress; opacity: 0.62; }
+.console-settings-detail button:disabled { cursor: progress; opacity: 0.56; }
+
+.console-settings-detail [data-settings-action]:focus-visible {
+  border-color: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 0 3px rgba(113, 240, 215, 0.3);
+  outline: none;
+}
+
+.settings-feedback {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  margin-top: 14px;
+  padding: 11px 14px;
+  color: #dce8f3;
+  line-height: 1.4;
+}
+
+.settings-feedback.info { border-color: rgba(111, 185, 255, 0.35); background: rgba(48, 112, 168, 0.15); }
+.settings-feedback.success { border-color: rgba(113, 240, 215, 0.35); background: rgba(57, 109, 106, 0.16); color: #a7f9e8; }
+.settings-feedback.warning { border-color: rgba(255, 196, 92, 0.35); background: rgba(125, 89, 30, 0.16); color: #ffda94; }
+.settings-feedback.error { border-color: rgba(255, 113, 128, 0.4); background: rgba(137, 45, 56, 0.17); color: #ffb5bd; }
+
+.wifi-password-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(113, 240, 215, 0.26);
+  border-radius: 15px;
+  margin: 18px 0;
+  background: rgba(29, 65, 68, 0.22);
+  padding: 18px;
+}
+
+.wifi-password-panel > div:first-child {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 9px;
+}
+
+.wifi-password-panel > div:first-child span,
+.wifi-password-panel > label { color: rgba(225, 234, 244, 0.66); font-size: 12px; font-weight: 720; }
+
+.wifi-password-input { display: grid; grid-template-columns: minmax(0, 1fr) 48px; gap: 8px; }
+.wifi-password-input input {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 11px;
+  background: rgba(3, 8, 16, 0.56);
+  padding: 12px 14px;
+  color: #fff;
+  font-size: 17px;
+}
+.wifi-password-input button { display: grid; place-items: center; padding: 0; }
+.settings-action-row { display: flex; gap: 10px; }
+.settings-action-row button { display: inline-flex; align-items: center; gap: 8px; }
 
 .wifi-network-list,
-.controller-diagnostic-list {
+.controller-diagnostic-list,
+.bluetooth-device-list {
   display: grid;
   gap: 9px;
 }
 
-.wifi-network-list > div,
+.wifi-network-list > button,
+.bluetooth-device-list > div,
 .controller-diagnostic-list > div {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) max-content;
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding: 13px 4px;
 }
 
-.wifi-network-list span,
+.wifi-network-list > button {
+  grid-template-columns: 26px minmax(0, 1fr) max-content 18px;
+  width: 100%;
+  border-width: 1px;
+  border-color: transparent transparent rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  background: transparent;
+  text-align: left;
+}
+
+.wifi-network-list > button:hover,
+.wifi-network-list > button:focus-visible { background: rgba(255, 255, 255, 0.08); }
+.wifi-network-list > button.connected { border-color: rgba(113, 240, 215, 0.22); background: rgba(57, 109, 106, 0.14); opacity: 1; }
+.wifi-network-list > button > span:nth-child(2),
+.bluetooth-device-list > div > span { display: grid; gap: 3px; }
+.wifi-network-list small,
+.bluetooth-device-list small { color: rgba(225, 234, 244, 0.57); font-size: 11px; }
+.wifi-network-list > button > span:nth-child(3),
 .controller-diagnostic-list span { color: rgba(225, 234, 244, 0.64); }
+
+.bluetooth-device-list > div { grid-template-columns: 27px minmax(0, 1fr) max-content; }
+.bluetooth-device-list > div.connected { color: #a7f9e8; }
+.bluetooth-device-list button { display: inline-flex; min-width: 126px; align-items: center; justify-content: center; gap: 8px; }
+.settings-capability-note {
+  border-left: 3px solid rgba(111, 185, 255, 0.4);
+  margin-top: 20px;
+  padding-left: 12px;
+  color: rgba(226, 235, 245, 0.62);
+  font-size: 12px;
+  line-height: 1.55;
+}
 
 .controller-diagnostic-list > div { grid-template-columns: minmax(120px, 0.5fr) minmax(0, 1fr); }
 .settings-placeholder { color: rgba(226, 235, 245, 0.7); line-height: 1.65; }
@@ -1654,6 +1750,8 @@ button {
 @media (max-width: 900px) {
   .console-settings-layout { grid-template-columns: 1fr; overflow-y: auto; }
   .console-settings-layout > nav { min-height: 360px; }
+  .bluetooth-device-list > div { grid-template-columns: 26px minmax(0, 1fr); }
+  .bluetooth-device-list button { grid-column: 2; width: 100%; }
 }
 
 .quick-overlay-toast {

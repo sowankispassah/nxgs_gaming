@@ -207,7 +207,12 @@ export interface WifiNetworkSummary {
   ssid: string;
   signal?: string;
   security?: string;
+  encryption?: string;
+  requiresPassword: boolean;
+  saved: boolean;
 }
+
+export type NetworkConnectivity = 'internet' | 'limited' | 'none' | 'unknown';
 
 export interface NetworkStatus {
   supported: boolean;
@@ -215,8 +220,54 @@ export interface NetworkStatus {
   interfaceName?: string;
   ssid?: string;
   signal?: string;
+  connectivity: NetworkConnectivity;
   availableNetworks: WifiNetworkSummary[];
   message?: string;
+}
+
+export interface WifiConnectRequest {
+  ssid: string;
+  password?: string;
+}
+
+export type WifiActionStatus =
+  | 'connected'
+  | 'disconnected'
+  | 'incorrect-password'
+  | 'failed';
+
+export interface WifiActionResult {
+  ok: boolean;
+  status: WifiActionStatus;
+  message: string;
+  network: NetworkStatus;
+}
+
+export interface BluetoothDeviceSummary {
+  id: string;
+  name: string;
+  address?: string;
+  paired: boolean;
+  connected: boolean;
+  connectable: boolean;
+}
+
+export type BluetoothRadioState = 'on' | 'off' | 'disabled' | 'unknown' | 'unsupported';
+
+export interface BluetoothStatus {
+  supported: boolean;
+  radioState: BluetoothRadioState;
+  devices: BluetoothDeviceSummary[];
+  message?: string;
+}
+
+export type BluetoothActionStatus = 'connected' | 'paired' | 'disconnected' | 'device-not-found' | 'failed';
+
+export interface BluetoothActionResult {
+  ok: boolean;
+  status: BluetoothActionStatus;
+  message: string;
+  bluetooth: BluetoothStatus;
 }
 
 export type ShellHomeReason =

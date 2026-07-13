@@ -4,6 +4,8 @@ import type {
   AppSettings,
   ActiveGameState,
   AppDiagnostics,
+  BluetoothActionResult,
+  BluetoothStatus,
   ControllerStateReport,
   FilePickerResult,
   GameControlResult,
@@ -24,13 +26,24 @@ import type {
   UpdateDownloadRequest,
   UpdateDownloadResult,
   UpdateInstallRequest,
-  VerifyPinResult
+  VerifyPinResult,
+  WifiActionResult,
+  WifiConnectRequest
 } from '../shared/types';
 
 const api = {
   getInitialData: (): Promise<InitialData> => ipcRenderer.invoke('app:getInitialData'),
   getDiagnostics: (): Promise<AppDiagnostics> => ipcRenderer.invoke('app:getDiagnostics'),
   getNetworkStatus: (): Promise<NetworkStatus> => ipcRenderer.invoke('network:getStatus'),
+  getCurrentWifi: (): Promise<NetworkStatus> => ipcRenderer.invoke('network:getCurrent'),
+  scanWifiNetworks: (): Promise<NetworkStatus> => ipcRenderer.invoke('network:scan'),
+  connectWifi: (request: WifiConnectRequest): Promise<WifiActionResult> => ipcRenderer.invoke('network:connect', request),
+  disconnectWifi: (): Promise<WifiActionResult> => ipcRenderer.invoke('network:disconnect'),
+  getBluetoothStatus: (): Promise<BluetoothStatus> => ipcRenderer.invoke('bluetooth:getStatus'),
+  scanBluetoothDevices: (): Promise<BluetoothStatus> => ipcRenderer.invoke('bluetooth:scan'),
+  pairBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> => ipcRenderer.invoke('bluetooth:pair', deviceId),
+  disconnectBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> =>
+    ipcRenderer.invoke('bluetooth:disconnect', deviceId),
   setKioskMode: (mode: KioskMode): Promise<AppDiagnostics> => ipcRenderer.invoke('kiosk:setMode', mode),
   setAdminPinActive: (active: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('kiosk:setAdminPinActive', active),
   unlockKioskAdminActions: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('kiosk:unlockAdminActions', pin),

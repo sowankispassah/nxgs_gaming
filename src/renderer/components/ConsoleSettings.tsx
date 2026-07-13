@@ -1,22 +1,36 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Accessibility,
   Bluetooth,
   BookOpen,
+  CheckCircle2,
   ChevronRight,
+  Eye,
+  EyeOff,
   Gamepad2,
   Globe2,
   HardDrive,
   Info,
+  LoaderCircle,
   Lock,
+  LockKeyhole,
   Monitor,
   RefreshCw,
+  Search,
   Settings,
   Speaker,
+  Unplug,
   Users,
-  Wifi
+  Wifi,
+  WifiOff
 } from 'lucide-react';
-import type { AppDiagnostics, NetworkStatus } from '../../shared/types';
+import type {
+  AppDiagnostics,
+  BluetoothDeviceSummary,
+  BluetoothStatus,
+  NetworkStatus,
+  WifiNetworkSummary
+} from '../../shared/types';
 
 type SettingsKey =
   | 'guide'
@@ -29,6 +43,8 @@ type SettingsKey =
   | 'sound'
   | 'screen'
   | 'control-room';
+
+type Feedback = { tone: 'info' | 'success' | 'warning' | 'error'; message: string };
 
 const SETTINGS_ITEMS: Array<{ key: SettingsKey; label: string; icon: JSX.Element }> = [
   { key: 'guide', label: 'Guide & Tips / Info', icon: <BookOpen size={25} /> },
@@ -46,29 +62,95 @@ const SETTINGS_ITEMS: Array<{ key: SettingsKey; label: string; icon: JSX.Element
 const EMPTY_NETWORK: NetworkStatus = {
   supported: true,
   connected: false,
+  connectivity: 'unknown',
   availableNetworks: []
 };
 
+const EMPTY_BLUETOOTH: BluetoothStatus = {
+  supported: true,
+  radioState: 'unknown',
+  devices: []
+};
+
+function focusableDetailActions(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('.console-settings-detail [data-settings-action]'))
+    .filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length > 0);
+}
+
 export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => void; onControlRoom: () => void }): JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [detailMode, setDetailMode] = useState(false);
   const [network, setNetwork] = useState<NetworkStatus>(EMPTY_NETWORK);
-  const [networkPending, setNetworkPending] = useState(false);
+  const [networkPending, setNetworkPending] = useState<'refresh' | 'connect' | 'disconnect' | null>(null);
+  const [networkFeedback, setNetworkFeedback] = useState<Feedback | null>(null);
+  const [selectedWifi, setSelectedWifi] = useState<WifiNetworkSummary | null>(null);
+  const [wifiPassword, setWifiPassword] = useState('');
+  const [showWifiPassword, setShowWifiPassword] = useState(false);
+  const [bluetooth, setBluetooth] = useState<BluetoothStatus>(EMPTY_BLUETOOTH);
+  const [bluetoothPending, setBluetoothPending] = useState<string | null>(null);
+  const [bluetoothFeedback, setBluetoothFeedback] = useState<Feedback | null>(null);
   const [diagnostics, setDiagnostics] = useState<AppDiagnostics | null>(null);
+  const networkBusy = useRef(false);
+  const bluetoothBusy = useRef(false);
   const selected = SETTINGS_ITEMS[selectedIndex];
 
   const refreshNetwork = useCallback(async (): Promise<void> => {
-    if (networkPending) return;
-    setNetworkPending(true);
+    if (networkBusy.current) return;
+    networkBusy.current = true;
+    setNetworkPending('refresh');
+    setNetworkFeedback({ tone: 'info', message: 'Scanning for Wi-Fi networks...' });
     try {
-      setNetwork(await window.nxgs.getNetworkStatus());
+      const next = await window.nxgs.scanWifiNetworks();
+      setNetwork(next);
+      setNetworkFeedback(next.supported
+        ? next.connected && next.connectivity !== 'internet'
+          ? { tone: 'warning', message: next.message ?? 'No internet / limited connection' }
+          : null
+        : { tone: 'error', message: next.message ?? 'Wi-Fi is unavailable.' });
+    } catch (error) {
+      setNetworkFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Wi-Fi scan failed.' });
     } finally {
-      setNetworkPending(false);
+      networkBusy.current = false;
+      setNetworkPending(null);
     }
-  }, [networkPending]);
+  }, []);
+
+  const refreshBluetooth = useCallback(async (): Promise<void> => {
+    if (bluetoothBusy.current) return;
+    bluetoothBusy.current = true;
+    setBluetoothPending('scan');
+    setBluetoothFeedback({ tone: 'info', message: 'Searching...' });
+    try {
+      const next = await window.nxgs.scanBluetoothDevices();
+      setBluetooth(next);
+      setBluetoothFeedback(next.message
+        ? { tone: next.supported ? 'warning' : 'error', message: next.message }
+        : next.devices.length === 0
+          ? { tone: 'warning', message: 'No devices found. Put the controller in pairing mode and scan again.' }
+          : null);
+    } catch (error) {
+      setBluetoothFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Bluetooth scan failed.' });
+    } finally {
+      bluetoothBusy.current = false;
+      setBluetoothPending(null);
+    }
+  }, []);
 
   useEffect(() => {
     void refreshNetwork();
-  }, []);
+  }, [refreshNetwork]);
+
+  useEffect(() => {
+    if (selected.key === 'controller' && bluetooth.radioState === 'unknown' && !bluetoothBusy.current) {
+      void refreshBluetooth();
+    }
+  }, [bluetooth.radioState, refreshBluetooth, selected.key]);
+
+  useEffect(() => {
+    setDetailMode(false);
+    setSelectedWifi(null);
+    setWifiPassword('');
+  }, [selectedIndex]);
 
   useEffect(() => {
     let mounted = true;
@@ -85,26 +167,59 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     };
   }, []);
 
+  const enterDetail = useCallback((): void => {
+    setDetailMode(true);
+    window.setTimeout(() => focusableDetailActions()[0]?.focus(), 0);
+  }, []);
+
+  const leaveDetail = useCallback((): void => {
+    setDetailMode(false);
+    (document.querySelector<HTMLElement>(`.console-settings-layout > nav button[data-index="${selectedIndex}"]`))?.focus();
+  }, [selectedIndex]);
+
+  const moveDetailFocus = useCallback((direction: number): void => {
+    const actions = focusableDetailActions();
+    if (actions.length === 0) return;
+    const current = actions.indexOf(document.activeElement as HTMLElement);
+    actions[(current + direction + actions.length) % actions.length]?.focus();
+  }, []);
+
   const activateSelected = useCallback((): void => {
-    if (SETTINGS_ITEMS[selectedIndex].key === 'control-room') {
-      props.onControlRoom();
-    }
-  }, [props, selectedIndex]);
+    const key = SETTINGS_ITEMS[selectedIndex].key;
+    if (key === 'control-room') props.onControlRoom();
+    else if (key === 'network' || key === 'controller') enterDetail();
+  }, [enterDetail, props, selectedIndex]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (props.inputBlocked) return;
-      if (!['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'b', 'B'].includes(event.key)) return;
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'b', 'B'].includes(event.key)) return;
+      if (detailMode) {
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          moveDetailFocus(event.key === 'ArrowUp' ? -1 : 1);
+        } else if (event.key === 'ArrowLeft' || event.key === 'Escape' || event.key === 'b' || event.key === 'B') {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          leaveDetail();
+        } else if (event.key === 'Enter' && document.activeElement instanceof HTMLButtonElement) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          document.activeElement.click();
+        }
+        return;
+      }
       event.preventDefault();
       event.stopImmediatePropagation();
       if (event.key === 'ArrowUp') setSelectedIndex((index) => (index - 1 + SETTINGS_ITEMS.length) % SETTINGS_ITEMS.length);
       else if (event.key === 'ArrowDown') setSelectedIndex((index) => (index + 1) % SETTINGS_ITEMS.length);
-      else if (event.key === 'Enter') activateSelected();
+      else if (event.key === 'Enter' || event.key === 'ArrowRight') activateSelected();
       else props.onBack();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activateSelected, props]);
+  }, [activateSelected, detailMode, leaveDetail, moveDetailFocus, props]);
 
   useEffect(() => {
     let lastInputAt = 0;
@@ -113,6 +228,23 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       const pad = navigator.getGamepads?.()[0];
       if (!pad || Date.now() - lastInputAt < 190) return;
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
+      if (detailMode) {
+        if (pressed(12) || pad.axes[1] < -0.65) {
+          lastInputAt = Date.now();
+          moveDetailFocus(-1);
+        } else if (pressed(13) || pad.axes[1] > 0.65) {
+          lastInputAt = Date.now();
+          moveDetailFocus(1);
+        } else if (pressed(14) || pressed(1)) {
+          lastInputAt = Date.now();
+          leaveDetail();
+        } else if (pressed(0)) {
+          lastInputAt = Date.now();
+          const active = document.activeElement;
+          if (active instanceof HTMLButtonElement) active.click();
+        }
+        return;
+      }
       if (pressed(12) || pad.axes[1] < -0.65) {
         lastInputAt = Date.now();
         setSelectedIndex((index) => (index - 1 + SETTINGS_ITEMS.length) % SETTINGS_ITEMS.length);
@@ -121,63 +253,209 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         lastInputAt = Date.now();
         setSelectedIndex((index) => (index + 1) % SETTINGS_ITEMS.length);
         void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad Down', lastNavigationAction: 'Settings: move down' });
-      } else if (pressed(0)) {
+      } else if (pressed(15) || pressed(0)) {
         lastInputAt = Date.now();
         activateSelected();
         void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: `Settings: select ${selected.label}` });
       } else if (pressed(1)) {
         lastInputAt = Date.now();
         props.onBack();
-        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Settings: back' });
       }
     }, 90);
     return () => window.clearInterval(timer);
-  }, [activateSelected, props, selected.label]);
+  }, [activateSelected, detailMode, leaveDetail, moveDetailFocus, props, selected.label]);
+
+  const performWifiConnect = useCallback(async (wifi: WifiNetworkSummary, password?: string): Promise<void> => {
+    if (networkBusy.current) return;
+    networkBusy.current = true;
+    setNetworkPending('connect');
+    setNetworkFeedback({ tone: 'info', message: `Connecting to ${wifi.ssid}...` });
+    try {
+      const result = await window.nxgs.connectWifi({ ssid: wifi.ssid, password });
+      setNetwork(result.network);
+      if (result.ok) {
+        setSelectedWifi(null);
+        setWifiPassword('');
+        setNetworkFeedback({
+          tone: result.network.connectivity === 'internet' ? 'success' : 'warning',
+          message: result.message
+        });
+      } else {
+        setNetworkFeedback({ tone: 'error', message: result.status === 'incorrect-password' ? `Incorrect password: ${result.message}` : result.message });
+        if (wifi.requiresPassword) setSelectedWifi(wifi);
+      }
+    } catch (error) {
+      setNetworkFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to connect.' });
+    } finally {
+      networkBusy.current = false;
+      setNetworkPending(null);
+    }
+  }, []);
+
+  const selectWifi = useCallback((wifi: WifiNetworkSummary): void => {
+    if (networkBusy.current || (network.connected && network.ssid === wifi.ssid)) return;
+    if (wifi.requiresPassword && !wifi.saved) {
+      setSelectedWifi(wifi);
+      setWifiPassword('');
+      setNetworkFeedback({ tone: 'info', message: `Enter the password for ${wifi.ssid}.` });
+      window.setTimeout(() => document.querySelector<HTMLInputElement>('#nxgs-wifi-password')?.focus(), 0);
+      return;
+    }
+    void performWifiConnect(wifi);
+  }, [network.connected, network.ssid, performWifiConnect]);
+
+  const disconnectNetwork = useCallback(async (): Promise<void> => {
+    if (networkBusy.current) return;
+    networkBusy.current = true;
+    setNetworkPending('disconnect');
+    setNetworkFeedback({ tone: 'info', message: 'Disconnecting...' });
+    try {
+      const result = await window.nxgs.disconnectWifi();
+      setNetwork(result.network);
+      setNetworkFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
+    } catch (error) {
+      setNetworkFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to disconnect.' });
+    } finally {
+      networkBusy.current = false;
+      setNetworkPending(null);
+    }
+  }, []);
+
+  const handleBluetoothDevice = useCallback(async (device: BluetoothDeviceSummary): Promise<void> => {
+    if (bluetoothBusy.current) return;
+    bluetoothBusy.current = true;
+    const disconnecting = device.connected;
+    setBluetoothPending(`${disconnecting ? 'disconnect' : 'pair'}:${device.id}`);
+    setBluetoothFeedback({ tone: 'info', message: disconnecting ? 'Disconnecting...' : 'Pairing...' });
+    try {
+      const result = disconnecting
+        ? await window.nxgs.disconnectBluetoothDevice(device.id)
+        : await window.nxgs.pairBluetoothDevice(device.id);
+      setBluetooth(result.bluetooth);
+      setBluetoothFeedback({ tone: result.ok ? result.status === 'paired' ? 'warning' : 'success' : 'error', message: result.message });
+    } catch (error) {
+      setBluetoothFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Bluetooth action failed.' });
+    } finally {
+      bluetoothBusy.current = false;
+      setBluetoothPending(null);
+    }
+  }, []);
 
   const detail = useMemo(() => {
     if (selected.key === 'network') {
+      const connectedLabel = networkPending === 'connect'
+        ? 'Connecting...'
+        : network.connected
+          ? network.connectivity === 'internet' ? 'Connected' : 'No internet / limited connection'
+          : 'Not connected';
       return (
-        <SettingsDetail title="Network" icon={<Wifi size={34} />} subtitle="Wi-Fi and network status">
-          <div className="settings-status-card">
-            <span>{network.connected ? 'Connected' : 'Not connected'}</span>
+        <SettingsDetail title="Network" icon={<Wifi size={34} />} subtitle="Switch Wi-Fi without leaving NXGS" onFocus={() => setDetailMode(true)}>
+          <div className={`settings-status-card ${network.connected && network.connectivity !== 'internet' ? 'warning' : ''}`}>
+            <span>{connectedLabel}</span>
             <strong>{network.ssid ?? network.interfaceName ?? 'Wi-Fi'}</strong>
-            <small>{network.signal ? `Signal ${network.signal}` : network.message ?? 'Network details are unavailable.'}</small>
+            <small>{network.signal ? `Signal ${network.signal}` : network.message ?? 'Choose a network below.'}</small>
+            {network.connected && (
+              <button data-settings-action type="button" disabled={networkPending !== null} onClick={() => void disconnectNetwork()}>
+                {networkPending === 'disconnect' ? <LoaderCircle size={17} className="spin" /> : <WifiOff size={17} />}
+                {networkPending === 'disconnect' ? 'Disconnecting...' : 'Disconnect'}
+              </button>
+            )}
           </div>
+          {networkFeedback && <div className={`settings-feedback ${networkFeedback.tone}`} role="status">{networkFeedback.message}</div>}
           <div className="settings-detail-heading">
             <h3>Available networks</h3>
-            <button type="button" disabled={networkPending} onClick={() => void refreshNetwork()}>
-              <RefreshCw size={18} className={networkPending ? 'spin' : ''} />
-              {networkPending ? 'Refreshing...' : 'Refresh'}
+            <button data-settings-action type="button" disabled={networkPending !== null} onClick={() => void refreshNetwork()}>
+              <RefreshCw size={18} className={networkPending === 'refresh' ? 'spin' : ''} />
+              {networkPending === 'refresh' ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
+          {selectedWifi && (
+            <div className="wifi-password-panel">
+              <div><LockKeyhole size={22} /><strong>{selectedWifi.ssid}</strong><span>Password required</span></div>
+              <label htmlFor="nxgs-wifi-password">Wi-Fi password</label>
+              <div className="wifi-password-input">
+                <input
+                  data-settings-action
+                  id="nxgs-wifi-password"
+                  type={showWifiPassword ? 'text' : 'password'}
+                  value={wifiPassword}
+                  disabled={networkPending !== null}
+                  autoComplete="current-password"
+                  onChange={(event) => setWifiPassword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && wifiPassword) void performWifiConnect(selectedWifi, wifiPassword);
+                  }}
+                />
+                <button data-settings-action type="button" disabled={networkPending !== null} aria-label={showWifiPassword ? 'Hide password' : 'Show password'} onClick={() => setShowWifiPassword((shown) => !shown)}>
+                  {showWifiPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                </button>
+              </div>
+              <div className="settings-action-row">
+                <button data-settings-action type="button" disabled={networkPending !== null || !wifiPassword} onClick={() => void performWifiConnect(selectedWifi, wifiPassword)}>
+                  {networkPending === 'connect' ? <LoaderCircle size={17} className="spin" /> : <Wifi size={17} />}
+                  {networkPending === 'connect' ? 'Connecting...' : 'Connect'}
+                </button>
+                <button data-settings-action type="button" disabled={networkPending !== null} onClick={() => { setSelectedWifi(null); setWifiPassword(''); }}>Cancel</button>
+              </div>
+            </div>
+          )}
           <div className="wifi-network-list">
-            {network.availableNetworks.length > 0 ? network.availableNetworks.map((item) => (
-              <div key={item.ssid}><Wifi size={19} /><strong>{item.ssid}</strong><span>{item.signal ?? item.security ?? 'Available'}</span></div>
-            )) : <p className="settings-placeholder">No Wi-Fi networks were reported. Connection controls will stay inside NXGS when enabled.</p>}
+            {network.availableNetworks.length > 0 ? network.availableNetworks.map((item) => {
+              const connected = network.connected && network.ssid === item.ssid;
+              return (
+                <button data-settings-action key={item.ssid} type="button" disabled={networkPending !== null || connected} className={connected ? 'connected' : ''} onClick={() => selectWifi(item)}>
+                  {connected ? <CheckCircle2 size={20} /> : <Wifi size={20} />}
+                  <span><strong>{item.ssid}</strong><small>{item.security ?? 'Open network'}{item.saved ? ' · Saved' : ''}</small></span>
+                  <span>{connected ? 'Connected' : item.signal ?? 'Available'}</span>
+                  {item.requiresPassword && <LockKeyhole size={16} />}
+                </button>
+              );
+            }) : <p className="settings-placeholder">No Wi-Fi networks found. Select Refresh to scan again.</p>}
           </div>
         </SettingsDetail>
       );
     }
     if (selected.key === 'controller') {
+      const radioLabel = bluetooth.radioState === 'on' ? 'Bluetooth on' : bluetooth.radioState === 'off' ? 'Bluetooth off' : bluetooth.radioState === 'disabled' ? 'Bluetooth disabled' : 'Bluetooth status unknown';
       return (
-        <SettingsDetail title="Bluetooth / Controller" icon={<Gamepad2 size={34} />} subtitle="Controller connection and pairing">
-          <div className="settings-status-card">
-            <span>{diagnostics?.controller.detected ? 'Controller connected' : 'No controller detected'}</span>
-            <strong>{diagnostics?.controller.name ?? 'Standard game controller'}</strong>
-            <small>Home support: {diagnostics?.controller.homeSupported ?? 'unknown'}</small>
+        <SettingsDetail title="Bluetooth / Controller" icon={<Gamepad2 size={34} />} subtitle="Find and pair devices inside NXGS" onFocus={() => setDetailMode(true)}>
+          <div className={`settings-status-card ${bluetooth.radioState !== 'on' ? 'warning' : ''}`}>
+            <span>{bluetoothPending === 'scan' ? 'Searching...' : radioLabel}</span>
+            <strong>{diagnostics?.controller.detected ? diagnostics.controller.name ?? 'Controller connected' : 'No active controller'}</strong>
+            <small>{diagnostics?.controller.detected ? 'Connected controller is available to the launcher.' : 'Put the controller in pairing mode, then scan.'}</small>
           </div>
-          <div className="controller-diagnostic-list">
-            <div><span>Last button</span><strong>{diagnostics?.controller.lastButtonPressed ?? 'none'}</strong></div>
-            <div><span>Last action</span><strong>{diagnostics?.controller.lastNavigationAction ?? 'none'}</strong></div>
+          {bluetoothFeedback && <div className={`settings-feedback ${bluetoothFeedback.tone}`} role="status">{bluetoothFeedback.message}</div>}
+          <div className="settings-detail-heading">
+            <h3>Bluetooth devices</h3>
+            <button data-settings-action type="button" disabled={bluetoothPending !== null} onClick={() => void refreshBluetooth()}>
+              {bluetoothPending === 'scan' ? <LoaderCircle size={18} className="spin" /> : <Search size={18} />}
+              {bluetoothPending === 'scan' ? 'Searching...' : 'Scan for Devices'}
+            </button>
           </div>
-          <p className="settings-placeholder">Bluetooth pairing will be added here without exposing the Windows desktop. Wired, paired Bluetooth, and standard XInput controllers are detected automatically.</p>
+          <div className="bluetooth-device-list">
+            {bluetooth.devices.length > 0 ? bluetooth.devices.map((device) => {
+              const pending = bluetoothPending?.endsWith(`:${device.id}`) ?? false;
+              const label = device.connected ? 'Disconnect' : device.paired ? 'Reconnect' : 'Pair';
+              return (
+                <div key={device.id} className={device.connected ? 'connected' : ''}>
+                  <Bluetooth size={21} />
+                  <span><strong>{device.name}</strong><small>{device.connected ? 'Connected' : device.paired ? 'Paired' : 'Available'}{device.address ? ` · ${device.address}` : ''}</small></span>
+                  <button data-settings-action type="button" disabled={bluetoothPending !== null || (!device.connectable && !device.paired)} onClick={() => void handleBluetoothDevice(device)}>
+                    {pending ? <LoaderCircle size={17} className="spin" /> : device.connected ? <Unplug size={17} /> : <Bluetooth size={17} />}
+                    {pending ? device.connected ? 'Disconnecting...' : 'Pairing...' : label}
+                  </button>
+                </div>
+              );
+            }) : <p className="settings-placeholder">No Bluetooth devices found. Put the controller in pairing mode and select Scan for Devices.</p>}
+          </div>
+          <p className="settings-capability-note">Windows controls the final Bluetooth HID connection and may show a consent prompt over NXGS. Disconnect removes the Windows pairing so the device can be paired elsewhere. Some Bluetooth LE-only devices remain driver-managed.</p>
         </SettingsDetail>
       );
     }
     if (selected.key === 'control-room') {
       return (
-        <SettingsDetail title="Control Room" icon={<Lock size={34} />} subtitle="Protected administrator controls">
-          <div className="control-room-card"><Lock size={32} /><h3>Admin PIN required</h3><p>Open game management, kiosk controls, diagnostics, and updates.</p><button type="button" onClick={props.onControlRoom}>Enter Control Room</button></div>
+        <SettingsDetail title="Control Room" icon={<Lock size={34} />} subtitle="Protected administrator controls" onFocus={() => setDetailMode(true)}>
+          <div className="control-room-card"><Lock size={32} /><h3>Admin PIN required</h3><p>Open game management, kiosk controls, diagnostics, and updates.</p><button data-settings-action type="button" onClick={props.onControlRoom}>Enter Control Room</button></div>
         </SettingsDetail>
       );
     }
@@ -186,7 +464,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls. It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [diagnostics, network, networkPending, props.onControlRoom, refreshNetwork, selected]);
+  }, [bluetooth, bluetoothFeedback, bluetoothPending, diagnostics, disconnectNetwork, handleBluetoothDevice, network, networkFeedback, networkPending, performWifiConnect, props.onControlRoom, refreshBluetooth, refreshNetwork, selected, selectedWifi, selectWifi, showWifiPassword, wifiPassword]);
 
   return (
     <section className="console-settings-screen">
@@ -195,18 +473,18 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       <div className="console-settings-layout">
         <nav aria-label="Console settings categories">
           {SETTINGS_ITEMS.map((item, index) => (
-            <button key={item.key} type="button" className={index === selectedIndex ? 'selected' : ''} onMouseEnter={() => setSelectedIndex(index)} onClick={() => { setSelectedIndex(index); if (item.key === 'control-room') props.onControlRoom(); }}>
+            <button data-index={index} key={item.key} type="button" className={index === selectedIndex ? 'selected' : ''} onMouseEnter={() => setSelectedIndex(index)} onClick={() => { setSelectedIndex(index); if (item.key === 'control-room') props.onControlRoom(); }}>
               {item.icon}<span>{item.label}</span><ChevronRight size={22} />
             </button>
           ))}
         </nav>
         {detail}
       </div>
-      <footer>↑ ↓ Navigate&nbsp;&nbsp; • &nbsp;&nbsp;X / A Select&nbsp;&nbsp; • &nbsp;&nbsp;Circle / B Back</footer>
+      <footer>{detailMode ? '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
     </section>
   );
 }
 
-function SettingsDetail(props: { title: string; subtitle: string; icon: JSX.Element; children: React.ReactNode }): JSX.Element {
-  return <article className="console-settings-detail"><div className="settings-detail-title">{props.icon}<div><span>{props.subtitle}</span><h2>{props.title}</h2></div></div>{props.children}</article>;
+function SettingsDetail(props: { title: string; subtitle: string; icon: JSX.Element; children: React.ReactNode; onFocus?: () => void }): JSX.Element {
+  return <article className="console-settings-detail" onFocusCapture={props.onFocus}><div className="settings-detail-title">{props.icon}<div><span>{props.subtitle}</span><h2>{props.title}</h2></div></div>{props.children}</article>;
 }

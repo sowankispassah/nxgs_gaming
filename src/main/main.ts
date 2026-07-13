@@ -5,7 +5,8 @@ import { DataStore } from './database';
 import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
-import { getNetworkStatus } from './networkService';
+import { disconnectBluetoothDevice, pairBluetoothDevice, scanBluetoothDevices } from './bluetoothService';
+import { connectWifi, disconnectWifi, getNetworkStatus } from './networkService';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
@@ -26,7 +27,8 @@ import type {
   ShellHomeReason,
   SessionState,
   UpdateDownloadRequest,
-  UpdateInstallRequest
+  UpdateInstallRequest,
+  WifiConnectRequest
 } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -420,6 +422,20 @@ function registerIpc(): void {
 
   ipcMain.handle('app:getDiagnostics', () => buildDiagnostics());
   ipcMain.handle('network:getStatus', async () => getNetworkStatus());
+  ipcMain.handle('network:getCurrent', async () => getNetworkStatus());
+  ipcMain.handle('network:scan', async () => getNetworkStatus());
+  ipcMain.handle('network:connect', async (_event, request: WifiConnectRequest) => connectWifi(request));
+  ipcMain.handle('network:disconnect', async () => disconnectWifi());
+  ipcMain.handle('bluetooth:getStatus', async () => scanBluetoothDevices());
+  ipcMain.handle('bluetooth:scan', async () => scanBluetoothDevices());
+  ipcMain.handle('bluetooth:pair', async (_event, deviceId: string) => {
+    const handle = mainWindow?.getNativeWindowHandle();
+    const ownerWindow = handle
+      ? (handle.length >= 8 ? handle.readBigUInt64LE(0) : BigInt(handle.readUInt32LE(0))).toString()
+      : '0';
+    return pairBluetoothDevice(deviceId, ownerWindow);
+  });
+  ipcMain.handle('bluetooth:disconnect', async (_event, deviceId: string) => disconnectBluetoothDevice(deviceId));
 
   ipcMain.handle('kiosk:setMode', (_event, mode: KioskMode) => {
     if (mode !== 'customer') {
