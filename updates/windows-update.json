@@ -1,7 +1,7 @@
 {
-    "version":  "0.11.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.11.0/NXGS-Play-Setup.exe",
-    "sha256":  "358c50a8e32dfca16dfb07be9a70d3f31fdd029741cf1049574aff90aa6c5031",
+    "version":  "0.11.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.11.1/NXGS-Play-Setup.exe",
+    "sha256":  "8b293cdf52a95fe41249a5171d3e097086565076652ba7f2bbb9dae97e7aabd2",
     "required":  false,
-    "notes":  "Wi-Fi switching and Bluetooth controller management are now available inside NXGS."
+    "notes":  "Wi-Fi networks now require an explicit Connect action, and saved profiles can be forgotten safely inside NXGS."
 }
