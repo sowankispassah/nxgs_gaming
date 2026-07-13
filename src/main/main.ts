@@ -341,7 +341,12 @@ async function createWindow(): Promise<void> {
   });
 
   mainWindow.on('blur', () => {
-    const gameShouldOwnForeground = ['launching', 'running', 'resuming'].includes(launcher.activeState.status);
+    // Launch, resume, and close handoffs intentionally move focus between NXGS and
+    // the selected game window. They are trusted launcher actions, not attempts to
+    // escape customer mode, so the blur guard must not request an Admin PIN.
+    const gameShouldOwnForeground = ['launching', 'running', 'resuming', 'closing'].includes(
+      launcher.activeState.status
+    );
     if (kioskInput.currentMode === 'customer' && !kioskInput.isAdminPinActive && !gameShouldOwnForeground) {
       kioskInput.requestUnlockAfterFocusEscape('Launcher lost focus');
       for (const delay of [0, 80, 220]) {
