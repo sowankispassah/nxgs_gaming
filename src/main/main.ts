@@ -225,7 +225,7 @@ function returnToLockedMode(): void {
   window?.focus();
 }
 
-function performKioskAdminAction(action: KioskAdminAction): KioskAdminActionResult {
+async function performKioskAdminAction(action: KioskAdminAction): Promise<KioskAdminActionResult> {
   if (action === 'returnLocked') {
     returnToLockedMode();
     return { ok: true };
@@ -241,8 +241,17 @@ function performKioskAdminAction(action: KioskAdminAction): KioskAdminActionResu
 
   kioskAdminActionGranted = false;
   if (action === 'closeApp') {
-    prepareForQuit();
-    setTimeout(() => app.quit(), 50);
+    isQuitting = true;
+    sessionTimer.stop('idle', false);
+    kioskInput.unregisterAll();
+    window.setSkipTaskbar(false);
+    try {
+      await setWindowsTaskbarVisible(true);
+      taskbarHiddenByKiosk = false;
+    } catch (error) {
+      await logLine('warn', `Could not restore Windows taskbar before closing NXGS: ${String(error)}`);
+    }
+    app.quit();
     return { ok: true };
   }
 

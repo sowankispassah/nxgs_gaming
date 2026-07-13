@@ -1810,12 +1810,12 @@ function PinDialog(props: {
       else if (event.key === 'ArrowRight') setKeypadIndex((index) => (index + 1) % keypad.length);
       else if (event.key === 'ArrowUp') setKeypadIndex((index) => (index - 3 + keypad.length) % keypad.length);
       else if (event.key === 'ArrowDown') setKeypadIndex((index) => (index + 3) % keypad.length);
-      else if (event.key === 'Enter') activateKeypad();
+      else if (event.key === 'Enter') void submitPin();
       else props.onClose();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activateKeypad, keypad.length, pending, props]);
+  }, [keypad.length, pending, props, submitPin]);
 
   useEffect(() => {
     let lastInputAt = 0;
