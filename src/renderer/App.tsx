@@ -1761,6 +1761,13 @@ function PinDialog(props: {
   const keypad = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Clear', '0', 'Submit'] as const;
   const [keypadIndex, setKeypadIndex] = useState(0);
 
+  const isEnterKey = (event: React.KeyboardEvent | KeyboardEvent): boolean =>
+    event.key === 'Enter' ||
+    event.key === 'Return' ||
+    event.code === 'Enter' ||
+    event.code === 'NumpadEnter' ||
+    event.keyCode === 13;
+
   const submitPin = useCallback(async (): Promise<void> => {
     if (pending) return;
     setPending(true);
@@ -1782,7 +1789,7 @@ function PinDialog(props: {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'b', 'B'].includes(event.key)) return;
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Escape', 'b', 'B'].includes(event.key)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       if (pending) return;
@@ -1790,7 +1797,6 @@ function PinDialog(props: {
       else if (event.key === 'ArrowRight') setKeypadIndex((index) => (index + 1) % keypad.length);
       else if (event.key === 'ArrowUp') setKeypadIndex((index) => (index - 3 + keypad.length) % keypad.length);
       else if (event.key === 'ArrowDown') setKeypadIndex((index) => (index + 3) % keypad.length);
-      else if (event.key === 'Enter') void submitPin();
       else props.onClose();
     };
     window.addEventListener('keydown', onKeyDown, true);
@@ -1817,6 +1823,12 @@ function PinDialog(props: {
     <div className="modal-backdrop">
       <form
         className="modal pin-modal"
+        onKeyDownCapture={(event) => {
+          if (!isEnterKey(event)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void submitPin();
+        }}
         onSubmit={async (event) => {
           event.preventDefault();
           await submitPin();
