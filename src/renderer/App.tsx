@@ -137,6 +137,7 @@ export function App(): JSX.Element {
   const [quickNavOpen, setQuickNavOpen] = useState(false);
   const [adminUnlockRequest, setAdminUnlockRequest] = useState<AdminUnlockRequest | null>(null);
   const [adminOptionsOpen, setAdminOptionsOpen] = useState(false);
+  const [adminControlsActive, setAdminControlsActive] = useState(false);
 
   const enabledGames = useMemo(() => games.filter((game) => game.enabled), [games]);
   const selectedGame = enabledGames[selectedIndex] ?? null;
@@ -155,6 +156,7 @@ export function App(): JSX.Element {
   const closeAdminPin = useCallback(() => {
     setPinOpen(false);
     setAdminUnlockRequest(null);
+    setAdminControlsActive(false);
     void window.nxgs.performKioskAdminAction('returnLocked');
   }, []);
 
@@ -162,6 +164,7 @@ export function App(): JSX.Element {
     setView('home');
     setQuickNavOpen(false);
     setAdminOptionsOpen(false);
+    setAdminControlsActive(false);
     void (async () => {
       await window.nxgs.setKioskMode('customer');
       const data = await window.nxgs.getInitialData();
@@ -236,7 +239,8 @@ export function App(): JSX.Element {
   }, [enabledGames.length, homeFocusSection, initialData, selectedIndex]);
 
   useEffect(() => {
-    if (!settings) {
+    if (!settings || adminControlsActive) {
+      setCursorHidden(false);
       return undefined;
     }
 
@@ -259,7 +263,7 @@ export function App(): JSX.Element {
       window.removeEventListener('keydown', reset);
       window.clearTimeout(timeout);
     };
-  }, [settings]);
+  }, [adminControlsActive, settings]);
 
   const moveHorizontal = useCallback(
     (delta: number) => {
@@ -538,6 +542,7 @@ export function App(): JSX.Element {
             }
             setPinOpen(false);
             setAdminUnlockRequest(null);
+            setAdminControlsActive(true);
             setAdminOptionsOpen(true);
             return true;
           }}
@@ -554,12 +559,13 @@ export function App(): JSX.Element {
             if (action === 'openManagement') {
               setView('admin');
             } else if (action === 'returnLocked') {
+              setAdminControlsActive(false);
               setView('home');
               setQuickNavOpen(false);
               const data = await window.nxgs.getInitialData();
               setActiveGame(data.activeGame);
             }
-            if (action !== 'closeApp') {
+            if (action !== 'closeApp' && action !== 'exitFullscreen') {
               setAdminOptionsOpen(false);
             }
           }}
@@ -599,6 +605,7 @@ function AdminOptionsDialog(props: { onAction: (action: KioskAdminAction) => Pro
       await props.onAction(action);
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : String(actionError));
+    } finally {
       setPendingAction(null);
     }
   }, [pendingAction, props]);

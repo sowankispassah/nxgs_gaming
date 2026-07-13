@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { DataStore } from './database';
@@ -108,6 +108,16 @@ function broadcastActiveGame(): void {
 function buildDiagnostics(): AppDiagnostics {
   const inputDiagnostics = kioskInput.diagnostics;
   const window = getLiveMainWindow();
+  const bounds = window?.getBounds();
+  const displayBounds = bounds ? screen.getDisplayMatching(bounds).bounds : undefined;
+  const coversDisplay = Boolean(
+    bounds &&
+    displayBounds &&
+    bounds.x === displayBounds.x &&
+    bounds.y === displayBounds.y &&
+    bounds.width === displayBounds.width &&
+    bounds.height === displayBounds.height
+  );
   return {
     shortcuts: inputDiagnostics.shortcuts,
     controller: controllerDiagnostics,
@@ -116,7 +126,10 @@ function buildDiagnostics(): AppDiagnostics {
       ...inputDiagnostics.kiosk,
       taskbarHidden: taskbarHiddenByKiosk || launcher.taskbarHidden,
       alwaysOnTop: Boolean(window?.isAlwaysOnTop()),
-      launcherVisible: Boolean(window?.isVisible())
+      launcherVisible: Boolean(window?.isVisible()),
+      fullscreen: Boolean(window?.isFullScreen()) || coversDisplay,
+      maximized: Boolean(window?.isMaximized()),
+      resizable: Boolean(window?.isResizable())
     }
   };
 }
@@ -264,7 +277,26 @@ async function performKioskAdminAction(action: KioskAdminAction): Promise<KioskA
   if (action === 'minimize') {
     window.minimize();
   } else if (action === 'exitFullscreen') {
+    launcher.restoreTaskbarForAdmin();
+    await setWindowsTaskbarVisible(true);
+    taskbarHiddenByKiosk = false;
+    window.setSkipTaskbar(false);
+    window.setAlwaysOnTop(false);
     window.setFullScreen(false);
+    window.setResizable(true);
+    window.setMaximizable(true);
+    window.setMinimizable(true);
+    window.setMovable(true);
+    if (window.isMaximized()) window.unmaximize();
+    const workArea = screen.getDisplayMatching(window.getBounds()).workArea;
+    const width = Math.min(workArea.width, Math.max(900, Math.floor(workArea.width * 0.78)));
+    const height = Math.min(workArea.height, Math.max(620, Math.floor(workArea.height * 0.82)));
+    window.setBounds({
+      x: workArea.x + Math.floor((workArea.width - width) / 2),
+      y: workArea.y + Math.floor((workArea.height - height) / 2),
+      width,
+      height
+    });
     window.show();
     window.focus();
   } else if (action === 'openManagement') {
@@ -293,7 +325,10 @@ function applyKioskSettings(settings: AppSettings): void {
     window.setSkipTaskbar(false);
     window.setAlwaysOnTop(false);
     window.setFullScreen(false);
-    window.maximize();
+    window.setResizable(true);
+    window.setMaximizable(true);
+    window.setMinimizable(true);
+    window.setMovable(true);
     window.show();
     window.focus();
     return;
@@ -307,6 +342,9 @@ function applyKioskSettings(settings: AppSettings): void {
     launcher.activeState.status === 'closing';
   window.setSkipTaskbar(true);
   window.setAlwaysOnTop(shouldStayOnTop, shouldStayOnTop ? 'screen-saver' : undefined);
+  const display = screen.getDisplayMatching(window.getBounds());
+  window.setBounds(display.bounds);
+  window.setMenuBarVisibility(false);
   window.setFullScreen(true);
 }
 

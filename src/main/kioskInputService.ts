@@ -64,6 +64,9 @@ export class KioskInputService {
         taskbarHidden: false,
         alwaysOnTop: false,
         launcherVisible: false,
+        fullscreen: false,
+        maximized: false,
+        resizable: false,
         lastHomeTrigger: this.lastHomeTrigger,
         lastRestrictedInput: this.lastRestrictedInput,
         lastInputError: this.lastInputError

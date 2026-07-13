@@ -186,6 +186,9 @@ export interface AppDiagnostics {
     taskbarHidden: boolean;
     alwaysOnTop: boolean;
     launcherVisible: boolean;
+    fullscreen: boolean;
+    maximized: boolean;
+    resizable: boolean;
     lastHomeTrigger?: ShellHomeReason;
     lastRestrictedInput?: string;
     lastInputError?: string;
