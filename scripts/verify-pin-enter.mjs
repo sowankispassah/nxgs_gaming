@@ -83,12 +83,12 @@ try {
   console.log('PASS: Settings -> Control Room -> PIN -> Enter opened Admin options.');
   await evaluate("[...document.querySelectorAll('.admin-options-modal button')].find((button) => button.textContent.includes('Exit Full Screen')).click()");
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'admin' && !data.kiosk.fullscreen && !data.kiosk.maximized && data.kiosk.resizable && !data.kiosk.taskbarHidden && !data.kiosk.alwaysOnTop)", 'Exit Full Screen did not produce a normal admin window.');
-  await waitFor("Boolean(document.querySelector('.admin-options-modal')) && !document.querySelector('main').classList.contains('cursor-hidden')", 'Admin options or cursor visibility was not retained in windowed mode.');
-  console.log('PASS: Exit Full Screen produced a resizable admin window with taskbar, cursor, and options available.');
-  await waitFor("[...document.querySelectorAll('.admin-options-modal button')].some((button) => button.textContent.includes('Return to Locked Mode') && !button.disabled)", 'Return to Locked Mode did not become available after exiting fullscreen.');
-  await evaluate("[...document.querySelectorAll('.admin-options-modal button')].find((button) => button.textContent.includes('Return to Locked Mode')).click()");
+  await waitFor("!document.querySelector('.admin-options-modal') && Boolean(document.querySelector('.console-home')) && Boolean(document.querySelector('.windowed-admin-lock:not(:disabled)')) && !document.querySelector('main').classList.contains('cursor-hidden')", 'Windowed admin mode did not close options, show Home, expose the lock control, and keep the cursor visible.');
+  console.log('PASS: Exit Full Screen produced a resizable admin Home window with taskbar, cursor, and lock control.');
+  await evaluate("document.querySelector('.windowed-admin-lock').click()");
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'customer' && data.kiosk.fullscreen && data.kiosk.taskbarHidden)", 'Return to Locked Mode did not restore fullscreen kiosk mode.');
-  console.log('PASS: Return to Locked Mode restored customer fullscreen and taskbar hiding.');
+  await waitFor("Boolean(document.querySelector('.console-home')) && !document.querySelector('.windowed-admin-lock')", 'Locked mode did not retain Home or hide the windowed admin lock control.');
+  console.log('PASS: Lock control restored customer fullscreen, taskbar hiding, and the launcher Home page.');
   await evaluate("document.querySelector('button[aria-label=Settings]').click()");
   await waitFor("Boolean(document.querySelector('h1, h2'))", 'NXGS did not remain responsive after returning to locked mode.');
   void evaluate("window.nxgs.setAdminPinActive(true).then(() => window.nxgs.unlockKioskAdminActions('1234')).then(() => window.nxgs.performKioskAdminAction('closeApp'))").catch(() => {});

@@ -2339,6 +2339,55 @@ select:focus {
   line-height: 1.5;
 }
 
+.windowed-admin-controls {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 95;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.windowed-admin-controls > p {
+  max-width: 340px;
+  margin: 0;
+  border: 1px solid rgba(255, 113, 128, 0.38);
+  border-radius: 10px;
+  background: rgba(75, 20, 29, 0.94);
+  padding: 10px 12px;
+  color: #ffbdc4;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.windowed-admin-lock {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  place-items: center;
+  border: 1px solid rgba(113, 240, 215, 0.55);
+  border-radius: 50%;
+  background: rgba(10, 22, 29, 0.92);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+  color: #8df6e1;
+  cursor: pointer;
+  backdrop-filter: blur(18px);
+}
+
+.windowed-admin-lock:hover,
+.windowed-admin-lock:focus-visible {
+  border-color: #fff;
+  background: rgba(26, 66, 68, 0.96);
+  outline: none;
+}
+
+.windowed-admin-lock:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
 @media (max-width: 620px) {
   .admin-options-grid {
     grid-template-columns: 1fr;

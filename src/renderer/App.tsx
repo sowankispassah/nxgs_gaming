@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -9,6 +9,7 @@ import {
   Home,
   Image as ImageIcon,
   Lock,
+  LoaderCircle,
   Monitor,
   Play,
   Plus,
@@ -138,6 +139,10 @@ export function App(): JSX.Element {
   const [adminUnlockRequest, setAdminUnlockRequest] = useState<AdminUnlockRequest | null>(null);
   const [adminOptionsOpen, setAdminOptionsOpen] = useState(false);
   const [adminControlsActive, setAdminControlsActive] = useState(false);
+  const [windowedAdminMode, setWindowedAdminMode] = useState(false);
+  const [adminModeTransitionPending, setAdminModeTransitionPending] = useState(false);
+  const [adminModeError, setAdminModeError] = useState('');
+  const adminModeTransitionBusy = useRef(false);
 
   const enabledGames = useMemo(() => games.filter((game) => game.enabled), [games]);
   const selectedGame = enabledGames[selectedIndex] ?? null;
@@ -157,6 +162,8 @@ export function App(): JSX.Element {
     setPinOpen(false);
     setAdminUnlockRequest(null);
     setAdminControlsActive(false);
+    setWindowedAdminMode(false);
+    setAdminModeError('');
     void window.nxgs.performKioskAdminAction('returnLocked');
   }, []);
 
@@ -165,11 +172,41 @@ export function App(): JSX.Element {
     setQuickNavOpen(false);
     setAdminOptionsOpen(false);
     setAdminControlsActive(false);
+    setWindowedAdminMode(false);
+    setAdminModeError('');
     void (async () => {
       await window.nxgs.setKioskMode('customer');
       const data = await window.nxgs.getInitialData();
       setActiveGame(data.activeGame);
     })();
+  }, []);
+
+  const returnWindowedAdminToKiosk = useCallback(async (): Promise<void> => {
+    if (adminModeTransitionBusy.current) return;
+    adminModeTransitionBusy.current = true;
+    setAdminModeTransitionPending(true);
+    setAdminModeError('');
+    setConfirmGame(null);
+    setQuickNavOpen(false);
+    setAdminOptionsOpen(false);
+    setView('home');
+    try {
+      const result = await window.nxgs.performKioskAdminAction('returnLocked');
+      if (!result.ok) {
+        throw new Error(result.error ?? 'Could not return NXGS to locked mode.');
+      }
+      setAdminControlsActive(false);
+      setWindowedAdminMode(false);
+      const data = await window.nxgs.getInitialData();
+      setActiveGame(data.activeGame);
+    } catch (error) {
+      setAdminControlsActive(true);
+      setWindowedAdminMode(true);
+      setAdminModeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      adminModeTransitionBusy.current = false;
+      setAdminModeTransitionPending(false);
+    }
   }, []);
 
   const openConsoleSettings = useCallback(() => {
@@ -552,24 +589,54 @@ export function App(): JSX.Element {
       {adminOptionsOpen && (
         <AdminOptionsDialog
           onAction={async (action) => {
+            if (action === 'returnLocked') {
+              await returnWindowedAdminToKiosk();
+              return;
+            }
+            if (action === 'exitFullscreen') {
+              setConfirmGame(null);
+              setQuickNavOpen(false);
+              setView('home');
+              setAdminOptionsOpen(false);
+              setAdminModeError('');
+            }
             const result = await window.nxgs.performKioskAdminAction(action);
             if (!result.ok) {
+              if (action === 'exitFullscreen') {
+                setAdminModeError(result.error ?? 'Could not enter windowed admin mode.');
+              }
               throw new Error(result.error ?? 'Admin action failed.');
             }
+            setWindowedAdminMode(true);
             if (action === 'openManagement') {
               setView('admin');
-            } else if (action === 'returnLocked') {
-              setAdminControlsActive(false);
+            } else if (action === 'exitFullscreen') {
               setView('home');
               setQuickNavOpen(false);
               const data = await window.nxgs.getInitialData();
               setActiveGame(data.activeGame);
             }
-            if (action !== 'closeApp' && action !== 'exitFullscreen') {
+            if (action !== 'closeApp') {
               setAdminOptionsOpen(false);
             }
           }}
         />
+      )}
+
+      {windowedAdminMode && adminControlsActive && !adminOptionsOpen && !pinOpen && (
+        <div className="windowed-admin-controls">
+          {adminModeError && <p role="alert">{adminModeError}</p>}
+          <button
+            type="button"
+            className="windowed-admin-lock"
+            disabled={adminModeTransitionPending}
+            aria-label={adminModeTransitionPending ? 'Returning NXGS to locked kiosk mode' : 'Return NXGS to locked kiosk mode'}
+            title="Return to locked kiosk mode"
+            onClick={() => void returnWindowedAdminToKiosk()}
+          >
+            {adminModeTransitionPending ? <LoaderCircle size={22} className="spin" /> : <Lock size={22} />}
+          </button>
+        </div>
       )}
 
       {session.status === 'expired' && (

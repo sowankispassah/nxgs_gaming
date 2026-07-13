@@ -344,6 +344,10 @@ function applyKioskSettings(settings: AppSettings): void {
     launcher.activeState.status === 'closing';
   window.setSkipTaskbar(true);
   window.setAlwaysOnTop(shouldStayOnTop, shouldStayOnTop ? 'screen-saver' : undefined);
+  window.setResizable(false);
+  window.setMaximizable(false);
+  window.setMinimizable(false);
+  window.setMovable(false);
   const display = screen.getDisplayMatching(window.getBounds());
   window.setBounds(display.bounds);
   window.setMenuBarVisibility(false);
@@ -361,9 +365,9 @@ async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     title: 'NXGS Play',
     fullscreen: true,
-    frame: false,
-    transparent: true,
-    hasShadow: false,
+    frame: true,
+    transparent: false,
+    hasShadow: true,
     skipTaskbar: true,
     icon: getAppIconPath(),
     autoHideMenuBar: true,
