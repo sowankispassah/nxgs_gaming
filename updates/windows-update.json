@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.5",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.5/NXGS-Play-Setup.exe",
-    "sha256":  "c0f7bc784d2b6b4f84a0b121eb83c2f86ed2539379829e887843864d42644438",
+    "version":  "0.14.6",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.6/NXGS-Play-Setup.exe",
+    "sha256":  "2e749f86b7c2476bd9b5aeee841bea83c32e69744483424262cf397999ce977b",
     "required":  false,
-    "notes":  "NXGS now uses neutral console language throughout customer-facing launcher flows and keeps platform-specific terms out of visible UI and status messages."
+    "notes":  "NXGS now collapses Display information by default so the Audio volume controls are visible immediately, while keeping full display details available on demand."
 }
