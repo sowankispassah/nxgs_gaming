@@ -199,11 +199,11 @@ function ensureWorker(): ChildProcessWithoutNullStreams {
     }
   });
   worker.once('error', (error) => {
-    rejectPending(`Windows live control failed: ${error.message}`);
+    rejectPending(`Live control failed: ${error.message}`);
     worker = null;
   });
   worker.once('exit', () => {
-    rejectPending('Windows live control stopped unexpectedly.');
+    rejectPending('Live control stopped unexpectedly.');
     worker = null;
   });
   return worker;
@@ -215,7 +215,7 @@ export function warmWindowsControlWorker(): void {
 
 export function runWindowsControl(command: WindowsControlCommand, value: number | boolean): Promise<WindowsControlResult> {
   if (process.platform !== 'win32') {
-    return Promise.resolve({ ok: false, message: 'Windows system controls are only available on Windows.' });
+    return Promise.resolve({ ok: false, message: 'System controls are unavailable on this device.' });
   }
 
   const activeWorker = ensureWorker();
@@ -223,7 +223,7 @@ export function runWindowsControl(command: WindowsControlCommand, value: number 
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       pending.delete(id);
-      reject(new Error('Windows did not respond to the live control in time.'));
+      reject(new Error('The system control did not respond in time.'));
     }, 7000);
     pending.set(id, { resolve, reject, timeout });
     activeWorker.stdin.write(`${JSON.stringify({ id, command, value })}\n`);

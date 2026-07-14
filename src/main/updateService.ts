@@ -324,7 +324,7 @@ async function checkGitHubRelease(currentVersion: string, checkedAt: string): Pr
       status: 'failed',
       currentVersion,
       message:
-        'No GitHub Release is published yet. Pushed code is not installable until a release with the Windows installer is published.',
+        'No app release is published yet. Pushed code is not installable until a complete release is available.',
       checkedAt
     };
   }
@@ -546,7 +546,7 @@ export async function downloadUpdate(
 export async function startUpdateInstaller(request: UpdateInstallRequest): Promise<UpdateDownloadResult> {
   try {
     if (!request.installerPath.toLowerCase().endsWith('.exe')) {
-      throw new Error('Update installer must be a Windows .exe file.');
+      throw new Error('The update installer format is invalid.');
     }
 
     await access(request.installerPath);
@@ -624,7 +624,7 @@ export async function startUpdateInstaller(request: UpdateInstallRequest): Promi
       ok: true,
       installerPath: request.installerPath,
       message: isProgramFilesInstall(currentExePath)
-        ? 'Restarting NXGS Play to install the update. Approve the Windows permission prompt if it appears.'
+        ? 'Restarting NXGS Play to install the update. Approve the system permission prompt if it appears.'
         : 'Restarting NXGS Play to install the update.'
     };
   } catch (error) {

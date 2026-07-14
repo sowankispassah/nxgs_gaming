@@ -264,7 +264,7 @@ export function GameAvatarRow(props: {
 export function DashboardContentRow(props: { focusSection: ConsoleFocusSection; game: GameRecord | null }): JSX.Element {
   const cards = [
     { icon: <Sparkles size={19} />, label: 'Recently added', value: props.game?.title ?? 'Your library' },
-    { icon: <Library size={19} />, label: 'Installed games', value: 'Ready on this PC' },
+    { icon: <Library size={19} />, label: 'Installed games', value: 'Ready to play' },
     { icon: <Play size={19} />, label: 'Continue playing', value: props.game ? `Return to ${props.game.title}` : 'Choose a game' },
     { icon: <Layers3 size={19} />, label: 'Game details', value: props.game?.source || 'Local library' }
   ];

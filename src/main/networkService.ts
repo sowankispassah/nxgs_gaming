@@ -124,7 +124,7 @@ export async function getNetworkStatus(): Promise<NetworkStatus> {
       connected: false,
       connectivity: 'unknown',
       availableNetworks: [],
-      message: 'Wi-Fi management is available on Windows.'
+      message: 'Wi-Fi management is unavailable on this system.'
     };
   }
 
@@ -256,7 +256,7 @@ export async function connectWifi(request: WifiConnectRequest): Promise<WifiActi
       return {
         ok: false,
         status: 'incorrect-password',
-        message: 'Incorrect password or Windows rejected the network authentication.',
+        message: 'Incorrect password or network authentication was rejected.',
         network
       };
     }
@@ -277,7 +277,7 @@ export async function disconnectWifi(): Promise<WifiActionResult> {
     await netsh(['wlan', 'disconnect', ...(before.interfaceName ? [`interface=${before.interfaceName}`] : [])]);
     const network = await waitForWifiState(undefined, 3);
     if (!network.connected) return { ok: true, status: 'disconnected', message: 'Disconnected', network };
-    return { ok: false, status: 'failed', message: 'Windows did not disconnect from Wi-Fi.', network };
+    return { ok: false, status: 'failed', message: 'Wi-Fi could not be disconnected.', network };
   } catch (error) {
     const network = await getNetworkStatus();
     return {
@@ -311,7 +311,7 @@ export async function forgetWifi(ssid: string): Promise<WifiActionResult> {
     const network = await getNetworkStatus();
     const stillSaved = network.availableNetworks.some((candidate) => candidate.ssid === ssid && candidate.saved);
     if (stillSaved) {
-      return { ok: false, status: 'failed', message: 'Windows did not remove the saved Wi-Fi profile.', network };
+      return { ok: false, status: 'failed', message: 'The saved Wi-Fi network could not be removed.', network };
     }
     return {
       ok: true,

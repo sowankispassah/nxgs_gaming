@@ -322,12 +322,12 @@ async function runPowerShell<T>(script: string, environment: Record<string, stri
       }
     );
     const output = stdout.trim();
-    if (!output) throw new Error('Windows returned no audio information.');
+    if (!output) throw new Error('No audio information was returned.');
     return JSON.parse(output) as T;
   } catch (error) {
     const failure = error as { code?: string | number; killed?: boolean; signal?: string };
-    if (failure.killed || failure.signal || failure.code === 'ETIMEDOUT') throw new Error('Windows audio did not respond in time.');
-    throw new Error(`Windows audio command failed${failure.code ? ` (${failure.code})` : ''}.`);
+    if (failure.killed || failure.signal || failure.code === 'ETIMEDOUT') throw new Error('Audio controls did not respond in time.');
+    throw new Error(`Audio action failed${failure.code ? ` (${failure.code})` : ''}.`);
   }
 }
 
@@ -378,8 +378,8 @@ function normalizeStatus(raw: RawAudioSnapshot): AudioStatus {
 
 function safeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (/access.+denied/i.test(message)) return 'Windows denied access to system audio controls.';
-  return message || 'Windows audio operation failed.';
+  if (/access.+denied/i.test(message)) return 'Access to audio controls was denied.';
+  return message || 'The audio action failed.';
 }
 
 export async function getAudioStatus(): Promise<AudioStatus> {
@@ -393,7 +393,7 @@ export async function getAudioStatus(): Promise<AudioStatus> {
       outputDevices: [],
       inputDevices: [],
       deviceSwitchingSupported: false,
-      message: 'System sound controls are available on Windows.'
+      message: 'System audio controls are unavailable on this device.'
     };
   }
   try {
@@ -416,7 +416,7 @@ export async function getAudioStatus(): Promise<AudioStatus> {
 
 export async function setMasterVolume(volume: number): Promise<AudioActionResult> {
   const normalized = asVolume(volume);
-  if (process.platform !== 'win32') return { ok: false, message: 'System volume control is available on Windows.', audio: await getAudioStatus() };
+  if (process.platform !== 'win32') return { ok: false, message: 'Volume control is unavailable on this device.', audio: await getAudioStatus() };
   try {
     const result = await runWindowsControl('volume', normalized);
     if (!result.ok) throw new Error(result.message);
@@ -439,7 +439,7 @@ export async function setMasterVolume(volume: number): Promise<AudioActionResult
 }
 
 export async function setMasterMuted(muted: boolean): Promise<AudioActionResult> {
-  if (process.platform !== 'win32') return { ok: false, message: 'System mute control is available on Windows.', audio: await getAudioStatus() };
+  if (process.platform !== 'win32') return { ok: false, message: 'Mute control is unavailable on this device.', audio: await getAudioStatus() };
   try {
     const result = await runWindowsControl('mute', muted);
     if (!result.ok) throw new Error(result.message);
@@ -469,7 +469,7 @@ export async function switchAudioDevice(deviceId: string, kind: 'output' | 'inpu
   }
   return {
     ok: false,
-    message: `Windows does not provide a supported desktop API for changing the default ${kind} device. NXGS kept the current device and did not open Windows Settings.`,
+    message: `Changing the default ${kind} device is unavailable here. NXGS kept the current device.`,
     audio
   };
 }

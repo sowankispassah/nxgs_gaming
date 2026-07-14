@@ -596,7 +596,7 @@ function registerIpc(): void {
     const result = await showOpenDialog({
       title: 'Select Game Executable',
       properties: ['openFile'],
-      filters: [{ name: 'Windows Executable', extensions: ['exe'] }]
+      filters: [{ name: 'Game Executable', extensions: ['exe'] }]
     });
     if (result.canceled || result.filePaths.length === 0) {
       return { canceled: true };

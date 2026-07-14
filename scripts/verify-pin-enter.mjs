@@ -19,6 +19,10 @@ const child = spawn(electron, launchArguments, {
 let duplicateChild = null;
 
 const delay = (milliseconds) => new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
+const assertConsoleLanguage = (text, surface) => {
+  const restricted = text.match(/\bwindows\b|\bpc\b|\bdesktop\b|\btaskbar\b|system command/i);
+  if (restricted) throw new Error(`${surface} exposed restricted platform wording: ${restricted[0]}`);
+};
 
 async function getPage() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
@@ -75,6 +79,7 @@ try {
   }
   await evaluate("Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [] })");
   await waitFor("Boolean(document.querySelector('button[aria-label=Settings]'))", 'Settings button did not render.');
+  assertConsoleLanguage(await evaluate("document.querySelector('main').innerText + ' ' + [...document.querySelectorAll('main [aria-label]')].map((node) => node.getAttribute('aria-label')).join(' ')"), 'Launcher Home');
   await evaluate("document.querySelector('button[aria-label=Settings]').click()");
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Control Room'))", 'Control Room did not render.');
   const settingsShell = await evaluate("(() => { const header = document.querySelector('.console-settings-screen > header').getBoundingClientRect(); const layout = document.querySelector('.console-settings-layout').getBoundingClientRect(); const nav = document.querySelector('.console-settings-layout > nav').getBoundingClientRect(); const detail = document.querySelector('.console-settings-detail').getBoundingClientRect(); return { headerHeight: Math.round(header.height), navLeft: Math.round(nav.left), layoutTop: Math.round(layout.top), layoutBottom: Math.round(layout.bottom), navWidth: Math.round(nav.width), gap: Math.round(detail.left - nav.right) }; })()");
@@ -87,6 +92,7 @@ try {
   const displayFeatures = await evaluate("window.nxgs.getDisplayStatus()");
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System').click()");
   await waitFor("Boolean(document.querySelector('.system-information-grid')) && Boolean(document.querySelector('.system-volume-card'))", 'System page did not remain available after capability detection.');
+  assertConsoleLanguage(await evaluate("document.querySelector('.console-settings-screen').innerText + ' ' + [...document.querySelectorAll('.console-settings-screen [aria-label]')].map((node) => node.getAttribute('aria-label')).join(' ')"), 'System settings');
   if (process.env.NXGS_SETTINGS_SCREENSHOT) {
     const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(resolve(process.env.NXGS_SETTINGS_SCREENSHOT), Buffer.from(screenshot.data, 'base64'));
@@ -149,8 +155,9 @@ try {
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'b', code: 'KeyB', windowsVirtualKeyCode: 66, nativeVirtualKeyCode: 66 });
   await waitFor("!document.querySelector('#quick-brightness-control')", 'Quick brightness did not close back to the navbar.');
   await evaluate("document.querySelector('.quick-home-overlay button[aria-label^=\"Quick volume\"]').click()");
-  await waitFor("Boolean(document.querySelector('#quick-volume-control input[aria-label=\"Quick system volume\"]')) && Boolean(document.querySelector('#quick-volume-control button[aria-label*=\"Windows audio\"]')) && !document.querySelector('.console-settings-screen')", 'Quick volume did not open as an inline navbar control.');
+  await waitFor("Boolean(document.querySelector('#quick-volume-control input[aria-label=\"Quick system volume\"]')) && Boolean(document.querySelector('#quick-volume-control button[aria-label*=\"audio\"]')) && !document.querySelector('.console-settings-screen')", 'Quick volume did not open as an inline navbar control.');
   await waitFor("window.nxgs.getAudioStatus().then((audio) => Number(document.querySelector('#quick-volume-control input').value) === audio.masterVolume)", 'Quick volume did not show the current Windows master volume.');
+  assertConsoleLanguage(await evaluate("document.querySelector('.quick-home-overlay').innerText + ' ' + [...document.querySelectorAll('.quick-home-overlay [aria-label]')].map((node) => node.getAttribute('aria-label')).join(' ')"), 'Quick switcher');
   console.log('PASS: Quick switcher volume opened inline before Settings and showed the real Windows volume.');
   await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'b', code: 'KeyB', windowsVirtualKeyCode: 66, nativeVirtualKeyCode: 66 });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'b', code: 'KeyB', windowsVirtualKeyCode: 66, nativeVirtualKeyCode: 66 });

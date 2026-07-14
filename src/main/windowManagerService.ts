@@ -541,7 +541,7 @@ export async function activateGameWindow(window: GameWindowInfo, launchMode: Gam
   const state = lastAttempt
     ? `visible=${lastAttempt.isVisible}, minimized=${lastAttempt.isMinimized}, foreground=${lastAttempt.isForeground}, size=${lastAttempt.width}x${lastAttempt.height}`
     : 'no activation state returned';
-  throw new Error(`Windows did not restore and focus the game window (${state}). NXGS Play stayed visible; try Resume Game again.`);
+  throw new Error(`This game is not ready to resume yet (${state}). Try Resume Game again in a moment.`);
 }
 
 export async function keepGameWindowOnTop(

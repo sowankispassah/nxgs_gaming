@@ -306,12 +306,12 @@ async function runPowerShell<T>(script: string, environment: Record<string, stri
       }
     );
     const output = stdout.trim();
-    if (!output) throw new Error('Windows returned no Bluetooth information.');
+    if (!output) throw new Error('No Bluetooth information was returned.');
     return JSON.parse(output) as T;
   } catch (error) {
     const failure = error as { stderr?: string | Buffer; code?: string | number; killed?: boolean; signal?: string };
     if (failure.killed || failure.signal || failure.code === 'ETIMEDOUT') throw new Error('Bluetooth scan timed out.');
-    throw new Error(`Windows Bluetooth command failed${failure.code ? ` (${failure.code})` : ''}.`);
+    throw new Error(`Bluetooth action failed${failure.code ? ` (${failure.code})` : ''}.`);
   }
 }
 
@@ -344,7 +344,7 @@ function normalizeDevices(value: RawBluetoothScan['devices']): BluetoothDeviceSu
 function safeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/access is denied|access denied|denied by system/i.test(message)) {
-    return 'Windows denied Bluetooth access. Check that Bluetooth is enabled and NXGS has permission to manage devices.';
+    return 'Bluetooth access was denied. Check that Bluetooth is on and NXGS can manage devices.';
   }
   if (/timeout/i.test(message)) return 'Bluetooth did not respond before the scan timed out.';
   return message || 'Bluetooth operation failed.';
@@ -353,26 +353,26 @@ function safeError(error: unknown): string {
 function windowsPairingError(code: string): string {
   if (code === '1223') return 'Pairing was cancelled.';
   if (code === '1460') return 'Pairing timed out. Keep the device in pairing mode and try again.';
-  if (code === '1244' || code === '86') return 'Windows rejected the device authentication.';
-  if (code === '5') return 'Windows denied permission to pair this device.';
-  return `Pairing failed (Windows error ${code}). Keep the device in pairing mode and try again.`;
+  if (code === '1244' || code === '86') return 'Device authentication was rejected.';
+  if (code === '5') return 'Permission to pair this device was denied.';
+  return `Pairing failed (error ${code}). Keep the device in pairing mode and try again.`;
 }
 
 function windowsDisconnectError(code: string): string {
-  if (code === '5') return 'Windows denied permission to disconnect this device. The device remains paired.';
-  if (code === '50' || code === '1') return 'Windows cannot disconnect this device profile from an app. Turn the device off, then scan again.';
-  return `Windows could not disconnect this device (error ${code}). The device remains paired.`;
+  if (code === '5') return 'Permission to disconnect this device was denied. The device remains paired.';
+  if (code === '50' || code === '1') return 'This device profile cannot be disconnected here. Turn the device off, then scan again.';
+  return `This device could not be disconnected (error ${code}). It remains paired.`;
 }
 
 function windowsRemoveError(code: string): string {
-  if (code === '5') return 'Windows denied permission to remove this device.';
+  if (code === '5') return 'Permission to remove this device was denied.';
   if (code === '1168') return 'Device not found. It may already have been removed.';
-  return `Windows could not remove this device (error ${code}).`;
+  return `This device could not be removed (error ${code}).`;
 }
 
 export async function scanBluetoothDevices(): Promise<BluetoothStatus> {
   if (process.platform !== 'win32') {
-    return { supported: false, radioState: 'unsupported', devices: [], message: 'Bluetooth management is available on Windows.' };
+    return { supported: false, radioState: 'unsupported', devices: [], message: 'Bluetooth management is unavailable on this system.' };
   }
   try {
     const result = await runPowerShell<RawBluetoothScan>(SCAN_SCRIPT);
@@ -413,7 +413,7 @@ export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): 
     return {
       ok: true,
       status: 'paired',
-      message: 'Paired. Wake the controller or press its Home button while Windows finishes connecting it.',
+      message: 'Paired. Wake the controller or press its Home button while the connection finishes.',
       bluetooth
     };
   } catch (error) {

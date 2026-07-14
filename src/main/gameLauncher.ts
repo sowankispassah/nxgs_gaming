@@ -125,7 +125,7 @@ export class GameLauncher {
 
   async launch(game: GameRecord): Promise<void> {
     if (process.platform !== 'win32') {
-      throw new Error('NXGS Play game launching is only supported on Windows.');
+      throw new Error('Game launching is unavailable on this device.');
     }
 
     if (this.operationInFlight) {
@@ -361,7 +361,7 @@ export class GameLauncher {
         }
 
         const message = untrackedStoreApp
-          ? `NXGS retried ${game.title} for several seconds, but Windows has not exposed its window yet. The game remains in the switcher; try Resume Game again.`
+          ? `${game.title} is still starting. The game remains in the switcher; try Resume Game again in a moment.`
           : 'NXGS Play could not find the running game window. The switcher will stay open so you can retry.';
         await logLine('warn', `Resume requested for ${game.title}, but no game window was found.`);
         this.setActiveState({
@@ -443,7 +443,7 @@ export class GameLauncher {
     try {
       const window = this.activeWindow ?? (await this.getActiveWindow(game));
       if (!window) {
-        const message = `${game.title} remains active, but Windows did not expose a controllable window. Returning to Launcher Home.`;
+        const message = `${game.title} is still active but is not ready to resume yet. Returning to Launcher Home.`;
         this.gameInForeground = false;
         this.clearReinforcementTimers();
         this.focusLauncher();
@@ -1111,7 +1111,7 @@ export class GameLauncher {
           : await resumeGameWindowFast(targetWindow, launchMode);
         this.assertFocusOperationCurrent(focusGeneration, game);
         if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
-          throw new Error('Windows did not confirm the game window in the foreground. NXGS kept the switcher visible.');
+          throw new Error('This game is not ready to resume yet. Try again in a moment.');
         }
       } else {
         this.showLaunchShield();
@@ -1134,7 +1134,7 @@ export class GameLauncher {
         this.assertFocusOperationCurrent(focusGeneration, game);
       }
       if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
-        throw new Error('Windows did not confirm the game window in the foreground. NXGS Play stayed visible.');
+        throw new Error('This game is not ready to resume yet. Try again in a moment.');
       }
 
       await logLine('info', `${reason} handoff for ${game.title}: visible, focused game window confirmed.`);

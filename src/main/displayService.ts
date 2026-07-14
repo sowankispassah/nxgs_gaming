@@ -34,13 +34,13 @@ function normalizeLevel(value: unknown): number {
 function safeMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/invalid class|not found|not supported/i.test(message)) return 'Brightness control is not supported on this display.';
-  if (/access.+denied/i.test(message)) return 'Windows denied access to brightness control.';
-  return message || 'Windows display control failed.';
+  if (/access.+denied/i.test(message)) return 'Access to brightness control was denied.';
+  return message || 'The display action failed.';
 }
 
 async function readBrightness(): Promise<DisplayStatus['brightness']> {
   if (process.platform !== 'win32') {
-    return { supported: false, level: 0, message: 'Brightness control is available on supported Windows displays.' };
+    return { supported: false, level: 0, message: 'Brightness control is unavailable on this display.' };
   }
   const encoded = Buffer.from(GET_BRIGHTNESS_SCRIPT, 'utf16le').toString('base64');
   try {
@@ -62,16 +62,16 @@ async function readBrightness(): Promise<DisplayStatus['brightness']> {
 function fallbackAdvancedFeatures(primary?: DisplayDeviceInfo): AdvancedDisplayFeatures {
   return {
     colorProfile: {
-      currentProfile: primary?.colorSpace?.trim() || 'Windows system default',
+      currentProfile: primary?.colorSpace?.trim() || 'System default',
       availableProfiles: [],
       switchingSupported: false,
-      message: 'Windows did not expose selectable color profiles for this display.'
+      message: 'No selectable color profiles were found for this display.'
     },
     hdr: {
       support: 'unknown',
       enabled: false,
       controlSupported: false,
-      message: 'Windows did not expose reliable HDR capability information for this display.'
+      message: 'HDR capability information is unavailable for this display.'
     }
   };
 }
@@ -88,11 +88,11 @@ function buildStatus(displays: DisplayDeviceInfo[], brightness: DisplayStatus['b
       supported: false,
       enabled: false,
       controlSupported: false,
-      message: 'Windows does not expose a supported public desktop API for Night Light. NXGS will not edit undocumented system data or open Windows Settings.'
+      message: 'Night Light control is unavailable on this device.'
     },
     colorProfile: features.colorProfile,
     hdr: features.hdr,
-    message: displays.length === 0 ? 'Windows did not report an active display.' : undefined
+    message: displays.length === 0 ? 'No active display was found.' : undefined
   };
 }
 
@@ -103,8 +103,8 @@ export async function getDisplayStatus(displays: DisplayDeviceInfo[]): Promise<D
       if (cachedAdvancedFeatures) return cachedAdvancedFeatures;
       const fallback = fallbackAdvancedFeatures(displays.find((display) => display.primary) ?? displays[0]);
       const message = safeMessage(error);
-      fallback.colorProfile.message = `Windows color-profile query failed: ${message}`;
-      fallback.hdr.message = `Windows HDR query failed: ${message}`;
+      fallback.colorProfile.message = `Color-profile check failed: ${message}`;
+      fallback.hdr.message = `HDR check failed: ${message}`;
       return fallback;
     })
   ]);

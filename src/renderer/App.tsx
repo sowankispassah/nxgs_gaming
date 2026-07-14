@@ -151,7 +151,7 @@ export function App(): JSX.Element {
     setAdminUnlockRequest({
       source: request?.source ?? 'ui',
       key: request?.key,
-      message: request?.message ?? 'Enter Admin PIN to unlock PC controls.',
+      message: request?.message ?? 'Enter Admin PIN to unlock admin controls.',
       requestedAt: request?.requestedAt ?? new Date().toISOString()
     });
     setPinOpen(true);
@@ -723,8 +723,7 @@ function AdminOptionsDialog(props: { onAction: (action: KioskAdminAction) => Pro
           {pendingAction === 'returnLocked' ? 'Locking...' : 'Return to Locked Mode'}
         </button>
         <p className="admin-lockdown-note">
-          Ctrl+Alt+Del is protected by Windows. Production devices should also use Assigned Access, Shell Launcher,
-          Group Policy, or a restricted Windows kiosk account.
+          System security shortcuts remain protected while customer mode is active.
         </p>
       </section>
     </div>
@@ -741,7 +740,7 @@ function GameTransitionOverlay(props: { activeGame: ActiveGameState }): JSX.Elem
         <span>{props.activeGame.message ?? 'Preparing the game window...'}</span>
         <div className="launch-help">
           <span>Press Ctrl + Shift + H or F10 to return to NXGS.</span>
-          <span>Press controller Home or Options + Share to open NXGS when supported by Windows.</span>
+          <span>Press controller Home or Options + Share to open NXGS when supported by the connected controller.</span>
         </div>
       </div>
     </div>
@@ -1291,7 +1290,7 @@ function GameForm(props: {
           )}
         </div>
         {props.form.launchType === 'microsoftStore' && (
-          <small className="field-note">Use the AppUserModelId from Choose Installed Game. No hidden WindowsApps EXE path is required.</small>
+          <small className="field-note">Use the app identifier from Choose Installed Game. No hidden executable path is required.</small>
         )}
       </div>
       <div className="form-field full">
@@ -1573,20 +1572,20 @@ function KioskSettingsPanel(props: {
           <DiagnosticItem label="Game process ID" value={diagnostics.activeGame.processId?.toString() ?? 'none'} />
           <DiagnosticItem label="Game window handle" value={diagnostics.activeGame.windowHandle?.toString() ?? 'none'} />
           <DiagnosticItem label="Game window detected" value={diagnostics.activeGame.windowDetected ? 'yes' : 'no'} />
-          <DiagnosticItem label="Game window state" value={diagnostics.activeGame.windowState ?? 'unknown'} />
+          <DiagnosticItem label="Game state" value={diagnostics.activeGame.windowState ?? 'unknown'} />
           <DiagnosticItem label="Last Home result" value={diagnostics.activeGame.lastHomeResult ?? 'none'} />
           <DiagnosticItem label="Last Resume result" value={diagnostics.activeGame.lastResumeResult ?? 'none'} />
           <DiagnosticItem label="Last handoff error" value={diagnostics.activeGame.lastError ?? 'none'} />
           <DiagnosticItem label="NXGS visible" value={diagnostics.kiosk.launcherVisible ? 'yes' : 'no'} />
-          <DiagnosticItem label="Taskbar hidden" value={diagnostics.kiosk.taskbarHidden ? 'yes' : 'no'} />
+          <DiagnosticItem label="System bar hidden" value={diagnostics.kiosk.taskbarHidden ? 'yes' : 'no'} />
           <DiagnosticItem label="Always on top" value={diagnostics.kiosk.alwaysOnTop ? 'yes' : 'no'} />
           <DiagnosticItem label="Last Home trigger" value={diagnostics.kiosk.lastHomeTrigger ?? 'none'} />
           <DiagnosticItem label="Last restricted input" value={diagnostics.kiosk.lastRestrictedInput ?? 'none'} />
           <DiagnosticItem label="Last input error" value={diagnostics.kiosk.lastInputError ?? 'none'} />
         </div>
         <p className="field-note">
-          Controller Home depends on Windows/controller driver. Ctrl+Shift+H and F10 are test fallbacks; production kiosk
-          lockdown still requires Windows Assigned Access, Shell Launcher, Group Policy, or a restricted Windows user.
+          Controller Home support depends on the connected controller. Ctrl+Shift+H and F10 are test fallbacks; production
+          lockdown depends on the configured device policy.
         </p>
         {diagnostics.shortcuts.failures.length > 0 && (
           <div className="diagnostics-warning">

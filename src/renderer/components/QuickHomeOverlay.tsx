@@ -44,7 +44,7 @@ const EMPTY_DISPLAY: DisplayStatus = {
   displays: [],
   brightness: { supported: false, level: 0, message: 'Checking brightness support...' },
   nightLight: { supported: false, enabled: false, controlSupported: false, message: 'Night Light is unavailable.' },
-  colorProfile: { currentProfile: 'Windows system default', availableProfiles: [], switchingSupported: false, message: 'Color profile switching is unavailable.' },
+  colorProfile: { currentProfile: 'System default', availableProfiles: [], switchingSupported: false, message: 'Color profile switching is unavailable.' },
   hdr: { support: 'unknown', enabled: false, controlSupported: false, message: 'HDR status is unavailable.' }
 };
 
@@ -200,14 +200,14 @@ export function QuickHomeOverlay(props: {
     if (audioBusy.current) return;
     audioBusy.current = true;
     setAudioPending('refresh');
-    setAudioMessage('Reading Windows volume...');
+    setAudioMessage('Reading volume...');
     try {
       const next = await window.nxgs.getAudioStatus();
       setAudio(next);
       setDisplayVolume(next.masterVolume);
-      setAudioMessage(next.supported ? '' : next.message ?? 'Windows volume is unavailable.');
+      setAudioMessage(next.supported ? '' : next.message ?? 'Volume control is unavailable.');
     } catch (error) {
-      setAudioMessage(error instanceof Error ? error.message : 'Could not read Windows volume.');
+      setAudioMessage(error instanceof Error ? error.message : 'Could not read the current volume.');
     } finally {
       audioBusy.current = false;
       setAudioPending(null);
@@ -254,7 +254,7 @@ export function QuickHomeOverlay(props: {
           }
         }
       } catch (error) {
-        setAudioMessage(error instanceof Error ? error.message : 'Could not change Windows volume.');
+        setAudioMessage(error instanceof Error ? error.message : 'Could not change the volume.');
       } finally {
         volumeFlushActive.current = false;
         setAudioPending(null);
@@ -269,7 +269,7 @@ export function QuickHomeOverlay(props: {
 
   const refreshDisplay = useCallback(async (): Promise<void> => {
     setBrightnessPending('refresh');
-    setBrightnessMessage('Reading Windows brightness...');
+    setBrightnessMessage('Reading brightness...');
     try {
       const next = await window.nxgs.getDisplayStatus();
       setDisplay(next);
@@ -278,7 +278,7 @@ export function QuickHomeOverlay(props: {
       setDisplayBrightness(next.brightness.level);
       setBrightnessMessage(next.brightness.supported ? '' : next.brightness.message ?? 'Brightness control is not supported on this display.');
     } catch (error) {
-      setBrightnessMessage(error instanceof Error ? error.message : 'Could not read Windows brightness.');
+      setBrightnessMessage(error instanceof Error ? error.message : 'Could not read the current brightness.');
     } finally {
       setBrightnessPending(null);
     }
@@ -324,7 +324,7 @@ export function QuickHomeOverlay(props: {
           }
         }
       } catch (error) {
-        setBrightnessMessage(error instanceof Error ? error.message : 'Could not change Windows brightness.');
+        setBrightnessMessage(error instanceof Error ? error.message : 'Could not change the brightness.');
       } finally {
         brightnessFlushActive.current = false;
         setBrightnessPending(null);
@@ -772,7 +772,7 @@ export function QuickHomeOverlay(props: {
               </section>
             )}
             {item.key === 'volume' && volumeOpen && (
-              <section className="quick-volume-control" id="quick-volume-control" aria-label="Quick Windows volume control">
+              <section className="quick-volume-control" id="quick-volume-control" aria-label="Quick volume control">
                 <header>
                   <span className={audio.muted ? 'muted' : ''}>
                     {audioPending === 'refresh'
@@ -784,7 +784,7 @@ export function QuickHomeOverlay(props: {
                     type="button"
                     className={audio.muted ? 'muted' : ''}
                     disabled={audioPending !== null || !audio.supported}
-                    aria-label={audioPending === 'mute' ? 'Updating mute status' : audio.muted ? 'Unmute Windows audio' : 'Mute Windows audio'}
+                    aria-label={audioPending === 'mute' ? 'Updating mute status' : audio.muted ? 'Unmute audio' : 'Mute audio'}
                     onClick={() => void toggleSystemMute()}
                   >
                     {audioPending === 'mute'

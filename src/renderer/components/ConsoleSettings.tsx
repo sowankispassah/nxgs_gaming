@@ -98,7 +98,7 @@ const EMPTY_DISPLAY: DisplayStatus = {
   displays: [],
   brightness: { supported: false, level: 0, message: 'Checking brightness support...' },
   nightLight: { supported: false, enabled: false, controlSupported: false, message: 'Night Light status is unavailable.' },
-  colorProfile: { currentProfile: 'Windows system default', availableProfiles: [], switchingSupported: false, message: 'Color profile switching is not supported yet.' },
+  colorProfile: { currentProfile: 'System default', availableProfiles: [], switchingSupported: false, message: 'Color profile switching is not supported yet.' },
   hdr: { support: 'unknown', enabled: false, controlSupported: false, message: 'HDR status is unavailable.' }
 };
 
@@ -193,14 +193,14 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     if (audioBusy.current) return;
     audioBusy.current = true;
     setAudioPending('refresh');
-    setAudioFeedback({ tone: 'info', message: 'Reading Windows sound settings...' });
+    setAudioFeedback({ tone: 'info', message: 'Reading audio settings...' });
     try {
       const next = await window.nxgs.getAudioStatus();
       setAudio(next);
       setDisplayVolume(next.masterVolume);
-      setAudioFeedback(next.supported ? null : { tone: 'error', message: next.message ?? 'Windows sound controls are unavailable.' });
+      setAudioFeedback(next.supported ? null : { tone: 'error', message: next.message ?? 'Audio controls are unavailable.' });
     } catch (error) {
-      setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read Windows sound settings.' });
+      setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read audio settings.' });
     } finally {
       audioBusy.current = false;
       setAudioPending(null);
@@ -211,7 +211,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     if (displayBusy.current) return;
     displayBusy.current = true;
     setDisplayPending('refresh');
-    setDisplayFeedback({ tone: 'info', message: 'Reading Windows display information...' });
+    setDisplayFeedback({ tone: 'info', message: 'Reading display information...' });
     try {
       const next = await window.nxgs.getDisplayStatus();
       setDisplay(next);
@@ -220,9 +220,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         ? next.brightness.supported
           ? null
           : { tone: 'warning', message: next.brightness.message ?? 'Brightness control is not supported on this display.' }
-        : { tone: 'error', message: next.message ?? 'Windows display information is unavailable.' });
+        : { tone: 'error', message: next.message ?? 'Display information is unavailable.' });
     } catch (error) {
-      setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read Windows display information.' });
+      setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read display information.' });
     } finally {
       displayBusy.current = false;
       setDisplayPending(null);
@@ -894,14 +894,14 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
               );
             }) : <p className="settings-placeholder">No Bluetooth devices found. Put the controller in pairing mode and select Scan for Devices.</p>}
           </div>
-          <p className="settings-capability-note">Disconnect keeps the device paired. Remove Device clears the Windows pairing, so the device must be scanned and paired again. Windows controls the final connection for some Bluetooth profiles; NXGS will show a clear message when a device cannot be disconnected by an app.</p>
+          <p className="settings-capability-note">Disconnect keeps the device paired. Remove Device clears the saved pairing, so the device must be scanned and paired again. Some device profiles control their own final connection; NXGS will show a clear message when they cannot be disconnected here.</p>
           {removeBluetoothTarget && (
             <div className="bluetooth-confirmation-backdrop" role="presentation">
               <div className="bluetooth-remove-confirmation settings-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="bluetooth-remove-title" aria-describedby="bluetooth-remove-description">
                 <Trash2 size={30} />
                 <h3 id="bluetooth-remove-title">Remove this Bluetooth device?</h3>
                 <strong>{removeBluetoothTarget.name}</strong>
-                <p id="bluetooth-remove-description">This removes the Windows pairing. You will need to scan and pair the device again to use it later.</p>
+                <p id="bluetooth-remove-description">This removes the saved pairing. You will need to scan and pair the device again to use it later.</p>
                 <div className="settings-action-row">
                   <button id="bluetooth-remove-cancel" data-settings-action type="button" disabled={bluetoothPending?.startsWith('remove:')} onClick={() => setRemoveBluetoothTarget(null)}>Cancel</button>
                   <button className="danger" data-settings-action type="button" disabled={bluetoothPending?.startsWith('remove:')} onClick={() => void confirmRemoveBluetoothDevice()}>
@@ -929,7 +929,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <SettingsDetail
           title="System"
           icon={<Settings size={34} />}
-          subtitle="Windows display and audio controls, inside NXGS"
+          subtitle="Display and audio controls"
           onFocus={() => setDetailMode(true)}
           action={(
             <button className="system-refresh-button" data-settings-action type="button" disabled={displayPending !== null || audioPending !== null} onClick={() => void refreshSystem()}>
@@ -948,7 +948,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
 
               <div className="system-primary-display">
                 <span>{activeDisplay?.primary ? 'Primary display' : 'Active display'}</span>
-                <strong>{activeDisplay?.name ?? 'Windows display'}</strong>
+                <strong>{activeDisplay?.name ?? 'Active display'}</strong>
               </div>
 
               <div className={`system-slider-card ${display.brightness.supported ? '' : 'unsupported'}`}>
@@ -995,12 +995,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             <section className="system-section" aria-labelledby="system-sound-heading">
               <div className="system-section-title">
                 {audio.muted ? <VolumeX size={31} /> : <Volume2 size={31} />}
-                <div><span>Windows audio</span><h3 id="system-sound-heading">Sound</h3></div>
+                <div><span>Audio controls</span><h3 id="system-sound-heading">Audio</h3></div>
               </div>
               {audioFeedback && <div className={`settings-feedback ${audioFeedback.tone}`} role="status">{audioFeedback.message}</div>}
 
               <div className="system-volume-card">
-                <div className="system-volume-summary"><small>Current volume</small><strong>{audio.muted ? 'Muted' : `${displayVolume}% volume`}</strong><span>{outputDevice?.name ?? audio.currentOutputName ?? 'Windows default output'}</span></div>
+                <div className="system-volume-summary"><small>Current volume</small><strong>{audio.muted ? 'Muted' : `${displayVolume}% volume`}</strong><span>{outputDevice?.name ?? audio.currentOutputName ?? 'Default output device'}</span></div>
                 <div className="system-volume-controls">
                   <button data-settings-action type="button" aria-label="Volume down" disabled={audioPending !== null || displayVolume <= 0} onClick={() => void applyMasterVolume(displayVolume - 5, 'down')}>
                     {audioPending === 'volume-down' ? <LoaderCircle size={18} className="spin" /> : <Minus size={19} />}
@@ -1032,7 +1032,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
                   {audioPending === 'mute' ? <LoaderCircle size={18} className="spin" /> : audio.muted ? <Volume2 size={18} /> : <VolumeX size={18} />}
                   {audioPending === 'mute' ? audio.muted ? 'Unmuting...' : 'Muting...' : audio.muted ? 'Unmute' : 'Mute'}
                 </button>
-                {volumeBusy && <small className="system-inline-status active">Updating Windows volume...</small>}
+                {volumeBusy && <small className="system-inline-status active">Updating volume...</small>}
               </div>
 
               <div className="system-current-devices">
@@ -1042,7 +1042,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
 
               <SystemDeviceList title="Output devices" icon={<Headphones size={20} />} devices={audio.outputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
               <SystemDeviceList title="Microphones" icon={<Mic2 size={20} />} devices={audio.inputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
-              {!audio.deviceSwitchingSupported && <p className="system-capability-note">Windows device switching is unavailable on this PC. Volume and mute remain fully functional inside NXGS.</p>}
+              {!audio.deviceSwitchingSupported && <p className="system-capability-note">Output switching is unavailable on this device. Volume and mute remain fully functional inside NXGS.</p>}
             </section>
           </div>
         </SettingsDetail>
@@ -1104,7 +1104,7 @@ function SystemDeviceList(props: { title: string; icon: JSX.Element; devices: Au
               )}
             </div>
           );
-        }) : <p className="settings-placeholder">No devices were reported by Windows.</p>}
+        }) : <p className="settings-placeholder">No audio devices were found.</p>}
       </div>
     </section>
   );

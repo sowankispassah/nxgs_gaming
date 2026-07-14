@@ -266,7 +266,7 @@ async function scanMicrosoftStoreApps(): Promise<GameSuggestion[]> {
         launchMethod: 'AppUserModelId',
         status: 'ready',
         notes:
-          'Detected from Windows Start Apps/Appx packages. UWP process monitoring is best-effort; the session timer remains authoritative.'
+          'Detected from installed app packages. Process monitoring is best-effort; the session timer remains authoritative.'
       })
     );
 }

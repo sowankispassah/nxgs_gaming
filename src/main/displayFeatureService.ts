@@ -166,16 +166,16 @@ public static class NxgsDisplayFeatures {
             uint pathCount;
             uint modeCount;
             int result = GetDisplayConfigBufferSizes(QdcOnlyActivePaths, out pathCount, out modeCount);
-            if (result != 0) throw new Win32Exception(result, "Windows could not enumerate active displays");
+            if (result != 0) throw new Win32Exception(result, "Active displays could not be listed");
             var paths = new PathInfo[pathCount];
             var modes = new ModeInfo[modeCount];
             result = QueryDisplayConfig(QdcOnlyActivePaths, ref pathCount, paths, ref modeCount, modes, IntPtr.Zero);
             if (result == 122) continue;
-            if (result != 0) throw new Win32Exception(result, "Windows could not query the active display configuration");
-            if (pathCount == 0) throw new InvalidOperationException("Windows did not report an active display path.");
+            if (result != 0) throw new Win32Exception(result, "The active display configuration could not be read");
+            if (pathCount == 0) throw new InvalidOperationException("No active display path was found.");
             return paths[0];
         }
-        throw new InvalidOperationException("The Windows display configuration changed while NXGS was reading it.");
+        throw new InvalidOperationException("The display configuration changed while NXGS was reading it.");
     }
 
     private static void ReadHdr(PathInfo path, NxgsDisplayFeatureSnapshot snapshot) {
@@ -189,7 +189,7 @@ public static class NxgsDisplayFeatures {
                 snapshot.HdrEnabled = (info2.Value & (1u << 5)) != 0;
                 snapshot.HdrControlSupported = snapshot.HdrSupported && (info2.Value & (1u << 3)) == 0;
                 snapshot.HdrMessage = snapshot.HdrSupported
-                    ? snapshot.HdrControlSupported ? "Windows HDR control is available." : "HDR is limited by Windows policy or the display driver."
+                    ? snapshot.HdrControlSupported ? "HDR control is available." : "HDR is limited by device policy or the display driver."
                     : "HDR is not supported on this display.";
                 return;
             }
@@ -203,7 +203,7 @@ public static class NxgsDisplayFeatures {
                 snapshot.HdrEnabled = (info.Value & 2u) != 0;
                 snapshot.HdrControlSupported = snapshot.HdrSupported && (info.Value & 8u) == 0;
                 snapshot.HdrMessage = snapshot.HdrSupported
-                    ? snapshot.HdrControlSupported ? "Windows Advanced Color control is available." : "Advanced Color is disabled by Windows or the display driver."
+                    ? snapshot.HdrControlSupported ? "Advanced Color control is available." : "Advanced Color is disabled by device policy or the display driver."
                     : "HDR is not supported on this display.";
                 return;
             }
@@ -262,13 +262,13 @@ public static class NxgsDisplayFeatures {
             string current = ReadDefaultProfile(scope, path);
             if (String.IsNullOrWhiteSpace(current) && scope != 0) current = ReadDefaultProfile(0, path);
             snapshot.ColorProfiles = profiles;
-            snapshot.CurrentColorProfile = String.IsNullOrWhiteSpace(current) ? "Windows system default" : current;
+            snapshot.CurrentColorProfile = String.IsNullOrWhiteSpace(current) ? "System default" : current;
             snapshot.ColorSwitchSupported = profiles.Length > 0;
             snapshot.ColorMessage = profiles.Length > 0
                 ? "Choose an installed profile associated with this display."
-                : "Windows did not report selectable color profiles for this display.";
+                : "No selectable color profiles were found for this display.";
         } catch (EntryPointNotFoundException) {
-            snapshot.ColorMessage = "Display color-profile switching requires a newer Windows color-management API.";
+            snapshot.ColorMessage = "Color-profile switching is unavailable on this device.";
         } catch (Exception error) {
             snapshot.ColorMessage = error.Message;
         }
@@ -280,11 +280,11 @@ public static class NxgsDisplayFeatures {
             HdrSupported = false,
             HdrEnabled = false,
             HdrControlSupported = false,
-            HdrMessage = "Windows did not expose HDR information for this display.",
-            CurrentColorProfile = "Windows system default",
+            HdrMessage = "HDR information is unavailable for this display.",
+            CurrentColorProfile = "System default",
             ColorProfiles = new string[0],
             ColorSwitchSupported = false,
-            ColorMessage = "Windows did not expose display color profiles."
+            ColorMessage = "Display color profiles are unavailable."
         };
         var path = PrimaryPath();
         ReadHdr(path, snapshot);
@@ -304,7 +304,7 @@ public static class NxgsDisplayFeatures {
             packet.Header = Header(SetAdvancedColorState, Marshal.SizeOf(typeof(SetColorState)), path.TargetInfo.AdapterId, path.TargetInfo.Id);
             result = SetAdvancedInfo(ref packet);
         }
-        if (result != 0) throw new Win32Exception(result, "Windows could not change HDR");
+        if (result != 0) throw new Win32Exception(result, "HDR could not be changed");
     }
 
     public static void SetColorProfile(string profileName) {
@@ -347,16 +347,16 @@ function normalizeFeatures(raw: RawDisplayFeatures): AdvancedDisplayFeatures {
   const hdrSupported = raw.HdrSupported === true;
   return {
     colorProfile: {
-      currentProfile: normalizeMessage(raw.CurrentColorProfile, 'Windows system default'),
+      currentProfile: normalizeMessage(raw.CurrentColorProfile, 'System default'),
       availableProfiles: profiles,
       switchingSupported: raw.ColorSwitchSupported === true && profiles.length > 0,
-      message: normalizeMessage(raw.ColorMessage, 'Windows did not expose selectable color profiles.')
+      message: normalizeMessage(raw.ColorMessage, 'No selectable color profiles were found.')
     },
     hdr: {
       support: hdrKnown ? hdrSupported ? 'supported' : 'unsupported' : 'unknown',
       enabled: raw.HdrEnabled === true,
       controlSupported: raw.HdrControlSupported === true,
-      message: normalizeMessage(raw.HdrMessage, 'Windows did not expose reliable HDR capability information for this display.')
+      message: normalizeMessage(raw.HdrMessage, 'HDR capability information is unavailable for this display.')
     }
   };
 }
@@ -364,8 +364,8 @@ function normalizeFeatures(raw: RawDisplayFeatures): AdvancedDisplayFeatures {
 async function runFeatureAction(action: 'status' | 'set-hdr' | 'set-profile', value = ''): Promise<AdvancedDisplayFeatures> {
   if (process.platform !== 'win32') {
     return {
-      colorProfile: { currentProfile: 'Windows system default', availableProfiles: [], switchingSupported: false, message: 'Color-profile switching is available on supported Windows displays.' },
-      hdr: { support: 'unknown', enabled: false, controlSupported: false, message: 'HDR control is available on supported Windows displays.' }
+      colorProfile: { currentProfile: 'System default', availableProfiles: [], switchingSupported: false, message: 'Color-profile switching is unavailable on this display.' },
+      hdr: { support: 'unknown', enabled: false, controlSupported: false, message: 'HDR control is unavailable on this display.' }
     };
   }
   const stdout = await new Promise<string>((resolve, reject) => {
@@ -378,7 +378,7 @@ async function runFeatureAction(action: 'status' | 'set-hdr' | 'set-profile', va
     let diagnostics = '';
     const timeout = setTimeout(() => {
       child.kill();
-      reject(new Error('Windows display features did not respond in time.'));
+      reject(new Error('Display controls did not respond in time.'));
     }, 20000);
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -391,13 +391,13 @@ async function runFeatureAction(action: 'status' | 'set-hdr' | 'set-profile', va
     child.once('exit', (code) => {
       clearTimeout(timeout);
       if (code === 0 && output.trim()) resolve(`${output}\n${diagnostics}`);
-      else reject(new Error(diagnostics.trim() || `Windows display feature process exited with code ${code ?? 'unknown'}.`));
+      else reject(new Error(diagnostics.trim() || `Display controls stopped with code ${code ?? 'unknown'}.`));
     });
     child.stdin.end(`${DISPLAY_FEATURE_SCRIPT}\n\n`);
   });
   const jsonStart = stdout.lastIndexOf('{"HdrKnown"');
   const jsonEnd = stdout.lastIndexOf('}');
-  if (jsonStart < 0 || jsonEnd <= jsonStart) throw new Error('Windows did not return display feature data.');
+  if (jsonStart < 0 || jsonEnd <= jsonStart) throw new Error('No display feature data was returned.');
   return normalizeFeatures(JSON.parse(stdout.slice(jsonStart, jsonEnd + 1)) as RawDisplayFeatures);
 }
 

@@ -48,7 +48,7 @@ export class KioskInputService {
     restrictedRegisteredCount: 0,
     failures: []
   };
-  private readonly nativeHook = new NativeKioskHook((input) => this.blockRestrictedInput('Native Windows input guard', input));
+  private readonly nativeHook = new NativeKioskHook((input) => this.blockRestrictedInput('Native system input guard', input));
 
   constructor(private readonly events: KioskInputEvents) {}
 
@@ -236,7 +236,7 @@ export class KioskInputService {
 
   private getRestrictedInput(input: Electron.Input): { source: string } | null {
     if (this.isWindowsSystemInput(input)) {
-      return { source: 'Windows key' };
+      return { source: 'System key' };
     }
 
     const key = input.key.toLowerCase();
