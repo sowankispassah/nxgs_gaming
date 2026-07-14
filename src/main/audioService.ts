@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { AudioActionResult, AudioDeviceSummary, AudioStatus } from '../shared/types';
+import { runWindowsControl } from './windowsControlWorker';
 
 const execFileAsync = promisify(execFile);
+let cachedAudioStatus: AudioStatus | null = null;
 
 const CORE_AUDIO_PREAMBLE = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -395,7 +397,8 @@ export async function getAudioStatus(): Promise<AudioStatus> {
     };
   }
   try {
-    return normalizeStatus(await runPowerShell<RawAudioSnapshot>(GET_AUDIO_SCRIPT));
+    cachedAudioStatus = normalizeStatus(await runPowerShell<RawAudioSnapshot>(GET_AUDIO_SCRIPT));
+    return cachedAudioStatus;
   } catch (error) {
     return {
       supported: false,
@@ -415,20 +418,46 @@ export async function setMasterVolume(volume: number): Promise<AudioActionResult
   const normalized = asVolume(volume);
   if (process.platform !== 'win32') return { ok: false, message: 'System volume control is available on Windows.', audio: await getAudioStatus() };
   try {
-    const audio = normalizeStatus(await runPowerShell<RawAudioSnapshot>(SET_VOLUME_SCRIPT, { NXGS_AUDIO_VOLUME: String(normalized) }));
-    return { ok: true, message: `Volume set to ${audio.masterVolume}%`, audio };
+    const result = await runWindowsControl('volume', normalized);
+    if (!result.ok) throw new Error(result.message);
+    const current = cachedAudioStatus ?? await getAudioStatus();
+    cachedAudioStatus = {
+      ...current,
+      supported: true,
+      masterVolume: normalized,
+      outputDevices: current.outputDevices.map((device) => device.isDefault ? { ...device, volume: normalized } : device)
+    };
+    return { ok: true, message: `Volume set to ${normalized}%`, audio: cachedAudioStatus };
   } catch (error) {
-    return { ok: false, message: safeError(error), audio: await getAudioStatus() };
+    try {
+      cachedAudioStatus = normalizeStatus(await runPowerShell<RawAudioSnapshot>(SET_VOLUME_SCRIPT, { NXGS_AUDIO_VOLUME: String(normalized) }));
+      return { ok: true, message: `Volume set to ${cachedAudioStatus.masterVolume}%`, audio: cachedAudioStatus };
+    } catch {
+      return { ok: false, message: safeError(error), audio: await getAudioStatus() };
+    }
   }
 }
 
 export async function setMasterMuted(muted: boolean): Promise<AudioActionResult> {
   if (process.platform !== 'win32') return { ok: false, message: 'System mute control is available on Windows.', audio: await getAudioStatus() };
   try {
-    const audio = normalizeStatus(await runPowerShell<RawAudioSnapshot>(SET_MUTE_SCRIPT, { NXGS_AUDIO_MUTED: muted ? 'true' : 'false' }));
-    return { ok: true, message: audio.muted ? 'System sound muted' : `Sound restored at ${audio.masterVolume}%`, audio };
+    const result = await runWindowsControl('mute', muted);
+    if (!result.ok) throw new Error(result.message);
+    const current = cachedAudioStatus ?? await getAudioStatus();
+    cachedAudioStatus = {
+      ...current,
+      supported: true,
+      muted,
+      outputDevices: current.outputDevices.map((device) => device.isDefault ? { ...device, muted } : device)
+    };
+    return { ok: true, message: muted ? 'System sound muted' : `Sound restored at ${cachedAudioStatus.masterVolume}%`, audio: cachedAudioStatus };
   } catch (error) {
-    return { ok: false, message: safeError(error), audio: await getAudioStatus() };
+    try {
+      cachedAudioStatus = normalizeStatus(await runPowerShell<RawAudioSnapshot>(SET_MUTE_SCRIPT, { NXGS_AUDIO_MUTED: muted ? 'true' : 'false' }));
+      return { ok: true, message: cachedAudioStatus.muted ? 'System sound muted' : `Sound restored at ${cachedAudioStatus.masterVolume}%`, audio: cachedAudioStatus };
+    } catch {
+      return { ok: false, message: safeError(error), audio: await getAudioStatus() };
+    }
   }
 }
 

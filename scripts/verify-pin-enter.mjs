@@ -7,7 +7,7 @@ const root = resolve(import.meta.dirname, '..');
 const electron = process.env.NXGS_TEST_EXECUTABLE || join(root, 'node_modules', 'electron', 'dist', 'electron.exe');
 const profile = await mkdtemp(join(tmpdir(), 'nxgs-pin-enter-'));
 const port = 9339;
-const launchArguments = [`--remote-debugging-port=${port}`];
+const launchArguments = [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`];
 if (!process.env.NXGS_TEST_EXECUTABLE) launchArguments.push('.');
 const appEnvironment = { ...process.env, APPDATA: profile };
 const child = spawn(electron, launchArguments, {
@@ -73,6 +73,10 @@ try {
   await waitFor("Boolean(document.querySelector('button[aria-label=Settings]'))", 'Settings button did not render.');
   await evaluate("document.querySelector('button[aria-label=Settings]').click()");
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Control Room'))", 'Control Room did not render.');
+  await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video').click()");
+  await waitFor("Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('.display-information-grid'))", 'Display settings did not render brightness and display information.');
+  await waitFor("window.nxgs.getDisplayStatus().then((display) => display.brightness.supported ? Number(document.querySelector('input[aria-label=\"Display brightness\"]').value) === display.brightness.level : document.querySelector('.display-brightness-card').textContent.length > 0)", 'Display settings did not show the actual brightness or a clear unsupported state.');
+  console.log('PASS: Display settings showed live Windows display information and brightness capability.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Control Room').click()");
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Enter Control Room'))", 'Control Room detail did not open.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Enter Control Room')).click()");
@@ -93,7 +97,7 @@ try {
   await waitFor("Boolean(document.querySelector('.console-home')) && Boolean(document.querySelector('.windowed-admin-lock:not(:disabled)'))", 'Ctrl+Shift+H did not keep the launcher Home and windowed admin lock control visible.');
   console.log('PASS: Ctrl+Shift+H kept Exit Full Screen in resizable windowed admin mode.');
   await delay(750);
-  const duplicateArguments = process.env.NXGS_TEST_EXECUTABLE ? [] : ['.'];
+  const duplicateArguments = process.env.NXGS_TEST_EXECUTABLE ? [`--user-data-dir=${profile}`] : [`--user-data-dir=${profile}`, '.'];
   duplicateChild = spawn(electron, duplicateArguments, {
     cwd: root,
     env: appEnvironment,
@@ -113,8 +117,16 @@ try {
   console.log('PASS: Lock control restored customer fullscreen, taskbar hiding, and the launcher Home page.');
   await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'h', code: 'KeyH', modifiers: 10, windowsVirtualKeyCode: 72, nativeVirtualKeyCode: 72 });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'h', code: 'KeyH', modifiers: 10, windowsVirtualKeyCode: 72, nativeVirtualKeyCode: 72 });
+  await waitFor("Boolean(document.querySelector('.quick-home-overlay button[aria-label^=\"Quick brightness\"]'))", 'Quick switcher did not render the brightness button.');
   await waitFor("Boolean(document.querySelector('.quick-home-overlay button[aria-label^=\"Quick volume\"]'))", 'Quick switcher did not render the volume button.');
-  await waitFor("[...document.querySelectorAll('.quick-navbar .quick-nav-item')].findIndex((button) => button.getAttribute('aria-label')?.startsWith('Quick volume')) < [...document.querySelectorAll('.quick-navbar .quick-nav-item')].findIndex((button) => button.getAttribute('aria-label') === 'Protected settings')", 'Quick volume was not placed before Settings.');
+  await waitFor("[...document.querySelectorAll('.quick-navbar .quick-nav-item')].findIndex((button) => button.getAttribute('aria-label')?.startsWith('Quick brightness')) < [...document.querySelectorAll('.quick-navbar .quick-nav-item')].findIndex((button) => button.getAttribute('aria-label')?.startsWith('Quick volume')) && [...document.querySelectorAll('.quick-navbar .quick-nav-item')].findIndex((button) => button.getAttribute('aria-label')?.startsWith('Quick volume')) < [...document.querySelectorAll('.quick-navbar .quick-nav-item')].findIndex((button) => button.getAttribute('aria-label') === 'Protected settings')", 'Quick brightness and volume were not placed before Settings in the expected order.');
+  await evaluate("document.querySelector('.quick-home-overlay button[aria-label^=\"Quick brightness\"]').click()");
+  await waitFor("Boolean(document.querySelector('#quick-brightness-control input[aria-label=\"Quick display brightness\"]')) && !document.querySelector('.console-settings-screen')", 'Quick brightness did not open as an inline navbar control.');
+  await waitFor("window.nxgs.getDisplayStatus().then((display) => display.brightness.supported ? Number(document.querySelector('#quick-brightness-control input').value) === display.brightness.level : document.querySelector('#quick-brightness-control footer').textContent.trim().length > 0)", 'Quick brightness did not show the actual Windows brightness or a clear unsupported state.');
+  console.log('PASS: Quick switcher brightness opened inline before volume and showed the real Windows capability.');
+  await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'b', code: 'KeyB', windowsVirtualKeyCode: 66, nativeVirtualKeyCode: 66 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'b', code: 'KeyB', windowsVirtualKeyCode: 66, nativeVirtualKeyCode: 66 });
+  await waitFor("!document.querySelector('#quick-brightness-control')", 'Quick brightness did not close back to the navbar.');
   await evaluate("document.querySelector('.quick-home-overlay button[aria-label^=\"Quick volume\"]').click()");
   await waitFor("Boolean(document.querySelector('#quick-volume-control input[aria-label=\"Quick system volume\"]')) && Boolean(document.querySelector('#quick-volume-control button[aria-label*=\"Windows audio\"]')) && !document.querySelector('.console-settings-screen')", 'Quick volume did not open as an inline navbar control.');
   await waitFor("window.nxgs.getAudioStatus().then((audio) => Number(document.querySelector('#quick-volume-control input').value) === audio.masterVolume)", 'Quick volume did not show the current Windows master volume.');

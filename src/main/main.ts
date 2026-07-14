@@ -7,15 +7,18 @@ import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
 import { disconnectBluetoothDevice, pairBluetoothDevice, removeBluetoothDevice, scanBluetoothDevices } from './bluetoothService';
 import { getAudioStatus, setMasterMuted, setMasterVolume, switchAudioDevice } from './audioService';
+import { getDisplayStatus, setDisplayBrightness, setHdr, setNightLight } from './displayService';
 import { connectWifi, disconnectWifi, forgetWifi, getNetworkStatus } from './networkService';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
 import { setWindowsTaskbarVisible } from './windowManagerService';
+import { stopWindowsControlWorker, warmWindowsControlWorker } from './windowsControlWorker';
 import type {
   AppDiagnostics,
   AppSettings,
   ControllerStateReport,
+  DisplayDeviceInfo,
   FilePickerResult,
   GameControlResult,
   GameImageKind,
@@ -91,6 +94,29 @@ function getLiveMainWindow(): BrowserWindow | null {
     return null;
   }
   return mainWindow;
+}
+
+function getDisplayDevices(): DisplayDeviceInfo[] {
+  const primaryId = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((display, index) => ({
+    id: String(display.id),
+    name: display.label?.trim() || `Display ${index + 1}`,
+    resolution: `${Math.round(display.size.width * display.scaleFactor)} × ${Math.round(display.size.height * display.scaleFactor)}`,
+    refreshRate: Math.round(display.displayFrequency || 0),
+    scalePercent: Math.round(display.scaleFactor * 100),
+    orientation: display.rotation === 90
+      ? 'Portrait'
+      : display.rotation === 180
+        ? 'Landscape (flipped)'
+        : display.rotation === 270
+          ? 'Portrait (flipped)'
+          : 'Landscape',
+    primary: display.id === primaryId,
+    internal: display.internal,
+    colorDepth: display.colorDepth,
+    depthPerComponent: display.depthPerComponent,
+    colorSpace: display.colorSpace
+  }));
 }
 
 function sendToRenderer(channel: string, ...args: unknown[]): void {
@@ -377,6 +403,7 @@ function prepareForQuit(): void {
   sessionTimer.stop('idle', false);
   void setWindowsTaskbarVisible(true);
   kioskInput.unregisterAll();
+  stopWindowsControlWorker();
 }
 
 async function createWindow(): Promise<void> {
@@ -467,6 +494,10 @@ function registerIpc(): void {
   ipcMain.handle('audio:setMuted', async (_event, muted: boolean) => setMasterMuted(muted));
   ipcMain.handle('audio:switchOutput', async (_event, deviceId: string) => switchAudioDevice(deviceId, 'output'));
   ipcMain.handle('audio:switchInput', async (_event, deviceId: string) => switchAudioDevice(deviceId, 'input'));
+  ipcMain.handle('display:getStatus', async () => getDisplayStatus(getDisplayDevices()));
+  ipcMain.handle('display:setBrightness', async (_event, value: number) => setDisplayBrightness(value, getDisplayDevices()));
+  ipcMain.handle('display:setNightLight', async (_event, enabled: boolean) => setNightLight(enabled, getDisplayDevices()));
+  ipcMain.handle('display:setHdr', async (_event, enabled: boolean) => setHdr(enabled, getDisplayDevices()));
 
   ipcMain.handle('kiosk:setMode', (_event, mode: KioskMode) => {
     if (mode !== 'customer') {
@@ -676,6 +707,7 @@ if (!hasSingleInstanceLock) {
     await store.init();
     registerIpc();
     await createWindow();
+    warmWindowsControlWorker();
     kioskInput.register();
     if (secondInstanceFocusPending) {
       focusExistingInstance();

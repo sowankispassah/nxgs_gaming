@@ -302,6 +302,56 @@ export interface AudioActionResult {
   audio: AudioStatus;
 }
 
+export interface DisplayDeviceInfo {
+  id: string;
+  name: string;
+  resolution: string;
+  refreshRate: number;
+  scalePercent: number;
+  orientation: 'Landscape' | 'Portrait' | 'Landscape (flipped)' | 'Portrait (flipped)';
+  primary: boolean;
+  internal: boolean;
+  colorDepth: number;
+  depthPerComponent: number;
+  colorSpace: string;
+}
+
+export interface DisplayStatus {
+  supported: boolean;
+  displays: DisplayDeviceInfo[];
+  currentDisplayId?: string;
+  brightness: {
+    supported: boolean;
+    level: number;
+    message?: string;
+  };
+  nightLight: {
+    supported: boolean;
+    enabled: boolean;
+    controlSupported: boolean;
+    message: string;
+  };
+  colorProfile: {
+    currentProfile: string;
+    availableProfiles: string[];
+    switchingSupported: boolean;
+    message: string;
+  };
+  hdr: {
+    support: 'supported' | 'unsupported' | 'unknown';
+    enabled: boolean;
+    controlSupported: boolean;
+    message: string;
+  };
+  message?: string;
+}
+
+export interface DisplayActionResult {
+  ok: boolean;
+  message: string;
+  display: DisplayStatus;
+}
+
 export type ShellHomeReason =
   | 'global-home'
   | 'global-f10'

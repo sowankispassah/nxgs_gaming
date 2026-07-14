@@ -17,11 +17,14 @@ import {
   LockKeyhole,
   Mic2,
   Minus,
+  Moon,
   Monitor,
+  Palette,
   RefreshCw,
   Search,
   Settings,
   Speaker,
+  Sun,
   Plus,
   Trash2,
   Unplug,
@@ -37,6 +40,7 @@ import type {
   AudioStatus,
   BluetoothDeviceSummary,
   BluetoothStatus,
+  DisplayStatus,
   NetworkStatus,
   WifiNetworkSummary
 } from '../../shared/types';
@@ -92,6 +96,15 @@ const EMPTY_AUDIO: AudioStatus = {
   deviceSwitchingSupported: false
 };
 
+const EMPTY_DISPLAY: DisplayStatus = {
+  supported: true,
+  displays: [],
+  brightness: { supported: false, level: 0, message: 'Checking brightness support...' },
+  nightLight: { supported: false, enabled: false, controlSupported: false, message: 'Night Light status is unavailable.' },
+  colorProfile: { currentProfile: 'Windows system default', availableProfiles: [], switchingSupported: false, message: 'Color profile switching is not supported yet.' },
+  hdr: { support: 'unknown', enabled: false, controlSupported: false, message: 'HDR status is unavailable.' }
+};
+
 function focusableDetailActions(): HTMLElement[] {
   const confirmation = document.querySelector<HTMLElement>('.settings-confirmation-dialog');
   const contextMenu = document.querySelector<HTMLElement>('.wifi-context-menu');
@@ -121,10 +134,18 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [displayVolume, setDisplayVolume] = useState(0);
   const [audioPending, setAudioPending] = useState<string | null>(null);
   const [audioFeedback, setAudioFeedback] = useState<Feedback | null>(null);
+  const [display, setDisplay] = useState<DisplayStatus>(EMPTY_DISPLAY);
+  const [displayBrightness, setDisplayBrightness] = useState(0);
+  const [displayPending, setDisplayPending] = useState<'refresh' | 'night-light' | 'hdr' | null>(null);
+  const [brightnessSyncing, setBrightnessSyncing] = useState(false);
+  const [displayFeedback, setDisplayFeedback] = useState<Feedback | null>(null);
   const [diagnostics, setDiagnostics] = useState<AppDiagnostics | null>(null);
   const networkBusy = useRef(false);
   const bluetoothBusy = useRef(false);
   const audioBusy = useRef(false);
+  const displayBusy = useRef(false);
+  const brightnessTarget = useRef<number | null>(null);
+  const brightnessFlushActive = useRef(false);
   const selected = SETTINGS_ITEMS[selectedIndex];
 
   const refreshNetwork = useCallback(async (): Promise<void> => {
@@ -189,6 +210,28 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
   }, []);
 
+  const refreshDisplay = useCallback(async (): Promise<void> => {
+    if (displayBusy.current) return;
+    displayBusy.current = true;
+    setDisplayPending('refresh');
+    setDisplayFeedback({ tone: 'info', message: 'Reading Windows display information...' });
+    try {
+      const next = await window.nxgs.getDisplayStatus();
+      setDisplay(next);
+      setDisplayBrightness(next.brightness.level);
+      setDisplayFeedback(next.supported
+        ? next.brightness.supported
+          ? null
+          : { tone: 'warning', message: next.brightness.message ?? 'Brightness control is not supported on this display.' }
+        : { tone: 'error', message: next.message ?? 'Windows display information is unavailable.' });
+    } catch (error) {
+      setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read Windows display information.' });
+    } finally {
+      displayBusy.current = false;
+      setDisplayPending(null);
+    }
+  }, []);
+
   useEffect(() => {
     void refreshNetwork();
   }, [refreshNetwork]);
@@ -202,6 +245,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   useEffect(() => {
     if (selected.key === 'sound' && audio.outputDevices.length === 0 && !audioBusy.current) void refreshAudio();
   }, [audio.outputDevices.length, refreshAudio, selected.key]);
+
+  useEffect(() => {
+    if (selected.key === 'screen' && display.displays.length === 0 && !displayBusy.current) void refreshDisplay();
+  }, [display.displays.length, refreshDisplay, selected.key]);
 
   useEffect(() => {
     setDetailMode(false);
@@ -262,6 +309,80 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
   }, [audio.masterVolume]);
 
+  const applyDisplayBrightness = useCallback((value: number): void => {
+    if (!display.brightness.supported) {
+      setDisplayFeedback({ tone: 'warning', message: display.brightness.message ?? 'Brightness control is not supported on this display.' });
+      return;
+    }
+    const nextBrightness = Math.max(0, Math.min(100, Math.round(value)));
+    setDisplayBrightness(nextBrightness);
+    brightnessTarget.current = nextBrightness;
+    if (brightnessFlushActive.current) return;
+
+    brightnessFlushActive.current = true;
+    setBrightnessSyncing(true);
+    void (async () => {
+      try {
+        while (brightnessTarget.current !== null) {
+          const target = brightnessTarget.current;
+          brightnessTarget.current = null;
+          const result = await window.nxgs.setBrightness(target);
+          setDisplay(result.display);
+          if (!result.ok) {
+            setDisplayFeedback({ tone: 'error', message: result.message });
+            setDisplayBrightness(result.display.brightness.level);
+            brightnessTarget.current = null;
+            break;
+          }
+          if (brightnessTarget.current === null) {
+            setDisplayBrightness(result.display.brightness.level);
+            setDisplayFeedback({ tone: 'success', message: result.message });
+          }
+        }
+      } catch (error) {
+        setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to change display brightness.' });
+      } finally {
+        brightnessFlushActive.current = false;
+        setBrightnessSyncing(false);
+        if (brightnessTarget.current !== null) applyDisplayBrightness(brightnessTarget.current);
+      }
+    })();
+  }, [display.brightness.message, display.brightness.supported]);
+
+  const toggleNightLight = useCallback(async (): Promise<void> => {
+    if (displayBusy.current) return;
+    displayBusy.current = true;
+    setDisplayPending('night-light');
+    setDisplayFeedback({ tone: 'info', message: display.nightLight.enabled ? 'Turning Night Light off...' : 'Turning Night Light on...' });
+    try {
+      const result = await window.nxgs.setNightLight(!display.nightLight.enabled);
+      setDisplay(result.display);
+      setDisplayFeedback({ tone: result.ok ? 'success' : 'warning', message: result.message });
+    } catch (error) {
+      setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Night Light could not be changed.' });
+    } finally {
+      displayBusy.current = false;
+      setDisplayPending(null);
+    }
+  }, [display.nightLight.enabled]);
+
+  const toggleHdr = useCallback(async (): Promise<void> => {
+    if (displayBusy.current) return;
+    displayBusy.current = true;
+    setDisplayPending('hdr');
+    setDisplayFeedback({ tone: 'info', message: display.hdr.enabled ? 'Turning HDR off...' : 'Turning HDR on...' });
+    try {
+      const result = await window.nxgs.setHdr(!display.hdr.enabled);
+      setDisplay(result.display);
+      setDisplayFeedback({ tone: result.ok ? 'success' : 'warning', message: result.message });
+    } catch (error) {
+      setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'HDR could not be changed.' });
+    } finally {
+      displayBusy.current = false;
+      setDisplayPending(null);
+    }
+  }, [display.hdr.enabled]);
+
   const toggleMasterMute = useCallback(async (): Promise<void> => {
     if (audioBusy.current) return;
     audioBusy.current = true;
@@ -300,13 +421,20 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
   }, []);
 
-  const adjustFocusedVolume = useCallback((direction: -1 | 1): boolean => {
+  const adjustFocusedSlider = useCallback((direction: -1 | 1): boolean => {
     const active = document.activeElement;
-    if (!(active instanceof HTMLInputElement) || active.dataset.settingsSlider !== 'volume') return false;
-    const next = Math.max(0, Math.min(100, displayVolume + direction * 5));
-    void applyMasterVolume(next, direction > 0 ? 'up' : 'down');
-    return true;
-  }, [applyMasterVolume, displayVolume]);
+    if (!(active instanceof HTMLInputElement)) return false;
+    if (active.dataset.settingsSlider === 'volume') {
+      const next = Math.max(0, Math.min(100, displayVolume + direction * 5));
+      void applyMasterVolume(next, direction > 0 ? 'up' : 'down');
+      return true;
+    }
+    if (active.dataset.settingsSlider === 'brightness') {
+      applyDisplayBrightness(displayBrightness + direction * 5);
+      return true;
+    }
+    return false;
+  }, [applyDisplayBrightness, applyMasterVolume, displayBrightness, displayVolume]);
 
   const enterDetail = useCallback((): void => {
     setDetailMode(true);
@@ -328,7 +456,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const activateSelected = useCallback((): void => {
     const key = SETTINGS_ITEMS[selectedIndex].key;
     if (key === 'control-room') props.onControlRoom();
-    else if (key === 'network' || key === 'controller' || key === 'sound') enterDetail();
+    else if (key === 'network' || key === 'controller' || key === 'sound' || key === 'screen') enterDetail();
   }, [enterDetail, props, selectedIndex]);
 
   useEffect(() => {
@@ -344,7 +472,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           setRemoveBluetoothTarget(null);
           return;
         }
-        if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && adjustFocusedVolume(event.key === 'ArrowRight' ? 1 : -1)) {
+        if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && adjustFocusedSlider(event.key === 'ArrowRight' ? 1 : -1)) {
           event.preventDefault();
           event.stopImmediatePropagation();
           return;
@@ -373,7 +501,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activateSelected, adjustFocusedVolume, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, wifiContextMenu]);
+  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, wifiContextMenu]);
 
   useEffect(() => {
     let lastInputAt = 0;
@@ -383,13 +511,13 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       if (!pad || Date.now() - lastInputAt < 190) return;
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
       if (detailMode) {
-        const volumeFocused = document.activeElement instanceof HTMLInputElement && document.activeElement.dataset.settingsSlider === 'volume';
-        if (volumeFocused && (pressed(14) || pad.axes[0] < -0.65)) {
+        const sliderFocused = document.activeElement instanceof HTMLInputElement && ['volume', 'brightness'].includes(document.activeElement.dataset.settingsSlider ?? '');
+        if (sliderFocused && (pressed(14) || pad.axes[0] < -0.65)) {
           lastInputAt = Date.now();
-          adjustFocusedVolume(-1);
-        } else if (volumeFocused && (pressed(15) || pad.axes[0] > 0.65)) {
+          adjustFocusedSlider(-1);
+        } else if (sliderFocused && (pressed(15) || pad.axes[0] > 0.65)) {
           lastInputAt = Date.now();
-          adjustFocusedVolume(1);
+          adjustFocusedSlider(1);
         } else if (pressed(12) || pad.axes[1] < -0.65) {
           lastInputAt = Date.now();
           moveDetailFocus(-1);
@@ -430,7 +558,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       }
     }, 90);
     return () => window.clearInterval(timer);
-  }, [activateSelected, adjustFocusedVolume, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, selected.label, wifiContextMenu]);
+  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, selected.label, wifiContextMenu]);
 
   const performWifiConnect = useCallback(async (wifi: WifiNetworkSummary, password?: string): Promise<void> => {
     if (networkBusy.current) return;
@@ -911,6 +1039,87 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         </SettingsDetail>
       );
     }
+    if (selected.key === 'screen') {
+      const activeDisplay = display.displays.find((item) => item.id === display.currentDisplayId)
+        ?? display.displays.find((item) => item.primary)
+        ?? display.displays[0];
+      const hdrLabel = display.hdr.support === 'supported'
+        ? display.hdr.enabled ? 'On' : 'Supported / Off'
+        : display.hdr.support === 'unsupported' ? 'Not supported' : 'Not detected';
+      return (
+        <SettingsDetail title="Display" icon={<Monitor size={34} />} subtitle="Windows display controls, inside NXGS" onFocus={() => setDetailMode(true)}>
+          <div className="display-page-toolbar">
+            <div>
+              <span>{activeDisplay?.primary ? 'Primary display' : 'Active display'}</span>
+              <strong>{activeDisplay?.name ?? 'Windows display'}</strong>
+            </div>
+            <button data-settings-action type="button" disabled={displayPending !== null} onClick={() => void refreshDisplay()}>
+              {displayPending === 'refresh' ? <LoaderCircle size={18} className="spin" /> : <RefreshCw size={18} />}
+              {displayPending === 'refresh' ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+          {displayFeedback && <div className={`settings-feedback ${displayFeedback.tone}`} role="status">{displayFeedback.message}</div>}
+
+          <section className={`display-brightness-card ${display.brightness.supported ? '' : 'unsupported'}`}>
+            <div className="display-brightness-icon"><Sun size={34} /></div>
+            <div className="display-brightness-control">
+              <div>
+                <span><strong>Brightness</strong><small>Adjust the built-in display live</small></span>
+                <strong>{display.brightness.supported ? `${displayBrightness}%` : 'Unavailable'}</strong>
+              </div>
+              <input
+                data-settings-action
+                data-settings-slider="brightness"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={displayBrightness}
+                aria-label="Display brightness"
+                aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
+                disabled={!display.brightness.supported || displayPending === 'refresh'}
+                style={{ background: `linear-gradient(90deg, #ffd36a 0%, #ffd36a ${displayBrightness}%, rgba(255, 255, 255, 0.14) ${displayBrightness}%)` }}
+                onInput={(event) => applyDisplayBrightness(Number(event.currentTarget.value))}
+              />
+              <small className={brightnessSyncing ? 'display-live-status active' : 'display-live-status'}>
+                {display.brightness.supported
+                  ? brightnessSyncing ? 'Updating display live...' : 'Use ← → or drag the slider'
+                  : display.brightness.message ?? 'Brightness control is not supported on this display.'}
+              </small>
+            </div>
+          </section>
+
+          <div className="display-section-heading"><span>Brightness &amp; color</span><small>System display features</small></div>
+          <div className="display-setting-list">
+            <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleNightLight()}>
+              <span className="display-row-icon night"><Moon size={21} /></span>
+              <span><strong>Night Light</strong><small>{display.nightLight.message} Schedule: Coming soon.</small></span>
+              <em>{displayPending === 'night-light' ? <LoaderCircle size={18} className="spin" /> : display.nightLight.enabled ? 'On' : 'Off / Coming soon'}</em>
+            </button>
+            <button className="display-setting-row" data-settings-action type="button" onClick={() => setDisplayFeedback({ tone: 'warning', message: display.colorProfile.message })}>
+              <span className="display-row-icon color"><Palette size={21} /></span>
+              <span><strong>Color profile</strong><small>{display.colorProfile.message}</small></span>
+              <em>{display.colorProfile.currentProfile}</em>
+            </button>
+            <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleHdr()}>
+              <span className="display-row-icon hdr"><Monitor size={21} /></span>
+              <span><strong>HDR</strong><small>{display.hdr.message}</small></span>
+              <em>{displayPending === 'hdr' ? <LoaderCircle size={18} className="spin" /> : hdrLabel}</em>
+            </button>
+          </div>
+
+          <div className="display-section-heading information"><span>Display information</span><small>{display.displays.length} active display{display.displays.length === 1 ? '' : 's'}</small></div>
+          <div className="display-information-grid">
+            <div><span>Display name</span><strong>{activeDisplay?.name ?? 'Unavailable'}</strong><small>{activeDisplay?.primary ? 'Primary display' : 'Secondary display'}</small></div>
+            <div><span>Resolution</span><strong>{activeDisplay?.resolution ?? 'Unavailable'}</strong><small>Current desktop mode</small></div>
+            <div><span>Refresh rate</span><strong>{activeDisplay?.refreshRate ? `${activeDisplay.refreshRate} Hz` : 'Unavailable'}</strong><small>Reported by Windows</small></div>
+            <div><span>Scale</span><strong>{activeDisplay ? `${activeDisplay.scalePercent}%` : 'Unavailable'}</strong><small>Text and app scaling</small></div>
+            <div><span>Orientation</span><strong>{activeDisplay?.orientation ?? 'Unavailable'}</strong><small>{activeDisplay?.internal ? 'Built-in display' : 'External display'}</small></div>
+            <div><span>Color output</span><strong>{activeDisplay ? `${activeDisplay.colorDepth}-bit` : 'Unavailable'}</strong><small>{activeDisplay?.depthPerComponent ? `${activeDisplay.depthPerComponent} bits per component` : 'Color depth unavailable'}</small></div>
+          </div>
+        </SettingsDetail>
+      );
+    }
     if (selected.key === 'control-room') {
       return (
         <SettingsDetail title="Control Room" icon={<Lock size={34} />} subtitle="Protected administrator controls" onFocus={() => setDetailMode(true)}>
@@ -923,7 +1132,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls. It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleMasterMute, wifiContextMenu, wifiPassword]);
+  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, toggleNightLight, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">
@@ -939,7 +1148,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         </nav>
         {detail}
       </div>
-      <footer>{detailMode ? selected.key === 'sound' ? '↑ ↓ Choose control  ·  ← → Adjust volume  ·  X / A Select  ·  Circle / B Categories' : '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
+      <footer>{detailMode ? selected.key === 'sound' || selected.key === 'screen' ? `↑ ↓ Choose control  ·  ← → Adjust ${selected.key === 'screen' ? 'brightness' : 'volume'}  ·  X / A Select  ·  Circle / B Categories` : '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
     </section>
   );
 }
