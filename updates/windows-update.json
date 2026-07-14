@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.4",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.4/NXGS-Play-Setup.exe",
-    "sha256":  "7293f00ac16657238c56fa17a4a8f84a62b6001511922c002ca8767122f1fbec",
+    "version":  "0.14.5",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.5/NXGS-Play-Setup.exe",
+    "sha256":  "c0f7bc784d2b6b4f84a0b121eb83c2f86ed2539379829e887843864d42644438",
     "required":  false,
-    "notes":  "NXGS merges Display and Sound into one simplified System page, removes their separate navigation entries, and preserves all live Windows controls and controller navigation."
+    "notes":  "NXGS now uses neutral console language throughout customer-facing launcher flows and keeps platform-specific terms out of visible UI and status messages."
 }
