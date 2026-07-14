@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { DisplayActionResult, DisplayDeviceInfo, DisplayStatus } from '../shared/types';
+import { changeColorProfile, changeHdr, getAdvancedDisplayFeatures, type AdvancedDisplayFeatures } from './displayFeatureService';
 import { runWindowsControl } from './windowsControlWorker';
 
 const execFileAsync = promisify(execFile);
@@ -23,6 +24,7 @@ if ($monitors.Count -eq 0) {
 `;
 
 let cachedBrightness: DisplayStatus['brightness'] | null = null;
+let cachedAdvancedFeatures: AdvancedDisplayFeatures | null = null;
 
 function normalizeLevel(value: unknown): number {
   const level = Number(value);
@@ -57,10 +59,26 @@ async function readBrightness(): Promise<DisplayStatus['brightness']> {
   return cachedBrightness;
 }
 
-function buildStatus(displays: DisplayDeviceInfo[], brightness: DisplayStatus['brightness']): DisplayStatus {
+function fallbackAdvancedFeatures(primary?: DisplayDeviceInfo): AdvancedDisplayFeatures {
+  return {
+    colorProfile: {
+      currentProfile: primary?.colorSpace?.trim() || 'Windows system default',
+      availableProfiles: [],
+      switchingSupported: false,
+      message: 'Windows did not expose selectable color profiles for this display.'
+    },
+    hdr: {
+      support: 'unknown',
+      enabled: false,
+      controlSupported: false,
+      message: 'Windows did not expose reliable HDR capability information for this display.'
+    }
+  };
+}
+
+function buildStatus(displays: DisplayDeviceInfo[], brightness: DisplayStatus['brightness'], advanced?: AdvancedDisplayFeatures | null): DisplayStatus {
   const primary = displays.find((display) => display.primary) ?? displays[0];
-  const hdrSignal = primary?.depthPerComponent && primary.depthPerComponent >= 10;
-  const hdrColorSpace = /hdr|pq|2020/i.test(primary?.colorSpace ?? '');
+  const features = advanced ?? fallbackAdvancedFeatures(primary);
   return {
     supported: process.platform === 'win32' && displays.length > 0,
     displays,
@@ -70,53 +88,70 @@ function buildStatus(displays: DisplayDeviceInfo[], brightness: DisplayStatus['b
       supported: false,
       enabled: false,
       controlSupported: false,
-      message: 'Night Light control is not supported yet. NXGS will not open Windows Settings.'
+      message: 'Windows does not expose a supported public desktop API for Night Light. NXGS will not edit undocumented system data or open Windows Settings.'
     },
-    colorProfile: {
-      currentProfile: primary?.colorSpace?.trim() || 'Windows system default',
-      availableProfiles: primary?.colorSpace?.trim() ? [primary.colorSpace.trim()] : [],
-      switchingSupported: false,
-      message: 'Color profile switching is not supported yet.'
-    },
-    hdr: {
-      support: hdrSignal || hdrColorSpace ? 'supported' : 'unknown',
-      enabled: hdrColorSpace,
-      controlSupported: false,
-      message: hdrSignal || hdrColorSpace
-        ? 'HDR-capable color output was detected. HDR switching is not supported yet.'
-        : 'Windows did not expose reliable HDR capability information for this display.'
-    },
+    colorProfile: features.colorProfile,
+    hdr: features.hdr,
     message: displays.length === 0 ? 'Windows did not report an active display.' : undefined
   };
 }
 
 export async function getDisplayStatus(displays: DisplayDeviceInfo[]): Promise<DisplayStatus> {
-  return buildStatus(displays, await readBrightness());
+  const [brightness, advanced] = await Promise.all([
+    readBrightness(),
+    getAdvancedDisplayFeatures().catch((error) => {
+      if (cachedAdvancedFeatures) return cachedAdvancedFeatures;
+      const fallback = fallbackAdvancedFeatures(displays.find((display) => display.primary) ?? displays[0]);
+      const message = safeMessage(error);
+      fallback.colorProfile.message = `Windows color-profile query failed: ${message}`;
+      fallback.hdr.message = `Windows HDR query failed: ${message}`;
+      return fallback;
+    })
+  ]);
+  cachedAdvancedFeatures = advanced;
+  return buildStatus(displays, brightness, advanced);
 }
 
 export async function setDisplayBrightness(value: number, displays: DisplayDeviceInfo[]): Promise<DisplayActionResult> {
   const level = normalizeLevel(value);
   const brightness = cachedBrightness ?? await readBrightness();
   if (!brightness.supported) {
-    return { ok: false, message: brightness.message ?? 'Brightness control is not supported on this display.', display: buildStatus(displays, brightness) };
+    return { ok: false, message: brightness.message ?? 'Brightness control is not supported on this display.', display: buildStatus(displays, brightness, cachedAdvancedFeatures) };
   }
   try {
     const result = await runWindowsControl('brightness', level);
     if (!result.ok) throw new Error(result.message);
     cachedBrightness = { supported: true, level };
-    return { ok: true, message: result.message, display: buildStatus(displays, cachedBrightness) };
+    return { ok: true, message: result.message, display: buildStatus(displays, cachedBrightness, cachedAdvancedFeatures) };
   } catch (error) {
     const message = safeMessage(error);
-    return { ok: false, message, display: buildStatus(displays, { ...brightness, message }) };
+    return { ok: false, message, display: buildStatus(displays, { ...brightness, message }, cachedAdvancedFeatures) };
   }
 }
 
 export async function setNightLight(_enabled: boolean, displays: DisplayDeviceInfo[]): Promise<DisplayActionResult> {
-  const display = buildStatus(displays, cachedBrightness ?? await readBrightness());
+  const display = buildStatus(displays, cachedBrightness ?? await readBrightness(), cachedAdvancedFeatures);
   return { ok: false, message: display.nightLight.message, display };
 }
 
-export async function setHdr(_enabled: boolean, displays: DisplayDeviceInfo[]): Promise<DisplayActionResult> {
-  const display = buildStatus(displays, cachedBrightness ?? await readBrightness());
-  return { ok: false, message: display.hdr.message, display };
+export async function setHdr(enabled: boolean, displays: DisplayDeviceInfo[]): Promise<DisplayActionResult> {
+  try {
+    cachedAdvancedFeatures = await changeHdr(enabled);
+    const display = buildStatus(displays, cachedBrightness ?? await readBrightness(), cachedAdvancedFeatures);
+    return { ok: display.hdr.enabled === enabled, message: display.hdr.enabled === enabled ? `HDR turned ${enabled ? 'on' : 'off'}.` : display.hdr.message, display };
+  } catch (error) {
+    const message = safeMessage(error);
+    return { ok: false, message, display: buildStatus(displays, cachedBrightness ?? await readBrightness(), cachedAdvancedFeatures) };
+  }
+}
+
+export async function setColorProfile(profileName: string, displays: DisplayDeviceInfo[]): Promise<DisplayActionResult> {
+  try {
+    cachedAdvancedFeatures = await changeColorProfile(profileName);
+    const display = buildStatus(displays, cachedBrightness ?? await readBrightness(), cachedAdvancedFeatures);
+    return { ok: display.colorProfile.currentProfile.toLocaleLowerCase() === profileName.toLocaleLowerCase(), message: `Color profile changed to ${display.colorProfile.currentProfile}.`, display };
+  } catch (error) {
+    const message = safeMessage(error);
+    return { ok: false, message, display: buildStatus(displays, cachedBrightness ?? await readBrightness(), cachedAdvancedFeatures) };
+  }
 }

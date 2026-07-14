@@ -60,6 +60,7 @@ const api = {
   getDisplayStatus: (): Promise<DisplayStatus> => ipcRenderer.invoke('display:getStatus'),
   setBrightness: (value: number): Promise<DisplayActionResult> => ipcRenderer.invoke('display:setBrightness', value),
   setNightLight: (enabled: boolean): Promise<DisplayActionResult> => ipcRenderer.invoke('display:setNightLight', enabled),
+  setColorProfile: (profileName: string): Promise<DisplayActionResult> => ipcRenderer.invoke('display:setColorProfile', profileName),
   setHdr: (enabled: boolean): Promise<DisplayActionResult> => ipcRenderer.invoke('display:setHdr', enabled),
   setKioskMode: (mode: KioskMode): Promise<AppDiagnostics> => ipcRenderer.invoke('kiosk:setMode', mode),
   setAdminPinActive: (active: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('kiosk:setAdminPinActive', active),

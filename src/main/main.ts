@@ -7,7 +7,7 @@ import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
 import { disconnectBluetoothDevice, pairBluetoothDevice, removeBluetoothDevice, scanBluetoothDevices } from './bluetoothService';
 import { getAudioStatus, setMasterMuted, setMasterVolume, switchAudioDevice } from './audioService';
-import { getDisplayStatus, setDisplayBrightness, setHdr, setNightLight } from './displayService';
+import { getDisplayStatus, setColorProfile, setDisplayBrightness, setHdr, setNightLight } from './displayService';
 import { connectWifi, disconnectWifi, forgetWifi, getNetworkStatus } from './networkService';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
@@ -497,6 +497,7 @@ function registerIpc(): void {
   ipcMain.handle('display:getStatus', async () => getDisplayStatus(getDisplayDevices()));
   ipcMain.handle('display:setBrightness', async (_event, value: number) => setDisplayBrightness(value, getDisplayDevices()));
   ipcMain.handle('display:setNightLight', async (_event, enabled: boolean) => setNightLight(enabled, getDisplayDevices()));
+  ipcMain.handle('display:setColorProfile', async (_event, profileName: string) => setColorProfile(profileName, getDisplayDevices()));
   ipcMain.handle('display:setHdr', async (_event, enabled: boolean) => setHdr(enabled, getDisplayDevices()));
 
   ipcMain.handle('kiosk:setMode', (_event, mode: KioskMode) => {

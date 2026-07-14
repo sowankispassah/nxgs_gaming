@@ -3,6 +3,7 @@ import {
   Accessibility,
   Bluetooth,
   BookOpen,
+  Check,
   CheckCircle2,
   ChevronRight,
   Eye,
@@ -136,9 +137,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [audioFeedback, setAudioFeedback] = useState<Feedback | null>(null);
   const [display, setDisplay] = useState<DisplayStatus>(EMPTY_DISPLAY);
   const [displayBrightness, setDisplayBrightness] = useState(0);
-  const [displayPending, setDisplayPending] = useState<'refresh' | 'night-light' | 'hdr' | null>(null);
+  const [displayPending, setDisplayPending] = useState<'refresh' | 'color-profile' | 'hdr' | null>(null);
   const [brightnessSyncing, setBrightnessSyncing] = useState(false);
   const [displayFeedback, setDisplayFeedback] = useState<Feedback | null>(null);
+  const [colorProfilesOpen, setColorProfilesOpen] = useState(false);
+  const [colorProfileTarget, setColorProfileTarget] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<AppDiagnostics | null>(null);
   const networkBusy = useRef(false);
   const bluetoothBusy = useRef(false);
@@ -256,6 +259,8 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     setForgetWifiTarget(null);
     setWifiContextMenu(null);
     setWifiPassword('');
+    setColorProfilesOpen(false);
+    setColorProfileTarget(null);
   }, [selectedIndex]);
 
   useEffect(() => {
@@ -349,23 +354,6 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     })();
   }, [display.brightness.message, display.brightness.supported]);
 
-  const toggleNightLight = useCallback(async (): Promise<void> => {
-    if (displayBusy.current) return;
-    displayBusy.current = true;
-    setDisplayPending('night-light');
-    setDisplayFeedback({ tone: 'info', message: display.nightLight.enabled ? 'Turning Night Light off...' : 'Turning Night Light on...' });
-    try {
-      const result = await window.nxgs.setNightLight(!display.nightLight.enabled);
-      setDisplay(result.display);
-      setDisplayFeedback({ tone: result.ok ? 'success' : 'warning', message: result.message });
-    } catch (error) {
-      setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Night Light could not be changed.' });
-    } finally {
-      displayBusy.current = false;
-      setDisplayPending(null);
-    }
-  }, [display.nightLight.enabled]);
-
   const toggleHdr = useCallback(async (): Promise<void> => {
     if (displayBusy.current) return;
     displayBusy.current = true;
@@ -382,6 +370,26 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       setDisplayPending(null);
     }
   }, [display.hdr.enabled]);
+
+  const chooseColorProfile = useCallback(async (profileName: string): Promise<void> => {
+    if (displayBusy.current || !display.colorProfile.switchingSupported) return;
+    displayBusy.current = true;
+    setDisplayPending('color-profile');
+    setColorProfileTarget(profileName);
+    setDisplayFeedback({ tone: 'info', message: `Switching to ${profileName}...` });
+    try {
+      const result = await window.nxgs.setColorProfile(profileName);
+      setDisplay(result.display);
+      setDisplayFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
+      if (result.ok) setColorProfilesOpen(false);
+    } catch (error) {
+      setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'The color profile could not be changed.' });
+    } finally {
+      displayBusy.current = false;
+      setColorProfileTarget(null);
+      setDisplayPending(null);
+    }
+  }, [display.colorProfile.switchingSupported]);
 
   const toggleMasterMute = useCallback(async (): Promise<void> => {
     if (audioBusy.current) return;
@@ -1091,17 +1099,51 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
 
           <div className="display-section-heading"><span>Brightness &amp; color</span><small>System display features</small></div>
           <div className="display-setting-list">
-            <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleNightLight()}>
+            <button className="display-setting-row" type="button" disabled aria-disabled="true">
               <span className="display-row-icon night"><Moon size={21} /></span>
-              <span><strong>Night Light</strong><small>{display.nightLight.message} Schedule: Coming soon.</small></span>
-              <em>{displayPending === 'night-light' ? <LoaderCircle size={18} className="spin" /> : display.nightLight.enabled ? 'On' : 'Off / Coming soon'}</em>
+              <span><strong>Night Light</strong><small>{display.nightLight.message}</small></span>
+              <em>Windows API unavailable</em>
             </button>
-            <button className="display-setting-row" data-settings-action type="button" onClick={() => setDisplayFeedback({ tone: 'warning', message: display.colorProfile.message })}>
+            <button
+              className={`display-setting-row ${colorProfilesOpen ? 'expanded' : ''}`}
+              data-settings-action
+              type="button"
+              disabled={displayPending !== null}
+              aria-expanded={colorProfilesOpen}
+              onClick={() => {
+                if (!display.colorProfile.switchingSupported) {
+                  setDisplayFeedback({ tone: 'warning', message: display.colorProfile.message });
+                  return;
+                }
+                setColorProfilesOpen((open) => !open);
+              }}
+            >
               <span className="display-row-icon color"><Palette size={21} /></span>
               <span><strong>Color profile</strong><small>{display.colorProfile.message}</small></span>
-              <em>{display.colorProfile.currentProfile}</em>
+              <em>{displayPending === 'color-profile' ? <LoaderCircle size={18} className="spin" /> : display.colorProfile.currentProfile}</em>
             </button>
-            <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleHdr()}>
+            {colorProfilesOpen && display.colorProfile.switchingSupported && (
+              <div className="display-color-profile-options" aria-label="Available display color profiles">
+                {display.colorProfile.availableProfiles.map((profileName) => {
+                  const selectedProfile = profileName.toLocaleLowerCase() === display.colorProfile.currentProfile.toLocaleLowerCase();
+                  const switching = colorProfileTarget === profileName;
+                  return (
+                    <button
+                      data-settings-action
+                      type="button"
+                      key={profileName}
+                      className={selectedProfile ? 'current' : ''}
+                      disabled={displayPending !== null || selectedProfile}
+                      onClick={() => void chooseColorProfile(profileName)}
+                    >
+                      <span><strong>{profileName}</strong><small>{selectedProfile ? 'Current Windows profile' : 'Use for this display'}</small></span>
+                      {switching ? <LoaderCircle size={18} className="spin" /> : selectedProfile ? <Check size={18} /> : <ChevronRight size={18} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null || !display.hdr.controlSupported} onClick={() => void toggleHdr()}>
               <span className="display-row-icon hdr"><Monitor size={21} /></span>
               <span><strong>HDR</strong><small>{display.hdr.message}</small></span>
               <em>{displayPending === 'hdr' ? <LoaderCircle size={18} className="spin" /> : hdrLabel}</em>
@@ -1132,7 +1174,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls. It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, toggleNightLight, wifiContextMenu, wifiPassword]);
+  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, chooseColorProfile, colorProfilesOpen, colorProfileTarget, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">

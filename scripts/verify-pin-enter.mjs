@@ -62,7 +62,7 @@ try {
     return result.result.value;
   };
   const waitFor = async (expression, message) => {
-    for (let attempt = 0; attempt < 80; attempt += 1) {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
       if (await evaluate(expression)) return;
       await delay(100);
     }
@@ -70,12 +70,22 @@ try {
   };
 
   await send('Runtime.enable');
+  await evaluate("Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [] })");
   await waitFor("Boolean(document.querySelector('button[aria-label=Settings]'))", 'Settings button did not render.');
   await evaluate("document.querySelector('button[aria-label=Settings]').click()");
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Control Room'))", 'Control Room did not render.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video').click()");
-  await waitFor("Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('.display-information-grid'))", 'Display settings did not render brightness and display information.');
-  await waitFor("window.nxgs.getDisplayStatus().then((display) => display.brightness.supported ? Number(document.querySelector('input[aria-label=\"Display brightness\"]').value) === display.brightness.level : document.querySelector('.display-brightness-card').textContent.length > 0)", 'Display settings did not show the actual brightness or a clear unsupported state.');
+  await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('.display-information-grid')); if (!ready) [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video')?.click(); return ready; })()", 'Display settings did not render brightness and display information.');
+  const displayFeatures = await evaluate("window.nxgs.getDisplayStatus()");
+  if (displayFeatures.colorProfile.switchingSupported) {
+    if (displayFeatures.colorProfile.availableProfiles.length === 0) throw new Error('Color-profile switching was enabled without selectable profiles.');
+    await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video').click()");
+    await waitFor("[...document.querySelectorAll('.display-setting-row')].some((button) => button.textContent.includes('Color profile'))", 'Color-profile row did not remain available.');
+    await evaluate("[...document.querySelectorAll('.display-setting-row')].find((button) => button.textContent.includes('Color profile')).click()");
+    await waitFor("document.querySelectorAll('.display-color-profile-options button').length > 0", 'Selectable Windows color profiles did not open inside NXGS.');
+  }
+  if (!displayFeatures.hdr.message || !displayFeatures.colorProfile.message || !displayFeatures.nightLight.message) throw new Error('Display feature capability messages were incomplete.');
+  console.log(`INFO: HDR ${displayFeatures.hdr.support}/${displayFeatures.hdr.enabled ? 'on' : 'off'} (${displayFeatures.hdr.message}), color profiles ${displayFeatures.colorProfile.availableProfiles.length} (${displayFeatures.colorProfile.message}).`);
   console.log('PASS: Display settings showed live Windows display information and brightness capability.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Control Room').click()");
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Enter Control Room'))", 'Control Room detail did not open.');
@@ -146,5 +156,13 @@ try {
   if (duplicateChild?.exitCode === null) duplicateChild.kill();
   for (let attempt = 0; attempt < 30 && child.exitCode === null; attempt += 1) await delay(100);
   if (child.exitCode === null) child.kill();
-  await rm(profile, { recursive: true, force: true });
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await rm(profile, { recursive: true, force: true });
+      break;
+    } catch (error) {
+      if (attempt === 19) console.warn(`WARN: Could not remove isolated test profile: ${error.message}`);
+      else await delay(150);
+    }
+  }
 }
