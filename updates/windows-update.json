@@ -1,7 +1,7 @@
 {
     "version":  "0.13.1",
     "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.13.1/NXGS-Play-Setup.exe",
-    "sha256":  "631363c933931b5e4d60c16bcf10e4f3d430bf16af2755a862971173eb4e704a",
+    "sha256":  "f4ed7f36fd3714d2db584c0219d2cdf285afbc22acaf3041ef40d3888ad8506b",
     "required":  false,
     "notes":  "NXGS now reuses and refocuses the already-running launcher instead of opening a duplicate instance."
 }
