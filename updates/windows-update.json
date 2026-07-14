@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.3/NXGS-Play-Setup.exe",
-    "sha256":  "1b6349730385a956be879ec1e9b275e48b824cef6374793ed96751b7706fc223",
+    "version":  "0.14.4",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.4/NXGS-Play-Setup.exe",
+    "sha256":  "7293f00ac16657238c56fa17a4a8f84a62b6001511922c002ca8767122f1fbec",
     "required":  false,
-    "notes":  "NXGS removes the unnecessary Color Profile option and redesigns Settings to match the cleaner dark console layout while preserving all functional controls."
+    "notes":  "NXGS merges Display and Sound into one simplified System page, removes their separate navigation entries, and preserves all live Windows controls and controller navigation."
 }
