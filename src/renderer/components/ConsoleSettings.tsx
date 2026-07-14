@@ -136,6 +136,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [displayPending, setDisplayPending] = useState<'refresh' | 'hdr' | null>(null);
   const [brightnessSyncing, setBrightnessSyncing] = useState(false);
   const [displayFeedback, setDisplayFeedback] = useState<Feedback | null>(null);
+  const [displayInfoExpanded, setDisplayInfoExpanded] = useState(false);
   const [diagnostics, setDiagnostics] = useState<AppDiagnostics | null>(null);
   const networkBusy = useRef(false);
   const bluetoothBusy = useRef(false);
@@ -257,6 +258,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     setForgetWifiTarget(null);
     setWifiContextMenu(null);
     setWifiPassword('');
+    setDisplayInfoExpanded(false);
   }, [selectedIndex]);
 
   useEffect(() => {
@@ -974,15 +976,27 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
                 </small>
               </div>
 
-              <h4 className="system-subheading">Display information</h4>
-              <div className="system-information-grid">
-                <div><span className="system-info-icon"><Monitor size={20} /></span><span><small>Display name</small><strong>{activeDisplay?.name ?? 'Unavailable'}</strong></span></div>
-                <div><span className="system-info-icon"><Maximize2 size={20} /></span><span><small>Resolution</small><strong>{activeDisplay?.resolution ?? 'Unavailable'}</strong></span></div>
-                <div><span className="system-info-icon"><RefreshCw size={20} /></span><span><small>Refresh rate</small><strong>{activeDisplay?.refreshRate ? `${activeDisplay.refreshRate} Hz` : 'Unavailable'}</strong></span></div>
-                <div><span className="system-info-icon"><Scaling size={20} /></span><span><small>Scale</small><strong>{activeDisplay ? `${activeDisplay.scalePercent}%` : 'Unavailable'}</strong></span></div>
-                <div><span className="system-info-icon"><Smartphone size={20} /></span><span><small>Orientation</small><strong>{activeDisplay?.orientation ?? 'Unavailable'}</strong></span></div>
-                <div><span className="system-info-icon"><Palette size={20} /></span><span><small>Color output</small><strong>{activeDisplay ? `${activeDisplay.colorDepth}-bit` : 'Unavailable'}</strong></span></div>
-              </div>
+              <button
+                className="system-collapsible-heading"
+                data-settings-action
+                type="button"
+                aria-expanded={displayInfoExpanded}
+                aria-controls="system-display-information"
+                onClick={() => setDisplayInfoExpanded((expanded) => !expanded)}
+              >
+                <span>Display information</span>
+                <ChevronRight size={20} className={displayInfoExpanded ? 'expanded' : ''} />
+              </button>
+              {displayInfoExpanded && (
+                <div className="system-information-grid" id="system-display-information">
+                  <div><span className="system-info-icon"><Monitor size={20} /></span><span><small>Display name</small><strong>{activeDisplay?.name ?? 'Unavailable'}</strong></span></div>
+                  <div><span className="system-info-icon"><Maximize2 size={20} /></span><span><small>Resolution</small><strong>{activeDisplay?.resolution ?? 'Unavailable'}</strong></span></div>
+                  <div><span className="system-info-icon"><RefreshCw size={20} /></span><span><small>Refresh rate</small><strong>{activeDisplay?.refreshRate ? `${activeDisplay.refreshRate} Hz` : 'Unavailable'}</strong></span></div>
+                  <div><span className="system-info-icon"><Scaling size={20} /></span><span><small>Scale</small><strong>{activeDisplay ? `${activeDisplay.scalePercent}%` : 'Unavailable'}</strong></span></div>
+                  <div><span className="system-info-icon"><Smartphone size={20} /></span><span><small>Orientation</small><strong>{activeDisplay?.orientation ?? 'Unavailable'}</strong></span></div>
+                  <div><span className="system-info-icon"><Palette size={20} /></span><span><small>Color output</small><strong>{activeDisplay ? `${activeDisplay.colorDepth}-bit` : 'Unavailable'}</strong></span></div>
+                </div>
+              )}
 
               {showHdr && (
                 <button className="system-simple-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleHdr()}>
@@ -1060,7 +1074,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls.<br />It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
+  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayInfoExpanded, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">

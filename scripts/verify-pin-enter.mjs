@@ -88,22 +88,29 @@ try {
   const settingsCategories = await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].map((button) => button.textContent.trim())");
   if (settingsCategories.includes('Sound') || settingsCategories.includes('Screen and Video')) throw new Error(`Sound or Screen and Video remained as a separate Settings category: ${JSON.stringify(settingsCategories)}`);
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System').click()");
-  await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('input[aria-label=\"Master volume\"]')) && Boolean(document.querySelector('.system-information-grid')) && document.querySelectorAll('.system-device-section').length === 2; if (!ready) [...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System')?.click(); return ready; })()", 'System did not render the combined display and sound controls.');
+  await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('input[aria-label=\"Master volume\"]')) && Boolean(document.querySelector('.system-collapsible-heading')) && document.querySelectorAll('.system-device-section').length === 2; if (!ready) [...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System')?.click(); return ready; })()", 'System did not render the combined display and sound controls.');
+  await waitFor("document.querySelector('.system-refresh-button')?.textContent.trim() === 'Refresh'", 'System controls did not finish their initial refresh.');
   const displayFeatures = await evaluate("window.nxgs.getDisplayStatus()");
-  await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System').click()");
-  await waitFor("Boolean(document.querySelector('.system-information-grid')) && Boolean(document.querySelector('.system-volume-card'))", 'System page did not remain available after capability detection.');
-  assertConsoleLanguage(await evaluate("document.querySelector('.console-settings-screen').innerText + ' ' + [...document.querySelectorAll('.console-settings-screen [aria-label]')].map((node) => node.getAttribute('aria-label')).join(' ')"), 'System settings');
+  const collapsedDisplayInfo = await evaluate("document.querySelector('.system-collapsible-heading').getAttribute('aria-expanded') === 'false' && !document.querySelector('.system-information-grid')");
+  if (!collapsedDisplayInfo) throw new Error('Display information was not collapsed on the initial System view.');
   if (process.env.NXGS_SETTINGS_SCREENSHOT) {
     const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(resolve(process.env.NXGS_SETTINGS_SCREENSHOT), Buffer.from(screenshot.data, 'base64'));
   }
+  const audioViewport = await evaluate("(() => { const detail = document.querySelector('.console-settings-detail').getBoundingClientRect(); const slider = document.querySelector('input[aria-label=\"Master volume\"]').getBoundingClientRect(); return { visible: slider.top >= detail.top && slider.bottom <= detail.bottom, detailTop: Math.round(detail.top), detailBottom: Math.round(detail.bottom), sliderTop: Math.round(slider.top), sliderBottom: Math.round(slider.bottom) }; })()");
+  if (!audioViewport.visible) throw new Error(`The Audio volume slider was not visible in the initial System viewport: ${JSON.stringify(audioViewport)}`);
+  assertConsoleLanguage(await evaluate("document.querySelector('.console-settings-screen').innerText + ' ' + [...document.querySelectorAll('.console-settings-screen [aria-label]')].map((node) => node.getAttribute('aria-label')).join(' ')"), 'System settings');
+  await evaluate("document.querySelector('.system-collapsible-heading').click()");
+  await waitFor("document.querySelector('.system-collapsible-heading').getAttribute('aria-expanded') === 'true' && Boolean(document.querySelector('.system-information-grid'))", 'Display information did not expand inside System.');
+  await evaluate("document.querySelector('.system-collapsible-heading').click()");
+  await waitFor("document.querySelector('.system-collapsible-heading').getAttribute('aria-expanded') === 'false' && !document.querySelector('.system-information-grid')", 'Display information did not collapse again.');
   const displayRows = await evaluate("[...document.querySelectorAll('.system-simple-row')].map((button) => button.textContent)");
   if (displayRows.some((text) => text.includes('Night Light'))) throw new Error('Unavailable Night Light control remained visible.');
   if ((!displayFeatures.hdr.controlSupported || displayFeatures.hdr.support !== 'supported') && displayRows.some((text) => text.includes('HDR'))) throw new Error('Unavailable HDR control remained visible.');
   if (displayRows.some((text) => text.includes('Color profile'))) throw new Error('Color Profile control remained visible.');
   if (!displayFeatures.hdr.message || !displayFeatures.colorProfile.message || !displayFeatures.nightLight.message) throw new Error('Display feature capability messages were incomplete.');
   console.log(`INFO: HDR ${displayFeatures.hdr.support}/${displayFeatures.hdr.enabled ? 'on' : 'off'} (${displayFeatures.hdr.message}); nonessential color controls hidden.`);
-  console.log('PASS: System combined live display, brightness, volume, and Windows audio devices without separate Sound or Screen categories.');
+  console.log('PASS: System kept Audio visible initially and expanded or collapsed Display information on demand.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Control Room').click()");
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Enter Control Room'))", 'Control Room detail did not open.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Enter Control Room')).click()");
