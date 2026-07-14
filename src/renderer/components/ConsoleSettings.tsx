@@ -18,7 +18,6 @@ import {
   LockKeyhole,
   Mic2,
   Minus,
-  Moon,
   Monitor,
   Palette,
   RefreshCw,
@@ -1054,6 +1053,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       const hdrLabel = display.hdr.support === 'supported'
         ? display.hdr.enabled ? 'On' : 'Supported / Off'
         : display.hdr.support === 'unsupported' ? 'Not supported' : 'Not detected';
+      const showColorProfile = display.colorProfile.switchingSupported && display.colorProfile.availableProfiles.length > 0;
+      const showHdr = display.hdr.support === 'supported' && display.hdr.controlSupported;
+      const showSystemDisplayFeatures = showColorProfile || showHdr;
       return (
         <SettingsDetail title="Display" icon={<Monitor size={34} />} subtitle="Windows display controls, inside NXGS" onFocus={() => setDetailMode(true)}>
           <div className="display-page-toolbar">
@@ -1097,58 +1099,55 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             </div>
           </section>
 
-          <div className="display-section-heading"><span>Brightness &amp; color</span><small>System display features</small></div>
-          <div className="display-setting-list">
-            <button className="display-setting-row" type="button" disabled aria-disabled="true">
-              <span className="display-row-icon night"><Moon size={21} /></span>
-              <span><strong>Night Light</strong><small>{display.nightLight.message}</small></span>
-              <em>Windows API unavailable</em>
-            </button>
-            <button
-              className={`display-setting-row ${colorProfilesOpen ? 'expanded' : ''}`}
-              data-settings-action
-              type="button"
-              disabled={displayPending !== null}
-              aria-expanded={colorProfilesOpen}
-              onClick={() => {
-                if (!display.colorProfile.switchingSupported) {
-                  setDisplayFeedback({ tone: 'warning', message: display.colorProfile.message });
-                  return;
-                }
-                setColorProfilesOpen((open) => !open);
-              }}
-            >
-              <span className="display-row-icon color"><Palette size={21} /></span>
-              <span><strong>Color profile</strong><small>{display.colorProfile.message}</small></span>
-              <em>{displayPending === 'color-profile' ? <LoaderCircle size={18} className="spin" /> : display.colorProfile.currentProfile}</em>
-            </button>
-            {colorProfilesOpen && display.colorProfile.switchingSupported && (
-              <div className="display-color-profile-options" aria-label="Available display color profiles">
-                {display.colorProfile.availableProfiles.map((profileName) => {
-                  const selectedProfile = profileName.toLocaleLowerCase() === display.colorProfile.currentProfile.toLocaleLowerCase();
-                  const switching = colorProfileTarget === profileName;
-                  return (
-                    <button
-                      data-settings-action
-                      type="button"
-                      key={profileName}
-                      className={selectedProfile ? 'current' : ''}
-                      disabled={displayPending !== null || selectedProfile}
-                      onClick={() => void chooseColorProfile(profileName)}
-                    >
-                      <span><strong>{profileName}</strong><small>{selectedProfile ? 'Current Windows profile' : 'Use for this display'}</small></span>
-                      {switching ? <LoaderCircle size={18} className="spin" /> : selectedProfile ? <Check size={18} /> : <ChevronRight size={18} />}
-                    </button>
-                  );
-                })}
+          {showSystemDisplayFeatures && (
+            <>
+              <div className="display-section-heading"><span>Brightness &amp; color</span><small>Available controls</small></div>
+              <div className="display-setting-list">
+                {showColorProfile && (
+                  <button
+                    className={`display-setting-row ${colorProfilesOpen ? 'expanded' : ''}`}
+                    data-settings-action
+                    type="button"
+                    disabled={displayPending !== null}
+                    aria-expanded={colorProfilesOpen}
+                    onClick={() => setColorProfilesOpen((open) => !open)}
+                  >
+                    <span className="display-row-icon color"><Palette size={21} /></span>
+                    <span><strong>Color profile</strong><small>{display.colorProfile.message}</small></span>
+                    <em>{displayPending === 'color-profile' ? <LoaderCircle size={18} className="spin" /> : display.colorProfile.currentProfile}</em>
+                  </button>
+                )}
+                {showColorProfile && colorProfilesOpen && (
+                  <div className="display-color-profile-options" aria-label="Available display color profiles">
+                    {display.colorProfile.availableProfiles.map((profileName) => {
+                      const selectedProfile = profileName.toLocaleLowerCase() === display.colorProfile.currentProfile.toLocaleLowerCase();
+                      const switching = colorProfileTarget === profileName;
+                      return (
+                        <button
+                          data-settings-action
+                          type="button"
+                          key={profileName}
+                          className={selectedProfile ? 'current' : ''}
+                          disabled={displayPending !== null || selectedProfile}
+                          onClick={() => void chooseColorProfile(profileName)}
+                        >
+                          <span><strong>{profileName}</strong><small>{selectedProfile ? 'Current Windows profile' : 'Use for this display'}</small></span>
+                          {switching ? <LoaderCircle size={18} className="spin" /> : selectedProfile ? <Check size={18} /> : <ChevronRight size={18} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {showHdr && (
+                  <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleHdr()}>
+                    <span className="display-row-icon hdr"><Monitor size={21} /></span>
+                    <span><strong>HDR</strong><small>{display.hdr.message}</small></span>
+                    <em>{displayPending === 'hdr' ? <LoaderCircle size={18} className="spin" /> : hdrLabel}</em>
+                  </button>
+                )}
               </div>
-            )}
-            <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null || !display.hdr.controlSupported} onClick={() => void toggleHdr()}>
-              <span className="display-row-icon hdr"><Monitor size={21} /></span>
-              <span><strong>HDR</strong><small>{display.hdr.message}</small></span>
-              <em>{displayPending === 'hdr' ? <LoaderCircle size={18} className="spin" /> : hdrLabel}</em>
-            </button>
-          </div>
+            </>
+          )}
 
           <div className="display-section-heading information"><span>Display information</span><small>{display.displays.length} active display{display.displays.length === 1 ? '' : 's'}</small></div>
           <div className="display-information-grid">

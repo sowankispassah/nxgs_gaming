@@ -77,9 +77,14 @@ try {
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video').click()");
   await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('.display-information-grid')); if (!ready) [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video')?.click(); return ready; })()", 'Display settings did not render brightness and display information.');
   const displayFeatures = await evaluate("window.nxgs.getDisplayStatus()");
+  await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video').click()");
+  await waitFor("Boolean(document.querySelector('.display-information-grid'))", 'Display page did not remain available after capability detection.');
+  const displayRows = await evaluate("[...document.querySelectorAll('.display-setting-row')].map((button) => button.textContent)");
+  if (displayRows.some((text) => text.includes('Night Light'))) throw new Error('Unavailable Night Light control remained visible.');
+  if ((!displayFeatures.hdr.controlSupported || displayFeatures.hdr.support !== 'supported') && displayRows.some((text) => text.includes('HDR'))) throw new Error('Unavailable HDR control remained visible.');
+  if (!displayFeatures.colorProfile.switchingSupported && displayRows.some((text) => text.includes('Color profile'))) throw new Error('Unavailable Color Profile control remained visible.');
   if (displayFeatures.colorProfile.switchingSupported) {
     if (displayFeatures.colorProfile.availableProfiles.length === 0) throw new Error('Color-profile switching was enabled without selectable profiles.');
-    await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video').click()");
     await waitFor("[...document.querySelectorAll('.display-setting-row')].some((button) => button.textContent.includes('Color profile'))", 'Color-profile row did not remain available.');
     await evaluate("[...document.querySelectorAll('.display-setting-row')].find((button) => button.textContent.includes('Color profile')).click()");
     await waitFor("document.querySelectorAll('.display-color-profile-options button').length > 0", 'Selectable Windows color profiles did not open inside NXGS.');
