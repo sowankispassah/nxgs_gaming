@@ -1,7 +1,7 @@
 {
-    "version":  "0.12.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.12.1/NXGS-Play-Setup.exe",
-    "sha256":  "e3a7665877eade7930be9fe9d71f866f4d9550adfaa7327b66f77afe51f4d60c",
+    "version":  "0.13.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.13.0/NXGS-Play-Setup.exe",
+    "sha256":  "3ca15befff4c8ac088ccbe2193a5c929091842091fef2861ca7c08b23fc49b1f",
     "required":  false,
-    "notes":  "Fixed Ctrl+Shift+H so Home preserves the resizable windowed admin session after Exit Full Screen instead of restoring locked fullscreen mode."
+    "notes":  "Added a compact glass Windows volume slider and mute control directly above the new speaker icon in the bottom quick switcher, with controller and mouse adjustment."
 }
