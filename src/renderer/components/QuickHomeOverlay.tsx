@@ -1,20 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bell,
   Gamepad2,
   Home,
+  LoaderCircle,
   Music2,
   Play,
   Power,
   Settings,
   UsersRound,
+  Volume2,
+  VolumeX,
   X
 } from 'lucide-react';
-import type { ActiveGameState, TrackedGameSessionState } from '../../shared/types';
+import type { ActiveGameState, AudioStatus, TrackedGameSessionState } from '../../shared/types';
 import { SafeGameImage } from './ConsoleHome';
 
 type PendingAction = 'resume' | 'home' | 'close' | 'admin' | 'force' | null;
-type FocusArea = 'navbar' | 'menu';
+type FocusArea = 'navbar' | 'menu' | 'volume';
 type NavItem = {
   key: string;
   label: string;
@@ -23,6 +26,17 @@ type NavItem = {
 };
 
 const MENU_LABELS = ['Resume Game', 'Go to Launcher Home', 'Close Game'] as const;
+
+const EMPTY_AUDIO: AudioStatus = {
+  supported: true,
+  masterVolume: 0,
+  muted: false,
+  inputVolume: 0,
+  inputMuted: false,
+  outputDevices: [],
+  inputDevices: [],
+  deviceSwitchingSupported: false
+};
 
 function quickOverlayImageUrl(path: string): string {
   if (!path) return '';
@@ -65,6 +79,12 @@ export function QuickHomeOverlay(props: {
   const [notice, setNotice] = useState('');
   const [forcePin, setForcePin] = useState('');
   const [now, setNow] = useState(() => new Date());
+  const [audio, setAudio] = useState<AudioStatus>(EMPTY_AUDIO);
+  const [displayVolume, setDisplayVolume] = useState(0);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  const [audioPending, setAudioPending] = useState<'refresh' | 'volume' | 'mute' | null>(null);
+  const [audioMessage, setAudioMessage] = useState('');
+  const audioBusy = useRef(false);
 
   const navItems = useMemo<NavItem[]>(
     () => [
@@ -78,10 +98,11 @@ export function QuickHomeOverlay(props: {
       { key: 'notifications', label: 'Notifications coming soon', icon: <Bell size={21} /> },
       { key: 'players', label: 'Players coming soon', icon: <UsersRound size={22} /> },
       { key: 'audio', label: 'Audio coming soon', icon: <Music2 size={22} /> },
+      { key: 'volume', label: 'Quick volume', icon: audio.muted ? <VolumeX size={22} /> : <Volume2 size={22} /> },
       { key: 'settings', label: 'Protected settings', icon: <Settings size={22} /> },
       { key: 'power', label: 'Protected power controls', icon: <Power size={22} /> }
     ],
-    [sessions]
+    [audio.muted, sessions]
   );
 
   const selectedNavIndex = Math.max(0, navItems.findIndex((item) => item.key === selectedNavKey));
@@ -131,7 +152,81 @@ export function QuickHomeOverlay(props: {
   useEffect(() => {
     setMessage('');
     setConfirmClose(false);
+    if (selectedNavKey !== 'volume') {
+      setVolumeOpen(false);
+      setAudioMessage('');
+    }
   }, [selectedNavKey]);
+
+  const refreshAudio = useCallback(async (): Promise<void> => {
+    if (audioBusy.current) return;
+    audioBusy.current = true;
+    setAudioPending('refresh');
+    setAudioMessage('Reading Windows volume...');
+    try {
+      const next = await window.nxgs.getAudioStatus();
+      setAudio(next);
+      setDisplayVolume(next.masterVolume);
+      setAudioMessage(next.supported ? '' : next.message ?? 'Windows volume is unavailable.');
+    } catch (error) {
+      setAudioMessage(error instanceof Error ? error.message : 'Could not read Windows volume.');
+    } finally {
+      audioBusy.current = false;
+      setAudioPending(null);
+    }
+  }, []);
+
+  const openVolumeControl = useCallback((): void => {
+    setSelectedNavKey('volume');
+    setFocusArea('volume');
+    setVolumeOpen(true);
+    setAudioMessage('');
+    void refreshAudio();
+  }, [refreshAudio]);
+
+  const setSystemVolume = useCallback(async (value: number): Promise<void> => {
+    if (audioBusy.current || !audio.supported) return;
+    const nextVolume = Math.max(0, Math.min(100, Math.round(value)));
+    setDisplayVolume(nextVolume);
+    audioBusy.current = true;
+    setAudioPending('volume');
+    setAudioMessage(`Setting ${nextVolume}%...`);
+    try {
+      const result = await window.nxgs.setMasterVolume(nextVolume);
+      setAudio(result.audio);
+      setDisplayVolume(result.audio.masterVolume);
+      setAudioMessage(result.ok ? `${result.audio.masterVolume}%` : result.message);
+    } catch (error) {
+      setDisplayVolume(audio.masterVolume);
+      setAudioMessage(error instanceof Error ? error.message : 'Could not change Windows volume.');
+    } finally {
+      audioBusy.current = false;
+      setAudioPending(null);
+    }
+  }, [audio.masterVolume, audio.supported]);
+
+  const adjustSystemVolume = useCallback((direction: -1 | 1): void => {
+    if (audioBusy.current) return;
+    void setSystemVolume(displayVolume + direction * 5);
+  }, [displayVolume, setSystemVolume]);
+
+  const toggleSystemMute = useCallback(async (): Promise<void> => {
+    if (audioBusy.current || !audio.supported) return;
+    audioBusy.current = true;
+    setAudioPending('mute');
+    setAudioMessage(audio.muted ? 'Unmuting...' : 'Muting...');
+    try {
+      const result = await window.nxgs.setMasterMuted(!audio.muted);
+      setAudio(result.audio);
+      setDisplayVolume(result.audio.masterVolume);
+      setAudioMessage(result.message);
+    } catch (error) {
+      setAudioMessage(error instanceof Error ? error.message : 'Could not change mute status.');
+    } finally {
+      audioBusy.current = false;
+      setAudioPending(null);
+    }
+  }, [audio.muted, audio.supported]);
 
   const resumeGame = useCallback(async (): Promise<void> => {
     if (pendingAction || !selectedSession) {
@@ -229,6 +324,8 @@ export function QuickHomeOverlay(props: {
         void goToLauncherHome();
       } else if (item.session) {
         setFocusArea('menu');
+      } else if (item.key === 'volume') {
+        openVolumeControl();
       } else if (item.key === 'settings') {
         void openConsoleSettings();
       } else if (item.key === 'power') {
@@ -237,10 +334,15 @@ export function QuickHomeOverlay(props: {
         setNotice(item.label);
       }
     },
-    [disabled, goToLauncherHome, navItems, openConsoleSettings]
+    [disabled, goToLauncherHome, navItems, openConsoleSettings, openVolumeControl]
   );
 
   const handleBack = useCallback((): void => {
+    if (volumeOpen) {
+      setVolumeOpen(false);
+      setFocusArea('navbar');
+      return;
+    }
     if (confirmClose) {
       setConfirmClose(false);
       return;
@@ -254,7 +356,7 @@ export function QuickHomeOverlay(props: {
       return;
     }
     void resumeGame();
-  }, [confirmClose, focusArea, game, menuIndex, props, resumeGame]);
+  }, [confirmClose, focusArea, game, menuIndex, props, resumeGame, volumeOpen]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -264,6 +366,19 @@ export function QuickHomeOverlay(props: {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (disabled) {
+        return;
+      }
+      if (volumeOpen && focusArea === 'volume') {
+        if (event.key === 'Escape' || event.key.toLowerCase() === 'b') {
+          handleBack();
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          adjustSystemVolume(event.key === 'ArrowRight' ? 1 : -1);
+        } else if (event.key === 'Enter') {
+          void toggleSystemMute();
+        } else if (event.key === 'ArrowDown') {
+          setVolumeOpen(false);
+          setFocusArea('navbar');
+        }
         return;
       }
       if (event.key === 'Escape' || event.key.toLowerCase() === 'b') {
@@ -310,7 +425,7 @@ export function QuickHomeOverlay(props: {
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, selectMenuAction, selectNavAction, selectedNavIndex]);
+  }, [adjustSystemVolume, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute, volumeOpen]);
 
   useEffect(() => {
     let lastInputAt = 0;
@@ -320,6 +435,24 @@ export function QuickHomeOverlay(props: {
         return;
       }
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
+      if (volumeOpen && focusArea === 'volume') {
+        if (pressed(14) || pad.axes[0] < -0.65) {
+          lastInputAt = Date.now();
+          adjustSystemVolume(-1);
+          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Left', lastNavigationAction: 'Switcher: volume down' });
+        } else if (pressed(15) || pad.axes[0] > 0.65) {
+          lastInputAt = Date.now();
+          adjustSystemVolume(1);
+          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Right', lastNavigationAction: 'Switcher: volume up' });
+        } else if (pressed(0)) {
+          lastInputAt = Date.now();
+          void toggleSystemMute();
+        } else if (pressed(1) || pressed(13) || pad.axes[1] > 0.65) {
+          lastInputAt = Date.now();
+          handleBack();
+        }
+        return;
+      }
       if (pressed(15) || pad.axes[0] > 0.65) {
         lastInputAt = Date.now();
         setSelectedNavKey(navItems[(selectedNavIndex + 1) % navItems.length].key);
@@ -359,7 +492,7 @@ export function QuickHomeOverlay(props: {
       }
     }, 90);
     return () => window.clearInterval(interval);
-  }, [closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, selectMenuAction, selectNavAction, selectedNavIndex]);
+  }, [adjustSystemVolume, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute, volumeOpen]);
 
   return (
     <section className="quick-home-overlay" aria-label="NXGS quick home overlay">
@@ -448,19 +581,63 @@ export function QuickHomeOverlay(props: {
 
       <nav className="quick-navbar" aria-label="NXGS quick navigation">
         {navItems.map((item, index) => (
-          <button
-            key={item.key}
-            className={`quick-nav-item ${selectedNavIndex === index ? 'selected' : ''} ${item.session ? 'active-game' : ''}`}
-            type="button"
-            title={item.label}
-            aria-label={item.label}
-            disabled={disabled}
-            onMouseEnter={() => { setSelectedNavKey(item.key); setFocusArea('navbar'); }}
-            onClick={() => selectNavAction(index)}
-          >
-            {item.session ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} /> : item.icon}
-            {item.session && <span className={`active-dot ${item.session.isActive ? '' : 'minimized'}`} />}
-          </button>
+          <div className="quick-nav-slot" key={item.key}>
+            {item.key === 'volume' && volumeOpen && (
+              <section className="quick-volume-control" id="quick-volume-control" aria-label="Quick Windows volume control">
+                <header>
+                  <span className={audio.muted ? 'muted' : ''}>
+                    {audioPending === 'refresh'
+                      ? <LoaderCircle size={22} className="spin" />
+                      : audio.muted ? <VolumeX size={22} /> : <Volume2 size={22} />}
+                  </span>
+                  <div><small>System volume</small><strong>{displayVolume}%</strong></div>
+                  <button
+                    type="button"
+                    className={audio.muted ? 'muted' : ''}
+                    disabled={audioPending !== null || !audio.supported}
+                    aria-label={audioPending === 'mute' ? 'Updating mute status' : audio.muted ? 'Unmute Windows audio' : 'Mute Windows audio'}
+                    onClick={() => void toggleSystemMute()}
+                  >
+                    {audioPending === 'mute'
+                      ? <LoaderCircle size={17} className="spin" />
+                      : audio.muted ? <Volume2 size={17} /> : <VolumeX size={17} />}
+                    <span>{audioPending === 'mute' ? 'Updating...' : audio.muted ? 'Unmute' : 'Mute'}</span>
+                  </button>
+                </header>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={displayVolume}
+                  aria-label="Quick system volume"
+                  disabled={audioPending !== null || !audio.supported}
+                  style={{ background: `linear-gradient(90deg, #71f0d7 0%, #71f0d7 ${displayVolume}%, rgba(255, 255, 255, 0.15) ${displayVolume}%)` }}
+                  onChange={(event) => setDisplayVolume(Number(event.currentTarget.value))}
+                  onPointerUp={(event) => void setSystemVolume(Number(event.currentTarget.value))}
+                  onBlur={(event) => {
+                    const nextVolume = Number(event.currentTarget.value);
+                    if (nextVolume !== audio.masterVolume && !audioBusy.current) void setSystemVolume(nextVolume);
+                  }}
+                />
+                <footer role="status">{audioMessage || '← → Adjust  ·  A / Enter Mute  ·  B Close'}</footer>
+              </section>
+            )}
+            <button
+              className={`quick-nav-item ${selectedNavIndex === index ? 'selected' : ''} ${item.session ? 'active-game' : ''}`}
+              type="button"
+              title={item.label}
+              aria-label={item.key === 'volume' ? `Quick volume, ${displayVolume} percent${audio.muted ? ', muted' : ''}` : item.label}
+              aria-expanded={item.key === 'volume' ? volumeOpen : undefined}
+              aria-controls={item.key === 'volume' ? 'quick-volume-control' : undefined}
+              disabled={disabled}
+              onMouseEnter={() => { setSelectedNavKey(item.key); setFocusArea('navbar'); }}
+              onClick={() => selectNavAction(index)}
+            >
+              {item.session ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} /> : item.icon}
+              {item.session && <span className={`active-dot ${item.session.isActive ? '' : 'minimized'}`} />}
+            </button>
+          </div>
         ))}
       </nav>
 
