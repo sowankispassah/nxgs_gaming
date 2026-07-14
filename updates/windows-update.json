@@ -1,7 +1,7 @@
 {
-    "version":  "0.11.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.11.3/NXGS-Play-Setup.exe",
-    "sha256":  "686a834ee85756b81222cf303231c0abc144c80b1170e349f3a85338cf8812ca",
+    "version":  "0.12.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.12.0/NXGS-Play-Setup.exe",
+    "sha256":  "6074c3f0cd12c51d5f6c4e75d24d0e1538bdb41fd9f45663f616f60c27ff278a",
     "required":  false,
-    "notes":  "Bluetooth devices now have separate reconnect or disconnect and confirmed Remove Device actions. Disconnect preserves pairing, saved devices remain visible when discovery is incomplete, and connection failures show clear per-device status."
+    "notes":  "Native Windows master volume and mute controls, modern controller-friendly Sound settings, real output and microphone device lists, and clear in-launcher device switching support messages."
 }
