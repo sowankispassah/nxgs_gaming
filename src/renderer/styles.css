@@ -1754,9 +1754,15 @@ button {
 .wifi-network-list > button > span:nth-child(3),
 .controller-diagnostic-list span { color: rgba(225, 234, 244, 0.64); }
 
-.bluetooth-device-list > div { grid-template-columns: 27px minmax(0, 1fr) max-content; }
+.bluetooth-device-list > div { grid-template-columns: 27px minmax(0, 1fr) minmax(126px, max-content); }
 .bluetooth-device-list > div.connected { color: #a7f9e8; }
+.bluetooth-device-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .bluetooth-device-list button { display: inline-flex; min-width: 126px; align-items: center; justify-content: center; gap: 8px; }
+.bluetooth-device-list button.danger {
+  border-color: rgba(255, 113, 128, 0.35);
+  background: rgba(137, 45, 56, 0.2);
+  color: #ffb5bd;
+}
 .settings-capability-note {
   border-left: 3px solid rgba(111, 185, 255, 0.4);
   margin-top: 20px;
@@ -1782,7 +1788,8 @@ button {
 .wifi-context-menu > strong { overflow: hidden; padding: 5px 8px; text-overflow: ellipsis; white-space: nowrap; }
 .wifi-context-menu button { display: flex; align-items: center; gap: 8px; text-align: left; }
 
-.wifi-confirmation-backdrop {
+.wifi-confirmation-backdrop,
+.bluetooth-confirmation-backdrop {
   position: fixed;
   inset: 0;
   z-index: 90;
@@ -1791,7 +1798,8 @@ button {
   background: rgba(2, 5, 10, 0.76);
   backdrop-filter: blur(10px);
 }
-.wifi-forget-confirmation {
+.wifi-forget-confirmation,
+.bluetooth-remove-confirmation {
   display: grid;
   width: min(460px, calc(100vw - 40px));
   justify-items: start;
@@ -1802,9 +1810,12 @@ button {
   box-shadow: 0 26px 80px rgba(0, 0, 0, 0.6);
   padding: 26px;
 }
-.wifi-forget-confirmation > svg { color: #ff8c98; }
-.wifi-forget-confirmation > strong { font-size: 19px; }
-.wifi-forget-confirmation p { margin: 0 0 6px; color: rgba(226, 235, 245, 0.68); line-height: 1.5; }
+.wifi-forget-confirmation > svg,
+.bluetooth-remove-confirmation > svg { color: #ff8c98; }
+.wifi-forget-confirmation > strong,
+.bluetooth-remove-confirmation > strong { font-size: 19px; }
+.wifi-forget-confirmation p,
+.bluetooth-remove-confirmation p { margin: 0 0 6px; color: rgba(226, 235, 245, 0.68); line-height: 1.5; }
 
 .controller-diagnostic-list > div { grid-template-columns: minmax(120px, 0.5fr) minmax(0, 1fr); }
 .settings-placeholder { color: rgba(226, 235, 245, 0.7); line-height: 1.65; }
@@ -1817,7 +1828,8 @@ button {
   .console-settings-layout { grid-template-columns: 1fr; overflow-y: auto; }
   .console-settings-layout > nav { min-height: 360px; }
   .bluetooth-device-list > div { grid-template-columns: 26px minmax(0, 1fr); }
-  .bluetooth-device-list button { grid-column: 2; width: 100%; }
+  .bluetooth-device-actions { grid-column: 2; justify-content: stretch; }
+  .bluetooth-device-list button { flex: 1 1 160px; }
   .wifi-selected-details { grid-template-columns: 1fr; }
 }
 

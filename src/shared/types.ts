@@ -262,7 +262,7 @@ export interface BluetoothStatus {
   message?: string;
 }
 
-export type BluetoothActionStatus = 'connected' | 'paired' | 'disconnected' | 'device-not-found' | 'failed';
+export type BluetoothActionStatus = 'connected' | 'paired' | 'disconnected' | 'removed' | 'device-not-found' | 'failed';
 
 export interface BluetoothActionResult {
   ok: boolean;

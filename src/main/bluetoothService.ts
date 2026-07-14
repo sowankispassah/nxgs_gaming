@@ -88,11 +88,19 @@ public static class NxgsBluetoothNative {
 
     [DllImport("bthprops.cpl", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BluetoothFindNextRadio(IntPtr find, out IntPtr radio);
+
+    [DllImport("bthprops.cpl", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool BluetoothFindRadioClose(IntPtr find);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeviceIoControl(IntPtr device, uint controlCode, ref BLUETOOTH_ADDRESS input, int inputSize, IntPtr output, int outputSize, out int bytesReturned, IntPtr overlapped);
 
     [DllImport("bthprops.cpl", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int BluetoothAuthenticateDeviceEx(IntPtr parentWindow, IntPtr radio, ref BLUETOOTH_DEVICE_INFO info, IntPtr oobData, int requirements);
@@ -175,6 +183,44 @@ public static class NxgsBluetoothNative {
         return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
     }
 
+    public static NxgsBluetoothAction Disconnect(string id) {
+        BLUETOOTH_ADDRESS address;
+        if (!TryAddress(id, out address)) return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
+        bool found = false;
+        bool connected = false;
+        foreach (var info in Find(1, false)) {
+            if (info.Address.Value != address.Value) continue;
+            found = true;
+            connected = info.Connected;
+            break;
+        }
+        if (!found) return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
+        if (!connected) return new NxgsBluetoothAction { Found = true, Success = true, Code = 1167 };
+
+        var search = new BLUETOOTH_FIND_RADIO_PARAMS { Size = Marshal.SizeOf(typeof(BLUETOOTH_FIND_RADIO_PARAMS)) };
+        IntPtr radio;
+        IntPtr find = BluetoothFindFirstRadio(ref search, out radio);
+        if (find == IntPtr.Zero) return new NxgsBluetoothAction { Found = true, Success = false, Code = Marshal.GetLastWin32Error() };
+        int lastError = 1;
+        try {
+            do {
+                try {
+                    int returned;
+                    if (DeviceIoControl(radio, 0x0041000C, ref address, Marshal.SizeOf(typeof(BLUETOOTH_ADDRESS)), IntPtr.Zero, 0, out returned, IntPtr.Zero)) {
+                        return new NxgsBluetoothAction { Found = true, Success = true, Code = 0 };
+                    }
+                    lastError = Marshal.GetLastWin32Error();
+                    if (lastError == 1167) return new NxgsBluetoothAction { Found = true, Success = true, Code = lastError };
+                } finally {
+                    if (radio != IntPtr.Zero) CloseHandle(radio);
+                }
+            } while (BluetoothFindNextRadio(find, out radio));
+        } finally {
+            BluetoothFindRadioClose(find);
+        }
+        return new NxgsBluetoothAction { Found = true, Success = false, Code = lastError };
+    }
+
     public static NxgsBluetoothAction Unpair(string id) {
         BLUETOOTH_ADDRESS address;
         if (!TryAddress(id, out address)) return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
@@ -188,6 +234,24 @@ public static class NxgsBluetoothNative {
 const SCAN_SCRIPT = `${NATIVE_BLUETOOTH_PREAMBLE}
 $hasRadio = [NxgsBluetoothNative]::HasRadio()
 $devices = if ($hasRadio) { @([NxgsBluetoothNative]::Scan()) } else { @() }
+if ($hasRadio) {
+    $pairedPnpDevices = @(Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object {
+        $_.InstanceId -like 'BTHENUM\DEV_*' -and $_.InstanceId -match 'DEV_([0-9A-F]{12})' -and -not [string]::IsNullOrWhiteSpace($_.FriendlyName)
+    })
+    foreach ($pnpDevice in $pairedPnpDevices) {
+        [void]($pnpDevice.InstanceId -match 'DEV_([0-9A-F]{12})')
+        $id = $Matches[1].ToUpperInvariant()
+        if (@($devices | Where-Object { $_.Id -eq $id }).Count -gt 0) { continue }
+        $devices += [pscustomobject]@{
+            Id = $id
+            Name = [string]$pnpDevice.FriendlyName
+            Address = ($id -replace '(..)(?!$)', '$1:')
+            Paired = $true
+            Connected = $false
+            Connectable = $true
+        }
+    }
+}
 [pscustomobject]@{ radioState = if ($hasRadio) { 'on' } else { 'off' }; devices = $devices } | ConvertTo-Json -Depth 5 -Compress
 `;
 
@@ -199,6 +263,11 @@ $result = [NxgsBluetoothNative]::Pair($env:NXGS_BLUETOOTH_DEVICE_ID, $owner)
 `;
 
 const DISCONNECT_SCRIPT = `${NATIVE_BLUETOOTH_PREAMBLE}
+$result = [NxgsBluetoothNative]::Disconnect($env:NXGS_BLUETOOTH_DEVICE_ID)
+[pscustomobject]@{ found = $result.Found; success = $result.Success; status = [string]$result.Code } | ConvertTo-Json -Compress
+`;
+
+const REMOVE_SCRIPT = `${NATIVE_BLUETOOTH_PREAMBLE}
 $result = [NxgsBluetoothNative]::Unpair($env:NXGS_BLUETOOTH_DEVICE_ID)
 [pscustomobject]@{ found = $result.Found; success = $result.Success; status = [string]$result.Code } | ConvertTo-Json -Compress
 `;
@@ -289,6 +358,18 @@ function windowsPairingError(code: string): string {
   return `Pairing failed (Windows error ${code}). Keep the device in pairing mode and try again.`;
 }
 
+function windowsDisconnectError(code: string): string {
+  if (code === '5') return 'Windows denied permission to disconnect this device. The device remains paired.';
+  if (code === '50' || code === '1') return 'Windows cannot disconnect this device profile from an app. Turn the device off, then scan again.';
+  return `Windows could not disconnect this device (error ${code}). The device remains paired.`;
+}
+
+function windowsRemoveError(code: string): string {
+  if (code === '5') return 'Windows denied permission to remove this device.';
+  if (code === '1168') return 'Device not found. It may already have been removed.';
+  return `Windows could not remove this device (error ${code}).`;
+}
+
 export async function scanBluetoothDevices(): Promise<BluetoothStatus> {
   if (process.platform !== 'win32') {
     return { supported: false, radioState: 'unsupported', devices: [], message: 'Bluetooth management is available on Windows.' };
@@ -353,12 +434,38 @@ export async function disconnectBluetoothDevice(deviceId: string): Promise<Bluet
       return { ok: false, status: 'device-not-found', message: 'Device not found. Scan again and retry.', bluetooth };
     }
     if (!asBoolean(result.success)) {
-      return { ok: false, status: 'failed', message: `Windows could not disconnect this device (error ${String(result.status ?? 'unknown')}).`, bluetooth };
+      return { ok: false, status: 'failed', message: windowsDisconnectError(String(result.status ?? 'unknown')), bluetooth };
     }
     return {
       ok: true,
       status: 'disconnected',
-      message: 'Disconnected. Windows pairing was removed; scan and pair the device again to reconnect.',
+      message: 'Disconnected. The device remains paired and can be reconnected later.',
+      bluetooth
+    };
+  } catch (error) {
+    const bluetooth = await scanBluetoothDevices();
+    return { ok: false, status: 'failed', message: safeError(error), bluetooth };
+  }
+}
+
+export async function removeBluetoothDevice(deviceId: string): Promise<BluetoothActionResult> {
+  if (!/^[0-9a-f]{12}$/i.test(deviceId)) {
+    const bluetooth = await scanBluetoothDevices();
+    return { ok: false, status: 'device-not-found', message: 'Device not found. Scan again and retry.', bluetooth };
+  }
+  try {
+    const result = await runPowerShell<RawBluetoothAction>(REMOVE_SCRIPT, { NXGS_BLUETOOTH_DEVICE_ID: deviceId });
+    const bluetooth = await scanBluetoothDevices();
+    if (!asBoolean(result.found)) {
+      return { ok: false, status: 'device-not-found', message: 'Device not found. It may already have been removed.', bluetooth };
+    }
+    if (!asBoolean(result.success)) {
+      return { ok: false, status: 'failed', message: windowsRemoveError(String(result.status ?? 'unknown')), bluetooth };
+    }
+    return {
+      ok: true,
+      status: 'removed',
+      message: 'Bluetooth device removed. Scan and pair it again if you want to use it later.',
       bluetooth
     };
   } catch (error) {

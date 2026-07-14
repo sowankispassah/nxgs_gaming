@@ -45,6 +45,7 @@ const api = {
   pairBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> => ipcRenderer.invoke('bluetooth:pair', deviceId),
   disconnectBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> =>
     ipcRenderer.invoke('bluetooth:disconnect', deviceId),
+  removeBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> => ipcRenderer.invoke('bluetooth:remove', deviceId),
   setKioskMode: (mode: KioskMode): Promise<AppDiagnostics> => ipcRenderer.invoke('kiosk:setMode', mode),
   setAdminPinActive: (active: boolean): Promise<{ ok: boolean }> => ipcRenderer.invoke('kiosk:setAdminPinActive', active),
   unlockKioskAdminActions: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('kiosk:unlockAdminActions', pin),

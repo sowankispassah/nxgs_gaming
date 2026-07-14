@@ -5,7 +5,7 @@ import { DataStore } from './database';
 import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
-import { disconnectBluetoothDevice, pairBluetoothDevice, scanBluetoothDevices } from './bluetoothService';
+import { disconnectBluetoothDevice, pairBluetoothDevice, removeBluetoothDevice, scanBluetoothDevices } from './bluetoothService';
 import { connectWifi, disconnectWifi, forgetWifi, getNetworkStatus } from './networkService';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
@@ -441,6 +441,7 @@ function registerIpc(): void {
     return pairBluetoothDevice(deviceId, ownerWindow);
   });
   ipcMain.handle('bluetooth:disconnect', async (_event, deviceId: string) => disconnectBluetoothDevice(deviceId));
+  ipcMain.handle('bluetooth:remove', async (_event, deviceId: string) => removeBluetoothDevice(deviceId));
 
   ipcMain.handle('kiosk:setMode', (_event, mode: KioskMode) => {
     if (mode !== 'customer') {

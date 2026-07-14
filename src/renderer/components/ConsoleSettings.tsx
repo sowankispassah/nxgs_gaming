@@ -74,7 +74,7 @@ const EMPTY_BLUETOOTH: BluetoothStatus = {
 };
 
 function focusableDetailActions(): HTMLElement[] {
-  const confirmation = document.querySelector<HTMLElement>('.wifi-forget-confirmation');
+  const confirmation = document.querySelector<HTMLElement>('.settings-confirmation-dialog');
   const contextMenu = document.querySelector<HTMLElement>('.wifi-context-menu');
   const scope = confirmation ?? contextMenu ?? document.querySelector<HTMLElement>('.console-settings-detail');
   if (!scope) return [];
@@ -96,6 +96,8 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [bluetooth, setBluetooth] = useState<BluetoothStatus>(EMPTY_BLUETOOTH);
   const [bluetoothPending, setBluetoothPending] = useState<string | null>(null);
   const [bluetoothFeedback, setBluetoothFeedback] = useState<Feedback | null>(null);
+  const [bluetoothDeviceStatuses, setBluetoothDeviceStatuses] = useState<Record<string, 'Connected' | 'Paired / Disconnected' | 'Failed'>>({});
+  const [removeBluetoothTarget, setRemoveBluetoothTarget] = useState<BluetoothDeviceSummary | null>(null);
   const [diagnostics, setDiagnostics] = useState<AppDiagnostics | null>(null);
   const networkBusy = useRef(false);
   const bluetoothBusy = useRef(false);
@@ -128,6 +130,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     bluetoothBusy.current = true;
     setBluetoothPending('scan');
     setBluetoothFeedback({ tone: 'info', message: 'Searching...' });
+    setBluetoothDeviceStatuses({});
     try {
       const next = await window.nxgs.scanBluetoothDevices();
       setBluetooth(next);
@@ -220,11 +223,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       if (props.inputBlocked) return;
       if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'b', 'B'].includes(event.key)) return;
       if (detailMode) {
-        if ((event.key === 'Escape' || event.key === 'b' || event.key === 'B') && (forgetWifiTarget || wifiContextMenu)) {
+        if ((event.key === 'Escape' || event.key === 'b' || event.key === 'B') && (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget)) {
           event.preventDefault();
           event.stopImmediatePropagation();
           setForgetWifiTarget(null);
           setWifiContextMenu(null);
+          setRemoveBluetoothTarget(null);
           return;
         }
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
@@ -251,7 +255,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activateSelected, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, wifiContextMenu]);
+  }, [activateSelected, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, wifiContextMenu]);
 
   useEffect(() => {
     let lastInputAt = 0;
@@ -269,9 +273,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           moveDetailFocus(1);
         } else if (pressed(14) || pressed(1)) {
           lastInputAt = Date.now();
-          if (forgetWifiTarget || wifiContextMenu) {
+          if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget) {
             setForgetWifiTarget(null);
             setWifiContextMenu(null);
+            setRemoveBluetoothTarget(null);
           } else {
             leaveDetail();
           }
@@ -300,7 +305,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       }
     }, 90);
     return () => window.clearInterval(timer);
-  }, [activateSelected, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, selected.label, wifiContextMenu]);
+  }, [activateSelected, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, selected.label, wifiContextMenu]);
 
   const performWifiConnect = useCallback(async (wifi: WifiNetworkSummary, password?: string): Promise<void> => {
     if (networkBusy.current) return;
@@ -408,25 +413,63 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
   }, [forgetWifiTarget]);
 
-  const handleBluetoothDevice = useCallback(async (device: BluetoothDeviceSummary): Promise<void> => {
+  const handleBluetoothDevice = useCallback(async (device: BluetoothDeviceSummary, action: 'connect' | 'disconnect'): Promise<void> => {
     if (bluetoothBusy.current) return;
     bluetoothBusy.current = true;
-    const disconnecting = device.connected;
-    setBluetoothPending(`${disconnecting ? 'disconnect' : 'pair'}:${device.id}`);
-    setBluetoothFeedback({ tone: 'info', message: disconnecting ? 'Disconnecting...' : 'Pairing...' });
+    const disconnecting = action === 'disconnect';
+    setBluetoothPending(`${action}:${device.id}`);
+    setBluetoothFeedback({
+      tone: 'info',
+      message: disconnecting ? `Disconnecting ${device.name}...` : device.paired ? `Reconnecting ${device.name}...` : `Pairing ${device.name}...`
+    });
     try {
       const result = disconnecting
         ? await window.nxgs.disconnectBluetoothDevice(device.id)
         : await window.nxgs.pairBluetoothDevice(device.id);
       setBluetooth(result.bluetooth);
       setBluetoothFeedback({ tone: result.ok ? result.status === 'paired' ? 'warning' : 'success' : 'error', message: result.message });
+      setBluetoothDeviceStatuses((current) => ({
+        ...current,
+        [device.id]: result.ok
+          ? result.status === 'connected' ? 'Connected' : 'Paired / Disconnected'
+          : 'Failed'
+      }));
     } catch (error) {
       setBluetoothFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Bluetooth action failed.' });
+      setBluetoothDeviceStatuses((current) => ({ ...current, [device.id]: 'Failed' }));
     } finally {
       bluetoothBusy.current = false;
       setBluetoothPending(null);
     }
   }, []);
+
+  const requestRemoveBluetoothDevice = useCallback((device: BluetoothDeviceSummary): void => {
+    if (!device.paired || bluetoothBusy.current) return;
+    setRemoveBluetoothTarget(device);
+    window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-remove-cancel')?.focus(), 0);
+  }, []);
+
+  const confirmRemoveBluetoothDevice = useCallback(async (): Promise<void> => {
+    if (!removeBluetoothTarget || bluetoothBusy.current) return;
+    const target = removeBluetoothTarget;
+    bluetoothBusy.current = true;
+    setBluetoothPending(`remove:${target.id}`);
+    setBluetoothFeedback({ tone: 'info', message: `Removing ${target.name}...` });
+    try {
+      const result = await window.nxgs.removeBluetoothDevice(target.id);
+      setBluetooth(result.bluetooth);
+      setBluetoothFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
+      if (!result.ok) setBluetoothDeviceStatuses((current) => ({ ...current, [target.id]: 'Failed' }));
+      setRemoveBluetoothTarget(null);
+    } catch (error) {
+      setBluetoothFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to remove this Bluetooth device.' });
+      setBluetoothDeviceStatuses((current) => ({ ...current, [target.id]: 'Failed' }));
+      setRemoveBluetoothTarget(null);
+    } finally {
+      bluetoothBusy.current = false;
+      setBluetoothPending(null);
+    }
+  }, [removeBluetoothTarget]);
 
   const detail = useMemo(() => {
     if (selected.key === 'network') {
@@ -547,7 +590,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           )}
           {forgetWifiTarget && (
             <div className="wifi-confirmation-backdrop" role="presentation">
-              <div className="wifi-forget-confirmation" role="dialog" aria-modal="true" aria-labelledby="wifi-forget-title" aria-describedby="wifi-forget-description">
+              <div className="wifi-forget-confirmation settings-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="wifi-forget-title" aria-describedby="wifi-forget-description">
                 <Trash2 size={30} />
                 <h3 id="wifi-forget-title">Forget this Wi-Fi network?</h3>
                 <strong>{forgetWifiTarget.ssid}</strong>
@@ -585,20 +628,53 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           <div className="bluetooth-device-list">
             {bluetooth.devices.length > 0 ? bluetooth.devices.map((device) => {
               const pending = bluetoothPending?.endsWith(`:${device.id}`) ?? false;
+              const pendingAction = pending ? bluetoothPending?.split(':', 1)[0] : null;
               const label = device.connected ? 'Disconnect' : device.paired ? 'Reconnect' : 'Pair';
+              const status = pendingAction === 'connect'
+                ? 'Connecting'
+                : pendingAction === 'disconnect'
+                  ? 'Disconnecting'
+                  : pendingAction === 'remove'
+                    ? 'Removing'
+                    : bluetoothDeviceStatuses[device.id] ?? (device.connected ? 'Connected' : device.paired ? 'Paired / Disconnected' : 'Available');
               return (
                 <div key={device.id} className={device.connected ? 'connected' : ''}>
                   <Bluetooth size={21} />
-                  <span><strong>{device.name}</strong><small>{device.connected ? 'Connected' : device.paired ? 'Paired' : 'Available'}{device.address ? ` · ${device.address}` : ''}</small></span>
-                  <button data-settings-action type="button" disabled={bluetoothPending !== null || (!device.connectable && !device.paired)} onClick={() => void handleBluetoothDevice(device)}>
-                    {pending ? <LoaderCircle size={17} className="spin" /> : device.connected ? <Unplug size={17} /> : <Bluetooth size={17} />}
-                    {pending ? device.connected ? 'Disconnecting...' : 'Pairing...' : label}
-                  </button>
+                  <span><strong>{device.name}</strong><small>{status}{device.address ? ` · ${device.address}` : ''}</small></span>
+                  <div className="bluetooth-device-actions">
+                    <button data-settings-action type="button" disabled={bluetoothPending !== null || (!device.connectable && !device.paired)} onClick={() => void handleBluetoothDevice(device, device.connected ? 'disconnect' : 'connect')}>
+                      {pending && pendingAction !== 'remove' ? <LoaderCircle size={17} className="spin" /> : device.connected ? <Unplug size={17} /> : <Bluetooth size={17} />}
+                      {pendingAction === 'connect' ? 'Connecting...' : pendingAction === 'disconnect' ? 'Disconnecting...' : label}
+                    </button>
+                    {device.paired && (
+                      <button className="danger" data-settings-action type="button" aria-label={`Remove ${device.name}`} disabled={bluetoothPending !== null} onClick={() => requestRemoveBluetoothDevice(device)}>
+                        {pendingAction === 'remove' ? <LoaderCircle size={17} className="spin" /> : <Trash2 size={17} />}
+                        Remove Device
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             }) : <p className="settings-placeholder">No Bluetooth devices found. Put the controller in pairing mode and select Scan for Devices.</p>}
           </div>
-          <p className="settings-capability-note">Windows controls the final Bluetooth HID connection and may show a consent prompt over NXGS. Disconnect removes the Windows pairing so the device can be paired elsewhere. Some Bluetooth LE-only devices remain driver-managed.</p>
+          <p className="settings-capability-note">Disconnect keeps the device paired. Remove Device clears the Windows pairing, so the device must be scanned and paired again. Windows controls the final connection for some Bluetooth profiles; NXGS will show a clear message when a device cannot be disconnected by an app.</p>
+          {removeBluetoothTarget && (
+            <div className="bluetooth-confirmation-backdrop" role="presentation">
+              <div className="bluetooth-remove-confirmation settings-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="bluetooth-remove-title" aria-describedby="bluetooth-remove-description">
+                <Trash2 size={30} />
+                <h3 id="bluetooth-remove-title">Remove this Bluetooth device?</h3>
+                <strong>{removeBluetoothTarget.name}</strong>
+                <p id="bluetooth-remove-description">This removes the Windows pairing. You will need to scan and pair the device again to use it later.</p>
+                <div className="settings-action-row">
+                  <button id="bluetooth-remove-cancel" data-settings-action type="button" disabled={bluetoothPending?.startsWith('remove:')} onClick={() => setRemoveBluetoothTarget(null)}>Cancel</button>
+                  <button className="danger" data-settings-action type="button" disabled={bluetoothPending?.startsWith('remove:')} onClick={() => void confirmRemoveBluetoothDevice()}>
+                    {bluetoothPending?.startsWith('remove:') ? <LoaderCircle size={17} className="spin" /> : <Trash2 size={17} />}
+                    {bluetoothPending?.startsWith('remove:') ? 'Removing...' : 'Remove Device'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </SettingsDetail>
       );
     }
@@ -614,7 +690,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls. It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [bluetooth, bluetoothFeedback, bluetoothPending, diagnostics, disconnectNetwork, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshBluetooth, refreshNetwork, requestForgetWifi, selected, selectedWifi, selectWifi, showWifiPassword, wifiContextMenu, wifiPassword]);
+  }, [bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshBluetooth, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">
