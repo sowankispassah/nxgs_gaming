@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.7",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.7/NXGS-Play-Setup.exe",
-    "sha256":  "6dfcabc7a371e8925dd320a7b0a6c9c0eaa1da178b3d4d39aaa4b154c0751034",
+    "version":  "0.14.8",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.8/NXGS-Play-Setup.exe",
+    "sha256":  "c8c64550cece96a9343248bb1e09685775eecc9899d41f05ef359d4531943ebe",
     "required":  false,
-    "notes":  "NXGS now keeps Audio and Brightness inside one compact Quick Settings panel above the gear, with live mouse and controller sliders and no separate navbar controls."
+    "notes":  "NXGS now keeps Exit Full Screen in stable windowed Admin mode when Ctrl+Shift+H is pressed repeatedly or during the mode transition."
 }
