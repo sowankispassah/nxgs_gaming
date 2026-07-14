@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.0/NXGS-Play-Setup.exe",
-    "sha256":  "46da2f5c7b4e19dfe422eec396af32f8a70d0b3bddd1865d78b74afe62f86963",
+    "version":  "0.14.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.1/NXGS-Play-Setup.exe",
+    "sha256":  "3995c1e953b9bc662d64eb02570a0809b83df078b326c40a66c877fc3facb777",
     "required":  false,
-    "notes":  "NXGS adds integrated Display settings, live brightness control, an inline quick brightness slider, and smoother live volume controls."
+    "notes":  "NXGS adds functional Windows color-profile selection and HDR controls, with accurate Night Light capability messaging."
 }
