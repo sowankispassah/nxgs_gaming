@@ -1,7 +1,7 @@
 {
-    "version":  "0.13.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.13.1/NXGS-Play-Setup.exe",
-    "sha256":  "f4ed7f36fd3714d2db584c0219d2cdf285afbc22acaf3041ef40d3888ad8506b",
+    "version":  "0.14.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.0/NXGS-Play-Setup.exe",
+    "sha256":  "46da2f5c7b4e19dfe422eec396af32f8a70d0b3bddd1865d78b74afe62f86963",
     "required":  false,
-    "notes":  "NXGS now reuses and refocuses the already-running launcher instead of opening a duplicate instance."
+    "notes":  "NXGS adds integrated Display settings, live brightness control, an inline quick brightness slider, and smoother live volume controls."
 }
