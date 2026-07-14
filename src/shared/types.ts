@@ -271,6 +271,37 @@ export interface BluetoothActionResult {
   bluetooth: BluetoothStatus;
 }
 
+export interface AudioDeviceSummary {
+  id: string;
+  name: string;
+  kind: 'output' | 'input';
+  isDefault: boolean;
+  volume: number;
+  muted: boolean;
+}
+
+export interface AudioStatus {
+  supported: boolean;
+  masterVolume: number;
+  muted: boolean;
+  inputVolume: number;
+  inputMuted: boolean;
+  outputDevices: AudioDeviceSummary[];
+  inputDevices: AudioDeviceSummary[];
+  currentOutputId?: string;
+  currentOutputName?: string;
+  currentInputId?: string;
+  currentInputName?: string;
+  deviceSwitchingSupported: boolean;
+  message?: string;
+}
+
+export interface AudioActionResult {
+  ok: boolean;
+  message: string;
+  audio: AudioStatus;
+}
+
 export type ShellHomeReason =
   | 'global-home'
   | 'global-f10'

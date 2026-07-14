@@ -1,6 +1,6 @@
 {
   "name": "nxgs-play",
-  "version": "0.11.3",
+  "version": "0.12.0",
   "description": "Windows-only PC gaming launcher and kiosk MVP.",
   "private": true,
   "main": "out/main/main.js",

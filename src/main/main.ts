@@ -6,6 +6,7 @@ import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
 import { disconnectBluetoothDevice, pairBluetoothDevice, removeBluetoothDevice, scanBluetoothDevices } from './bluetoothService';
+import { getAudioStatus, setMasterMuted, setMasterVolume, switchAudioDevice } from './audioService';
 import { connectWifi, disconnectWifi, forgetWifi, getNetworkStatus } from './networkService';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
@@ -442,6 +443,13 @@ function registerIpc(): void {
   });
   ipcMain.handle('bluetooth:disconnect', async (_event, deviceId: string) => disconnectBluetoothDevice(deviceId));
   ipcMain.handle('bluetooth:remove', async (_event, deviceId: string) => removeBluetoothDevice(deviceId));
+  ipcMain.handle('audio:getStatus', async () => getAudioStatus());
+  ipcMain.handle('audio:getOutputDevices', async () => getAudioStatus());
+  ipcMain.handle('audio:getInputDevices', async () => getAudioStatus());
+  ipcMain.handle('audio:setVolume', async (_event, volume: number) => setMasterVolume(volume));
+  ipcMain.handle('audio:setMuted', async (_event, muted: boolean) => setMasterMuted(muted));
+  ipcMain.handle('audio:switchOutput', async (_event, deviceId: string) => switchAudioDevice(deviceId, 'output'));
+  ipcMain.handle('audio:switchInput', async (_event, deviceId: string) => switchAudioDevice(deviceId, 'input'));
 
   ipcMain.handle('kiosk:setMode', (_event, mode: KioskMode) => {
     if (mode !== 'customer') {

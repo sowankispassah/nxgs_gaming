@@ -1763,6 +1763,213 @@ button {
   background: rgba(137, 45, 56, 0.2);
   color: #ffb5bd;
 }
+
+.sound-page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.sound-page-toolbar > div { display: grid; gap: 3px; }
+.sound-page-toolbar span,
+.sound-master-controls > div:first-child > span,
+.sound-current-grid small {
+  color: rgba(226, 234, 246, 0.56);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.sound-page-toolbar strong { font-size: 21px; }
+.sound-page-toolbar button,
+.sound-device-list button,
+.sound-mute-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+
+.sound-master-card {
+  display: grid;
+  grid-template-columns: 154px minmax(0, 1fr);
+  align-items: center;
+  gap: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(113, 240, 215, 0.28);
+  border-radius: 22px;
+  margin-top: 18px;
+  background:
+    radial-gradient(circle at 8% 30%, rgba(113, 240, 215, 0.19), transparent 34%),
+    linear-gradient(135deg, rgba(33, 78, 76, 0.34), rgba(13, 20, 34, 0.82));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 18px 46px rgba(0, 0, 0, 0.18);
+  padding: 26px;
+}
+
+.sound-master-card.muted {
+  border-color: rgba(255, 196, 92, 0.3);
+  background:
+    radial-gradient(circle at 8% 30%, rgba(255, 196, 92, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(86, 58, 27, 0.31), rgba(13, 20, 34, 0.82));
+}
+
+.sound-volume-orb {
+  width: 146px;
+  height: 146px;
+  border-radius: 50%;
+  box-shadow: 0 0 42px rgba(113, 240, 215, 0.14);
+  padding: 7px;
+}
+.sound-master-card.muted .sound-volume-orb { box-shadow: 0 0 42px rgba(255, 196, 92, 0.12); }
+.sound-volume-orb > div {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  background: rgba(7, 12, 22, 0.92);
+}
+.sound-volume-orb svg { color: #71f0d7; }
+.sound-master-card.muted .sound-volume-orb svg { color: #ffd078; }
+.sound-volume-orb strong { font-size: 28px; line-height: 1.1; }
+.sound-volume-orb span {
+  color: rgba(226, 234, 246, 0.55);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.sound-master-controls { display: grid; min-width: 0; gap: 15px; }
+.sound-master-controls > div:first-child { display: grid; min-width: 0; gap: 4px; }
+.sound-master-controls > div:first-child > strong {
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sound-volume-controls {
+  display: grid;
+  grid-template-columns: 48px minmax(120px, 1fr) 48px;
+  align-items: center;
+  gap: 12px;
+}
+.sound-volume-controls button { display: grid; width: 48px; height: 48px; place-items: center; padding: 0; }
+.sound-volume-controls input[type='range'] {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+}
+.sound-volume-controls input[type='range']::-webkit-slider-thumb {
+  width: 24px;
+  height: 24px;
+  border: 4px solid #122329;
+  border-radius: 50%;
+  appearance: none;
+  background: #8bf6e1;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+.sound-volume-controls input[type='range']:focus-visible {
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(113, 240, 215, 0.3);
+  outline: none;
+}
+.sound-volume-controls input[type='range']:disabled { cursor: progress; opacity: 0.55; }
+.sound-mute-toggle { width: max-content; min-width: 132px; }
+.sound-mute-toggle.active {
+  border-color: rgba(255, 196, 92, 0.42);
+  background: rgba(125, 89, 30, 0.22);
+  color: #ffda94;
+}
+.sound-inline-status { color: #a7f9e8; }
+
+.sound-current-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 24px;
+}
+.sound-current-grid > div {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 14px;
+}
+.sound-current-grid > div > svg { color: #71f0d7; }
+.sound-current-grid > div > span { display: grid; min-width: 0; gap: 3px; }
+.sound-current-grid strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sound-current-grid em { color: rgba(226, 234, 246, 0.55); font-size: 10px; font-style: normal; }
+
+.sound-device-section { border-top: 1px solid rgba(255, 255, 255, 0.09); padding-top: 20px; }
+.sound-device-section + .sound-device-section { margin-top: 16px; }
+.sound-section-title,
+.sound-section-title > div,
+.sound-section-title > div > span { display: flex; align-items: center; }
+.sound-section-title { justify-content: space-between; gap: 14px; margin-bottom: 8px; }
+.sound-section-title > div { min-width: 0; gap: 11px; }
+.sound-section-title > div > svg { color: #71f0d7; }
+.sound-section-title > div > span { align-items: flex-start; flex-direction: column; gap: 3px; }
+.sound-section-title small { color: rgba(226, 234, 246, 0.54); font-size: 10px; }
+.sound-section-title > span:last-child {
+  display: grid;
+  min-width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(226, 234, 246, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+}
+.sound-device-list { display: grid; gap: 7px; }
+.sound-device-list > div {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(110px, max-content);
+  align-items: center;
+  gap: 12px;
+  min-height: 62px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 9px 10px 9px 14px;
+}
+.sound-device-list > div.current {
+  border-color: rgba(113, 240, 215, 0.23);
+  background: rgba(57, 109, 106, 0.13);
+}
+.sound-device-list > div > svg { color: rgba(226, 234, 246, 0.58); }
+.sound-device-list > div.current > svg { color: #71f0d7; }
+.sound-device-list > div > span { display: grid; min-width: 0; gap: 3px; }
+.sound-device-list > div > span strong,
+.sound-device-list > div > span small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sound-device-list > div > span small { color: rgba(226, 234, 246, 0.5); font-size: 10px; }
+.sound-device-list button { min-width: 110px; padding: 10px 12px; }
+.sound-current-badge {
+  justify-self: end;
+  border: 1px solid rgba(113, 240, 215, 0.25);
+  border-radius: 999px;
+  background: rgba(113, 240, 215, 0.1);
+  padding: 6px 10px;
+  color: #a7f9e8;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .settings-capability-note {
   border-left: 3px solid rgba(111, 185, 255, 0.4);
   margin-top: 20px;
@@ -1831,6 +2038,12 @@ button {
   .bluetooth-device-actions { grid-column: 2; justify-content: stretch; }
   .bluetooth-device-list button { flex: 1 1 160px; }
   .wifi-selected-details { grid-template-columns: 1fr; }
+  .sound-master-card { grid-template-columns: 124px minmax(0, 1fr); gap: 18px; padding: 20px; }
+  .sound-volume-orb { width: 118px; height: 118px; }
+  .sound-current-grid { grid-template-columns: 1fr; }
+  .sound-device-list > div { grid-template-columns: 30px minmax(0, 1fr); }
+  .sound-device-list button,
+  .sound-current-badge { grid-column: 2; justify-self: start; }
 }
 
 .quick-overlay-toast {

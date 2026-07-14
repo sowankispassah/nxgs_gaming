@@ -10,23 +10,31 @@ import {
   Gamepad2,
   Globe2,
   HardDrive,
+  Headphones,
   Info,
   LoaderCircle,
   Lock,
   LockKeyhole,
+  Mic2,
+  Minus,
   Monitor,
   RefreshCw,
   Search,
   Settings,
   Speaker,
+  Plus,
   Trash2,
   Unplug,
   Users,
   Wifi,
-  WifiOff
+  WifiOff,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import type {
   AppDiagnostics,
+  AudioDeviceSummary,
+  AudioStatus,
   BluetoothDeviceSummary,
   BluetoothStatus,
   NetworkStatus,
@@ -73,6 +81,17 @@ const EMPTY_BLUETOOTH: BluetoothStatus = {
   devices: []
 };
 
+const EMPTY_AUDIO: AudioStatus = {
+  supported: true,
+  masterVolume: 0,
+  muted: false,
+  inputVolume: 0,
+  inputMuted: false,
+  outputDevices: [],
+  inputDevices: [],
+  deviceSwitchingSupported: false
+};
+
 function focusableDetailActions(): HTMLElement[] {
   const confirmation = document.querySelector<HTMLElement>('.settings-confirmation-dialog');
   const contextMenu = document.querySelector<HTMLElement>('.wifi-context-menu');
@@ -98,9 +117,14 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [bluetoothFeedback, setBluetoothFeedback] = useState<Feedback | null>(null);
   const [bluetoothDeviceStatuses, setBluetoothDeviceStatuses] = useState<Record<string, 'Connected' | 'Paired / Disconnected' | 'Failed'>>({});
   const [removeBluetoothTarget, setRemoveBluetoothTarget] = useState<BluetoothDeviceSummary | null>(null);
+  const [audio, setAudio] = useState<AudioStatus>(EMPTY_AUDIO);
+  const [displayVolume, setDisplayVolume] = useState(0);
+  const [audioPending, setAudioPending] = useState<string | null>(null);
+  const [audioFeedback, setAudioFeedback] = useState<Feedback | null>(null);
   const [diagnostics, setDiagnostics] = useState<AppDiagnostics | null>(null);
   const networkBusy = useRef(false);
   const bluetoothBusy = useRef(false);
+  const audioBusy = useRef(false);
   const selected = SETTINGS_ITEMS[selectedIndex];
 
   const refreshNetwork = useCallback(async (): Promise<void> => {
@@ -147,6 +171,24 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
   }, []);
 
+  const refreshAudio = useCallback(async (): Promise<void> => {
+    if (audioBusy.current) return;
+    audioBusy.current = true;
+    setAudioPending('refresh');
+    setAudioFeedback({ tone: 'info', message: 'Reading Windows sound settings...' });
+    try {
+      const next = await window.nxgs.getAudioStatus();
+      setAudio(next);
+      setDisplayVolume(next.masterVolume);
+      setAudioFeedback(next.supported ? null : { tone: 'error', message: next.message ?? 'Windows sound controls are unavailable.' });
+    } catch (error) {
+      setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read Windows sound settings.' });
+    } finally {
+      audioBusy.current = false;
+      setAudioPending(null);
+    }
+  }, []);
+
   useEffect(() => {
     void refreshNetwork();
   }, [refreshNetwork]);
@@ -156,6 +198,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       void refreshBluetooth();
     }
   }, [bluetooth.radioState, refreshBluetooth, selected.key]);
+
+  useEffect(() => {
+    if (selected.key === 'sound' && audio.outputDevices.length === 0 && !audioBusy.current) void refreshAudio();
+  }, [audio.outputDevices.length, refreshAudio, selected.key]);
 
   useEffect(() => {
     setDetailMode(false);
@@ -195,6 +241,73 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     };
   }, []);
 
+  const applyMasterVolume = useCallback(async (value: number, source: 'up' | 'down' | 'slider'): Promise<void> => {
+    if (audioBusy.current) return;
+    const nextVolume = Math.max(0, Math.min(100, Math.round(value)));
+    setDisplayVolume(nextVolume);
+    audioBusy.current = true;
+    setAudioPending(`volume-${source}`);
+    setAudioFeedback({ tone: 'info', message: `Setting volume to ${nextVolume}%...` });
+    try {
+      const result = await window.nxgs.setMasterVolume(nextVolume);
+      setAudio(result.audio);
+      setDisplayVolume(result.audio.masterVolume);
+      setAudioFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
+    } catch (error) {
+      setDisplayVolume(audio.masterVolume);
+      setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to change system volume.' });
+    } finally {
+      audioBusy.current = false;
+      setAudioPending(null);
+    }
+  }, [audio.masterVolume]);
+
+  const toggleMasterMute = useCallback(async (): Promise<void> => {
+    if (audioBusy.current) return;
+    audioBusy.current = true;
+    setAudioPending('mute');
+    setAudioFeedback({ tone: 'info', message: audio.muted ? 'Unmuting system sound...' : 'Muting system sound...' });
+    try {
+      const result = await window.nxgs.setMasterMuted(!audio.muted);
+      setAudio(result.audio);
+      setDisplayVolume(result.audio.masterVolume);
+      setAudioFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
+    } catch (error) {
+      setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to change mute status.' });
+    } finally {
+      audioBusy.current = false;
+      setAudioPending(null);
+    }
+  }, [audio.muted]);
+
+  const switchAudioEndpoint = useCallback(async (device: AudioDeviceSummary): Promise<void> => {
+    if (audioBusy.current || device.isDefault) return;
+    audioBusy.current = true;
+    setAudioPending(`switch:${device.id}`);
+    setAudioFeedback({ tone: 'info', message: `Switching to ${device.name}...` });
+    try {
+      const result = device.kind === 'output'
+        ? await window.nxgs.switchAudioOutput(device.id)
+        : await window.nxgs.switchAudioInput(device.id);
+      setAudio(result.audio);
+      setDisplayVolume(result.audio.masterVolume);
+      setAudioFeedback({ tone: result.ok ? 'success' : 'warning', message: result.message });
+    } catch (error) {
+      setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to change the audio device.' });
+    } finally {
+      audioBusy.current = false;
+      setAudioPending(null);
+    }
+  }, []);
+
+  const adjustFocusedVolume = useCallback((direction: -1 | 1): boolean => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLInputElement) || active.dataset.settingsSlider !== 'volume') return false;
+    const next = Math.max(0, Math.min(100, displayVolume + direction * 5));
+    void applyMasterVolume(next, direction > 0 ? 'up' : 'down');
+    return true;
+  }, [applyMasterVolume, displayVolume]);
+
   const enterDetail = useCallback((): void => {
     setDetailMode(true);
     window.setTimeout(() => focusableDetailActions()[0]?.focus(), 0);
@@ -215,7 +328,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const activateSelected = useCallback((): void => {
     const key = SETTINGS_ITEMS[selectedIndex].key;
     if (key === 'control-room') props.onControlRoom();
-    else if (key === 'network' || key === 'controller') enterDetail();
+    else if (key === 'network' || key === 'controller' || key === 'sound') enterDetail();
   }, [enterDetail, props, selectedIndex]);
 
   useEffect(() => {
@@ -229,6 +342,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           setForgetWifiTarget(null);
           setWifiContextMenu(null);
           setRemoveBluetoothTarget(null);
+          return;
+        }
+        if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && adjustFocusedVolume(event.key === 'ArrowRight' ? 1 : -1)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
           return;
         }
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
@@ -255,7 +373,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activateSelected, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, wifiContextMenu]);
+  }, [activateSelected, adjustFocusedVolume, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, wifiContextMenu]);
 
   useEffect(() => {
     let lastInputAt = 0;
@@ -265,7 +383,14 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       if (!pad || Date.now() - lastInputAt < 190) return;
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
       if (detailMode) {
-        if (pressed(12) || pad.axes[1] < -0.65) {
+        const volumeFocused = document.activeElement instanceof HTMLInputElement && document.activeElement.dataset.settingsSlider === 'volume';
+        if (volumeFocused && (pressed(14) || pad.axes[0] < -0.65)) {
+          lastInputAt = Date.now();
+          adjustFocusedVolume(-1);
+        } else if (volumeFocused && (pressed(15) || pad.axes[0] > 0.65)) {
+          lastInputAt = Date.now();
+          adjustFocusedVolume(1);
+        } else if (pressed(12) || pad.axes[1] < -0.65) {
           lastInputAt = Date.now();
           moveDetailFocus(-1);
         } else if (pressed(13) || pad.axes[1] > 0.65) {
@@ -305,7 +430,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       }
     }, 90);
     return () => window.clearInterval(timer);
-  }, [activateSelected, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, selected.label, wifiContextMenu]);
+  }, [activateSelected, adjustFocusedVolume, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, selected.label, wifiContextMenu]);
 
   const performWifiConnect = useCallback(async (wifi: WifiNetworkSummary, password?: string): Promise<void> => {
     if (networkBusy.current) return;
@@ -678,6 +803,114 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         </SettingsDetail>
       );
     }
+    if (selected.key === 'sound') {
+      const outputDevice = audio.outputDevices.find((device) => device.isDefault);
+      const inputDevice = audio.inputDevices.find((device) => device.isDefault);
+      const volumeBusy = audioPending?.startsWith('volume-') ?? false;
+      return (
+        <SettingsDetail title="Sound" icon={audio.muted ? <VolumeX size={34} /> : <Volume2 size={34} />} subtitle="Windows audio, without leaving NXGS" onFocus={() => setDetailMode(true)}>
+          <div className="sound-page-toolbar">
+            <div>
+              <span>System audio</span>
+              <strong>{audio.muted ? 'Muted' : `${displayVolume}% volume`}</strong>
+            </div>
+            <button data-settings-action type="button" disabled={audioPending !== null} onClick={() => void refreshAudio()}>
+              <RefreshCw size={18} className={audioPending === 'refresh' ? 'spin' : ''} />
+              {audioPending === 'refresh' ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+          {audioFeedback && <div className={`settings-feedback ${audioFeedback.tone}`} role="status">{audioFeedback.message}</div>}
+
+          <section className={`sound-master-card ${audio.muted ? 'muted' : ''}`}>
+            <div className="sound-volume-orb" style={{ background: `conic-gradient(#71f0d7 ${displayVolume * 3.6}deg, rgba(255, 255, 255, 0.09) 0deg)` }}>
+              <div>{audio.muted ? <VolumeX size={30} /> : <Volume2 size={30} />}<strong>{displayVolume}%</strong><span>{audio.muted ? 'Muted' : 'Master'}</span></div>
+            </div>
+            <div className="sound-master-controls">
+              <div><span>Master volume</span><strong>{audio.currentOutputName ?? 'Windows default output'}</strong></div>
+              <div className="sound-volume-controls">
+                <button data-settings-action type="button" aria-label="Volume down" disabled={audioPending !== null || displayVolume <= 0} onClick={() => void applyMasterVolume(displayVolume - 5, 'down')}>
+                  {audioPending === 'volume-down' ? <LoaderCircle size={18} className="spin" /> : <Minus size={19} />}
+                </button>
+                <input
+                  data-settings-action
+                  data-settings-slider="volume"
+                  aria-label="Master volume"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={displayVolume}
+                  style={{ background: `linear-gradient(90deg, #71f0d7 0%, #71f0d7 ${displayVolume}%, rgba(255, 255, 255, 0.14) ${displayVolume}%)` }}
+                  disabled={audioPending !== null || !audio.supported}
+                  onChange={(event) => setDisplayVolume(Number(event.currentTarget.value))}
+                  onPointerUp={(event) => void applyMasterVolume(Number(event.currentTarget.value), 'slider')}
+                  onBlur={(event) => {
+                    const next = Number(event.currentTarget.value);
+                    if (next !== audio.masterVolume && !audioBusy.current) void applyMasterVolume(next, 'slider');
+                  }}
+                />
+                <button data-settings-action type="button" aria-label="Volume up" disabled={audioPending !== null || displayVolume >= 100} onClick={() => void applyMasterVolume(displayVolume + 5, 'up')}>
+                  {audioPending === 'volume-up' ? <LoaderCircle size={18} className="spin" /> : <Plus size={19} />}
+                </button>
+              </div>
+              <button className={`sound-mute-toggle ${audio.muted ? 'active' : ''}`} data-settings-action type="button" disabled={audioPending !== null || !audio.supported} onClick={() => void toggleMasterMute()}>
+                {audioPending === 'mute' ? <LoaderCircle size={18} className="spin" /> : audio.muted ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                {audioPending === 'mute' ? audio.muted ? 'Unmuting...' : 'Muting...' : audio.muted ? 'Unmute' : 'Mute'}
+              </button>
+              {volumeBusy && <small className="sound-inline-status">Updating Windows volume...</small>}
+            </div>
+          </section>
+
+          <div className="sound-current-grid">
+            <div><Headphones size={22} /><span><small>Current output</small><strong>{outputDevice?.name ?? 'No active output'}</strong></span></div>
+            <div><Mic2 size={22} /><span><small>Current microphone</small><strong>{inputDevice?.name ?? 'No active microphone'}</strong><em>{inputDevice ? `${audio.inputMuted ? 'Muted' : `${audio.inputVolume}% level`}` : 'Unavailable'}</em></span></div>
+          </div>
+
+          <section className="sound-device-section">
+            <div className="sound-section-title"><div><Headphones size={21} /><span><strong>Output devices</strong><small>Speakers, headphones, HDMI and Bluetooth audio</small></span></div><span>{audio.outputDevices.length}</span></div>
+            <div className="sound-device-list">
+              {audio.outputDevices.length > 0 ? audio.outputDevices.map((device) => {
+                const switching = audioPending === `switch:${device.id}`;
+                return (
+                  <div key={device.id} className={device.isDefault ? 'current' : ''}>
+                    <Headphones size={20} />
+                    <span><strong>{device.name}</strong><small>{device.isDefault ? 'Current output' : 'Available output'} · {device.muted ? 'Muted' : `${device.volume}%`}</small></span>
+                    {device.isDefault ? <em className="sound-current-badge">Current</em> : (
+                      <button data-settings-action type="button" disabled={audioPending !== null} onClick={() => void switchAudioEndpoint(device)}>
+                        {switching ? <LoaderCircle size={17} className="spin" /> : <Headphones size={17} />}
+                        {switching ? 'Switching...' : 'Use Output'}
+                      </button>
+                    )}
+                  </div>
+                );
+              }) : <p className="settings-placeholder">No active output devices were reported by Windows.</p>}
+            </div>
+          </section>
+
+          <section className="sound-device-section">
+            <div className="sound-section-title"><div><Mic2 size={21} /><span><strong>Microphones</strong><small>Available Windows input devices</small></span></div><span>{audio.inputDevices.length}</span></div>
+            <div className="sound-device-list">
+              {audio.inputDevices.length > 0 ? audio.inputDevices.map((device) => {
+                const switching = audioPending === `switch:${device.id}`;
+                return (
+                  <div key={device.id} className={device.isDefault ? 'current' : ''}>
+                    <Mic2 size={20} />
+                    <span><strong>{device.name}</strong><small>{device.isDefault ? 'Current microphone' : 'Available microphone'} · {device.muted ? 'Muted' : `${device.volume}% level`}</small></span>
+                    {device.isDefault ? <em className="sound-current-badge">Current</em> : (
+                      <button data-settings-action type="button" disabled={audioPending !== null} onClick={() => void switchAudioEndpoint(device)}>
+                        {switching ? <LoaderCircle size={17} className="spin" /> : <Mic2 size={17} />}
+                        {switching ? 'Switching...' : 'Use Input'}
+                      </button>
+                    )}
+                  </div>
+                );
+              }) : <p className="settings-placeholder">No active microphone devices were reported by Windows.</p>}
+            </div>
+          </section>
+          {!audio.deviceSwitchingSupported && <p className="settings-capability-note">Volume and mute are fully managed inside NXGS. Devices are listed using Windows Core Audio. Windows does not expose a supported desktop API for changing the system default device, so NXGS keeps the current selection and reports that limitation here without opening Windows Settings.</p>}
+        </SettingsDetail>
+      );
+    }
     if (selected.key === 'control-room') {
       return (
         <SettingsDetail title="Control Room" icon={<Lock size={34} />} subtitle="Protected administrator controls" onFocus={() => setDetailMode(true)}>
@@ -690,7 +923,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls. It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshBluetooth, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, wifiContextMenu, wifiPassword]);
+  }, [applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleMasterMute, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">
@@ -706,7 +939,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         </nav>
         {detail}
       </div>
-      <footer>{detailMode ? '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
+      <footer>{detailMode ? selected.key === 'sound' ? '↑ ↓ Choose control  ·  ← → Adjust volume  ·  X / A Select  ·  Circle / B Categories' : '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
     </section>
   );
 }
