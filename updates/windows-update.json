@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.2/NXGS-Play-Setup.exe",
-    "sha256":  "6ebbac11749d58821ba7a17bb9329dde47a7debf7956a0e8e697c881fee28c79",
+    "version":  "0.14.3",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.3/NXGS-Play-Setup.exe",
+    "sha256":  "1b6349730385a956be879ec1e9b275e48b824cef6374793ed96751b7706fc223",
     "required":  false,
-    "notes":  "NXGS now hides display options that cannot be changed on the active device, while retaining supported brightness, color profile, and HDR controls."
+    "notes":  "NXGS removes the unnecessary Color Profile option and redesigns Settings to match the cleaner dark console layout while preserving all functional controls."
 }
