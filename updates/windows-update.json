@@ -1,7 +1,7 @@
 {
-    "version":  "0.11.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.11.2/NXGS-Play-Setup.exe",
-    "sha256":  "d2efa6a8b8d306705784faaa65920d3bc9470cf60514bd1fcc26ccc49a7dba95",
+    "version":  "0.11.3",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.11.3/NXGS-Play-Setup.exe",
+    "sha256":  "686a834ee85756b81222cf303231c0abc144c80b1170e349f3a85338cf8812ca",
     "required":  false,
-    "notes":  "Exit Full Screen now opens the launcher home in a normal resizable admin window, with a corner lock control to restore fullscreen kiosk mode."
+    "notes":  "Bluetooth devices now have separate reconnect or disconnect and confirmed Remove Device actions. Disconnect preserves pairing, saved devices remain visible when discovery is incomplete, and connection failures show clear per-device status."
 }
