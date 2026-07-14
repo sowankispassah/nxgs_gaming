@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.6",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.6/NXGS-Play-Setup.exe",
-    "sha256":  "2e749f86b7c2476bd9b5aeee841bea83c32e69744483424262cf397999ce977b",
+    "version":  "0.14.7",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.7/NXGS-Play-Setup.exe",
+    "sha256":  "6dfcabc7a371e8925dd320a7b0a6c9c0eaa1da178b3d4d39aaa4b154c0751034",
     "required":  false,
-    "notes":  "NXGS now collapses Display information by default so the Audio volume controls are visible immediately, while keeping full display details available on demand."
+    "notes":  "NXGS now keeps Audio and Brightness inside one compact Quick Settings panel above the gear, with live mouse and controller sliders and no separate navbar controls."
 }
