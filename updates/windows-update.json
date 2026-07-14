@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.1/NXGS-Play-Setup.exe",
-    "sha256":  "3995c1e953b9bc662d64eb02570a0809b83df078b326c40a66c877fc3facb777",
+    "version":  "0.14.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.2/NXGS-Play-Setup.exe",
+    "sha256":  "6ebbac11749d58821ba7a17bb9329dde47a7debf7956a0e8e697c881fee28c79",
     "required":  false,
-    "notes":  "NXGS adds functional Windows color-profile selection and HDR controls, with accurate Night Light capability messaging."
+    "notes":  "NXGS now hides display options that cannot be changed on the active device, while retaining supported brightness, color profile, and HDR controls."
 }
