@@ -85,6 +85,11 @@ try {
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'admin' && !data.kiosk.fullscreen && !data.kiosk.maximized && data.kiosk.resizable && !data.kiosk.taskbarHidden && !data.kiosk.alwaysOnTop)", 'Exit Full Screen did not produce a normal admin window.');
   await waitFor("!document.querySelector('.admin-options-modal') && Boolean(document.querySelector('.console-home')) && Boolean(document.querySelector('.windowed-admin-lock:not(:disabled)')) && !document.querySelector('main').classList.contains('cursor-hidden')", 'Windowed admin mode did not close options, show Home, expose the lock control, and keep the cursor visible.');
   console.log('PASS: Exit Full Screen produced a resizable admin Home window with taskbar, cursor, and lock control.');
+  await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'h', code: 'KeyH', modifiers: 10, windowsVirtualKeyCode: 72, nativeVirtualKeyCode: 72 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'h', code: 'KeyH', modifiers: 10, windowsVirtualKeyCode: 72, nativeVirtualKeyCode: 72 });
+  await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'admin' && !data.kiosk.fullscreen && !data.kiosk.maximized && data.kiosk.resizable && !data.kiosk.taskbarHidden && !data.kiosk.alwaysOnTop)", 'Ctrl+Shift+H changed the windowed admin window back to fullscreen.');
+  await waitFor("Boolean(document.querySelector('.console-home')) && Boolean(document.querySelector('.windowed-admin-lock:not(:disabled)'))", 'Ctrl+Shift+H did not keep the launcher Home and windowed admin lock control visible.');
+  console.log('PASS: Ctrl+Shift+H kept Exit Full Screen in resizable windowed admin mode.');
   await evaluate("document.querySelector('.windowed-admin-lock').click()");
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'customer' && data.kiosk.fullscreen && data.kiosk.taskbarHidden)", 'Return to Locked Mode did not restore fullscreen kiosk mode.');
   await waitFor("Boolean(document.querySelector('.console-home')) && !document.querySelector('.windowed-admin-lock')", 'Locked mode did not retain Home or hide the windowed admin lock control.');

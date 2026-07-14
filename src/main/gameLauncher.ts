@@ -89,7 +89,8 @@ export class GameLauncher {
 
   constructor(
     private readonly windowProvider: () => BrowserWindow | null,
-    private readonly events: LauncherEvents
+    private readonly events: LauncherEvents,
+    private readonly shouldUseFullscreenPresentation: () => boolean = () => true
   ) {}
 
   get active(): GameRecord | null {
@@ -607,6 +608,15 @@ export class GameLauncher {
     }
     if (window.isMinimized()) {
       window.restore();
+    }
+    if (!this.shouldUseFullscreenPresentation()) {
+      window.setAlwaysOnTop(false);
+      window.setFullScreen(false);
+      window.setMenuBarVisibility(false);
+      window.show();
+      window.focus();
+      void logLine('info', 'NXGS Play restored and focused without changing the admin window bounds.');
+      return;
     }
     const display = screen.getDisplayMatching(window.getBounds());
     window.setBounds(display.bounds);

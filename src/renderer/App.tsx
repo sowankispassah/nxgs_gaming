@@ -248,7 +248,14 @@ export function App(): JSX.Element {
     });
     const unsubscribeShellHome = window.nxgs.onShellHome((event) => {
       setConfirmGame(null);
-      closeAdminPin();
+      setPinOpen(false);
+      setAdminUnlockRequest(null);
+      setAdminOptionsOpen(false);
+      if (!windowedAdminMode && (pinOpen || adminOptionsOpen)) {
+        setAdminControlsActive(false);
+        setAdminModeError('');
+        void window.nxgs.performKioskAdminAction('returnLocked');
+      }
       setView('home');
       setQuickNavOpen(true);
       if (event.openActiveGamePanel) {
@@ -264,7 +271,7 @@ export function App(): JSX.Element {
       unsubscribeActiveGame();
       unsubscribeShellHome();
     };
-  }, [closeAdminPin]);
+  }, [adminOptionsOpen, pinOpen, windowedAdminMode]);
 
   useEffect(() => {
     if (selectedIndex >= enabledGames.length) {

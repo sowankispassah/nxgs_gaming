@@ -217,7 +217,8 @@ const launcher = new GameLauncher(
     onActiveGameChanged: () => {
       broadcastActiveGame();
     }
-  }
+  },
+  () => kioskInput.currentMode === 'customer'
 );
 
 const kioskInput = new KioskInputService({
