@@ -9,12 +9,14 @@ const profile = await mkdtemp(join(tmpdir(), 'nxgs-pin-enter-'));
 const port = 9339;
 const launchArguments = [`--remote-debugging-port=${port}`];
 if (!process.env.NXGS_TEST_EXECUTABLE) launchArguments.push('.');
+const appEnvironment = { ...process.env, APPDATA: profile };
 const child = spawn(electron, launchArguments, {
   cwd: root,
-  env: { ...process.env, APPDATA: profile },
+  env: appEnvironment,
   windowsHide: true,
   stdio: 'ignore'
 });
+let duplicateChild = null;
 
 const delay = (milliseconds) => new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
 
@@ -90,6 +92,21 @@ try {
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'admin' && !data.kiosk.fullscreen && !data.kiosk.maximized && data.kiosk.resizable && !data.kiosk.taskbarHidden && !data.kiosk.alwaysOnTop)", 'Ctrl+Shift+H changed the windowed admin window back to fullscreen.');
   await waitFor("Boolean(document.querySelector('.console-home')) && Boolean(document.querySelector('.windowed-admin-lock:not(:disabled)'))", 'Ctrl+Shift+H did not keep the launcher Home and windowed admin lock control visible.');
   console.log('PASS: Ctrl+Shift+H kept Exit Full Screen in resizable windowed admin mode.');
+  await delay(750);
+  const duplicateArguments = process.env.NXGS_TEST_EXECUTABLE ? [] : ['.'];
+  duplicateChild = spawn(electron, duplicateArguments, {
+    cwd: root,
+    env: appEnvironment,
+    windowsHide: true,
+    stdio: 'ignore'
+  });
+  for (let attempt = 0; attempt < 150 && duplicateChild.exitCode === null; attempt += 1) await delay(100);
+  if (duplicateChild.exitCode === null) {
+    throw new Error('Opening NXGS again left a duplicate launcher process running.');
+  }
+  await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'admin' && !data.kiosk.fullscreen && data.kiosk.resizable && data.kiosk.launcherVisible)", 'The second launch did not refocus the existing window in windowed Admin mode.');
+  await waitFor("Boolean(document.querySelector('.console-home')) && Boolean(document.querySelector('.windowed-admin-lock:not(:disabled)'))", 'The refocused existing launcher did not show the NXGS Home page.');
+  console.log('PASS: A second launch exited without duplication and refocused the existing windowed Admin launcher.');
   await evaluate("document.querySelector('.windowed-admin-lock').click()");
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'customer' && data.kiosk.fullscreen && data.kiosk.taskbarHidden)", 'Return to Locked Mode did not restore fullscreen kiosk mode.');
   await waitFor("Boolean(document.querySelector('.console-home')) && !document.querySelector('.windowed-admin-lock')", 'Locked mode did not retain Home or hide the windowed admin lock control.');
@@ -114,6 +131,7 @@ try {
   await delay(500);
   socket.close();
 } finally {
+  if (duplicateChild?.exitCode === null) duplicateChild.kill();
   for (let attempt = 0; attempt < 30 && child.exitCode === null; attempt += 1) await delay(100);
   if (child.exitCode === null) child.kill();
   await rm(profile, { recursive: true, force: true });

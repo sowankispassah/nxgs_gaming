@@ -309,6 +309,7 @@ export type ShellHomeReason =
   | 'controller-combo'
   | 'emergency-close'
   | 'renderer-request'
+  | 'second-instance'
   | 'system';
 
 export interface ShellHomeEvent {

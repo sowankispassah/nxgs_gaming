@@ -36,6 +36,7 @@ let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let taskbarHiddenByKiosk = false;
 let kioskAdminActionGranted = false;
+let secondInstanceFocusPending = false;
 let controllerDiagnostics: AppDiagnostics['controller'] = {
   detected: false,
   homeSupported: 'unknown'
@@ -172,6 +173,21 @@ function openHomeFromGame(reason: ShellHomeReason = 'system'): void {
     .finally(() => {
       homeActionInFlight = null;
     });
+}
+
+function focusExistingInstance(): void {
+  const window = getLiveMainWindow();
+  if (!window) {
+    secondInstanceFocusPending = true;
+    return;
+  }
+
+  secondInstanceFocusPending = false;
+  if (window.isMinimized()) {
+    window.restore();
+  }
+  openHomeFromGame('second-instance');
+  void logLine('info', 'A second NXGS launch restored and focused the existing launcher window.');
 }
 
 function requestEmergencyCloseOverlay(): void {
@@ -647,27 +663,42 @@ function registerIpc(): void {
   });
 }
 
-app.whenReady().then(async () => {
-  await store.init();
-  registerIpc();
-  await createWindow();
-  kioskInput.register();
-  await logLine('info', 'NXGS Play started.');
-});
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    void createWindow();
-  }
-});
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    focusExistingInstance();
+  });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  app.whenReady().then(async () => {
+    await store.init();
+    registerIpc();
+    await createWindow();
+    kioskInput.register();
+    if (secondInstanceFocusPending) {
+      focusExistingInstance();
+    }
+    await logLine('info', 'NXGS Play started.');
+  });
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      void createWindow();
+    } else {
+      focusExistingInstance();
+    }
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      prepareForQuit();
+      app.quit();
+    }
+  });
+
+  app.on('will-quit', () => {
     prepareForQuit();
-    app.quit();
-  }
-});
-
-app.on('will-quit', () => {
-  prepareForQuit();
-});
+  });
+}
