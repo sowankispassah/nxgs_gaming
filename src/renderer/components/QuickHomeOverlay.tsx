@@ -17,8 +17,8 @@ import {
 import type { ActiveGameState, AudioStatus, DisplayStatus, TrackedGameSessionState } from '../../shared/types';
 import { SafeGameImage } from './ConsoleHome';
 
-type PendingAction = 'resume' | 'home' | 'close' | 'admin' | 'force' | null;
-type FocusArea = 'navbar' | 'menu' | 'volume' | 'brightness';
+type PendingAction = 'resume' | 'home' | 'close' | 'force' | null;
+type FocusArea = 'navbar' | 'menu' | 'quickAudio' | 'quickBrightness';
 type NavItem = {
   key: string;
   label: string;
@@ -57,7 +57,6 @@ function quickOverlayImageUrl(path: string): string {
 export function QuickHomeOverlay(props: {
   activeGame: ActiveGameState;
   emergencyCloseRequestId: number;
-  onOpenSettings: () => void;
   onDismiss: () => void;
 }): JSX.Element {
   const sessions = useMemo<TrackedGameSessionState[]>(() => {
@@ -91,12 +90,11 @@ export function QuickHomeOverlay(props: {
   const [now, setNow] = useState(() => new Date());
   const [audio, setAudio] = useState<AudioStatus>(EMPTY_AUDIO);
   const [displayVolume, setDisplayVolume] = useState(0);
-  const [volumeOpen, setVolumeOpen] = useState(false);
+  const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
   const [audioPending, setAudioPending] = useState<'refresh' | 'volume' | 'mute' | null>(null);
   const [audioMessage, setAudioMessage] = useState('');
   const [display, setDisplay] = useState<DisplayStatus>(EMPTY_DISPLAY);
   const [displayBrightness, setDisplayBrightness] = useState(0);
-  const [brightnessOpen, setBrightnessOpen] = useState(false);
   const [brightnessPending, setBrightnessPending] = useState<'refresh' | 'brightness' | null>(null);
   const [brightnessMessage, setBrightnessMessage] = useState('');
   const audioBusy = useRef(false);
@@ -121,12 +119,10 @@ export function QuickHomeOverlay(props: {
       { key: 'notifications', label: 'Notifications coming soon', icon: <Bell size={21} /> },
       { key: 'players', label: 'Players coming soon', icon: <UsersRound size={22} /> },
       { key: 'audio', label: 'Audio coming soon', icon: <Music2 size={22} /> },
-      { key: 'brightness', label: 'Quick brightness', icon: <Sun size={22} /> },
-      { key: 'volume', label: 'Quick volume', icon: audio.muted ? <VolumeX size={22} /> : <Volume2 size={22} /> },
-      { key: 'settings', label: 'Protected settings', icon: <Settings size={22} /> },
+      { key: 'settings', label: 'Quick Settings', icon: <Settings size={22} /> },
       { key: 'power', label: 'Protected power controls', icon: <Power size={22} /> }
     ],
-    [audio.muted, sessions]
+    [sessions]
   );
 
   const selectedNavIndex = Math.max(0, navItems.findIndex((item) => item.key === selectedNavKey));
@@ -186,12 +182,9 @@ export function QuickHomeOverlay(props: {
   useEffect(() => {
     setMessage('');
     setConfirmClose(false);
-    if (selectedNavKey !== 'volume') {
-      setVolumeOpen(false);
+    if (selectedNavKey !== 'settings') {
+      setQuickSettingsOpen(false);
       setAudioMessage('');
-    }
-    if (selectedNavKey !== 'brightness') {
-      setBrightnessOpen(false);
       setBrightnessMessage('');
     }
   }, [selectedNavKey]);
@@ -213,14 +206,6 @@ export function QuickHomeOverlay(props: {
       setAudioPending(null);
     }
   }, []);
-
-  const openVolumeControl = useCallback((): void => {
-    setSelectedNavKey('volume');
-    setFocusArea('volume');
-    setVolumeOpen(true);
-    setAudioMessage('');
-    void refreshAudio();
-  }, [refreshAudio]);
 
   const setSystemVolume = useCallback((value: number): void => {
     if (!audioSupportedRef.current) return;
@@ -284,13 +269,14 @@ export function QuickHomeOverlay(props: {
     }
   }, []);
 
-  const openBrightnessControl = useCallback((): void => {
-    setSelectedNavKey('brightness');
-    setFocusArea('brightness');
-    setBrightnessOpen(true);
+  const openQuickSettings = useCallback((): void => {
+    setSelectedNavKey('settings');
+    setFocusArea('quickAudio');
+    setQuickSettingsOpen(true);
+    setAudioMessage('');
     setBrightnessMessage('');
-    void refreshDisplay();
-  }, [refreshDisplay]);
+    void Promise.all([refreshAudio(), refreshDisplay()]);
+  }, [refreshAudio, refreshDisplay]);
 
   const setSystemBrightness = useCallback((value: number): void => {
     if (!brightnessSupportedRef.current) return;
@@ -407,22 +393,6 @@ export function QuickHomeOverlay(props: {
     }
   }, [pendingAction, selectedSession]);
 
-  const openConsoleSettings = useCallback(async (): Promise<void> => {
-    if (pendingAction) return;
-    setPendingAction('admin');
-    setMessage('');
-    try {
-      const result = await window.nxgs.goToLauncherHome();
-      if (!result.ok) {
-        setMessage(result.error ?? 'NXGS could not safely open Settings.');
-        return;
-      }
-      props.onOpenSettings();
-    } finally {
-      setPendingAction(null);
-    }
-  }, [pendingAction, props]);
-
   const selectMenuAction = useCallback(
     (index: number): void => {
       if (disabled) {
@@ -451,29 +421,25 @@ export function QuickHomeOverlay(props: {
         void goToLauncherHome();
       } else if (item.session) {
         setFocusArea('menu');
-      } else if (item.key === 'brightness') {
-        openBrightnessControl();
-      } else if (item.key === 'volume') {
-        openVolumeControl();
       } else if (item.key === 'settings') {
-        void openConsoleSettings();
+        if (quickSettingsOpen) {
+          setQuickSettingsOpen(false);
+          setFocusArea('navbar');
+        } else {
+          openQuickSettings();
+        }
       } else if (item.key === 'power') {
         setNotice('Power controls are available inside Control Room.');
       } else {
         setNotice(item.label);
       }
     },
-    [disabled, goToLauncherHome, navItems, openBrightnessControl, openConsoleSettings, openVolumeControl]
+    [disabled, goToLauncherHome, navItems, openQuickSettings, quickSettingsOpen]
   );
 
   const handleBack = useCallback((): void => {
-    if (brightnessOpen) {
-      setBrightnessOpen(false);
-      setFocusArea('navbar');
-      return;
-    }
-    if (volumeOpen) {
-      setVolumeOpen(false);
+    if (quickSettingsOpen) {
+      setQuickSettingsOpen(false);
       setFocusArea('navbar');
       return;
     }
@@ -490,7 +456,7 @@ export function QuickHomeOverlay(props: {
       return;
     }
     void resumeGame();
-  }, [brightnessOpen, confirmClose, focusArea, game, menuIndex, props, resumeGame, volumeOpen]);
+  }, [confirmClose, focusArea, game, menuIndex, props, quickSettingsOpen, resumeGame]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -502,27 +468,18 @@ export function QuickHomeOverlay(props: {
       if (disabled) {
         return;
       }
-      if (brightnessOpen && focusArea === 'brightness') {
+      if (quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness')) {
         if (event.key === 'Escape' || event.key.toLowerCase() === 'b') {
           handleBack();
         } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-          adjustSystemBrightness(event.key === 'ArrowRight' ? 1 : -1);
-        } else if (event.key === 'ArrowDown') {
-          setBrightnessOpen(false);
-          setFocusArea('navbar');
-        }
-        return;
-      }
-      if (volumeOpen && focusArea === 'volume') {
-        if (event.key === 'Escape' || event.key.toLowerCase() === 'b') {
-          handleBack();
-        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-          adjustSystemVolume(event.key === 'ArrowRight' ? 1 : -1);
-        } else if (event.key === 'Enter') {
+          if (focusArea === 'quickAudio') adjustSystemVolume(event.key === 'ArrowRight' ? 1 : -1);
+          else adjustSystemBrightness(event.key === 'ArrowRight' ? 1 : -1);
+        } else if (event.key === 'Enter' && focusArea === 'quickAudio') {
           void toggleSystemMute();
         } else if (event.key === 'ArrowDown') {
-          setVolumeOpen(false);
-          setFocusArea('navbar');
+          setFocusArea('quickBrightness');
+        } else if (event.key === 'ArrowUp') {
+          setFocusArea('quickAudio');
         }
         return;
       }
@@ -570,45 +527,49 @@ export function QuickHomeOverlay(props: {
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [adjustSystemBrightness, adjustSystemVolume, brightnessOpen, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute, volumeOpen]);
+  }, [adjustSystemBrightness, adjustSystemVolume, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
+
+  const quickSettingsLoading = quickSettingsOpen
+    && (audioPending === 'refresh' || brightnessPending === 'refresh');
+
+  useEffect(() => {
+    if (!quickSettingsOpen) return;
+    const selector = focusArea === 'quickBrightness'
+      ? '#quick-settings-brightness'
+      : '#quick-settings-audio';
+    document.querySelector<HTMLInputElement>(selector)?.focus({ preventScroll: true });
+  }, [focusArea, quickSettingsOpen]);
 
   useEffect(() => {
     let lastInputAt = 0;
     const interval = window.setInterval(() => {
       const pad = navigator.getGamepads?.()[0];
-      const liveControlFocused = (volumeOpen && focusArea === 'volume') || (brightnessOpen && focusArea === 'brightness');
+      const liveControlFocused = quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness');
       if (!pad || Date.now() - lastInputAt < (liveControlFocused ? 70 : 190) || disabled) {
         return;
       }
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
-      if (brightnessOpen && focusArea === 'brightness') {
+      if (quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness')) {
         if (pressed(14) || pad.axes[0] < -0.65) {
           lastInputAt = Date.now();
-          adjustSystemBrightness(-1);
-          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Left', lastNavigationAction: 'Switcher: brightness down' });
+          if (focusArea === 'quickAudio') adjustSystemVolume(-1);
+          else adjustSystemBrightness(-1);
+          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Left', lastNavigationAction: focusArea === 'quickAudio' ? 'Switcher: volume down' : 'Switcher: brightness down' });
         } else if (pressed(15) || pad.axes[0] > 0.65) {
           lastInputAt = Date.now();
-          adjustSystemBrightness(1);
-          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Right', lastNavigationAction: 'Switcher: brightness up' });
-        } else if (pressed(1) || pressed(13) || pad.axes[1] > 0.65) {
-          lastInputAt = Date.now();
-          handleBack();
-        }
-        return;
-      }
-      if (volumeOpen && focusArea === 'volume') {
-        if (pressed(14) || pad.axes[0] < -0.65) {
-          lastInputAt = Date.now();
-          adjustSystemVolume(-1);
-          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Left', lastNavigationAction: 'Switcher: volume down' });
-        } else if (pressed(15) || pad.axes[0] > 0.65) {
-          lastInputAt = Date.now();
-          adjustSystemVolume(1);
-          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Right', lastNavigationAction: 'Switcher: volume up' });
-        } else if (pressed(0)) {
+          if (focusArea === 'quickAudio') adjustSystemVolume(1);
+          else adjustSystemBrightness(1);
+          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Right', lastNavigationAction: focusArea === 'quickAudio' ? 'Switcher: volume up' : 'Switcher: brightness up' });
+        } else if (pressed(0) && focusArea === 'quickAudio') {
           lastInputAt = Date.now();
           void toggleSystemMute();
-        } else if (pressed(1) || pressed(13) || pad.axes[1] > 0.65) {
+        } else if (pressed(13) || pad.axes[1] > 0.65) {
+          lastInputAt = Date.now();
+          setFocusArea('quickBrightness');
+        } else if (pressed(12) || pad.axes[1] < -0.65) {
+          lastInputAt = Date.now();
+          setFocusArea('quickAudio');
+        } else if (pressed(1)) {
           lastInputAt = Date.now();
           handleBack();
         }
@@ -653,7 +614,7 @@ export function QuickHomeOverlay(props: {
       }
     }, 90);
     return () => window.clearInterval(interval);
-  }, [adjustSystemBrightness, adjustSystemVolume, brightnessOpen, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute, volumeOpen]);
+  }, [adjustSystemBrightness, adjustSystemVolume, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
 
   return (
     <section className="quick-home-overlay" aria-label="NXGS quick home overlay">
@@ -743,84 +704,99 @@ export function QuickHomeOverlay(props: {
       <nav className="quick-navbar" aria-label="NXGS quick navigation">
         {navItems.map((item, index) => (
           <div className="quick-nav-slot" key={item.key}>
-            {item.key === 'brightness' && brightnessOpen && (
-              <section className="quick-volume-control quick-brightness-control" id="quick-brightness-control" aria-label="Quick display brightness control">
-                <header>
-                  <span>
-                    {brightnessPending === 'refresh'
-                      ? <LoaderCircle size={22} className="spin" />
-                      : <Sun size={22} />}
-                  </span>
-                  <div><small>Display brightness</small><strong>{displayBrightness}%</strong></div>
-                </header>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={displayBrightness}
-                  aria-label="Quick display brightness"
-                  disabled={brightnessPending === 'refresh' || !display.brightness.supported}
-                  style={{ background: `linear-gradient(90deg, #ffd26f 0%, #ffd26f ${displayBrightness}%, rgba(255, 255, 255, 0.15) ${displayBrightness}%)` }}
-                  onInput={(event) => void setSystemBrightness(Number(event.currentTarget.value))}
-                />
-                <footer role="status">
-                  {brightnessMessage || (display.brightness.supported
-                    ? '← → Adjust  ·  B Close'
-                    : display.brightness.message || 'Brightness control is unavailable for this display.')}
-                </footer>
-              </section>
-            )}
-            {item.key === 'volume' && volumeOpen && (
-              <section className="quick-volume-control" id="quick-volume-control" aria-label="Quick volume control">
-                <header>
-                  <span className={audio.muted ? 'muted' : ''}>
-                    {audioPending === 'refresh'
-                      ? <LoaderCircle size={22} className="spin" />
-                      : audio.muted ? <VolumeX size={22} /> : <Volume2 size={22} />}
-                  </span>
-                  <div><small>System volume</small><strong>{displayVolume}%</strong></div>
-                  <button
-                    type="button"
-                    className={audio.muted ? 'muted' : ''}
-                    disabled={audioPending !== null || !audio.supported}
-                    aria-label={audioPending === 'mute' ? 'Updating mute status' : audio.muted ? 'Unmute audio' : 'Mute audio'}
-                    onClick={() => void toggleSystemMute()}
-                  >
-                    {audioPending === 'mute'
-                      ? <LoaderCircle size={17} className="spin" />
-                      : audio.muted ? <Volume2 size={17} /> : <VolumeX size={17} />}
-                    <span>{audioPending === 'mute' ? 'Updating...' : audio.muted ? 'Unmute' : 'Mute'}</span>
-                  </button>
-                </header>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={displayVolume}
-                  aria-label="Quick system volume"
-                  disabled={(audioPending === 'refresh' || audioPending === 'mute') || !audio.supported}
-                  style={{ background: `linear-gradient(90deg, #71f0d7 0%, #71f0d7 ${displayVolume}%, rgba(255, 255, 255, 0.15) ${displayVolume}%)` }}
-                  onInput={(event) => void setSystemVolume(Number(event.currentTarget.value))}
-                />
-                <footer role="status">{audioMessage || '← → Adjust  ·  A / Enter Mute  ·  B Close'}</footer>
+            {item.key === 'settings' && quickSettingsOpen && (
+              <section
+                className="quick-settings-panel"
+                id="quick-settings-panel"
+                aria-label="Quick Settings"
+                onBlurCapture={(event) => {
+                  const next = event.relatedTarget;
+                  if (next instanceof Node && event.currentTarget.parentElement?.contains(next)) return;
+                  setQuickSettingsOpen(false);
+                  setFocusArea('navbar');
+                }}
+              >
+                <div
+                  className={`quick-settings-control quick-settings-audio ${focusArea === 'quickAudio' ? 'selected' : ''}`}
+                  onMouseEnter={() => setFocusArea('quickAudio')}
+                >
+                  <header>
+                    <span aria-hidden="true">{audio.muted ? <VolumeX size={17} /> : <Volume2 size={17} />}</span>
+                    <strong>Audio</strong>
+                    <b>{audio.muted ? 'Muted' : `${displayVolume}%`}</b>
+                    <button
+                      type="button"
+                      className={audio.muted ? 'muted' : ''}
+                      disabled={audioPending !== null || !audio.supported}
+                      aria-label={audioPending === 'mute' ? 'Updating mute status' : audio.muted ? 'Unmute audio' : 'Mute audio'}
+                      onClick={() => void toggleSystemMute()}
+                    >
+                      {audioPending === 'mute'
+                        ? <LoaderCircle size={15} className="spin" />
+                        : audio.muted ? <Volume2 size={15} /> : <VolumeX size={15} />}
+                    </button>
+                  </header>
+                  <input
+                    id="quick-settings-audio"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={displayVolume}
+                    aria-label="Quick audio volume"
+                    aria-valuetext={audio.muted ? `Muted at ${displayVolume} percent` : `${displayVolume} percent`}
+                    disabled={(audioPending === 'refresh' || audioPending === 'mute') || !audio.supported}
+                    style={{ background: `linear-gradient(90deg, #71f0d7 0%, #71f0d7 ${displayVolume}%, rgba(255, 255, 255, 0.13) ${displayVolume}%)` }}
+                    onFocus={() => setFocusArea('quickAudio')}
+                    onInput={(event) => void setSystemVolume(Number(event.currentTarget.value))}
+                  />
+                  {!audio.supported && <small role="status">{audioMessage || audio.message || 'Audio control is unavailable.'}</small>}
+                </div>
+
+                <div
+                  className={`quick-settings-control quick-settings-brightness ${focusArea === 'quickBrightness' ? 'selected' : ''}`}
+                  onMouseEnter={() => setFocusArea('quickBrightness')}
+                >
+                  <header>
+                    <span aria-hidden="true"><Sun size={17} /></span>
+                    <strong>Brightness</strong>
+                    <b>{display.brightness.supported ? `${displayBrightness}%` : 'Unavailable'}</b>
+                  </header>
+                  <input
+                    id="quick-settings-brightness"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={displayBrightness}
+                    aria-label="Quick display brightness"
+                    aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
+                    disabled={brightnessPending === 'refresh' || !display.brightness.supported}
+                    style={{ background: `linear-gradient(90deg, #ffd26f 0%, #ffd26f ${displayBrightness}%, rgba(255, 255, 255, 0.13) ${displayBrightness}%)` }}
+                    onFocus={() => setFocusArea('quickBrightness')}
+                    onInput={(event) => void setSystemBrightness(Number(event.currentTarget.value))}
+                  />
+                  {!display.brightness.supported && (
+                    <small role="status">{brightnessMessage || display.brightness.message || 'Brightness control is unavailable for this display.'}</small>
+                  )}
+                </div>
               </section>
             )}
             <button
               className={`quick-nav-item ${selectedNavIndex === index ? 'selected' : ''} ${item.session ? 'active-game' : ''}`}
               type="button"
               title={item.label}
-              aria-label={item.key === 'brightness'
-                ? `Quick brightness, ${displayBrightness} percent`
-                : item.key === 'volume' ? `Quick volume, ${displayVolume} percent${audio.muted ? ', muted' : ''}` : item.label}
-              aria-expanded={item.key === 'brightness' ? brightnessOpen : item.key === 'volume' ? volumeOpen : undefined}
-              aria-controls={item.key === 'brightness' ? 'quick-brightness-control' : item.key === 'volume' ? 'quick-volume-control' : undefined}
-              disabled={disabled}
+              aria-label={item.label}
+              aria-expanded={item.key === 'settings' ? quickSettingsOpen : undefined}
+              aria-controls={item.key === 'settings' ? 'quick-settings-panel' : undefined}
+              aria-busy={item.key === 'settings' ? quickSettingsLoading : undefined}
+              disabled={disabled || (item.key === 'settings' && quickSettingsLoading)}
               onMouseEnter={() => { setSelectedNavKey(item.key); setFocusArea('navbar'); }}
               onClick={() => selectNavAction(index)}
             >
-              {item.session ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} /> : item.icon}
+              {item.session
+                ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} />
+                : item.key === 'settings' && quickSettingsLoading ? <LoaderCircle size={20} className="spin" /> : item.icon}
               {item.session && <span className={`active-dot ${item.session.isActive ? '' : 'minimized'}`} />}
             </button>
           </div>

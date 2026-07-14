@@ -509,7 +509,6 @@ export function App(): JSX.Element {
         <QuickHomeOverlay
           activeGame={activeGame}
           emergencyCloseRequestId={emergencyCloseRequestId}
-          onOpenSettings={openConsoleSettings}
           onDismiss={() => setQuickNavOpen(false)}
         />
       ) : view === 'home' ? (
@@ -555,7 +554,6 @@ export function App(): JSX.Element {
         <QuickHomeOverlay
           activeGame={activeGame}
           emergencyCloseRequestId={emergencyCloseRequestId}
-          onOpenSettings={openConsoleSettings}
           onDismiss={() => setQuickNavOpen(false)}
         />
       )}
