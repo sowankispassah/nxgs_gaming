@@ -1062,6 +1062,15 @@ export class GameLauncher {
     if (!window) {
       return;
     }
+    if (!this.shouldUseFullscreenPresentation()) {
+      window.setAlwaysOnTop(false);
+      window.setFullScreen(false);
+      window.setMenuBarVisibility(false);
+      window.show();
+      window.focus();
+      void logLine('info', 'Skipped the fullscreen launch shield because windowed Admin mode is active.');
+      return;
+    }
     const display = screen.getDisplayMatching(window.getBounds());
     window.setBounds(display.bounds);
     window.show();
@@ -1074,6 +1083,14 @@ export class GameLauncher {
   private releaseLaunchShield(): void {
     const window = this.windowProvider();
     if (!window || window.isDestroyed()) {
+      return;
+    }
+    if (!this.shouldUseFullscreenPresentation()) {
+      window.setAlwaysOnTop(false);
+      window.setFullScreen(false);
+      window.setMenuBarVisibility(false);
+      if (!window.isVisible()) window.show();
+      void logLine('info', 'Skipped fullscreen shield restoration because windowed Admin mode is active.');
       return;
     }
     const display = screen.getDisplayMatching(window.getBounds());

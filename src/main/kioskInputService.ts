@@ -84,8 +84,8 @@ export class KioskInputService {
 
   register(): void {
     this.shortcutDiagnostics.failures = [];
-    this.registerShortcut('CommandOrControl+Shift+H', 'homeRegistered', () => this.triggerHome('global-home'));
-    this.registerShortcut('F10', 'f10Registered', () => this.triggerHome('global-f10'));
+    this.registerShortcut('CommandOrControl+Shift+H', 'homeRegistered', () => this.requestHome('global-home'));
+    this.registerShortcut('F10', 'f10Registered', () => this.requestHome('global-f10'));
     this.registerShortcut('CommandOrControl+Shift+X', 'emergencyCloseRegistered', () => this.events.onEmergencyClose());
     this.shortcutDiagnostics.adminUnlockRegistered = false;
     this.refreshRestrictedShortcuts();
@@ -140,6 +140,10 @@ export class KioskInputService {
     if (this.adminControlsUnlocked === unlocked) return;
     this.adminControlsUnlocked = unlocked;
     this.refreshRestrictedShortcuts();
+  }
+
+  requestHome(reason: ShellHomeReason): void {
+    this.triggerHome(reason);
   }
 
   handleFocusEscape(key: string): void {

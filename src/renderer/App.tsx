@@ -251,13 +251,17 @@ export function App(): JSX.Element {
       setPinOpen(false);
       setAdminUnlockRequest(null);
       setAdminOptionsOpen(false);
-      if (!windowedAdminMode && (pinOpen || adminOptionsOpen)) {
-        setAdminControlsActive(false);
+      if (event.preserveAdminWindow) {
+        setAdminControlsActive(true);
+        setWindowedAdminMode(true);
         setAdminModeError('');
-        void window.nxgs.performKioskAdminAction('returnLocked');
+      } else {
+        setAdminControlsActive(false);
+        setWindowedAdminMode(false);
+        setAdminModeError('');
       }
       setView('home');
-      setQuickNavOpen(true);
+      setQuickNavOpen(!event.preserveAdminWindow);
       if (event.openActiveGamePanel) {
         setHomeOverlayRequestId((value) => value + 1);
       }
@@ -271,7 +275,7 @@ export function App(): JSX.Element {
       unsubscribeActiveGame();
       unsubscribeShellHome();
     };
-  }, [adminOptionsOpen, pinOpen, windowedAdminMode]);
+  }, []);
 
   useEffect(() => {
     if (selectedIndex >= enabledGames.length) {

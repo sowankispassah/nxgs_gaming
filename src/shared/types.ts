@@ -366,6 +366,7 @@ export interface ShellHomeEvent {
   reason: ShellHomeReason;
   openActiveGamePanel: boolean;
   emergencyClose: boolean;
+  preserveAdminWindow?: boolean;
 }
 
 export interface AdminUnlockRequest {

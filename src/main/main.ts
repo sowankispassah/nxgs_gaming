@@ -212,7 +212,7 @@ function focusExistingInstance(): void {
   if (window.isMinimized()) {
     window.restore();
   }
-  openHomeFromGame('second-instance');
+  handleShellHomeRequest('second-instance');
   void logLine('info', 'A second NXGS launch restored and focused the existing launcher window.');
 }
 
@@ -264,10 +264,29 @@ const launcher = new GameLauncher(
 );
 
 const kioskInput = new KioskInputService({
-  onHome: openHomeFromGame,
+  onHome: handleShellHomeRequest,
   onRestrictedInput: handleRestrictedCustomerInput,
   onEmergencyClose: requestEmergencyCloseOverlay
 });
+
+function handleShellHomeRequest(reason: ShellHomeReason): void {
+  if (kioskInput.currentMode === 'admin') {
+    applyKioskSettings(store.getSettings());
+    sendShellHome({
+      reason,
+      openActiveGamePanel: false,
+      emergencyClose: false,
+      preserveAdminWindow: true
+    });
+    void logLine('info', `Handled ${reason} inside windowed Admin mode without changing presentation mode.`);
+    return;
+  }
+
+  kioskAdminActionGranted = false;
+  kioskInput.setAdminPinActive(false);
+  kioskInput.setAdminControlsUnlocked(false);
+  openHomeFromGame(reason);
+}
 
 function setKioskMode(mode: KioskMode): void {
   if (mode === 'customer') {
@@ -537,7 +556,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('shell:homeRequest', (_event, reason: ShellHomeReason = 'renderer-request') => {
-    openHomeFromGame(reason);
+    kioskInput.requestHome(reason);
     return { ok: true };
   });
 
