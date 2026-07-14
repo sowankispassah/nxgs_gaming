@@ -3,8 +3,8 @@ import {
   Accessibility,
   Bluetooth,
   BookOpen,
-  Check,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Eye,
   EyeOff,
@@ -19,7 +19,6 @@ import {
   Mic2,
   Minus,
   Monitor,
-  Palette,
   RefreshCw,
   Search,
   Settings,
@@ -136,11 +135,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [audioFeedback, setAudioFeedback] = useState<Feedback | null>(null);
   const [display, setDisplay] = useState<DisplayStatus>(EMPTY_DISPLAY);
   const [displayBrightness, setDisplayBrightness] = useState(0);
-  const [displayPending, setDisplayPending] = useState<'refresh' | 'color-profile' | 'hdr' | null>(null);
+  const [displayPending, setDisplayPending] = useState<'refresh' | 'hdr' | null>(null);
   const [brightnessSyncing, setBrightnessSyncing] = useState(false);
   const [displayFeedback, setDisplayFeedback] = useState<Feedback | null>(null);
-  const [colorProfilesOpen, setColorProfilesOpen] = useState(false);
-  const [colorProfileTarget, setColorProfileTarget] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<AppDiagnostics | null>(null);
   const networkBusy = useRef(false);
   const bluetoothBusy = useRef(false);
@@ -258,8 +255,6 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     setForgetWifiTarget(null);
     setWifiContextMenu(null);
     setWifiPassword('');
-    setColorProfilesOpen(false);
-    setColorProfileTarget(null);
   }, [selectedIndex]);
 
   useEffect(() => {
@@ -369,26 +364,6 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       setDisplayPending(null);
     }
   }, [display.hdr.enabled]);
-
-  const chooseColorProfile = useCallback(async (profileName: string): Promise<void> => {
-    if (displayBusy.current || !display.colorProfile.switchingSupported) return;
-    displayBusy.current = true;
-    setDisplayPending('color-profile');
-    setColorProfileTarget(profileName);
-    setDisplayFeedback({ tone: 'info', message: `Switching to ${profileName}...` });
-    try {
-      const result = await window.nxgs.setColorProfile(profileName);
-      setDisplay(result.display);
-      setDisplayFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
-      if (result.ok) setColorProfilesOpen(false);
-    } catch (error) {
-      setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'The color profile could not be changed.' });
-    } finally {
-      displayBusy.current = false;
-      setColorProfileTarget(null);
-      setDisplayPending(null);
-    }
-  }, [display.colorProfile.switchingSupported]);
 
   const toggleMasterMute = useCallback(async (): Promise<void> => {
     if (audioBusy.current) return;
@@ -1053,9 +1028,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       const hdrLabel = display.hdr.support === 'supported'
         ? display.hdr.enabled ? 'On' : 'Supported / Off'
         : display.hdr.support === 'unsupported' ? 'Not supported' : 'Not detected';
-      const showColorProfile = display.colorProfile.switchingSupported && display.colorProfile.availableProfiles.length > 0;
       const showHdr = display.hdr.support === 'supported' && display.hdr.controlSupported;
-      const showSystemDisplayFeatures = showColorProfile || showHdr;
       return (
         <SettingsDetail title="Display" icon={<Monitor size={34} />} subtitle="Windows display controls, inside NXGS" onFocus={() => setDetailMode(true)}>
           <div className="display-page-toolbar">
@@ -1099,52 +1072,15 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             </div>
           </section>
 
-          {showSystemDisplayFeatures && (
+          {showHdr && (
             <>
-              <div className="display-section-heading"><span>Brightness &amp; color</span><small>Available controls</small></div>
+              <div className="display-section-heading"><span>HDR</span><small>Available control</small></div>
               <div className="display-setting-list">
-                {showColorProfile && (
-                  <button
-                    className={`display-setting-row ${colorProfilesOpen ? 'expanded' : ''}`}
-                    data-settings-action
-                    type="button"
-                    disabled={displayPending !== null}
-                    aria-expanded={colorProfilesOpen}
-                    onClick={() => setColorProfilesOpen((open) => !open)}
-                  >
-                    <span className="display-row-icon color"><Palette size={21} /></span>
-                    <span><strong>Color profile</strong><small>{display.colorProfile.message}</small></span>
-                    <em>{displayPending === 'color-profile' ? <LoaderCircle size={18} className="spin" /> : display.colorProfile.currentProfile}</em>
-                  </button>
-                )}
-                {showColorProfile && colorProfilesOpen && (
-                  <div className="display-color-profile-options" aria-label="Available display color profiles">
-                    {display.colorProfile.availableProfiles.map((profileName) => {
-                      const selectedProfile = profileName.toLocaleLowerCase() === display.colorProfile.currentProfile.toLocaleLowerCase();
-                      const switching = colorProfileTarget === profileName;
-                      return (
-                        <button
-                          data-settings-action
-                          type="button"
-                          key={profileName}
-                          className={selectedProfile ? 'current' : ''}
-                          disabled={displayPending !== null || selectedProfile}
-                          onClick={() => void chooseColorProfile(profileName)}
-                        >
-                          <span><strong>{profileName}</strong><small>{selectedProfile ? 'Current Windows profile' : 'Use for this display'}</small></span>
-                          {switching ? <LoaderCircle size={18} className="spin" /> : selectedProfile ? <Check size={18} /> : <ChevronRight size={18} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {showHdr && (
-                  <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleHdr()}>
-                    <span className="display-row-icon hdr"><Monitor size={21} /></span>
-                    <span><strong>HDR</strong><small>{display.hdr.message}</small></span>
-                    <em>{displayPending === 'hdr' ? <LoaderCircle size={18} className="spin" /> : hdrLabel}</em>
-                  </button>
-                )}
+                <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleHdr()}>
+                  <span className="display-row-icon hdr"><Monitor size={21} /></span>
+                  <span><strong>HDR</strong><small>{display.hdr.message}</small></span>
+                  <em>{displayPending === 'hdr' ? <LoaderCircle size={18} className="spin" /> : hdrLabel}</em>
+                </button>
               </div>
             </>
           )}
@@ -1170,15 +1106,15 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
     return (
       <SettingsDetail title={selected.label} icon={<Info size={34} />} subtitle="NXGS console settings">
-        <p className="settings-placeholder">This section is ready for its launcher-native controls. It will remain inside NXGS and use the same controller-first navigation.</p>
+        <p className="settings-placeholder">This section is ready for its launcher-native controls.<br />It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, chooseColorProfile, colorProfilesOpen, colorProfileTarget, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
+  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">
       <div className="console-settings-backdrop" />
-      <header><button type="button" onClick={props.onBack}>Back</button><div><span>NXGS Play</span><h1>Settings</h1></div></header>
+      <header><button type="button" onClick={props.onBack}><ChevronLeft size={21} />Back</button><div><span>NXGS Play</span><h1>Settings</h1></div></header>
       <div className="console-settings-layout">
         <nav aria-label="Console settings categories">
           {SETTINGS_ITEMS.map((item, index) => (

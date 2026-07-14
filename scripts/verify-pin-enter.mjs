@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -70,10 +70,20 @@ try {
   };
 
   await send('Runtime.enable');
+  if (process.env.NXGS_SETTINGS_SCREENSHOT) {
+    await send('Emulation.setDeviceMetricsOverride', { width: 1672, height: 941, deviceScaleFactor: 1, mobile: false });
+  }
   await evaluate("Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [] })");
   await waitFor("Boolean(document.querySelector('button[aria-label=Settings]'))", 'Settings button did not render.');
   await evaluate("document.querySelector('button[aria-label=Settings]').click()");
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Control Room'))", 'Control Room did not render.');
+  const settingsShell = await evaluate("(() => { const header = document.querySelector('.console-settings-screen > header').getBoundingClientRect(); const layout = document.querySelector('.console-settings-layout').getBoundingClientRect(); const nav = document.querySelector('.console-settings-layout > nav').getBoundingClientRect(); const detail = document.querySelector('.console-settings-detail').getBoundingClientRect(); return { headerHeight: Math.round(header.height), navLeft: Math.round(nav.left), layoutTop: Math.round(layout.top), layoutBottom: Math.round(layout.bottom), navWidth: Math.round(nav.width), gap: Math.round(detail.left - nav.right) }; })()");
+  if (settingsShell.headerHeight !== 142 || settingsShell.navLeft !== 40 || settingsShell.layoutTop !== 142 || settingsShell.gap !== 24) throw new Error(`Settings shell layout drifted from the console reference: ${JSON.stringify(settingsShell)}`);
+  if (process.env.NXGS_SETTINGS_SCREENSHOT) {
+    const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile(resolve(process.env.NXGS_SETTINGS_SCREENSHOT), Buffer.from(screenshot.data, 'base64'));
+  }
+  console.log('PASS: Settings shell matched the compact dark console layout geometry.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video').click()");
   await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('.display-information-grid')); if (!ready) [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Screen and Video')?.click(); return ready; })()", 'Display settings did not render brightness and display information.');
   const displayFeatures = await evaluate("window.nxgs.getDisplayStatus()");
@@ -82,15 +92,9 @@ try {
   const displayRows = await evaluate("[...document.querySelectorAll('.display-setting-row')].map((button) => button.textContent)");
   if (displayRows.some((text) => text.includes('Night Light'))) throw new Error('Unavailable Night Light control remained visible.');
   if ((!displayFeatures.hdr.controlSupported || displayFeatures.hdr.support !== 'supported') && displayRows.some((text) => text.includes('HDR'))) throw new Error('Unavailable HDR control remained visible.');
-  if (!displayFeatures.colorProfile.switchingSupported && displayRows.some((text) => text.includes('Color profile'))) throw new Error('Unavailable Color Profile control remained visible.');
-  if (displayFeatures.colorProfile.switchingSupported) {
-    if (displayFeatures.colorProfile.availableProfiles.length === 0) throw new Error('Color-profile switching was enabled without selectable profiles.');
-    await waitFor("[...document.querySelectorAll('.display-setting-row')].some((button) => button.textContent.includes('Color profile'))", 'Color-profile row did not remain available.');
-    await evaluate("[...document.querySelectorAll('.display-setting-row')].find((button) => button.textContent.includes('Color profile')).click()");
-    await waitFor("document.querySelectorAll('.display-color-profile-options button').length > 0", 'Selectable Windows color profiles did not open inside NXGS.');
-  }
+  if (displayRows.some((text) => text.includes('Color profile'))) throw new Error('Color Profile control remained visible.');
   if (!displayFeatures.hdr.message || !displayFeatures.colorProfile.message || !displayFeatures.nightLight.message) throw new Error('Display feature capability messages were incomplete.');
-  console.log(`INFO: HDR ${displayFeatures.hdr.support}/${displayFeatures.hdr.enabled ? 'on' : 'off'} (${displayFeatures.hdr.message}), color profiles ${displayFeatures.colorProfile.availableProfiles.length} (${displayFeatures.colorProfile.message}).`);
+  console.log(`INFO: HDR ${displayFeatures.hdr.support}/${displayFeatures.hdr.enabled ? 'on' : 'off'} (${displayFeatures.hdr.message}); nonessential color controls hidden.`);
   console.log('PASS: Display settings showed live Windows display information and brightness capability.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Control Room').click()");
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Enter Control Room'))", 'Control Room detail did not open.');
