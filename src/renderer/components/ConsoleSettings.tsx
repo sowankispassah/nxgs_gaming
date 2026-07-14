@@ -19,11 +19,13 @@ import {
   Mic2,
   Minus,
   Monitor,
+  Maximize2,
+  Palette,
   RefreshCw,
+  Scaling,
   Search,
   Settings,
-  Speaker,
-  Sun,
+  Smartphone,
   Plus,
   Trash2,
   Unplug,
@@ -52,8 +54,6 @@ type SettingsKey =
   | 'users'
   | 'system'
   | 'storage'
-  | 'sound'
-  | 'screen'
   | 'control-room';
 
 type Feedback = { tone: 'info' | 'success' | 'warning' | 'error'; message: string };
@@ -66,8 +66,6 @@ const SETTINGS_ITEMS: Array<{ key: SettingsKey; label: string; icon: JSX.Element
   { key: 'users', label: 'Users and Accounts', icon: <Users size={25} /> },
   { key: 'system', label: 'System', icon: <Settings size={25} /> },
   { key: 'storage', label: 'Storage', icon: <HardDrive size={25} /> },
-  { key: 'sound', label: 'Sound', icon: <Speaker size={25} /> },
-  { key: 'screen', label: 'Screen and Video', icon: <Monitor size={25} /> },
   { key: 'control-room', label: 'Control Room', icon: <Lock size={25} /> }
 ];
 
@@ -231,6 +229,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
   }, []);
 
+  const refreshSystem = useCallback(async (): Promise<void> => {
+    await Promise.all([refreshDisplay(), refreshAudio()]);
+  }, [refreshAudio, refreshDisplay]);
+
   useEffect(() => {
     void refreshNetwork();
   }, [refreshNetwork]);
@@ -242,11 +244,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   }, [bluetooth.radioState, refreshBluetooth, selected.key]);
 
   useEffect(() => {
-    if (selected.key === 'sound' && audio.outputDevices.length === 0 && !audioBusy.current) void refreshAudio();
+    if (selected.key === 'system' && audio.outputDevices.length === 0 && !audioBusy.current) void refreshAudio();
   }, [audio.outputDevices.length, refreshAudio, selected.key]);
 
   useEffect(() => {
-    if (selected.key === 'screen' && display.displays.length === 0 && !displayBusy.current) void refreshDisplay();
+    if (selected.key === 'system' && display.displays.length === 0 && !displayBusy.current) void refreshDisplay();
   }, [display.displays.length, refreshDisplay, selected.key]);
 
   useEffect(() => {
@@ -438,7 +440,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const activateSelected = useCallback((): void => {
     const key = SETTINGS_ITEMS[selectedIndex].key;
     if (key === 'control-room') props.onControlRoom();
-    else if (key === 'network' || key === 'controller' || key === 'sound' || key === 'screen') enterDetail();
+    else if (key === 'network' || key === 'controller' || key === 'system') enterDetail();
   }, [enterDetail, props, selectedIndex]);
 
   useEffect(() => {
@@ -913,186 +915,135 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         </SettingsDetail>
       );
     }
-    if (selected.key === 'sound') {
+    if (selected.key === 'system') {
+      const activeDisplay = display.displays.find((item) => item.id === display.currentDisplayId)
+        ?? display.displays.find((item) => item.primary)
+        ?? display.displays[0];
       const outputDevice = audio.outputDevices.find((device) => device.isDefault);
       const inputDevice = audio.inputDevices.find((device) => device.isDefault);
       const volumeBusy = audioPending?.startsWith('volume-') ?? false;
+      const systemRefreshing = displayPending === 'refresh' || audioPending === 'refresh';
+      const hdrLabel = display.hdr.enabled ? 'On' : 'Off';
+      const showHdr = display.hdr.support === 'supported' && display.hdr.controlSupported;
       return (
-        <SettingsDetail title="Sound" icon={audio.muted ? <VolumeX size={34} /> : <Volume2 size={34} />} subtitle="Windows audio, without leaving NXGS" onFocus={() => setDetailMode(true)}>
-          <div className="sound-page-toolbar">
-            <div>
-              <span>System audio</span>
-              <strong>{audio.muted ? 'Muted' : `${displayVolume}% volume`}</strong>
-            </div>
-            <button data-settings-action type="button" disabled={audioPending !== null} onClick={() => void refreshAudio()}>
-              <RefreshCw size={18} className={audioPending === 'refresh' ? 'spin' : ''} />
-              {audioPending === 'refresh' ? 'Refreshing...' : 'Refresh'}
+        <SettingsDetail
+          title="System"
+          icon={<Settings size={34} />}
+          subtitle="Windows display and audio controls, inside NXGS"
+          onFocus={() => setDetailMode(true)}
+          action={(
+            <button className="system-refresh-button" data-settings-action type="button" disabled={displayPending !== null || audioPending !== null} onClick={() => void refreshSystem()}>
+              {systemRefreshing ? <LoaderCircle size={18} className="spin" /> : <RefreshCw size={18} />}
+              {systemRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
-          </div>
-          {audioFeedback && <div className={`settings-feedback ${audioFeedback.tone}`} role="status">{audioFeedback.message}</div>}
+          )}
+        >
+          <div className="system-page">
+            <section className="system-section" aria-labelledby="system-display-heading">
+              <div className="system-section-title">
+                <Monitor size={31} />
+                <div><span>Display controls</span><h3 id="system-display-heading">Display</h3></div>
+              </div>
+              {displayFeedback && <div className={`settings-feedback ${displayFeedback.tone}`} role="status">{displayFeedback.message}</div>}
 
-          <section className={`sound-master-card ${audio.muted ? 'muted' : ''}`}>
-            <div className="sound-volume-orb" style={{ background: `conic-gradient(#71f0d7 ${displayVolume * 3.6}deg, rgba(255, 255, 255, 0.09) 0deg)` }}>
-              <div>{audio.muted ? <VolumeX size={30} /> : <Volume2 size={30} />}<strong>{displayVolume}%</strong><span>{audio.muted ? 'Muted' : 'Master'}</span></div>
-            </div>
-            <div className="sound-master-controls">
-              <div><span>Master volume</span><strong>{audio.currentOutputName ?? 'Windows default output'}</strong></div>
-              <div className="sound-volume-controls">
-                <button data-settings-action type="button" aria-label="Volume down" disabled={audioPending !== null || displayVolume <= 0} onClick={() => void applyMasterVolume(displayVolume - 5, 'down')}>
-                  {audioPending === 'volume-down' ? <LoaderCircle size={18} className="spin" /> : <Minus size={19} />}
-                </button>
+              <div className="system-primary-display">
+                <span>{activeDisplay?.primary ? 'Primary display' : 'Active display'}</span>
+                <strong>{activeDisplay?.name ?? 'Windows display'}</strong>
+              </div>
+
+              <div className={`system-slider-card ${display.brightness.supported ? '' : 'unsupported'}`}>
+                <div className="system-control-label"><span>Brightness</span><strong>{display.brightness.supported ? `${displayBrightness}%` : 'Unavailable'}</strong></div>
                 <input
                   data-settings-action
-                  data-settings-slider="volume"
-                  aria-label="Master volume"
+                  data-settings-slider="brightness"
                   type="range"
                   min="0"
                   max="100"
                   step="1"
-                  value={displayVolume}
-                  style={{ background: `linear-gradient(90deg, #71f0d7 0%, #71f0d7 ${displayVolume}%, rgba(255, 255, 255, 0.14) ${displayVolume}%)` }}
-                  disabled={audioPending !== null || !audio.supported}
-                  onChange={(event) => setDisplayVolume(Number(event.currentTarget.value))}
-                  onPointerUp={(event) => void applyMasterVolume(Number(event.currentTarget.value), 'slider')}
-                  onBlur={(event) => {
-                    const next = Number(event.currentTarget.value);
-                    if (next !== audio.masterVolume && !audioBusy.current) void applyMasterVolume(next, 'slider');
-                  }}
+                  value={displayBrightness}
+                  aria-label="Display brightness"
+                  aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
+                  disabled={!display.brightness.supported || displayPending !== null}
+                  style={{ background: `linear-gradient(90deg, #58a6ff 0%, #58a6ff ${displayBrightness}%, rgba(255, 255, 255, 0.14) ${displayBrightness}%)` }}
+                  onInput={(event) => applyDisplayBrightness(Number(event.currentTarget.value))}
                 />
-                <button data-settings-action type="button" aria-label="Volume up" disabled={audioPending !== null || displayVolume >= 100} onClick={() => void applyMasterVolume(displayVolume + 5, 'up')}>
-                  {audioPending === 'volume-up' ? <LoaderCircle size={18} className="spin" /> : <Plus size={19} />}
-                </button>
+                <small className={brightnessSyncing ? 'system-inline-status active' : 'system-inline-status'}>
+                  {display.brightness.supported
+                    ? brightnessSyncing ? 'Updating brightness...' : 'Use left/right or drag the slider'
+                    : display.brightness.message ?? 'Brightness control is not supported on this display.'}
+                </small>
               </div>
-              <button className={`sound-mute-toggle ${audio.muted ? 'active' : ''}`} data-settings-action type="button" disabled={audioPending !== null || !audio.supported} onClick={() => void toggleMasterMute()}>
-                {audioPending === 'mute' ? <LoaderCircle size={18} className="spin" /> : audio.muted ? <Volume2 size={18} /> : <VolumeX size={18} />}
-                {audioPending === 'mute' ? audio.muted ? 'Unmuting...' : 'Muting...' : audio.muted ? 'Unmute' : 'Mute'}
-              </button>
-              {volumeBusy && <small className="sound-inline-status">Updating Windows volume...</small>}
-            </div>
-          </section>
 
-          <div className="sound-current-grid">
-            <div><Headphones size={22} /><span><small>Current output</small><strong>{outputDevice?.name ?? 'No active output'}</strong></span></div>
-            <div><Mic2 size={22} /><span><small>Current microphone</small><strong>{inputDevice?.name ?? 'No active microphone'}</strong><em>{inputDevice ? `${audio.inputMuted ? 'Muted' : `${audio.inputVolume}% level`}` : 'Unavailable'}</em></span></div>
-          </div>
-
-          <section className="sound-device-section">
-            <div className="sound-section-title"><div><Headphones size={21} /><span><strong>Output devices</strong><small>Speakers, headphones, HDMI and Bluetooth audio</small></span></div><span>{audio.outputDevices.length}</span></div>
-            <div className="sound-device-list">
-              {audio.outputDevices.length > 0 ? audio.outputDevices.map((device) => {
-                const switching = audioPending === `switch:${device.id}`;
-                return (
-                  <div key={device.id} className={device.isDefault ? 'current' : ''}>
-                    <Headphones size={20} />
-                    <span><strong>{device.name}</strong><small>{device.isDefault ? 'Current output' : 'Available output'} · {device.muted ? 'Muted' : `${device.volume}%`}</small></span>
-                    {device.isDefault ? <em className="sound-current-badge">Current</em> : (
-                      <button data-settings-action type="button" disabled={audioPending !== null} onClick={() => void switchAudioEndpoint(device)}>
-                        {switching ? <LoaderCircle size={17} className="spin" /> : <Headphones size={17} />}
-                        {switching ? 'Switching...' : 'Use Output'}
-                      </button>
-                    )}
-                  </div>
-                );
-              }) : <p className="settings-placeholder">No active output devices were reported by Windows.</p>}
-            </div>
-          </section>
-
-          <section className="sound-device-section">
-            <div className="sound-section-title"><div><Mic2 size={21} /><span><strong>Microphones</strong><small>Available Windows input devices</small></span></div><span>{audio.inputDevices.length}</span></div>
-            <div className="sound-device-list">
-              {audio.inputDevices.length > 0 ? audio.inputDevices.map((device) => {
-                const switching = audioPending === `switch:${device.id}`;
-                return (
-                  <div key={device.id} className={device.isDefault ? 'current' : ''}>
-                    <Mic2 size={20} />
-                    <span><strong>{device.name}</strong><small>{device.isDefault ? 'Current microphone' : 'Available microphone'} · {device.muted ? 'Muted' : `${device.volume}% level`}</small></span>
-                    {device.isDefault ? <em className="sound-current-badge">Current</em> : (
-                      <button data-settings-action type="button" disabled={audioPending !== null} onClick={() => void switchAudioEndpoint(device)}>
-                        {switching ? <LoaderCircle size={17} className="spin" /> : <Mic2 size={17} />}
-                        {switching ? 'Switching...' : 'Use Input'}
-                      </button>
-                    )}
-                  </div>
-                );
-              }) : <p className="settings-placeholder">No active microphone devices were reported by Windows.</p>}
-            </div>
-          </section>
-          {!audio.deviceSwitchingSupported && <p className="settings-capability-note">Volume and mute are fully managed inside NXGS. Devices are listed using Windows Core Audio. Windows does not expose a supported desktop API for changing the system default device, so NXGS keeps the current selection and reports that limitation here without opening Windows Settings.</p>}
-        </SettingsDetail>
-      );
-    }
-    if (selected.key === 'screen') {
-      const activeDisplay = display.displays.find((item) => item.id === display.currentDisplayId)
-        ?? display.displays.find((item) => item.primary)
-        ?? display.displays[0];
-      const hdrLabel = display.hdr.support === 'supported'
-        ? display.hdr.enabled ? 'On' : 'Supported / Off'
-        : display.hdr.support === 'unsupported' ? 'Not supported' : 'Not detected';
-      const showHdr = display.hdr.support === 'supported' && display.hdr.controlSupported;
-      return (
-        <SettingsDetail title="Display" icon={<Monitor size={34} />} subtitle="Windows display controls, inside NXGS" onFocus={() => setDetailMode(true)}>
-          <div className="display-page-toolbar">
-            <div>
-              <span>{activeDisplay?.primary ? 'Primary display' : 'Active display'}</span>
-              <strong>{activeDisplay?.name ?? 'Windows display'}</strong>
-            </div>
-            <button data-settings-action type="button" disabled={displayPending !== null} onClick={() => void refreshDisplay()}>
-              {displayPending === 'refresh' ? <LoaderCircle size={18} className="spin" /> : <RefreshCw size={18} />}
-              {displayPending === 'refresh' ? 'Refreshing...' : 'Refresh'}
-            </button>
-          </div>
-          {displayFeedback && <div className={`settings-feedback ${displayFeedback.tone}`} role="status">{displayFeedback.message}</div>}
-
-          <section className={`display-brightness-card ${display.brightness.supported ? '' : 'unsupported'}`}>
-            <div className="display-brightness-icon"><Sun size={34} /></div>
-            <div className="display-brightness-control">
-              <div>
-                <span><strong>Brightness</strong><small>Adjust the built-in display live</small></span>
-                <strong>{display.brightness.supported ? `${displayBrightness}%` : 'Unavailable'}</strong>
+              <h4 className="system-subheading">Display information</h4>
+              <div className="system-information-grid">
+                <div><span className="system-info-icon"><Monitor size={20} /></span><span><small>Display name</small><strong>{activeDisplay?.name ?? 'Unavailable'}</strong></span></div>
+                <div><span className="system-info-icon"><Maximize2 size={20} /></span><span><small>Resolution</small><strong>{activeDisplay?.resolution ?? 'Unavailable'}</strong></span></div>
+                <div><span className="system-info-icon"><RefreshCw size={20} /></span><span><small>Refresh rate</small><strong>{activeDisplay?.refreshRate ? `${activeDisplay.refreshRate} Hz` : 'Unavailable'}</strong></span></div>
+                <div><span className="system-info-icon"><Scaling size={20} /></span><span><small>Scale</small><strong>{activeDisplay ? `${activeDisplay.scalePercent}%` : 'Unavailable'}</strong></span></div>
+                <div><span className="system-info-icon"><Smartphone size={20} /></span><span><small>Orientation</small><strong>{activeDisplay?.orientation ?? 'Unavailable'}</strong></span></div>
+                <div><span className="system-info-icon"><Palette size={20} /></span><span><small>Color output</small><strong>{activeDisplay ? `${activeDisplay.colorDepth}-bit` : 'Unavailable'}</strong></span></div>
               </div>
-              <input
-                data-settings-action
-                data-settings-slider="brightness"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={displayBrightness}
-                aria-label="Display brightness"
-                aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
-                disabled={!display.brightness.supported || displayPending === 'refresh'}
-                style={{ background: `linear-gradient(90deg, #ffd36a 0%, #ffd36a ${displayBrightness}%, rgba(255, 255, 255, 0.14) ${displayBrightness}%)` }}
-                onInput={(event) => applyDisplayBrightness(Number(event.currentTarget.value))}
-              />
-              <small className={brightnessSyncing ? 'display-live-status active' : 'display-live-status'}>
-                {display.brightness.supported
-                  ? brightnessSyncing ? 'Updating display live...' : 'Use ← → or drag the slider'
-                  : display.brightness.message ?? 'Brightness control is not supported on this display.'}
-              </small>
-            </div>
-          </section>
 
-          {showHdr && (
-            <>
-              <div className="display-section-heading"><span>HDR</span><small>Available control</small></div>
-              <div className="display-setting-list">
-                <button className="display-setting-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleHdr()}>
-                  <span className="display-row-icon hdr"><Monitor size={21} /></span>
-                  <span><strong>HDR</strong><small>{display.hdr.message}</small></span>
+              {showHdr && (
+                <button className="system-simple-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleHdr()}>
+                  <span><Monitor size={20} /><span><strong>HDR</strong><small>{display.hdr.message}</small></span></span>
                   <em>{displayPending === 'hdr' ? <LoaderCircle size={18} className="spin" /> : hdrLabel}</em>
                 </button>
-              </div>
-            </>
-          )}
+              )}
+            </section>
 
-          <div className="display-section-heading information"><span>Display information</span><small>{display.displays.length} active display{display.displays.length === 1 ? '' : 's'}</small></div>
-          <div className="display-information-grid">
-            <div><span>Display name</span><strong>{activeDisplay?.name ?? 'Unavailable'}</strong><small>{activeDisplay?.primary ? 'Primary display' : 'Secondary display'}</small></div>
-            <div><span>Resolution</span><strong>{activeDisplay?.resolution ?? 'Unavailable'}</strong><small>Current desktop mode</small></div>
-            <div><span>Refresh rate</span><strong>{activeDisplay?.refreshRate ? `${activeDisplay.refreshRate} Hz` : 'Unavailable'}</strong><small>Reported by Windows</small></div>
-            <div><span>Scale</span><strong>{activeDisplay ? `${activeDisplay.scalePercent}%` : 'Unavailable'}</strong><small>Text and app scaling</small></div>
-            <div><span>Orientation</span><strong>{activeDisplay?.orientation ?? 'Unavailable'}</strong><small>{activeDisplay?.internal ? 'Built-in display' : 'External display'}</small></div>
-            <div><span>Color output</span><strong>{activeDisplay ? `${activeDisplay.colorDepth}-bit` : 'Unavailable'}</strong><small>{activeDisplay?.depthPerComponent ? `${activeDisplay.depthPerComponent} bits per component` : 'Color depth unavailable'}</small></div>
+            <section className="system-section" aria-labelledby="system-sound-heading">
+              <div className="system-section-title">
+                {audio.muted ? <VolumeX size={31} /> : <Volume2 size={31} />}
+                <div><span>Windows audio</span><h3 id="system-sound-heading">Sound</h3></div>
+              </div>
+              {audioFeedback && <div className={`settings-feedback ${audioFeedback.tone}`} role="status">{audioFeedback.message}</div>}
+
+              <div className="system-volume-card">
+                <div className="system-volume-summary"><small>Current volume</small><strong>{audio.muted ? 'Muted' : `${displayVolume}% volume`}</strong><span>{outputDevice?.name ?? audio.currentOutputName ?? 'Windows default output'}</span></div>
+                <div className="system-volume-controls">
+                  <button data-settings-action type="button" aria-label="Volume down" disabled={audioPending !== null || displayVolume <= 0} onClick={() => void applyMasterVolume(displayVolume - 5, 'down')}>
+                    {audioPending === 'volume-down' ? <LoaderCircle size={18} className="spin" /> : <Minus size={19} />}
+                  </button>
+                  <input
+                    data-settings-action
+                    data-settings-slider="volume"
+                    aria-label="Master volume"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={displayVolume}
+                    style={{ background: `linear-gradient(90deg, #f4f7fb 0%, #f4f7fb ${displayVolume}%, rgba(255, 255, 255, 0.14) ${displayVolume}%)` }}
+                    disabled={audioPending !== null || !audio.supported}
+                    onChange={(event) => setDisplayVolume(Number(event.currentTarget.value))}
+                    onPointerUp={(event) => void applyMasterVolume(Number(event.currentTarget.value), 'slider')}
+                    onBlur={(event) => {
+                      const next = Number(event.currentTarget.value);
+                      if (next !== audio.masterVolume && !audioBusy.current) void applyMasterVolume(next, 'slider');
+                    }}
+                  />
+                  <button data-settings-action type="button" aria-label="Volume up" disabled={audioPending !== null || displayVolume >= 100} onClick={() => void applyMasterVolume(displayVolume + 5, 'up')}>
+                    {audioPending === 'volume-up' ? <LoaderCircle size={18} className="spin" /> : <Plus size={19} />}
+                  </button>
+                  <strong>{displayVolume}%</strong>
+                </div>
+                <button className={`system-mute-button ${audio.muted ? 'active' : ''}`} data-settings-action type="button" disabled={audioPending !== null || !audio.supported} onClick={() => void toggleMasterMute()}>
+                  {audioPending === 'mute' ? <LoaderCircle size={18} className="spin" /> : audio.muted ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                  {audioPending === 'mute' ? audio.muted ? 'Unmuting...' : 'Muting...' : audio.muted ? 'Unmute' : 'Mute'}
+                </button>
+                {volumeBusy && <small className="system-inline-status active">Updating Windows volume...</small>}
+              </div>
+
+              <div className="system-current-devices">
+                <div><Headphones size={21} /><span><small>Current output</small><strong>{outputDevice?.name ?? 'No active output'}</strong></span></div>
+                <div><Mic2 size={21} /><span><small>Current microphone</small><strong>{inputDevice?.name ?? 'No active microphone'}</strong><em>{inputDevice ? audio.inputMuted ? 'Muted' : `${audio.inputVolume}% level` : 'Unavailable'}</em></span></div>
+              </div>
+
+              <SystemDeviceList title="Output devices" icon={<Headphones size={20} />} devices={audio.outputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
+              <SystemDeviceList title="Microphones" icon={<Mic2 size={20} />} devices={audio.inputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
+              {!audio.deviceSwitchingSupported && <p className="system-capability-note">Windows device switching is unavailable on this PC. Volume and mute remain fully functional inside NXGS.</p>}
+            </section>
           </div>
         </SettingsDetail>
       );
@@ -1109,7 +1060,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls.<br />It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
+  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">
@@ -1125,11 +1076,36 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         </nav>
         {detail}
       </div>
-      <footer>{detailMode ? selected.key === 'sound' || selected.key === 'screen' ? `↑ ↓ Choose control  ·  ← → Adjust ${selected.key === 'screen' ? 'brightness' : 'volume'}  ·  X / A Select  ·  Circle / B Categories` : '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
+      <footer>{detailMode ? selected.key === 'system' ? '↑ ↓ Choose control  ·  ← → Adjust sliders  ·  X / A Select  ·  Circle / B Categories' : '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
     </section>
   );
 }
 
-function SettingsDetail(props: { title: string; subtitle: string; icon: JSX.Element; children: React.ReactNode; onFocus?: () => void }): JSX.Element {
-  return <article className="console-settings-detail" onFocusCapture={props.onFocus}><div className="settings-detail-title">{props.icon}<div><span>{props.subtitle}</span><h2>{props.title}</h2></div></div>{props.children}</article>;
+function SettingsDetail(props: { title: string; subtitle: string; icon: JSX.Element; children: React.ReactNode; action?: React.ReactNode; onFocus?: () => void }): JSX.Element {
+  return <article className="console-settings-detail" onFocusCapture={props.onFocus}><div className="settings-detail-title">{props.icon}<div><span>{props.subtitle}</span><h2>{props.title}</h2></div>{props.action && <div className="settings-title-action">{props.action}</div>}</div>{props.children}</article>;
+}
+
+function SystemDeviceList(props: { title: string; icon: JSX.Element; devices: AudioDeviceSummary[]; pending: string | null; onSelect: (device: AudioDeviceSummary) => Promise<void> }): JSX.Element {
+  return (
+    <section className="system-device-section">
+      <div className="system-device-heading"><span>{props.icon}<strong>{props.title}</strong></span><em>{props.devices.length}</em></div>
+      <div className="system-device-list">
+        {props.devices.length > 0 ? props.devices.map((device) => {
+          const switching = props.pending === `switch:${device.id}`;
+          return (
+            <div key={device.id} className={device.isDefault ? 'current' : ''}>
+              {device.kind === 'output' ? <Headphones size={19} /> : <Mic2 size={19} />}
+              <span><strong>{device.name}</strong><small>{device.isDefault ? device.kind === 'output' ? 'Current output' : 'Current microphone' : 'Available device'} · {device.muted ? 'Muted' : `${device.volume}%${device.kind === 'input' ? ' level' : ''}`}</small></span>
+              {device.isDefault ? <em className="system-current-badge">Current</em> : (
+                <button data-settings-action type="button" disabled={props.pending !== null} onClick={() => void props.onSelect(device)}>
+                  {switching ? <LoaderCircle size={17} className="spin" /> : device.kind === 'output' ? <Headphones size={17} /> : <Mic2 size={17} />}
+                  {switching ? 'Switching...' : device.kind === 'output' ? 'Use Output' : 'Use Input'}
+                </button>
+              )}
+            </div>
+          );
+        }) : <p className="settings-placeholder">No devices were reported by Windows.</p>}
+      </div>
+    </section>
+  );
 }
