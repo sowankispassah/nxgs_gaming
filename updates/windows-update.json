@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.12",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.12/NXGS-Play-Setup.exe",
-    "sha256":  "1dd5da948b68d6c7c8544e3eafde3258aa9704c3b1efde53b79f8ba9e780b7f0",
+    "version":  "0.14.13",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.13/NXGS-Play-Setup.exe",
+    "sha256":  "0e6c6534fa8ed4757d200a8b2a11c826ba9b5d52a910bb5b4f8c830d3809df77",
     "required":  false,
-    "notes":  "Quick Audio and Brightness controls now open ready to use, respond immediately to mouse and controller input, and align their slider thumbs precisely at 0% and 100%."
+    "notes":  "Back and cancel navigation now works naturally across NXGS Play. Esc, Backspace, controller Circle/B, and browser mouse Back move one level at a time through Settings and quick panels. Clicking outside the quick overlay safely returns to the previous launcher page or running game."
 }
