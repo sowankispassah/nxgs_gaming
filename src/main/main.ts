@@ -276,7 +276,8 @@ function handleShellHomeRequest(reason: ShellHomeReason): void {
       reason,
       openActiveGamePanel: false,
       emergencyClose: false,
-      preserveAdminWindow: true
+      preserveAdminWindow: true,
+      openQuickNav: reason !== 'second-instance'
     });
     void logLine('info', `Handled ${reason} inside windowed Admin mode without changing presentation mode.`);
     return;

@@ -261,7 +261,7 @@ export function App(): JSX.Element {
         setAdminModeError('');
       }
       setView('home');
-      setQuickNavOpen(!event.preserveAdminWindow);
+      setQuickNavOpen(event.openQuickNav ?? !event.preserveAdminWindow);
       if (event.openActiveGamePanel) {
         setHomeOverlayRequestId((value) => value + 1);
       }

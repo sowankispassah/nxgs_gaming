@@ -103,6 +103,18 @@ export class KioskInputService {
         return;
       }
 
+      const key = input.key.toLowerCase();
+      if (input.control && input.shift && key === 'h') {
+        event.preventDefault();
+        this.requestHome('global-home');
+        return;
+      }
+      if (key === 'f10') {
+        event.preventDefault();
+        this.requestHome('global-f10');
+        return;
+      }
+
       if (this.mode === 'admin' || this.adminControlsUnlocked) {
         return;
       }
