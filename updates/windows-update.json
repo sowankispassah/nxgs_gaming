@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.15",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.15/NXGS-Play-Setup.exe",
-    "sha256":  "134776f3282ba6801cdd2c9fb54b841566c7f87fc9daf5c69c1f5fde7e61c8f6",
+    "version":  "0.14.16",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.16/NXGS-Play-Setup.exe",
+    "sha256":  "7308dd6ed7be616933ea211017127ae105dfb03469f74f511f2dafc45a4d70f5",
     "required":  false,
-    "notes":  "Keeps NXGS responsive while games close: the bottom-switcher Close action returns to an interactive launcher immediately, stale focus handoffs are canceled, exit checks run in the background, and recurring PowerShell visibility probes no longer create contention."
+    "notes":  "Games now launch, resume, and switch in verified borderless fullscreen. NXGS strips title bars and borders, covers the entire monitor, hides and verifies the Windows taskbar, retries failed presentation, rejects small-window gameplay, and restores the protected fullscreen shell if enforcement fails."
 }
