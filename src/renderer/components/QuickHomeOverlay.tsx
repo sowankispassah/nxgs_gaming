@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { ActiveGameState, AudioStatus, DisplayStatus, TrackedGameSessionState } from '../../shared/types';
 import { SafeGameImage } from './ConsoleHome';
+import { isBackKeyboardEvent, shouldKeepEditing } from '../navigation';
 
 type PendingAction = 'resume' | 'home' | 'close' | 'force' | null;
 type FocusArea = 'navbar' | 'menu' | 'quickAudio' | 'quickBrightness';
@@ -112,6 +113,7 @@ export function QuickHomeOverlay(props: {
   const brightnessSupportedRef = useRef(quickDisplaySnapshot?.brightness.supported ?? true);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
+  const controllerBackPressed = useRef(false);
 
   const navItems = useMemo<NavItem[]>(
     () => [
@@ -134,11 +136,13 @@ export function QuickHomeOverlay(props: {
   const selectedNavIndex = Math.max(0, navItems.findIndex((item) => item.key === selectedNavKey));
   const activeNavItem = navItems[selectedNavIndex];
   const selectedSession = activeNavItem?.session;
+  const activeSession = sessions.find((session) => session.isActive) ?? sessions[0];
+  const resumeTargetSession = selectedSession ?? activeSession;
   const game = selectedSession?.game;
   const gameSelected = Boolean(selectedSession);
   const closeFailed = /did not close|force close/i.test(selectedSession?.message ?? '');
   const disabled = pendingAction !== null || selectedSession?.status === 'closing';
-  const backgroundGame = sessions.find((session) => session.isActive)?.game ?? sessions[0]?.game;
+  const backgroundGame = activeSession?.game;
   const backgroundImage = quickOverlayImageUrl(backgroundGame?.coverImagePath || backgroundGame?.avatarImagePath || '');
 
   useEffect(() => {
@@ -379,20 +383,20 @@ export function QuickHomeOverlay(props: {
   }, [audio.muted, audio.supported]);
 
   const resumeGame = useCallback(async (): Promise<void> => {
-    if (pendingAction || !selectedSession) {
+    if (pendingAction || !resumeTargetSession) {
       return;
     }
     setPendingAction('resume');
     setMessage('');
     try {
-      const result = await window.nxgs.resumeActiveGame(selectedSession.game.id);
+      const result = await window.nxgs.resumeActiveGame(resumeTargetSession.game.id);
       if (!result.ok) {
         setMessage(result.error ?? 'NXGS could not resume the game.');
       }
     } finally {
       setPendingAction(null);
     }
-  }, [pendingAction, selectedSession]);
+  }, [pendingAction, resumeTargetSession]);
 
   const goToLauncherHome = useCallback(async (): Promise<void> => {
     if (pendingAction) {
@@ -474,39 +478,42 @@ export function QuickHomeOverlay(props: {
     [disabled, goToLauncherHome, navItems, openQuickSettings, quickSettingsOpen]
   );
 
+  const dismissOverlay = useCallback((): void => {
+    if (disabled) return;
+    if (resumeTargetSession) {
+      void resumeGame();
+    } else {
+      props.onDismiss();
+    }
+  }, [disabled, props, resumeGame, resumeTargetSession]);
+
   const handleBack = useCallback((): void => {
+    if (confirmClose) {
+      setConfirmClose(false);
+      return;
+    }
     if (quickSettingsOpen) {
       setQuickSettingsOpen(false);
       setFocusArea('navbar');
       return;
     }
-    if (confirmClose) {
-      setConfirmClose(false);
-      return;
-    }
-    if (focusArea === 'menu' && menuIndex !== 0) {
-      setMenuIndex(0);
-      return;
-    }
-    if (!game) {
-      props.onDismiss();
-      return;
-    }
-    void resumeGame();
-  }, [confirmClose, focusArea, game, menuIndex, props, quickSettingsOpen, resumeGame]);
+    dismissOverlay();
+  }, [confirmClose, dismissOverlay, quickSettingsOpen]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'b', 'B'].includes(event.key)) {
+      const backRequested = isBackKeyboardEvent(event);
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter'].includes(event.key) && !backRequested) {
         return;
       }
+      if (backRequested && shouldKeepEditing(event)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       if (disabled) {
         return;
       }
       if (quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness')) {
-        if (event.key === 'Escape' || event.key.toLowerCase() === 'b') {
+        if (backRequested) {
           handleBack();
         } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
           if (focusArea === 'quickAudio') adjustSystemVolume(event.key === 'ArrowRight' ? 1 : -1);
@@ -520,7 +527,7 @@ export function QuickHomeOverlay(props: {
         }
         return;
       }
-      if (event.key === 'Escape' || event.key.toLowerCase() === 'b') {
+      if (backRequested) {
         handleBack();
         return;
       }
@@ -579,10 +586,23 @@ export function QuickHomeOverlay(props: {
     const interval = window.setInterval(() => {
       const pad = navigator.getGamepads?.()[0];
       const liveControlFocused = quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness');
-      if (!pad || Date.now() - lastInputAt < (liveControlFocused ? 70 : 190) || disabled) {
+      if (!pad) {
+        controllerBackPressed.current = false;
         return;
       }
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
+      const backPressed = pressed(1);
+      const backJustPressed = backPressed && !controllerBackPressed.current;
+      controllerBackPressed.current = backPressed;
+      if (backJustPressed) {
+        if (!disabled) {
+          lastInputAt = Date.now();
+          handleBack();
+          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Switcher: back' });
+        }
+        return;
+      }
+      if (Date.now() - lastInputAt < (liveControlFocused ? 70 : 190) || disabled) return;
       if (quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness')) {
         if (pressed(14) || pad.axes[0] < -0.65) {
           lastInputAt = Date.now();
@@ -603,9 +623,6 @@ export function QuickHomeOverlay(props: {
         } else if (pressed(12) || pad.axes[1] < -0.65) {
           lastInputAt = Date.now();
           setFocusArea('quickAudio');
-        } else if (pressed(1)) {
-          lastInputAt = Date.now();
-          handleBack();
         }
         return;
       }
@@ -641,17 +658,24 @@ export function QuickHomeOverlay(props: {
         } else {
           selectNavAction(selectedNavIndex);
         }
-      } else if (pressed(1)) {
-        lastInputAt = Date.now();
-        handleBack();
-        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Switcher: back' });
       }
     }, 90);
     return () => window.clearInterval(interval);
   }, [adjustSystemBrightness, adjustSystemVolume, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
 
   return (
-    <section className="quick-home-overlay" aria-label="NXGS quick home overlay">
+    <section
+      className="quick-home-overlay"
+      aria-label="NXGS quick home overlay"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        const target = event.target;
+        if (target instanceof Element && target.closest('.quick-navbar, .quick-game-menu')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        dismissOverlay();
+      }}
+    >
       {backgroundImage && (
         <div
           className="quick-overlay-game-backdrop"

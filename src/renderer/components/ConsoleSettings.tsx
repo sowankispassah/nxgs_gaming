@@ -45,6 +45,7 @@ import type {
   NetworkStatus,
   WifiNetworkSummary
 } from '../../shared/types';
+import { isBackKeyboardEvent, shouldKeepEditing } from '../navigation';
 
 type SettingsKey =
   | 'guide'
@@ -144,6 +145,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const displayBusy = useRef(false);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
+  const controllerBackPressed = useRef(false);
   const selected = SETTINGS_ITEMS[selectedIndex];
 
   const refreshNetwork = useCallback(async (): Promise<void> => {
@@ -432,6 +434,30 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     (document.querySelector<HTMLElement>(`.console-settings-layout > nav button[data-index="${selectedIndex}"]`))?.focus();
   }, [selectedIndex]);
 
+  const handleSettingsBack = useCallback((): void => {
+    if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget) {
+      setForgetWifiTarget(null);
+      setWifiContextMenu(null);
+      setRemoveBluetoothTarget(null);
+      return;
+    }
+    if (selectedWifi) {
+      setSelectedWifi(null);
+      setWifiPassword('');
+      setShowWifiPassword(false);
+      return;
+    }
+    if (displayInfoExpanded) {
+      setDisplayInfoExpanded(false);
+      return;
+    }
+    if (detailMode) {
+      leaveDetail();
+      return;
+    }
+    props.onBack();
+  }, [detailMode, displayInfoExpanded, forgetWifiTarget, leaveDetail, props, removeBluetoothTarget, selectedWifi, wifiContextMenu]);
+
   const moveDetailFocus = useCallback((direction: number): void => {
     const actions = focusableDetailActions();
     if (actions.length === 0) return;
@@ -442,20 +468,20 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const activateSelected = useCallback((): void => {
     const key = SETTINGS_ITEMS[selectedIndex].key;
     if (key === 'control-room') props.onControlRoom();
-    else if (key === 'network' || key === 'controller' || key === 'system') enterDetail();
+    else enterDetail();
   }, [enterDetail, props, selectedIndex]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (props.inputBlocked) return;
-      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'b', 'B'].includes(event.key)) return;
+      const backRequested = isBackKeyboardEvent(event);
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(event.key) && !backRequested) return;
+      if (backRequested && shouldKeepEditing(event)) return;
       if (detailMode) {
-        if ((event.key === 'Escape' || event.key === 'b' || event.key === 'B') && (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget)) {
+        if (backRequested) {
           event.preventDefault();
           event.stopImmediatePropagation();
-          setForgetWifiTarget(null);
-          setWifiContextMenu(null);
-          setRemoveBluetoothTarget(null);
+          handleSettingsBack();
           return;
         }
         if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && adjustFocusedSlider(event.key === 'ArrowRight' ? 1 : -1)) {
@@ -467,7 +493,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           event.preventDefault();
           event.stopImmediatePropagation();
           moveDetailFocus(event.key === 'ArrowUp' ? -1 : 1);
-        } else if (event.key === 'ArrowLeft' || event.key === 'Escape' || event.key === 'b' || event.key === 'B') {
+        } else if (event.key === 'ArrowLeft') {
           event.preventDefault();
           event.stopImmediatePropagation();
           leaveDetail();
@@ -483,19 +509,32 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       if (event.key === 'ArrowUp') setSelectedIndex((index) => (index - 1 + SETTINGS_ITEMS.length) % SETTINGS_ITEMS.length);
       else if (event.key === 'ArrowDown') setSelectedIndex((index) => (index + 1) % SETTINGS_ITEMS.length);
       else if (event.key === 'Enter' || event.key === 'ArrowRight') activateSelected();
-      else props.onBack();
+      else handleSettingsBack();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, wifiContextMenu]);
+  }, [activateSelected, adjustFocusedSlider, detailMode, handleSettingsBack, leaveDetail, moveDetailFocus, props.inputBlocked]);
 
   useEffect(() => {
     let lastInputAt = 0;
     const timer = window.setInterval(() => {
       if (props.inputBlocked) return;
       const pad = navigator.getGamepads?.()[0];
-      if (!pad || Date.now() - lastInputAt < 190) return;
+      if (!pad) {
+        controllerBackPressed.current = false;
+        return;
+      }
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
+      const backPressed = pressed(1);
+      const backJustPressed = backPressed && !controllerBackPressed.current;
+      controllerBackPressed.current = backPressed;
+      if (backJustPressed) {
+        lastInputAt = Date.now();
+        handleSettingsBack();
+        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Settings: back' });
+        return;
+      }
+      if (Date.now() - lastInputAt < 190) return;
       if (detailMode) {
         const sliderFocused = document.activeElement instanceof HTMLInputElement && ['volume', 'brightness'].includes(document.activeElement.dataset.settingsSlider ?? '');
         if (sliderFocused && (pressed(14) || pad.axes[0] < -0.65)) {
@@ -510,7 +549,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         } else if (pressed(13) || pad.axes[1] > 0.65) {
           lastInputAt = Date.now();
           moveDetailFocus(1);
-        } else if (pressed(14) || pressed(1)) {
+        } else if (pressed(14)) {
           lastInputAt = Date.now();
           if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget) {
             setForgetWifiTarget(null);
@@ -538,13 +577,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         lastInputAt = Date.now();
         activateSelected();
         void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: `Settings: select ${selected.label}` });
-      } else if (pressed(1)) {
-        lastInputAt = Date.now();
-        props.onBack();
       }
     }, 90);
     return () => window.clearInterval(timer);
-  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, leaveDetail, moveDetailFocus, props, removeBluetoothTarget, selected.label, wifiContextMenu]);
+  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, handleSettingsBack, leaveDetail, moveDetailFocus, props.inputBlocked, removeBluetoothTarget, selected.label, wifiContextMenu]);
 
   const performWifiConnect = useCallback(async (wifi: WifiNetworkSummary, password?: string): Promise<void> => {
     if (networkBusy.current) return;
@@ -828,7 +864,13 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             </div>
           )}
           {forgetWifiTarget && (
-            <div className="wifi-confirmation-backdrop" role="presentation">
+            <div
+              className="wifi-confirmation-backdrop"
+              role="presentation"
+              onPointerDown={(event) => {
+                if (event.target === event.currentTarget && networkPending !== 'forget') setForgetWifiTarget(null);
+              }}
+            >
               <div className="wifi-forget-confirmation settings-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="wifi-forget-title" aria-describedby="wifi-forget-description">
                 <Trash2 size={30} />
                 <h3 id="wifi-forget-title">Forget this Wi-Fi network?</h3>
@@ -898,7 +940,13 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           </div>
           <p className="settings-capability-note">Disconnect keeps the device paired. Remove Device clears the saved pairing, so the device must be scanned and paired again. Some device profiles control their own final connection; NXGS will show a clear message when they cannot be disconnected here.</p>
           {removeBluetoothTarget && (
-            <div className="bluetooth-confirmation-backdrop" role="presentation">
+            <div
+              className="bluetooth-confirmation-backdrop"
+              role="presentation"
+              onPointerDown={(event) => {
+                if (event.target === event.currentTarget && !bluetoothPending?.startsWith('remove:')) setRemoveBluetoothTarget(null);
+              }}
+            >
               <div className="bluetooth-remove-confirmation settings-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="bluetooth-remove-title" aria-describedby="bluetooth-remove-description">
                 <Trash2 size={30} />
                 <h3 id="bluetooth-remove-title">Remove this Bluetooth device?</h3>
@@ -1079,11 +1127,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   return (
     <section className="console-settings-screen">
       <div className="console-settings-backdrop" />
-      <header><button type="button" onClick={props.onBack}><ChevronLeft size={21} />Back</button><div><span>NXGS Play</span><h1>Settings</h1></div></header>
+      <header><button type="button" onClick={handleSettingsBack}><ChevronLeft size={21} />Back</button><div><span>NXGS Play</span><h1>Settings</h1></div></header>
       <div className="console-settings-layout">
         <nav aria-label="Console settings categories">
           {SETTINGS_ITEMS.map((item, index) => (
-            <button data-index={index} key={item.key} type="button" className={index === selectedIndex ? 'selected' : ''} onMouseEnter={() => setSelectedIndex(index)} onClick={() => { setSelectedIndex(index); if (item.key === 'control-room') props.onControlRoom(); }}>
+            <button data-index={index} key={item.key} type="button" className={index === selectedIndex ? 'selected' : ''} onMouseEnter={() => setSelectedIndex(index)} onClick={() => { setSelectedIndex(index); if (item.key === 'control-room') props.onControlRoom(); else window.setTimeout(enterDetail, 0); }}>
               {item.icon}<span>{item.label}</span><ChevronRight size={22} />
             </button>
           ))}

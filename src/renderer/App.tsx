@@ -29,6 +29,7 @@ import {
 } from './components/ConsoleHome';
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 import { ConsoleSettings } from './components/ConsoleSettings';
+import { isBackKeyboardEvent, popNavigationEntry, pushNavigationEntry, shouldKeepEditing } from './navigation';
 import type {
   ActiveGameState,
   AdminUnlockRequest,
@@ -123,7 +124,7 @@ export function App(): JSX.Element {
   const [initialData, setInitialData] = useState<InitialData | null>(null);
   const [games, setGames] = useState<GameRecord[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [view, setView] = useState<View>('home');
+  const [viewHistory, setViewHistory] = useState<View[]>(['home']);
   const [homeTab, setHomeTab] = useState<ConsoleTab>('games');
   const [homeFocusSection, setHomeFocusSection] = useState<ConsoleFocusSection>('games');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -143,6 +144,16 @@ export function App(): JSX.Element {
   const [adminModeTransitionPending, setAdminModeTransitionPending] = useState(false);
   const [adminModeError, setAdminModeError] = useState('');
   const adminModeTransitionBusy = useRef(false);
+  const controllerBackPressed = useRef(false);
+
+  const view = viewHistory[viewHistory.length - 1] ?? 'home';
+  const navigateToView = useCallback((nextView: View): void => {
+    setViewHistory((current) => pushNavigationEntry(current, nextView));
+  }, []);
+  const navigateBack = useCallback((): void => {
+    setViewHistory((current) => popNavigationEntry(current, 'home'));
+  }, []);
+  const resetToHome = useCallback((): void => setViewHistory(['home']), []);
 
   const enabledGames = useMemo(() => games.filter((game) => game.enabled), [games]);
   const selectedGame = enabledGames[selectedIndex] ?? null;
@@ -168,7 +179,7 @@ export function App(): JSX.Element {
   }, []);
 
   const returnToCustomerHome = useCallback(() => {
-    setView('home');
+    resetToHome();
     setQuickNavOpen(false);
     setAdminOptionsOpen(false);
     setAdminControlsActive(false);
@@ -179,7 +190,7 @@ export function App(): JSX.Element {
       const data = await window.nxgs.getInitialData();
       setActiveGame(data.activeGame);
     })();
-  }, []);
+  }, [resetToHome]);
 
   const returnWindowedAdminToKiosk = useCallback(async (): Promise<void> => {
     if (adminModeTransitionBusy.current) return;
@@ -189,7 +200,7 @@ export function App(): JSX.Element {
     setConfirmGame(null);
     setQuickNavOpen(false);
     setAdminOptionsOpen(false);
-    setView('home');
+    resetToHome();
     try {
       const result = await window.nxgs.performKioskAdminAction('returnLocked');
       if (!result.ok) {
@@ -207,13 +218,13 @@ export function App(): JSX.Element {
       adminModeTransitionBusy.current = false;
       setAdminModeTransitionPending(false);
     }
-  }, []);
+  }, [resetToHome]);
 
   const openConsoleSettings = useCallback(() => {
     setConfirmGame(null);
     setQuickNavOpen(false);
-    setView('settings');
-  }, []);
+    navigateToView('settings');
+  }, [navigateToView]);
 
   useEffect(() => {
     let mounted = true;
@@ -234,7 +245,7 @@ export function App(): JSX.Element {
       setSession(next);
       if (next.status === 'expired') {
         setConfirmGame(null);
-        setView('home');
+        resetToHome();
       }
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
@@ -243,7 +254,7 @@ export function App(): JSX.Element {
         setQuickNavOpen(false);
       }
       if (next.status === 'launching' || next.status === 'minimizedToHome' || next.status === 'closed') {
-        setView('home');
+        resetToHome();
       }
     });
     const unsubscribeShellHome = window.nxgs.onShellHome((event) => {
@@ -260,7 +271,6 @@ export function App(): JSX.Element {
         setWindowedAdminMode(false);
         setAdminModeError('');
       }
-      setView('home');
       setQuickNavOpen(event.openQuickNav ?? !event.preserveAdminWindow);
       if (event.openActiveGamePanel) {
         setHomeOverlayRequestId((value) => value + 1);
@@ -275,7 +285,7 @@ export function App(): JSX.Element {
       unsubscribeActiveGame();
       unsubscribeShellHome();
     };
-  }, []);
+  }, [resetToHome]);
 
   useEffect(() => {
     if (selectedIndex >= enabledGames.length) {
@@ -365,7 +375,7 @@ export function App(): JSX.Element {
       return;
     }
     if (view === 'settings') {
-      returnToCustomerHome();
+      navigateBack();
       return;
     }
     if (homeTab === 'media') {
@@ -376,7 +386,7 @@ export function App(): JSX.Element {
     if (homeFocusSection !== 'games' && enabledGames.length > 0) {
       setHomeFocusSection('games');
     }
-  }, [closeAdminPin, confirmGame, enabledGames.length, homeFocusSection, homeTab, pinOpen, returnToCustomerHome, view]);
+  }, [closeAdminPin, confirmGame, enabledGames.length, homeFocusSection, homeTab, navigateBack, pinOpen, returnToCustomerHome, view]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -406,7 +416,7 @@ export function App(): JSX.Element {
       } else if (event.key === 'Enter') {
         event.preventDefault();
         acceptSelection();
-      } else if (event.key === 'Escape' || event.key.toLowerCase() === 'b') {
+      } else if (isBackKeyboardEvent(event) && !shouldKeepEditing(event)) {
         event.preventDefault();
         back();
       }
@@ -431,10 +441,14 @@ export function App(): JSX.Element {
           name: pad?.id
         });
       }
-      if (!pad || Date.now() - lastInput < 180) {
+      if (!pad) {
+        controllerBackPressed.current = false;
         return;
       }
       const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
+      const backPressed = pressed(1);
+      const backJustPressed = backPressed && !controllerBackPressed.current;
+      controllerBackPressed.current = backPressed;
       const guidePressed = pressed(16) || pressed(17);
       const optionsSharePressed = pressed(8) && pressed(9);
       const shoulderOptionsPressed = pressed(4) && pressed(5) && pressed(9);
@@ -451,7 +465,16 @@ export function App(): JSX.Element {
         void window.nxgs.requestShellHome(guidePressed ? 'controller-home' : 'controller-combo');
         return;
       }
-      if (activeGame.status === 'quickOverlayOpen') {
+      if (quickNavOpen || view !== 'home' || ['quickOverlayOpen', 'resuming', 'closing'].includes(activeGame.status)) {
+        return;
+      }
+      if (backJustPressed) {
+        lastInput = Date.now();
+        back();
+        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'Circle / B', lastNavigationAction: 'Back' });
+        return;
+      }
+      if (Date.now() - lastInput < 180) {
         return;
       }
       if (pressed(15) || pad.axes[0] > 0.65) {
@@ -474,14 +497,10 @@ export function App(): JSX.Element {
         lastInput = Date.now();
         acceptSelection();
         void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'X / A', lastNavigationAction: 'Select' });
-      } else if (pressed(1)) {
-        lastInput = Date.now();
-        back();
-        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'Circle / B', lastNavigationAction: 'Back' });
       }
     }, 90);
     return () => window.clearInterval(interval);
-  }, [acceptSelection, activeGame.status, back, moveHorizontal, moveVertical]);
+  }, [acceptSelection, activeGame.status, back, moveHorizontal, moveVertical, quickNavOpen, view]);
 
   if (bootError) {
     return (
@@ -540,7 +559,7 @@ export function App(): JSX.Element {
       ) : view === 'settings' ? (
         <ConsoleSettings
           inputBlocked={pinOpen || adminOptionsOpen}
-          onBack={returnToCustomerHome}
+          onBack={navigateBack}
           onControlRoom={() => openAdminPin({ source: 'Control Room', message: 'Enter Admin PIN to open Control Room.' })}
         />
       ) : (
@@ -605,7 +624,7 @@ export function App(): JSX.Element {
             if (action === 'exitFullscreen') {
               setConfirmGame(null);
               setQuickNavOpen(false);
-              setView('home');
+              resetToHome();
               setAdminOptionsOpen(false);
               setAdminModeError('');
             }
@@ -618,9 +637,9 @@ export function App(): JSX.Element {
             }
             setWindowedAdminMode(true);
             if (action === 'openManagement') {
-              setView('admin');
+              navigateToView('admin');
             } else if (action === 'exitFullscreen') {
-              setView('home');
+              resetToHome();
               setQuickNavOpen(false);
               const data = await window.nxgs.getInitialData();
               setActiveGame(data.activeGame);

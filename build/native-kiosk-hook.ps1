@@ -67,7 +67,7 @@ public static class NxgsLockdownKeyboardHook {
       bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
       string blocked = null;
       if (key == VK_LWIN || key == VK_RWIN) blocked = "Windows key";
-      else if (key == VK_ESCAPE) blocked = control ? "Ctrl+Esc" : "Esc";
+      else if (key == VK_ESCAPE && control) blocked = "Ctrl+Esc";
       else if (key == VK_TAB && control) blocked = "Ctrl+Tab";
       else if (key == VK_TAB && alt) blocked = "Alt+Tab";
       else if (key == VK_F4 && alt) blocked = "Alt+F4";

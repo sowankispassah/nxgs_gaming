@@ -1,6 +1,6 @@
 {
   "name": "nxgs-play",
-  "version": "0.14.12",
+  "version": "0.14.13",
   "description": "Windows-only PC gaming launcher and kiosk MVP.",
   "private": true,
   "main": "out/main/main.js",
@@ -15,6 +15,7 @@
     "build": "electron-vite build",
     "clean:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-release-artifacts.ps1",
     "build:win": "npm run clean:release && electron-vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --publish=never",
+    "test:back-navigation": "node --experimental-strip-types scripts/verify-back-navigation.mjs",
     "test:pin-enter": "node scripts/verify-pin-enter.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit"

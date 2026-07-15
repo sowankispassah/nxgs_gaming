@@ -465,6 +465,14 @@ async function createWindow(): Promise<void> {
     }
   });
 
+  mainWindow.on('app-command', (event, command) => {
+    if (command !== 'browser-backward') return;
+    event.preventDefault();
+    const window = getLiveMainWindow();
+    window?.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    window?.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+  });
+
   kioskInput.attachWindow(mainWindow);
   applyKioskSettings(store.getSettings());
 

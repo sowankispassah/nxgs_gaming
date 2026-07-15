@@ -15,7 +15,6 @@ type KioskInputEvents = {
 };
 
 const BLOCKED_SYSTEM_SHORTCUTS = [
-  'Escape',
   'CommandOrControl+Tab'
 ] as const;
 
@@ -256,9 +255,6 @@ export class KioskInputService {
     }
 
     const key = input.key.toLowerCase();
-    if (key === 'escape') {
-      return { source: 'Restricted customer input' };
-    }
     if (input.alt && (key === 'tab' || key === 'f4' || key === ' ' || key === 'space')) {
       return { source: 'Window switching attempt' };
     }
