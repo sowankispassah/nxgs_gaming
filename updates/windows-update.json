@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.13",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.13/NXGS-Play-Setup.exe",
-    "sha256":  "0e6c6534fa8ed4757d200a8b2a11c826ba9b5d52a910bb5b4f8c830d3809df77",
+    "version":  "0.14.14",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.14/NXGS-Play-Setup.exe",
+    "sha256":  "31d4804c40c6d3dbc445d7007c753d9135fc186e5ada24798230bd550527a997",
     "required":  false,
-    "notes":  "Back and cancel navigation now works naturally across NXGS Play. Esc, Backspace, controller Circle/B, and browser mouse Back move one level at a time through Settings and quick panels. Clicking outside the quick overlay safely returns to the previous launcher page or running game."
+    "notes":  "Fixes the launch confirmation staying on Launching after the game window is already running. The dialog and blocking transition now clear at confirmed window detection, and the selected session timer starts once at that same boundary."
 }
