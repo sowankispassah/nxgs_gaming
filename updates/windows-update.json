@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.10",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.10/NXGS-Play-Setup.exe",
-    "sha256":  "5585b21be4bcd38ccdb882a85c2a9d8b319f027be2fdd7eca1bc0b3ccb87e0c0",
+    "version":  "0.14.11",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.11/NXGS-Play-Setup.exe",
+    "sha256":  "597cc91e72bd653c700747cb6545565561026bd01a362b9f54ecceba6ba12716",
     "required":  false,
-    "notes":  "Ctrl+Shift+H now reliably opens the Quick Switcher in windowed Admin mode without returning NXGS to fullscreen."
+    "notes":  "The Audio and Brightness quick panel is now centered above the full bottom navbar with reference-matched spacing and proportions."
 }
