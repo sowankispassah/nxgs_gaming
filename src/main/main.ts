@@ -23,6 +23,7 @@ import type {
   GameControlResult,
   GameImageKind,
   GameInput,
+  GameRecord,
   KioskAdminAction,
   KioskAdminActionResult,
   KioskMode,
@@ -242,6 +243,17 @@ const sessionTimer = new SessionTimer({
   }
 });
 
+function startSessionWhenGameWindowIsReady(game: GameRecord): void {
+  const current = sessionTimer.current;
+  if (
+    current.status === 'launching'
+    && current.gameId === game.id
+    && current.durationMinutes !== undefined
+  ) {
+    sessionTimer.start(game, current.durationMinutes);
+  }
+}
+
 const launcher = new GameLauncher(
   () => mainWindow,
   {
@@ -256,6 +268,7 @@ const launcher = new GameLauncher(
       launcher.focusLauncher();
       applyKioskSettings(store.getSettings());
     },
+    onGameWindowDetected: startSessionWhenGameWindowIsReady,
     onActiveGameChanged: () => {
       broadcastActiveGame();
     }
@@ -651,7 +664,7 @@ function registerIpc(): void {
       }
       sessionTimer.setLaunching(game, request.durationMinutes);
       await launcher.launch(game);
-      sessionTimer.start(game, request.durationMinutes);
+      startSessionWhenGameWindowIsReady(game);
       return { ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

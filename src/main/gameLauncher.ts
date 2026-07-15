@@ -34,6 +34,7 @@ import {
 type LauncherEvents = {
   onGameExited: (game: GameRecord) => void;
   onError: (message: string) => void;
+  onGameWindowDetected: (game: GameRecord) => void;
   onActiveGameChanged: (state: ActiveGameState) => void;
 };
 
@@ -684,6 +685,14 @@ export class GameLauncher {
     this.activeWindow = window;
     this.activeProcessId = window.processId;
     this.monitorByProcessName(game);
+    this.setActiveState({
+      status: 'launching',
+      game,
+      message: `${game.title} is running. Finishing window handoff...`,
+      windowDetected: true,
+      windowState: 'background'
+    });
+    this.events.onGameWindowDetected(game);
 
     const launchMode = this.launchMode(game);
     if (launchMode === 'fullscreen' || launchMode === 'borderlessPreferred') {

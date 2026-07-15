@@ -29,6 +29,7 @@ import {
 } from './components/ConsoleHome';
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 import { ConsoleSettings } from './components/ConsoleSettings';
+import { hasConfirmedGameWindow, shouldShowBlockingLaunchTransition } from './launchFlow';
 import { isBackKeyboardEvent, popNavigationEntry, pushNavigationEntry, shouldKeepEditing } from './navigation';
 import type {
   ActiveGameState,
@@ -250,6 +251,7 @@ export function App(): JSX.Element {
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
       setActiveGame(next);
+      setConfirmGame((game) => game && hasConfirmedGameWindow(game.id, next) ? null : game);
       if (['launching', 'running', 'minimizedToHome', 'resuming', 'closing', 'closed', 'error'].includes(next.status)) {
         setQuickNavOpen(false);
       }
@@ -675,7 +677,7 @@ export function App(): JSX.Element {
           }}
         />
       )}
-      {activeGame.status === 'launching' && (
+      {shouldShowBlockingLaunchTransition(activeGame) && (
         <GameTransitionOverlay activeGame={activeGame} />
       )}
     </main>
@@ -816,6 +818,8 @@ function LaunchConfirm(props: {
                 return;
               }
               props.onLaunched();
+            } catch (launchError) {
+              setError(launchError instanceof Error ? launchError.message : String(launchError));
             } finally {
               setPending(false);
             }
