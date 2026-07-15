@@ -7,6 +7,19 @@
   font-synthesis: none;
   letter-spacing: 0;
   text-rendering: geometricPrecision;
+  --focus-border: rgba(244, 247, 251, 0.62);
+  --focus-bg: rgba(244, 247, 251, 0.1);
+  --focus-bg-strong: rgba(244, 247, 251, 0.15);
+  --focus-glow: 0 0 0 3px rgba(244, 247, 251, 0.07), 0 10px 28px rgba(0, 0, 0, 0.28);
+  --panel-bg: rgba(8, 12, 18, 0.82);
+  --panel-bg-strong: rgba(10, 14, 20, 0.94);
+  --panel-border: rgba(231, 236, 242, 0.17);
+  --text-primary: #f4f6f8;
+  --text-secondary: rgba(225, 230, 236, 0.64);
+  --slider-track: rgba(226, 231, 237, 0.18);
+  --slider-active: #d8dde3;
+  --slider-thumb: #f4f6f8;
+  --slider-thumb-border: #232932;
 }
 
 * {
@@ -139,7 +152,7 @@ button {
 
 .eyebrow {
   margin: 0 0 8px;
-  color: #73dec8;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -183,7 +196,9 @@ button {
 
 .icon-button:hover,
 .icon-button:focus-visible {
-  border-color: rgba(115, 222, 200, 0.75);
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   outline: none;
 }
 
@@ -232,8 +247,9 @@ button {
 }
 
 .primary-action {
-  background: #1dd1a1;
-  color: #041310;
+  border: 1px solid var(--focus-border);
+  background: rgba(244, 247, 251, 0.92);
+  color: #11151b;
 }
 
 .secondary-action {
@@ -285,8 +301,8 @@ button {
 .game-card.selected,
 .game-card:hover,
 .game-card:focus-visible {
-  border-color: #1dd1a1;
-  box-shadow: 0 0 0 4px rgba(29, 209, 161, 0.2);
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-glow);
   outline: none;
   transform: translateY(-10px);
 }
@@ -368,10 +384,10 @@ button {
   min-height: 86px;
   align-items: center;
   gap: 12px;
-  border: 2px solid rgba(115, 222, 200, 0.46);
+  border: 2px solid var(--panel-border);
   border-radius: 8px;
   background: rgba(8, 14, 18, 0.9);
-  color: #dffdf7;
+  color: var(--text-primary);
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
   cursor: pointer;
   padding: 12px;
@@ -381,7 +397,9 @@ button {
 .active-game-tile.selected,
 .active-game-tile:hover,
 .active-game-tile:focus-visible {
-  border-color: #1dd1a1;
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   outline: none;
 }
 
@@ -393,7 +411,7 @@ button {
   overflow: hidden;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
-  color: #73dec8;
+  color: var(--text-secondary);
 }
 
 .active-game-thumb img {
@@ -417,7 +435,7 @@ button {
 }
 
 .active-game-tile-meta span {
-  color: #73dec8;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 850;
 }
@@ -426,7 +444,7 @@ button {
   display: grid;
   width: min(620px, calc(100vw - 172px));
   gap: 14px;
-  border: 1px solid rgba(115, 222, 200, 0.3);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   background: rgba(12, 18, 25, 0.96);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
@@ -661,7 +679,7 @@ button {
 }
 
 .console-tabs.keyboard-focus {
-  box-shadow: 0 0 0 1px rgba(132, 244, 221, 0.28);
+  box-shadow: 0 0 0 1px var(--focus-border);
 }
 
 .console-tabs button {
@@ -683,7 +701,7 @@ button {
   left: 4px;
   height: 2px;
   border-radius: 2px;
-  background: #8bf7e1;
+  background: var(--slider-active);
   content: '';
   opacity: 0;
   transform: scaleX(0.3);
@@ -724,8 +742,9 @@ button {
 
 .console-icon-button:hover,
 .console-icon-button:focus-visible {
-  border-color: rgba(139, 247, 225, 0.68);
-  background: rgba(80, 130, 148, 0.28);
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   outline: none;
   transform: translateY(-2px);
 }
@@ -803,7 +822,7 @@ button {
 }
 
 .console-game-row.keyboard-focus {
-  box-shadow: inset 0 0 0 1px rgba(137, 247, 225, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(244, 247, 251, 0.08);
 }
 
 .console-game-avatar {
@@ -874,8 +893,8 @@ button {
 .console-game-avatar.selected .game-avatar-art,
 .console-game-avatar:hover .game-avatar-art,
 .console-game-avatar:focus-visible .game-avatar-art {
-  border-color: #a6f9e9;
-  box-shadow: 0 0 0 4px rgba(124, 244, 220, 0.18), 0 22px 50px rgba(0, 0, 0, 0.42), 0 0 34px rgba(43, 229, 191, 0.2);
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-glow), 0 22px 50px rgba(0, 0, 0, 0.42);
 }
 
 .console-game-avatar.selected strong {
@@ -954,7 +973,7 @@ button {
 .console-play-button:hover,
 .console-play-button:focus-visible {
   background: #fff;
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.3), 0 0 0 4px rgba(139, 247, 225, 0.18);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.3), var(--focus-glow);
   outline: none;
   transform: scale(1.035);
 }
@@ -1125,7 +1144,7 @@ button {
 }
 
 .active-game-tile {
-  border-color: rgba(139, 247, 225, 0.4);
+  border-color: var(--panel-border);
   background: rgba(8, 15, 25, 0.72);
 }
 
@@ -1262,7 +1281,7 @@ button {
 }
 
 .quick-game-heading small {
-  color: #8bf5df;
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 850;
   letter-spacing: 0.14em;
@@ -1322,10 +1341,13 @@ button {
 
 .quick-game-actions button.focused,
 .quick-game-actions button:hover,
+.quick-game-actions button:focus-visible,
 .quick-close-confirm button.focused,
-.quick-close-confirm button:hover {
-  border-color: rgba(151, 251, 231, 0.58);
-  background: rgba(226, 250, 246, 0.16);
+.quick-close-confirm button:hover,
+.quick-close-confirm button:focus-visible {
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   outline: none;
   transform: translateX(3px);
 }
@@ -1393,16 +1415,16 @@ button {
   bottom: 36px;
   left: 50%;
   display: flex;
-  min-height: 82px;
+  min-height: 80px;
   align-items: center;
   justify-content: center;
-  gap: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 25px;
-  background: rgba(5, 12, 21, 0.74);
-  box-shadow: 0 20px 65px rgba(0, 0, 0, 0.45);
-  padding: 9px 12px;
-  backdrop-filter: blur(28px) saturate(1.25);
+  gap: 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 28px;
+  background: var(--panel-bg);
+  box-shadow: 0 20px 65px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  padding: 8px 14px;
+  backdrop-filter: blur(30px) saturate(1.08);
   transform: translateX(-50%);
   animation: quick-navbar-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -1427,11 +1449,9 @@ button {
   display: grid;
   width: 300px;
   gap: 15px;
-  border: 1px solid rgba(142, 246, 225, 0.28);
+  border: 1px solid var(--panel-border);
   border-radius: 19px;
-  background:
-    radial-gradient(circle at 10% 0%, rgba(113, 240, 215, 0.17), transparent 42%),
-    rgba(7, 15, 26, 0.9);
+  background: var(--panel-bg-strong);
   box-shadow: 0 24px 65px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   padding: 17px;
   color: #f5f9fd;
@@ -1446,8 +1466,8 @@ button {
   left: 50%;
   width: 13px;
   height: 13px;
-  border-right: 1px solid rgba(142, 246, 225, 0.24);
-  border-bottom: 1px solid rgba(142, 246, 225, 0.24);
+  border-right: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
   background: rgba(8, 16, 27, 0.96);
   content: '';
   transform: translateX(-50%) rotate(45deg);
@@ -1470,16 +1490,16 @@ button {
   width: 38px;
   height: 38px;
   place-items: center;
-  border: 1px solid rgba(113, 240, 215, 0.25);
+  border: 1px solid var(--panel-border);
   border-radius: 12px;
-  background: rgba(113, 240, 215, 0.1);
-  color: #8bf5df;
+  background: var(--focus-bg);
+  color: var(--text-primary);
 }
 
 .quick-volume-control > header > span:first-child.muted {
-  border-color: rgba(255, 196, 92, 0.3);
-  background: rgba(125, 89, 30, 0.18);
-  color: #ffd078;
+  border-color: var(--panel-border);
+  background: var(--focus-bg);
+  color: var(--text-secondary);
 }
 
 .quick-volume-control > header > div { display: grid; gap: 1px; }
@@ -1511,11 +1531,12 @@ button {
 
 .quick-volume-control > header button:hover,
 .quick-volume-control > header button:focus-visible {
-  border-color: rgba(142, 246, 225, 0.52);
-  background: rgba(113, 240, 215, 0.13);
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   outline: none;
 }
-.quick-volume-control > header button.muted { color: #ffd078; }
+.quick-volume-control > header button.muted { color: var(--text-secondary); }
 .quick-volume-control > header button:disabled { cursor: progress; opacity: 0.58; }
 
 .quick-volume-control input[type='range'] {
@@ -1529,15 +1550,15 @@ button {
 .quick-volume-control input[type='range']::-webkit-slider-thumb {
   width: 23px;
   height: 23px;
-  border: 4px solid #10232a;
+  border: 4px solid var(--slider-thumb-border);
   border-radius: 50%;
   appearance: none;
-  background: #8bf6e1;
+  background: var(--slider-thumb);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.88), 0 5px 16px rgba(0, 0, 0, 0.45);
 }
 
 .quick-volume-control input[type='range']:focus-visible {
-  box-shadow: 0 0 0 4px rgba(113, 240, 215, 0.25);
+  box-shadow: 0 0 0 3px rgba(244, 247, 251, 0.12);
   outline: none;
 }
 .quick-volume-control input[type='range']:disabled { cursor: progress; opacity: 0.52; }
@@ -1551,14 +1572,12 @@ button {
 }
 
 .quick-brightness-control {
-  border-color: rgba(255, 210, 111, 0.32);
-  background:
-    radial-gradient(circle at 10% 0%, rgba(255, 202, 83, 0.2), transparent 44%),
-    rgba(7, 15, 26, 0.92);
+  border-color: var(--panel-border);
+  background: var(--panel-bg-strong);
 }
 
 .quick-brightness-control::after {
-  border-color: rgba(255, 210, 111, 0.28);
+  border-color: var(--panel-border);
 }
 
 .quick-brightness-control > header {
@@ -1566,18 +1585,18 @@ button {
 }
 
 .quick-brightness-control > header > span:first-child {
-  border-color: rgba(255, 210, 111, 0.3);
-  background: rgba(255, 202, 83, 0.12);
-  color: #ffd26f;
+  border-color: var(--panel-border);
+  background: var(--focus-bg);
+  color: var(--text-primary);
 }
 
 .quick-brightness-control input[type='range']::-webkit-slider-thumb {
-  border-color: #332b18;
-  background: #ffd26f;
+  border-color: var(--slider-thumb-border);
+  background: var(--slider-thumb);
 }
 
 .quick-brightness-control input[type='range']:focus-visible {
-  box-shadow: 0 0 0 4px rgba(255, 210, 111, 0.24);
+  box-shadow: 0 0 0 3px rgba(244, 247, 251, 0.12);
 }
 
 .quick-settings-panel {
@@ -1586,15 +1605,15 @@ button {
   left: 50%;
   z-index: 3;
   display: grid;
-  width: 320px;
+  width: 350px;
   overflow: visible;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 18px;
-  background: rgba(7, 14, 24, 0.92);
+  border: 1px solid var(--panel-border);
+  border-radius: 20px;
+  background: var(--panel-bg-strong);
   box-shadow: 0 22px 58px rgba(0, 0, 0, 0.5);
   padding: 7px;
-  color: #f5f9fd;
-  backdrop-filter: blur(28px) saturate(1.18);
+  color: var(--text-primary);
+  backdrop-filter: blur(30px) saturate(1.06);
   transform: translateX(-50%);
   animation: quick-volume-in 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -1605,9 +1624,9 @@ button {
   left: 50%;
   width: 13px;
   height: 13px;
-  border-right: 1px solid rgba(255, 255, 255, 0.14);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(8, 15, 25, 0.97);
+  border-right: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel-bg-strong);
   content: '';
   transform: translateX(-50%) rotate(45deg);
 }
@@ -1628,12 +1647,12 @@ button {
 }
 
 .quick-settings-control.selected {
-  background: rgba(255, 255, 255, 0.055);
-  box-shadow: inset 0 0 0 1px rgba(142, 246, 225, 0.22);
+  background: var(--focus-bg);
+  box-shadow: inset 0 0 0 1px var(--focus-border);
 }
 
 .quick-settings-brightness.selected {
-  box-shadow: inset 0 0 0 1px rgba(255, 210, 111, 0.24);
+  box-shadow: inset 0 0 0 1px var(--focus-border);
 }
 
 .quick-settings-control > header {
@@ -1651,10 +1670,10 @@ button {
 .quick-settings-control > header > span {
   display: grid;
   place-items: center;
-  color: #8bf5df;
+  color: var(--text-primary);
 }
 
-.quick-settings-brightness > header > span { color: #ffd26f; }
+.quick-settings-brightness > header > span { color: var(--text-primary); }
 .quick-settings-control > header strong { font-size: 13px; font-weight: 760; }
 .quick-settings-control > header b { color: rgba(244, 248, 252, 0.76); font-size: 12px; font-weight: 730; }
 
@@ -1673,12 +1692,12 @@ button {
 
 .quick-settings-control > header button:hover,
 .quick-settings-control > header button:focus-visible {
-  background: rgba(113, 240, 215, 0.13);
+  background: var(--focus-bg-strong);
   color: #fff;
-  outline: 1px solid rgba(142, 246, 225, 0.38);
+  outline: 1px solid var(--focus-border);
 }
 
-.quick-settings-control > header button.muted { color: #ffd078; }
+.quick-settings-control > header button.muted { color: var(--text-secondary); }
 .quick-settings-control > header button:disabled { cursor: progress; opacity: 0.55; }
 
 .quick-settings-control input[type='range'] {
@@ -1692,52 +1711,53 @@ button {
 .quick-settings-control input[type='range']::-webkit-slider-thumb {
   width: 17px;
   height: 17px;
-  border: 3px solid #10232a;
+  border: 3px solid var(--slider-thumb-border);
   border-radius: 50%;
   appearance: none;
-  background: #8bf6e1;
+  background: var(--slider-thumb);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.82), 0 4px 11px rgba(0, 0, 0, 0.38);
 }
 
 .quick-settings-brightness input[type='range']::-webkit-slider-thumb {
-  border-color: #332b18;
-  background: #ffd26f;
+  border-color: var(--slider-thumb-border);
+  background: var(--slider-thumb);
 }
 
 .quick-settings-control input[type='range']:focus-visible {
   outline: none;
 }
 
-.quick-settings-audio input[type='range']:focus-visible { box-shadow: 0 0 0 3px rgba(113, 240, 215, 0.18); }
-.quick-settings-brightness input[type='range']:focus-visible { box-shadow: 0 0 0 3px rgba(255, 210, 111, 0.18); }
+.quick-settings-audio input[type='range']:focus-visible,
+.quick-settings-brightness input[type='range']:focus-visible { box-shadow: 0 0 0 3px rgba(244, 247, 251, 0.12); }
 .quick-settings-control input[type='range']:disabled { cursor: not-allowed; opacity: 0.48; }
 .quick-settings-control > small { color: rgba(229, 236, 244, 0.62); font-size: 10px; line-height: 1.35; }
 
 .quick-nav-item {
   position: relative;
   display: grid;
-  width: 58px;
-  height: 58px;
-  flex: 0 0 58px;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
   place-items: center;
   overflow: hidden;
   border: 1px solid transparent;
   border-radius: 17px;
   background: transparent;
-  color: rgba(234, 242, 250, 0.72);
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
 .quick-nav-item:hover,
+.quick-nav-item:focus-visible,
 .quick-nav-item.selected {
-  border-color: rgba(149, 251, 230, 0.64);
-  background: rgba(219, 249, 244, 0.13);
-  box-shadow: 0 0 0 3px rgba(107, 239, 212, 0.1), 0 8px 24px rgba(0, 0, 0, 0.28);
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   color: #fff;
   outline: none;
-  transform: translateY(-5px) scale(1.07);
+  transform: scale(1.025);
 }
 
 .quick-nav-item.active-game {
@@ -1772,8 +1792,8 @@ button {
   height: 8px;
   border: 2px solid #0b1420;
   border-radius: 50%;
-  background: #71f0d7;
-  box-shadow: 0 0 12px #71f0d7;
+  background: var(--slider-thumb);
+  box-shadow: 0 0 8px rgba(244, 247, 251, 0.42);
 }
 
 .active-dot.minimized {
@@ -1817,10 +1837,10 @@ button {
 
 .console-settings-screen > header button,
 .console-settings-detail button {
-  border: 1px solid rgba(214, 224, 236, 0.2);
+  border: 1px solid var(--panel-border);
   border-radius: 12px;
-  background: rgba(18, 24, 32, 0.54);
-  color: #fff;
+  background: rgba(244, 247, 251, 0.055);
+  color: var(--text-primary);
   cursor: pointer;
   padding: 11px 16px;
   font-weight: 760;
@@ -1897,11 +1917,11 @@ button {
 .console-settings-layout > nav button.selected,
 .console-settings-layout > nav button:hover,
 .console-settings-layout > nav button:focus-visible {
-  border-color: rgba(222, 231, 240, 0.3);
-  background: linear-gradient(100deg, rgba(222, 229, 238, 0.14), rgba(147, 158, 173, 0.08));
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
   color: #fff;
   outline: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  box-shadow: var(--focus-glow);
 }
 
 .console-settings-detail {
@@ -1930,13 +1950,13 @@ button {
 .control-room-card {
   display: grid;
   gap: 8px;
-  border: 1px solid rgba(128, 235, 214, 0.24);
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
-  background: rgba(57, 109, 106, 0.14);
+  background: rgba(244, 247, 251, 0.045);
   padding: 22px;
 }
 
-.settings-status-card span { color: #7fefd8; font-weight: 800; }
+.settings-status-card span { color: var(--text-primary); font-weight: 800; }
 .settings-status-card strong { font-size: 24px; }
 .settings-status-card small { color: rgba(230, 238, 247, 0.68); }
 .settings-status-card.warning {
@@ -1963,9 +1983,15 @@ button {
 .console-settings-detail button:disabled { cursor: progress; opacity: 0.56; }
 
 .console-settings-detail [data-settings-action]:focus-visible {
-  border-color: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 0 0 3px rgba(113, 240, 215, 0.3);
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   outline: none;
+}
+
+.console-settings-detail [data-settings-action]:hover:not(:disabled) {
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
 }
 
 .settings-feedback {
@@ -1985,10 +2011,10 @@ button {
 .wifi-selected-panel {
   display: grid;
   gap: 14px;
-  border: 1px solid rgba(113, 240, 215, 0.26);
+  border: 1px solid var(--panel-border);
   border-radius: 15px;
   margin: 18px 0;
-  background: rgba(29, 65, 68, 0.22);
+  background: rgba(244, 247, 251, 0.045);
   padding: 18px;
 }
 
@@ -2066,9 +2092,9 @@ button {
 .wifi-network-list > button:focus-visible { background: rgba(255, 255, 255, 0.08); }
 .wifi-network-list > button.connected { border-color: rgba(113, 240, 215, 0.22); background: rgba(57, 109, 106, 0.14); opacity: 1; }
 .wifi-network-list > button.selected {
-  border-color: rgba(255, 255, 255, 0.84);
-  background: rgba(228, 232, 244, 0.14);
-  box-shadow: inset 3px 0 0 #71f0d7;
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: inset 3px 0 0 var(--slider-active);
 }
 .wifi-network-list > button > span:nth-child(2),
 .bluetooth-device-list > div > span { display: grid; gap: 3px; }
@@ -2167,20 +2193,20 @@ button {
 .system-volume-controls input[type='range']::-webkit-slider-thumb {
   width: 22px;
   height: 22px;
-  border: 3px solid #f4f7fb;
+  border: 3px solid var(--slider-thumb);
   border-radius: 50%;
   appearance: none;
-  background: #273243;
-  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.62);
+  background: var(--slider-thumb-border);
+  box-shadow: 0 0 0 2px rgba(244, 247, 251, 0.28);
 }
 .system-slider-card input[type='range']:focus-visible,
 .system-volume-controls input[type='range']:focus-visible {
-  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3);
+  box-shadow: 0 0 0 3px rgba(244, 247, 251, 0.12);
 }
 .system-slider-card input[type='range']:disabled,
 .system-volume-controls input[type='range']:disabled { cursor: not-allowed; opacity: 0.5; }
 .system-inline-status { min-height: 14px; color: rgba(224, 232, 242, 0.54); font-size: 10px; }
-.system-inline-status.active { color: #8ec5ff; }
+.system-inline-status.active { color: var(--text-primary); }
 
 .system-collapsible-heading {
   display: flex;
@@ -2260,7 +2286,7 @@ button {
 .system-volume-controls button { display: grid; width: 50px; height: 50px; place-items: center; padding: 0; }
 .system-volume-controls > strong { font-size: 18px; text-align: right; }
 .system-mute-button { display: inline-flex; width: max-content; min-width: 106px; align-items: center; justify-content: center; gap: 8px; }
-.system-mute-button.active { border-color: rgba(255, 204, 112, 0.35); background: rgba(142, 99, 34, 0.14); }
+.system-mute-button.active { border-color: var(--focus-border); background: var(--focus-bg); }
 
 .system-current-devices {
   display: grid;
@@ -2317,7 +2343,7 @@ button {
 .system-capability-note { margin: 0; color: rgba(224, 232, 242, 0.54); font-size: 11px; line-height: 1.55; }
 
 .settings-capability-note {
-  border-left: 3px solid rgba(111, 185, 255, 0.4);
+  border-left: 3px solid var(--panel-border);
   margin-top: 20px;
   padding-left: 12px;
   color: rgba(226, 235, 245, 0.62);
@@ -2374,7 +2400,7 @@ button {
 .settings-placeholder { color: rgba(226, 235, 245, 0.7); font-size: 17px; line-height: 1.85; }
 .control-room-card { justify-items: start; }
 .control-room-card p { color: rgba(231, 238, 247, 0.7); }
-.control-room-card button { background: rgba(113, 240, 215, 0.16); }
+.control-room-card button { background: rgba(244, 247, 251, 0.08); }
 .console-settings-screen > footer { min-height: 48px; box-sizing: border-box; padding: 12px 40px; color: rgba(226, 234, 244, 0.5); text-align: right; }
 
 @media (max-width: 900px) {
@@ -2463,10 +2489,13 @@ button {
 }
 
 .admin-sidebar nav button.active,
-.admin-sidebar nav button:hover {
-  border-color: rgba(115, 222, 200, 0.35);
-  background: rgba(115, 222, 200, 0.12);
+.admin-sidebar nav button:hover,
+.admin-sidebar nav button:focus-visible {
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   color: #fff;
+  outline: none;
 }
 
 .admin-content {
@@ -2602,7 +2631,8 @@ select {
 
 input:focus,
 select:focus {
-  border-color: #1dd1a1;
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px rgba(244, 247, 251, 0.07);
   outline: none;
 }
 
@@ -2887,7 +2917,7 @@ select:focus {
 
 .admin-options-modal {
   width: min(620px, calc(100vw - 40px));
-  border-color: rgba(83, 220, 204, 0.35);
+  border-color: var(--panel-border);
   border-radius: 18px;
   background: rgba(17, 24, 33, 0.97);
 }
@@ -2939,19 +2969,20 @@ select:focus {
   height: 48px;
   flex: 0 0 48px;
   place-items: center;
-  border: 1px solid rgba(113, 240, 215, 0.55);
+  border: 1px solid var(--panel-border);
   border-radius: 50%;
-  background: rgba(10, 22, 29, 0.92);
+  background: var(--panel-bg-strong);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
-  color: #8df6e1;
+  color: var(--text-primary);
   cursor: pointer;
   backdrop-filter: blur(18px);
 }
 
 .windowed-admin-lock:hover,
 .windowed-admin-lock:focus-visible {
-  border-color: #fff;
-  background: rgba(26, 66, 68, 0.96);
+  border-color: var(--focus-border);
+  background: var(--focus-bg-strong);
+  box-shadow: var(--focus-glow);
   outline: none;
 }
 
@@ -3029,7 +3060,9 @@ select:focus {
 
 .installed-game-row:hover,
 .installed-game-row:focus-visible {
-  border-color: rgba(115, 222, 200, 0.7);
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   outline: none;
 }
 
@@ -3046,7 +3079,7 @@ select:focus {
   overflow: hidden;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.28);
-  color: #73dec8;
+  color: var(--text-secondary);
 }
 
 .installed-game-icon img {
@@ -3125,8 +3158,9 @@ select:focus {
 .pin-keypad button.selected,
 .pin-keypad button:hover,
 .pin-keypad button:focus-visible {
-  border-color: rgba(126, 241, 219, 0.86);
-  background: rgba(126, 241, 219, 0.18);
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
   outline: none;
 }
 
@@ -3158,9 +3192,13 @@ select:focus {
   cursor: pointer;
 }
 
-.duration-grid button.selected {
-  border-color: #1dd1a1;
-  background: rgba(29, 209, 161, 0.16);
+.duration-grid button.selected,
+.duration-grid button:hover,
+.duration-grid button:focus-visible {
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
+  outline: none;
 }
 
 .error-text,

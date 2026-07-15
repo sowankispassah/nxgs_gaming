@@ -746,7 +746,7 @@ export function QuickHomeOverlay(props: {
                     aria-label="Quick audio volume"
                     aria-valuetext={audio.muted ? `Muted at ${displayVolume} percent` : `${displayVolume} percent`}
                     disabled={(audioPending === 'refresh' || audioPending === 'mute') || !audio.supported}
-                    style={{ background: `linear-gradient(90deg, #71f0d7 0%, #71f0d7 ${displayVolume}%, rgba(255, 255, 255, 0.13) ${displayVolume}%)` }}
+                    style={{ background: `linear-gradient(90deg, var(--slider-active) 0%, var(--slider-active) ${displayVolume}%, var(--slider-track) ${displayVolume}%)` }}
                     onFocus={() => setFocusArea('quickAudio')}
                     onInput={(event) => void setSystemVolume(Number(event.currentTarget.value))}
                   />
@@ -772,7 +772,7 @@ export function QuickHomeOverlay(props: {
                     aria-label="Quick display brightness"
                     aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
                     disabled={brightnessPending === 'refresh' || !display.brightness.supported}
-                    style={{ background: `linear-gradient(90deg, #ffd26f 0%, #ffd26f ${displayBrightness}%, rgba(255, 255, 255, 0.13) ${displayBrightness}%)` }}
+                    style={{ background: `linear-gradient(90deg, var(--slider-active) 0%, var(--slider-active) ${displayBrightness}%, var(--slider-track) ${displayBrightness}%)` }}
                     onFocus={() => setFocusArea('quickBrightness')}
                     onInput={(event) => void setSystemBrightness(Number(event.currentTarget.value))}
                   />

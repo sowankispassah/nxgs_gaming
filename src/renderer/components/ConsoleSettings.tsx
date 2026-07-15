@@ -966,7 +966,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
                   aria-label="Display brightness"
                   aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
                   disabled={!display.brightness.supported || displayPending !== null}
-                  style={{ background: `linear-gradient(90deg, #58a6ff 0%, #58a6ff ${displayBrightness}%, rgba(255, 255, 255, 0.14) ${displayBrightness}%)` }}
+                  style={{ background: `linear-gradient(90deg, var(--slider-active) 0%, var(--slider-active) ${displayBrightness}%, var(--slider-track) ${displayBrightness}%)` }}
                   onInput={(event) => applyDisplayBrightness(Number(event.currentTarget.value))}
                 />
                 <small className={brightnessSyncing ? 'system-inline-status active' : 'system-inline-status'}>
@@ -1028,7 +1028,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
                     max="100"
                     step="1"
                     value={displayVolume}
-                    style={{ background: `linear-gradient(90deg, #f4f7fb 0%, #f4f7fb ${displayVolume}%, rgba(255, 255, 255, 0.14) ${displayVolume}%)` }}
+                    style={{ background: `linear-gradient(90deg, var(--slider-active) 0%, var(--slider-active) ${displayVolume}%, var(--slider-track) ${displayVolume}%)` }}
                     disabled={audioPending !== null || !audio.supported}
                     onChange={(event) => setDisplayVolume(Number(event.currentTarget.value))}
                     onPointerUp={(event) => void applyMasterVolume(Number(event.currentTarget.value), 'slider')}
