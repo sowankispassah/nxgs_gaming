@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   Bell,
   Gamepad2,
@@ -42,11 +42,14 @@ const EMPTY_AUDIO: AudioStatus = {
 const EMPTY_DISPLAY: DisplayStatus = {
   supported: true,
   displays: [],
-  brightness: { supported: false, level: 0, message: 'Checking brightness support...' },
+  brightness: { supported: true, level: 0 },
   nightLight: { supported: false, enabled: false, controlSupported: false, message: 'Night Light is unavailable.' },
   colorProfile: { currentProfile: 'System default', availableProfiles: [], switchingSupported: false, message: 'Color profile switching is unavailable.' },
   hdr: { support: 'unknown', enabled: false, controlSupported: false, message: 'HDR status is unavailable.' }
 };
+
+let quickAudioSnapshot: AudioStatus | null = null;
+let quickDisplaySnapshot: DisplayStatus | null = null;
 
 function quickOverlayImageUrl(path: string): string {
   if (!path) return '';
@@ -88,22 +91,25 @@ export function QuickHomeOverlay(props: {
   const [notice, setNotice] = useState('');
   const [forcePin, setForcePin] = useState('');
   const [now, setNow] = useState(() => new Date());
-  const [audio, setAudio] = useState<AudioStatus>(EMPTY_AUDIO);
-  const [displayVolume, setDisplayVolume] = useState(0);
+  const [audio, setAudio] = useState<AudioStatus>(() => quickAudioSnapshot ?? EMPTY_AUDIO);
+  const [displayVolume, setDisplayVolume] = useState(() => quickAudioSnapshot?.masterVolume ?? 0);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
-  const [audioPending, setAudioPending] = useState<'refresh' | 'volume' | 'mute' | null>(null);
+  const [audioPending, setAudioPending] = useState<'volume' | 'mute' | null>(null);
   const [audioMessage, setAudioMessage] = useState('');
-  const [display, setDisplay] = useState<DisplayStatus>(EMPTY_DISPLAY);
-  const [displayBrightness, setDisplayBrightness] = useState(0);
-  const [brightnessPending, setBrightnessPending] = useState<'refresh' | 'brightness' | null>(null);
+  const [display, setDisplay] = useState<DisplayStatus>(() => quickDisplaySnapshot ?? EMPTY_DISPLAY);
+  const [displayBrightness, setDisplayBrightness] = useState(() => quickDisplaySnapshot?.brightness.level ?? 0);
   const [brightnessMessage, setBrightnessMessage] = useState('');
   const audioBusy = useRef(false);
-  const displayVolumeRef = useRef(0);
-  const audioSupportedRef = useRef(true);
+  const audioRefreshActive = useRef(false);
+  const audioInteractionVersion = useRef(0);
+  const displayVolumeRef = useRef(quickAudioSnapshot?.masterVolume ?? 0);
+  const audioSupportedRef = useRef(quickAudioSnapshot?.supported ?? true);
   const volumeTarget = useRef<number | null>(null);
   const volumeFlushActive = useRef(false);
-  const brightnessValueRef = useRef(0);
-  const brightnessSupportedRef = useRef(false);
+  const brightnessRefreshActive = useRef(false);
+  const brightnessInteractionVersion = useRef(0);
+  const brightnessValueRef = useRef(quickDisplaySnapshot?.brightness.level ?? 0);
+  const brightnessSupportedRef = useRef(quickDisplaySnapshot?.brightness.supported ?? true);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
 
@@ -190,25 +196,34 @@ export function QuickHomeOverlay(props: {
   }, [selectedNavKey]);
 
   const refreshAudio = useCallback(async (): Promise<void> => {
-    if (audioBusy.current) return;
-    audioBusy.current = true;
-    setAudioPending('refresh');
-    setAudioMessage('Reading volume...');
+    if (audioRefreshActive.current) return;
+    audioRefreshActive.current = true;
+    const interactionVersion = audioInteractionVersion.current;
     try {
       const next = await window.nxgs.getAudioStatus();
-      setAudio(next);
-      setDisplayVolume(next.masterVolume);
-      setAudioMessage(next.supported ? '' : next.message ?? 'Volume control is unavailable.');
+      if (interactionVersion === audioInteractionVersion.current) {
+        quickAudioSnapshot = next;
+        setAudio(next);
+        displayVolumeRef.current = next.masterVolume;
+        audioSupportedRef.current = next.supported;
+        setDisplayVolume(next.masterVolume);
+        setAudioMessage(next.supported ? '' : next.message ?? 'Volume control is unavailable.');
+      }
     } catch (error) {
-      setAudioMessage(error instanceof Error ? error.message : 'Could not read the current volume.');
+      if (interactionVersion === audioInteractionVersion.current) {
+        const nextMessage = error instanceof Error ? error.message : 'Could not read the current volume.';
+        audioSupportedRef.current = false;
+        setAudio((current) => ({ ...current, supported: false, message: nextMessage }));
+        setAudioMessage(nextMessage);
+      }
     } finally {
-      audioBusy.current = false;
-      setAudioPending(null);
+      audioRefreshActive.current = false;
     }
   }, []);
 
   const setSystemVolume = useCallback((value: number): void => {
     if (!audioSupportedRef.current) return;
+    audioInteractionVersion.current += 1;
     const nextVolume = Math.max(0, Math.min(100, Math.round(value)));
     displayVolumeRef.current = nextVolume;
     setDisplayVolume(nextVolume);
@@ -224,6 +239,8 @@ export function QuickHomeOverlay(props: {
           const target = volumeTarget.current;
           volumeTarget.current = null;
           const result = await window.nxgs.setMasterVolume(target);
+          quickAudioSnapshot = result.audio;
+          audioSupportedRef.current = result.audio.supported;
           setAudio(result.audio);
           if (!result.ok) {
             setAudioMessage(result.message);
@@ -253,21 +270,37 @@ export function QuickHomeOverlay(props: {
   }, [setSystemVolume]);
 
   const refreshDisplay = useCallback(async (): Promise<void> => {
-    setBrightnessPending('refresh');
-    setBrightnessMessage('Reading brightness...');
+    if (brightnessRefreshActive.current) return;
+    brightnessRefreshActive.current = true;
+    const interactionVersion = brightnessInteractionVersion.current;
     try {
       const next = await window.nxgs.getDisplayStatus();
-      setDisplay(next);
-      brightnessValueRef.current = next.brightness.level;
-      brightnessSupportedRef.current = next.brightness.supported;
-      setDisplayBrightness(next.brightness.level);
-      setBrightnessMessage(next.brightness.supported ? '' : next.brightness.message ?? 'Brightness control is not supported on this display.');
+      if (interactionVersion === brightnessInteractionVersion.current) {
+        quickDisplaySnapshot = next;
+        setDisplay(next);
+        brightnessValueRef.current = next.brightness.level;
+        brightnessSupportedRef.current = next.brightness.supported;
+        setDisplayBrightness(next.brightness.level);
+        setBrightnessMessage(next.brightness.supported ? '' : next.brightness.message ?? 'Brightness control is not supported on this display.');
+      }
     } catch (error) {
-      setBrightnessMessage(error instanceof Error ? error.message : 'Could not read the current brightness.');
+      if (interactionVersion === brightnessInteractionVersion.current) {
+        const nextMessage = error instanceof Error ? error.message : 'Could not read the current brightness.';
+        brightnessSupportedRef.current = false;
+        setDisplay((current) => ({
+          ...current,
+          brightness: { ...current.brightness, supported: false, message: nextMessage }
+        }));
+        setBrightnessMessage(nextMessage);
+      }
     } finally {
-      setBrightnessPending(null);
+      brightnessRefreshActive.current = false;
     }
   }, []);
+
+  useEffect(() => {
+    void Promise.all([refreshAudio(), refreshDisplay()]);
+  }, [refreshAudio, refreshDisplay]);
 
   const openQuickSettings = useCallback((): void => {
     setSelectedNavKey('settings');
@@ -280,6 +313,7 @@ export function QuickHomeOverlay(props: {
 
   const setSystemBrightness = useCallback((value: number): void => {
     if (!brightnessSupportedRef.current) return;
+    brightnessInteractionVersion.current += 1;
     const nextBrightness = Math.max(0, Math.min(100, Math.round(value)));
     brightnessValueRef.current = nextBrightness;
     setDisplayBrightness(nextBrightness);
@@ -287,7 +321,6 @@ export function QuickHomeOverlay(props: {
     if (brightnessFlushActive.current) return;
 
     brightnessFlushActive.current = true;
-    setBrightnessPending('brightness');
     setBrightnessMessage(`Live · ${nextBrightness}%`);
     void (async () => {
       try {
@@ -295,6 +328,8 @@ export function QuickHomeOverlay(props: {
           const target = brightnessTarget.current;
           brightnessTarget.current = null;
           const result = await window.nxgs.setBrightness(target);
+          quickDisplaySnapshot = result.display;
+          brightnessSupportedRef.current = result.display.brightness.supported;
           setDisplay(result.display);
           if (!result.ok) {
             setBrightnessMessage(result.message);
@@ -313,7 +348,6 @@ export function QuickHomeOverlay(props: {
         setBrightnessMessage(error instanceof Error ? error.message : 'Could not change the brightness.');
       } finally {
         brightnessFlushActive.current = false;
-        setBrightnessPending(null);
         if (brightnessTarget.current !== null) setSystemBrightness(brightnessTarget.current);
       }
     })();
@@ -326,10 +360,13 @@ export function QuickHomeOverlay(props: {
   const toggleSystemMute = useCallback(async (): Promise<void> => {
     if (audioBusy.current || volumeFlushActive.current || !audio.supported) return;
     audioBusy.current = true;
+    audioInteractionVersion.current += 1;
     setAudioPending('mute');
     setAudioMessage(audio.muted ? 'Unmuting...' : 'Muting...');
     try {
       const result = await window.nxgs.setMasterMuted(!audio.muted);
+      quickAudioSnapshot = result.audio;
+      audioSupportedRef.current = result.audio.supported;
       setAudio(result.audio);
       setDisplayVolume(result.audio.masterVolume);
       setAudioMessage(result.message);
@@ -528,9 +565,6 @@ export function QuickHomeOverlay(props: {
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [adjustSystemBrightness, adjustSystemVolume, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
-
-  const quickSettingsLoading = quickSettingsOpen
-    && (audioPending === 'refresh' || brightnessPending === 'refresh');
 
   useEffect(() => {
     if (!quickSettingsOpen) return;
@@ -736,20 +770,24 @@ export function QuickHomeOverlay(props: {
                     <strong>Audio</strong>
                     <b>{audio.muted ? 'Muted' : `${displayVolume}%`}</b>
                   </header>
-                  <input
-                    id="quick-settings-audio"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={displayVolume}
-                    aria-label="Quick audio volume"
-                    aria-valuetext={audio.muted ? `Muted at ${displayVolume} percent` : `${displayVolume} percent`}
-                    disabled={(audioPending === 'refresh' || audioPending === 'mute') || !audio.supported}
-                    style={{ background: `linear-gradient(90deg, var(--slider-active) 0%, var(--slider-active) ${displayVolume}%, var(--slider-track) ${displayVolume}%)` }}
-                    onFocus={() => setFocusArea('quickAudio')}
-                    onInput={(event) => void setSystemVolume(Number(event.currentTarget.value))}
-                  />
+                  <div className="quick-settings-range" style={{ '--quick-range-value': `${displayVolume}%` } as CSSProperties}>
+                    <span className="quick-settings-range-track" aria-hidden="true">
+                      <span className="quick-settings-range-fill" />
+                    </span>
+                    <input
+                      id="quick-settings-audio"
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={displayVolume}
+                      aria-label="Quick audio volume"
+                      aria-valuetext={audio.muted ? `Muted at ${displayVolume} percent` : `${displayVolume} percent`}
+                      disabled={audioPending === 'mute' || !audio.supported}
+                      onFocus={() => setFocusArea('quickAudio')}
+                      onInput={(event) => void setSystemVolume(Number(event.currentTarget.value))}
+                    />
+                  </div>
                   {!audio.supported && <small role="status">{audioMessage || audio.message || 'Audio control is unavailable.'}</small>}
                 </div>
 
@@ -762,20 +800,24 @@ export function QuickHomeOverlay(props: {
                     <strong>Brightness</strong>
                     <b>{display.brightness.supported ? `${displayBrightness}%` : 'Unavailable'}</b>
                   </header>
-                  <input
-                    id="quick-settings-brightness"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={displayBrightness}
-                    aria-label="Quick display brightness"
-                    aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
-                    disabled={brightnessPending === 'refresh' || !display.brightness.supported}
-                    style={{ background: `linear-gradient(90deg, var(--slider-active) 0%, var(--slider-active) ${displayBrightness}%, var(--slider-track) ${displayBrightness}%)` }}
-                    onFocus={() => setFocusArea('quickBrightness')}
-                    onInput={(event) => void setSystemBrightness(Number(event.currentTarget.value))}
-                  />
+                  <div className="quick-settings-range" style={{ '--quick-range-value': `${displayBrightness}%` } as CSSProperties}>
+                    <span className="quick-settings-range-track" aria-hidden="true">
+                      <span className="quick-settings-range-fill" />
+                    </span>
+                    <input
+                      id="quick-settings-brightness"
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={displayBrightness}
+                      aria-label="Quick display brightness"
+                      aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
+                      disabled={!display.brightness.supported}
+                      onFocus={() => setFocusArea('quickBrightness')}
+                      onInput={(event) => void setSystemBrightness(Number(event.currentTarget.value))}
+                    />
+                  </div>
                   {!display.brightness.supported && (
                     <small role="status">{brightnessMessage || display.brightness.message || 'Brightness control is unavailable for this display.'}</small>
                   )}
@@ -789,14 +831,13 @@ export function QuickHomeOverlay(props: {
               aria-label={item.label}
               aria-expanded={item.key === 'settings' ? quickSettingsOpen : undefined}
               aria-controls={item.key === 'settings' ? 'quick-settings-panel' : undefined}
-              aria-busy={item.key === 'settings' ? quickSettingsLoading : undefined}
-              disabled={disabled || (item.key === 'settings' && quickSettingsLoading)}
+              disabled={disabled}
               onMouseEnter={() => { setSelectedNavKey(item.key); setFocusArea('navbar'); }}
               onClick={() => selectNavAction(index)}
             >
               {item.session
                 ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} />
-                : item.key === 'settings' && quickSettingsLoading ? <LoaderCircle size={20} className="spin" /> : item.icon}
+                : item.icon}
               {item.session && <span className={`active-dot ${item.session.isActive ? '' : 'minimized'}`} />}
             </button>
           </div>

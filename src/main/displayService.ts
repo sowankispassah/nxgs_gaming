@@ -114,9 +114,8 @@ export async function getDisplayStatus(displays: DisplayDeviceInfo[]): Promise<D
 
 export async function setDisplayBrightness(value: number, displays: DisplayDeviceInfo[]): Promise<DisplayActionResult> {
   const level = normalizeLevel(value);
-  const brightness = cachedBrightness ?? await readBrightness();
-  if (!brightness.supported) {
-    return { ok: false, message: brightness.message ?? 'Brightness control is not supported on this display.', display: buildStatus(displays, brightness, cachedAdvancedFeatures) };
+  if (cachedBrightness && !cachedBrightness.supported) {
+    return { ok: false, message: cachedBrightness.message ?? 'Brightness control is not supported on this display.', display: buildStatus(displays, cachedBrightness, cachedAdvancedFeatures) };
   }
   try {
     const result = await runWindowsControl('brightness', level);
@@ -125,7 +124,11 @@ export async function setDisplayBrightness(value: number, displays: DisplayDevic
     return { ok: true, message: result.message, display: buildStatus(displays, cachedBrightness, cachedAdvancedFeatures) };
   } catch (error) {
     const message = safeMessage(error);
-    return { ok: false, message, display: buildStatus(displays, { ...brightness, message }, cachedAdvancedFeatures) };
+    const brightness = cachedBrightness?.supported
+      ? { ...cachedBrightness, message }
+      : { supported: false, level: cachedBrightness?.level ?? 0, message };
+    cachedBrightness = brightness;
+    return { ok: false, message, display: buildStatus(displays, brightness, cachedAdvancedFeatures) };
   }
 }
 
