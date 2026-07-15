@@ -711,6 +711,7 @@ export function QuickHomeOverlay(props: {
                 aria-label="Quick Settings"
                 onBlurCapture={(event) => {
                   const next = event.relatedTarget;
+                  if (next === null) return;
                   if (next instanceof Node && event.currentTarget.parentElement?.contains(next)) return;
                   setQuickSettingsOpen(false);
                   setFocusArea('navbar');
@@ -721,9 +722,6 @@ export function QuickHomeOverlay(props: {
                   onMouseEnter={() => setFocusArea('quickAudio')}
                 >
                   <header>
-                    <span aria-hidden="true">{audio.muted ? <VolumeX size={17} /> : <Volume2 size={17} />}</span>
-                    <strong>Audio</strong>
-                    <b>{audio.muted ? 'Muted' : `${displayVolume}%`}</b>
                     <button
                       type="button"
                       className={audio.muted ? 'muted' : ''}
@@ -732,9 +730,11 @@ export function QuickHomeOverlay(props: {
                       onClick={() => void toggleSystemMute()}
                     >
                       {audioPending === 'mute'
-                        ? <LoaderCircle size={15} className="spin" />
-                        : audio.muted ? <Volume2 size={15} /> : <VolumeX size={15} />}
+                        ? <LoaderCircle size={16} className="spin" />
+                        : audio.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                     </button>
+                    <strong>Audio</strong>
+                    <b>{audio.muted ? 'Muted' : `${displayVolume}%`}</b>
                   </header>
                   <input
                     id="quick-settings-audio"

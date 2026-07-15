@@ -1415,15 +1415,15 @@ button {
   bottom: 36px;
   left: 50%;
   display: flex;
-  min-height: 80px;
+  min-height: 78px;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 24px;
   border: 1px solid var(--panel-border);
-  border-radius: 28px;
+  border-radius: 24px;
   background: var(--panel-bg);
   box-shadow: 0 20px 65px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.025);
-  padding: 8px 14px;
+  padding: 8px 20px;
   backdrop-filter: blur(30px) saturate(1.08);
   transform: translateX(-50%);
   animation: quick-navbar-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -1435,7 +1435,7 @@ button {
 }
 
 .quick-nav-slot {
-  position: relative;
+  position: static;
   display: grid;
   flex: 0 0 auto;
   place-items: center;
@@ -1601,17 +1601,17 @@ button {
 
 .quick-settings-panel {
   position: absolute;
-  bottom: calc(100% + 14px);
+  bottom: calc(100% + 12px);
   left: 50%;
   z-index: 3;
   display: grid;
-  width: 350px;
+  width: 392px;
   overflow: visible;
   border: 1px solid var(--panel-border);
-  border-radius: 20px;
+  border-radius: 18px;
   background: var(--panel-bg-strong);
   box-shadow: 0 22px 58px rgba(0, 0, 0, 0.5);
-  padding: 7px;
+  padding: 14px 16px;
   color: var(--text-primary);
   backdrop-filter: blur(30px) saturate(1.06);
   transform: translateX(-50%);
@@ -1634,9 +1634,9 @@ button {
 .quick-settings-control {
   position: relative;
   display: grid;
-  gap: 8px;
-  border-radius: 12px;
-  padding: 10px 11px 11px;
+  gap: 14px;
+  border-radius: 10px;
+  padding: 10px 10px 22px;
   transition: background 130ms ease, box-shadow 130ms ease;
 }
 
@@ -1644,27 +1644,27 @@ button {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   border-top-left-radius: 0;
   border-top-right-radius: 0;
+  padding: 13px 10px 19px;
 }
 
 .quick-settings-control.selected {
-  background: var(--focus-bg);
-  box-shadow: inset 0 0 0 1px var(--focus-border);
+  background: rgba(244, 247, 251, 0.035);
 }
 
 .quick-settings-brightness.selected {
-  box-shadow: inset 0 0 0 1px var(--focus-border);
+  background: rgba(244, 247, 251, 0.035);
 }
 
 .quick-settings-control > header {
   display: grid;
-  min-height: 24px;
-  grid-template-columns: 20px minmax(0, 1fr) max-content max-content;
+  min-height: 28px;
+  grid-template-columns: 28px minmax(0, 1fr) max-content;
   align-items: center;
-  gap: 7px;
+  gap: 20px;
 }
 
 .quick-settings-brightness > header {
-  grid-template-columns: 20px minmax(0, 1fr) max-content;
+  grid-template-columns: 28px minmax(0, 1fr) max-content;
 }
 
 .quick-settings-control > header > span {
@@ -1674,25 +1674,25 @@ button {
 }
 
 .quick-settings-brightness > header > span { color: var(--text-primary); }
-.quick-settings-control > header strong { font-size: 13px; font-weight: 760; }
-.quick-settings-control > header b { color: rgba(244, 248, 252, 0.76); font-size: 12px; font-weight: 730; }
+.quick-settings-control > header strong { font-size: 14px; font-weight: 620; }
+.quick-settings-control > header b { color: rgba(244, 248, 252, 0.68); font-size: 13px; font-weight: 560; }
 
 .quick-settings-control > header button {
   display: grid;
-  width: 27px;
-  height: 27px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border: 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.065);
-  color: rgba(245, 249, 253, 0.8);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
   cursor: pointer;
   padding: 0;
 }
 
 .quick-settings-control > header button:hover,
 .quick-settings-control > header button:focus-visible {
-  background: var(--focus-bg-strong);
+  background: var(--focus-bg);
   color: #fff;
   outline: 1px solid var(--focus-border);
 }
@@ -1701,8 +1701,9 @@ button {
 .quick-settings-control > header button:disabled { cursor: progress; opacity: 0.55; }
 
 .quick-settings-control input[type='range'] {
-  width: 100%;
-  height: 5px;
+  width: calc(100% - 48px);
+  height: 4px;
+  margin-left: 48px;
   border-radius: 999px;
   appearance: none;
   cursor: pointer;
