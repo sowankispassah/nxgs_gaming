@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.8",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.8/NXGS-Play-Setup.exe",
-    "sha256":  "c8c64550cece96a9343248bb1e09685775eecc9899d41f05ef359d4531943ebe",
+    "version":  "0.14.9",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.9/NXGS-Play-Setup.exe",
+    "sha256":  "808529ce45d1734fd70022a6f38f0cfe658685a8152b0fabb14a5fa1be02b948",
     "required":  false,
-    "notes":  "NXGS now keeps Exit Full Screen in stable windowed Admin mode when Ctrl+Shift+H is pressed repeatedly or during the mode transition."
+    "notes":  "NXGS now uses a refined neutral dark-glass style for navigation, focus, selections, and the Audio and Brightness quick controls."
 }
