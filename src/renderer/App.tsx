@@ -29,7 +29,11 @@ import {
 } from './components/ConsoleHome';
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 import { ConsoleSettings } from './components/ConsoleSettings';
-import { hasConfirmedGameWindow, shouldShowBlockingLaunchTransition } from './launchFlow';
+import {
+  hasConfirmedGameWindow,
+  shouldShowBlockingLaunchTransition,
+  shouldShowQuickGameOverlay
+} from './launchFlow';
 import { isBackKeyboardEvent, popNavigationEntry, pushNavigationEntry, shouldKeepEditing } from './navigation';
 import type {
   ActiveGameState,
@@ -252,6 +256,9 @@ export function App(): JSX.Element {
     const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
       setActiveGame(next);
       setConfirmGame((game) => game && hasConfirmedGameWindow(game.id, next) ? null : game);
+      if (next.status === 'closing') {
+        setHomeOverlayRequestId(0);
+      }
       if (['launching', 'running', 'minimizedToHome', 'resuming', 'closing', 'closed', 'error'].includes(next.status)) {
         setQuickNavOpen(false);
       }
@@ -467,7 +474,7 @@ export function App(): JSX.Element {
         void window.nxgs.requestShellHome(guidePressed ? 'controller-home' : 'controller-combo');
         return;
       }
-      if (quickNavOpen || view !== 'home' || ['quickOverlayOpen', 'resuming', 'closing'].includes(activeGame.status)) {
+      if (quickNavOpen || view !== 'home' || shouldShowQuickGameOverlay(activeGame)) {
         return;
       }
       if (backJustPressed) {
@@ -525,7 +532,7 @@ export function App(): JSX.Element {
     );
   }
 
-  const activeGameOverlayVisible = ['quickOverlayOpen', 'resuming', 'closing'].includes(activeGame.status);
+  const activeGameOverlayVisible = shouldShowQuickGameOverlay(activeGame);
   const homeQuickNavVisible = quickNavOpen && !activeGameOverlayVisible;
 
   return (

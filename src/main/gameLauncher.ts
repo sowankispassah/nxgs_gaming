@@ -12,6 +12,13 @@ import type {
   GameRecord,
   TrackedGameSessionState
 } from '../shared/types';
+import {
+  GRACEFUL_CLOSE_INITIAL_DELAY_MS,
+  GRACEFUL_CLOSE_MAX_ATTEMPTS,
+  GRACEFUL_CLOSE_RETRY_DELAY_MS,
+  hasReliableProcessIdentity,
+  PROCESS_MONITOR_INTERVAL_MS
+} from './gameLifecycle';
 import { logLine } from './logger';
 import { closeProcessByName, closeProcessByPid, isProcessRunning, isProcessRunningByPid } from './windowsProcess';
 import {
@@ -82,7 +89,6 @@ export class GameLauncher {
   private lastResumeResult: string | undefined;
   private focusGeneration = 0;
   private operationInFlight: 'launch' | 'home' | 'resume' | 'minimize' | 'close' | null = null;
-  private closeFallbackStatus: 'quickOverlayOpen' | 'minimizedToHome' = 'minimizedToHome';
   private state: ActiveGameState = {
     status: 'idle',
     updatedAt: new Date().toISOString()
@@ -212,9 +218,15 @@ export class GameLauncher {
     force: boolean,
     options: { retireActiveSession?: boolean; gameId?: string } = {}
   ): Promise<void> {
-    if (this.operationInFlight) {
-      await logLine('info', `Ignoring close request while ${this.operationInFlight} is in progress.`);
+    if (this.operationInFlight === 'close') {
+      await logLine('info', 'Ignoring duplicate close request while a close command is already in progress.');
       return;
+    }
+
+    if (this.operationInFlight) {
+      const supersededOperation = this.operationInFlight;
+      this.operationInFlight = null;
+      await logLine('info', `Close superseded the pending ${supersededOperation} operation.`);
     }
 
     if (options.gameId && !this.selectTrackedSession(options.gameId)) {
@@ -227,18 +239,25 @@ export class GameLauncher {
       return;
     }
 
-    this.closeFallbackStatus = this.state.status === 'quickOverlayOpen' ? 'quickOverlayOpen' : 'minimizedToHome';
     this.operationInFlight = 'close';
     const retireActiveSession = options.retireActiveSession ?? force;
     await logLine('info', `${force ? 'Force closing' : 'Closing'} ${game.title}`);
     try {
+      this.cancelFocusOperations(`Close requested for ${game.title}`);
+      if (this.monitor) {
+        clearInterval(this.monitor);
+        this.monitor = null;
+      }
+      this.clearReinforcementTimers();
+      this.releaseLaunchShield();
       this.setActiveState({
         status: 'closing',
         game,
-        message: `Closing ${game.title}...`,
+        message: `Close requested for ${game.title}. You can keep using NXGS while it finishes.`,
         windowDetected: Boolean(this.activeWindow),
-        windowState: this.state.windowState
+        windowState: this.activeWindow ? 'background' : 'unknown'
       });
+      this.focusLauncher();
       const errors: string[] = [];
 
       if (!force && this.activeWindow) {
@@ -290,7 +309,7 @@ export class GameLauncher {
       } else if (!force) {
         setTimeout(() => {
           void this.checkGracefulCloseResult(game);
-        }, 2500);
+        }, GRACEFUL_CLOSE_INITIAL_DELAY_MS);
       }
     } finally {
       if (this.operationInFlight === 'close') {
@@ -835,7 +854,8 @@ export class GameLauncher {
       clearInterval(this.monitor);
       this.monitor = null;
     }
-    if (!game.processName && !this.activeProcessId) {
+    if (!hasReliableProcessIdentity(game, this.activeProcessId, this.activeWindow?.processName)) {
+      void logLine('info', `Skipped recurring process monitor for ${game.title}; no reliable process identity is available.`);
       return;
     }
 
@@ -847,36 +867,23 @@ export class GameLauncher {
         return;
       }
       checkInFlight = true;
-      const processCheck = game.processName ? isProcessRunning(game.processName) : Promise.resolve(false);
-      const expectedWindow = this.activeWindow;
-      const shellHostedPid = Boolean(expectedWindow && /^(explorer|applicationframehost)$/i.test(expectedWindow.processName));
-      const pidCheck = this.activeProcessId && !shellHostedPid
-        ? isProcessRunningByPid(this.activeProcessId)
-        : Promise.resolve(false);
-      const storeTitleCheck = game.launchType === 'microsoftStore' && !game.processName?.trim()
-        ? isProcessRunning(game.title)
-        : Promise.resolve(false);
-      const windowCheck = expectedWindow
-        ? isGameWindowVisible(expectedWindow).then((visible) => (visible ? expectedWindow : null))
-        : Promise.resolve(null);
+      const processCheck = game.processName?.trim()
+        ? isProcessRunning(game.processName)
+        : this.activeProcessId
+          ? isProcessRunningByPid(this.activeProcessId)
+          : Promise.resolve(false);
 
-      void Promise.all([processCheck, pidCheck, storeTitleCheck, windowCheck])
-        .then(([processRunning, pidRunning, storeTitleRunning, currentWindow]) => {
-          const reliableProcessRunning = processRunning || pidRunning || storeTitleRunning;
+      void processCheck
+        .then((reliableProcessRunning) => {
           if (reliableProcessRunning) {
             seenReliableProcess = true;
             missingProcessTicks = 0;
           } else if (seenReliableProcess) {
             missingProcessTicks += 1;
           }
-          if (currentWindow) {
-            this.activeWindow = currentWindow;
-            this.activeProcessId = currentWindow.processId;
-          }
 
-          // A minimized, hidden, or shell-reparented window is not an exit. Retire the
-          // session only after a process identity that was previously observed running
-          // has disappeared across consecutive checks.
+          // Window visibility is intentionally not polled here. Launching a PowerShell
+          // visibility probe every few seconds caused contention with Home and Close.
           if (seenReliableProcess && missingProcessTicks >= 2) {
             this.handleGameExit(game);
           }
@@ -887,7 +894,7 @@ export class GameLauncher {
         .finally(() => {
           checkInFlight = false;
         });
-    }, 3000);
+    }, PROCESS_MONITOR_INTERVAL_MS);
   }
 
   private handleGameExit(game: GameRecord): void {
@@ -948,9 +955,6 @@ export class GameLauncher {
     if (this.child?.pid) {
       checks.push(isProcessRunningByPid(this.child.pid));
     }
-    if (game.launchType === 'microsoftStore' && !game.processName?.trim()) {
-      checks.push(isProcessRunning(game.title));
-    }
     if (checks.length === 0) {
       return false;
     }
@@ -1000,30 +1004,42 @@ export class GameLauncher {
       return;
     }
 
-    let window: GameWindowInfo | null = null;
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      if (!(await this.isGameStillRunning(game))) {
+    let window: GameWindowInfo | null = this.activeWindow;
+    let probeFailed = false;
+    for (let attempt = 0; attempt < GRACEFUL_CLOSE_MAX_ATTEMPTS; attempt += 1) {
+      if (this.activeGame?.id !== game.id) {
+        return;
+      }
+      try {
+        window = await findGameWindow({
+          pid: game.launchType === 'microsoftStore' && !game.processName?.trim()
+            ? undefined
+            : this.activeProcessId ?? this.child?.pid,
+          processName: game.processName,
+          titleHint: game.title
+        });
+      } catch (error) {
+        probeFailed = true;
+        await logLine('warn', `Background close verification failed for ${game.title}: ${String(error)}`);
+        break;
+      }
+      if (!window) {
         this.handleGameExit(game);
         return;
       }
-      window = await findGameWindow({
-        pid: game.launchType === 'microsoftStore' && !game.processName?.trim() ? undefined : this.activeProcessId ?? this.child?.pid,
-        processName: game.processName,
-        titleHint: game.title
-      });
-      if (!window || !(await isGameWindowVisible(window))) {
-        this.handleGameExit(game);
-        return;
-      }
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 1250));
+      this.activeWindow = window;
+      this.activeProcessId = window.processId;
+      if (attempt < GRACEFUL_CLOSE_MAX_ATTEMPTS - 1) {
+        await new Promise((resolve) => setTimeout(resolve, GRACEFUL_CLOSE_RETRY_DELAY_MS));
       }
     }
 
     this.setActiveState({
-      status: this.closeFallbackStatus,
+      status: 'minimizedToHome',
       game,
-      message: `${game.title} did not close yet. Admin force close is available from settings if needed.`,
+      message: probeFailed
+        ? `Close was requested, but NXGS could not confirm that ${game.title} exited. You can keep using the launcher or use Admin force close.`
+        : `${game.title} did not close yet. You can keep using the launcher; Admin force close is available if needed.`,
       windowDetected: Boolean(window),
       windowState: window ? 'background' : 'unknown'
     });
