@@ -22,10 +22,9 @@ import {
 import { logLine } from './logger';
 import { closeProcessByName, closeProcessByPid, isProcessRunning, isProcessRunningByPid } from './windowsProcess';
 import {
-  activateGameWindow,
   closeGameWindow,
   findGameWindow,
-  getGameWindowActivationState,
+  isWindowsTaskbarVisible,
   isGameWindowVisible,
   keepGameWindowOnTop,
   type GameWindowActivationState,
@@ -33,10 +32,15 @@ import {
   minimizeGameWindow,
   prepareGameWindowForReveal,
   releaseGameWindowTopMost,
-  resumeGameWindowFast,
   setWindowsTaskbarVisible,
   waitForGameWindow
 } from './windowManagerService';
+import {
+  CONSOLE_GAME_LAUNCH_MODE,
+  describeGamePresentation,
+  gamePresentationFailures,
+  isFullscreenGamePresentation
+} from './gamePresentation';
 
 type LauncherEvents = {
   onGameExited: (game: GameRecord) => void;
@@ -84,6 +88,7 @@ export class GameLauncher {
   private activeProcessId: number | null = null;
   private gameInForeground = false;
   private taskbarSuppressed = false;
+  private presentationReinforcementInFlight = false;
   private lastHandoffError: string | undefined;
   private lastHomeResult: string | undefined;
   private lastResumeResult: string | undefined;
@@ -432,7 +437,7 @@ export class GameLauncher {
       this.lastHandoffError = message;
       this.lastResumeResult = message;
       await logLine('warn', `Native resume failed for ${game.title}: ${message}`);
-      this.focusLauncher();
+      this.showLaunchShield();
       this.setActiveState({
         status: 'quickOverlayOpen',
         game,
@@ -688,8 +693,7 @@ export class GameLauncher {
         'warn',
         `Window detection timed out for ${game.title}; retaining the active session and keeping NXGS Play visible.`
       );
-      this.releaseLaunchShield();
-      this.focusLauncher();
+      this.showLaunchShield();
       this.setActiveState({
         status: 'quickOverlayOpen',
         game,
@@ -740,7 +744,7 @@ export class GameLauncher {
       }
 
       await logLine('warn', `Launch handoff failed for ${game.title}: ${message}. Keeping NXGS Play visible.`);
-      this.focusLauncher();
+      this.showLaunchShield();
       this.setActiveState({
         status: 'quickOverlayOpen',
         game,
@@ -1045,8 +1049,8 @@ export class GameLauncher {
     });
   }
 
-  private launchMode(game: GameRecord): GameLaunchMode {
-    return game.launchMode ?? 'borderlessPreferred';
+  private launchMode(_game: GameRecord): GameLaunchMode {
+    return CONSOLE_GAME_LAUNCH_MODE;
   }
 
   private clearReinforcementTimers(): void {
@@ -1057,16 +1061,29 @@ export class GameLauncher {
   }
 
   private async suppressWindowsTaskbar(): Promise<void> {
-    if (this.taskbarSuppressed) {
-      return;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        if (!this.taskbarSuppressed || (await isWindowsTaskbarVisible())) {
+          await setWindowsTaskbarVisible(false);
+        }
+        if (!(await isWindowsTaskbarVisible())) {
+          this.taskbarSuppressed = true;
+          if (attempt > 1) {
+            await logLine('info', `Windows taskbar hidden after ${attempt} attempts.`);
+          }
+          return;
+        }
+        lastError = new Error('Windows still reports a visible taskbar after the hide command.');
+      } catch (error) {
+        lastError = error;
+      }
+      this.taskbarSuppressed = false;
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 120));
     }
-    this.taskbarSuppressed = true;
-    try {
-      await setWindowsTaskbarVisible(false);
-      await logLine('info', 'Windows taskbar hidden for customer game handoff.');
-    } catch (error) {
-      await logLine('warn', `Could not hide Windows taskbar during game launch: ${String(error)}`);
-    }
+    const message = `Could not establish taskbar-free gameplay after 3 attempts: ${String(lastError)}`;
+    await logLine('error', message);
+    throw new Error(message);
   }
 
   private restoreWindowsTaskbar(): void {
@@ -1087,15 +1104,6 @@ export class GameLauncher {
     if (!window) {
       return;
     }
-    if (!this.shouldUseFullscreenPresentation()) {
-      window.setAlwaysOnTop(false);
-      window.setFullScreen(false);
-      window.setMenuBarVisibility(false);
-      window.show();
-      window.focus();
-      void logLine('info', 'Skipped the fullscreen launch shield because windowed Admin mode is active.');
-      return;
-    }
     const display = screen.getDisplayMatching(window.getBounds());
     window.setBounds(display.bounds);
     window.show();
@@ -1108,14 +1116,6 @@ export class GameLauncher {
   private releaseLaunchShield(): void {
     const window = this.windowProvider();
     if (!window || window.isDestroyed()) {
-      return;
-    }
-    if (!this.shouldUseFullscreenPresentation()) {
-      window.setAlwaysOnTop(false);
-      window.setFullScreen(false);
-      window.setMenuBarVisibility(false);
-      if (!window.isVisible()) window.show();
-      void logLine('info', 'Skipped fullscreen shield restoration because windowed Admin mode is active.');
       return;
     }
     const display = screen.getDisplayMatching(window.getBounds());
@@ -1137,51 +1137,52 @@ export class GameLauncher {
     focusGeneration: number
   ): Promise<GameWindowInfo> {
     let targetWindow = window;
-    const shellHostedStoreApp = game.launchType === 'microsoftStore' && !game.processName?.trim();
     try {
       this.assertFocusOperationCurrent(focusGeneration, game);
+      this.showLaunchShield();
       await this.suppressWindowsTaskbar();
       this.assertFocusOperationCurrent(focusGeneration, game);
-      let reinforcement;
-      if (reason === 'resume') {
-        await logLine('info', `Fast resume handoff for ${game.title}: restoring known window ${window.handle}.`);
-        // NXGS remains fullscreen behind the game so the Windows shell is never exposed.
-        this.releaseLaunchShield();
-        targetWindow = await this.reactivateShellHostedStoreWindow(game, targetWindow, focusGeneration);
-        reinforcement = shellHostedStoreApp
-          ? await this.confirmShellHostedStoreActivation(game, targetWindow, focusGeneration)
-          : await resumeGameWindowFast(targetWindow, launchMode);
-        this.assertFocusOperationCurrent(focusGeneration, game);
-        if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
-          throw new Error('This game is not ready to resume yet. Try again in a moment.');
-        }
-      } else {
-        this.showLaunchShield();
-        await logLine('info', `${reason} handoff for ${game.title}: preparing window ${window.handle} while NXGS Play remains visible.`);
-        if (!shellHostedStoreApp) {
-          await prepareGameWindowForReveal(window, launchMode);
-        }
-        this.assertFocusOperationCurrent(focusGeneration, game);
+      await logLine(
+        'info',
+        `${reason} handoff for ${game.title}: enforcing protected fullscreen on window ${window.handle}.`
+      );
+      targetWindow = await this.reactivateShellHostedStoreWindow(game, targetWindow, focusGeneration);
+      await prepareGameWindowForReveal(targetWindow, launchMode);
+      this.assertFocusOperationCurrent(focusGeneration, game);
 
-        // Keep NXGS visible as the console shell cover while Windows grants the game foreground focus.
-        this.releaseLaunchShield();
-        targetWindow = await this.reactivateShellHostedStoreWindow(game, targetWindow, focusGeneration);
-        if (shellHostedStoreApp) {
-          reinforcement = await this.confirmShellHostedStoreActivation(game, targetWindow, focusGeneration);
-        } else {
-          await activateGameWindow(targetWindow, launchMode);
-          this.assertFocusOperationCurrent(focusGeneration, game);
-          reinforcement = await keepGameWindowOnTop(targetWindow, launchMode);
-        }
+      // NXGS stays fullscreen behind the game while Windows grants foreground focus.
+      this.releaseLaunchShield();
+      let lastState: GameWindowActivationState | null = null;
+      for (let attempt = 1; attempt <= 8; attempt += 1) {
         this.assertFocusOperationCurrent(focusGeneration, game);
-      }
-      if (!reinforcement?.isForeground || !reinforcement.isVisible || reinforcement.isMinimized) {
-        throw new Error('This game is not ready to resume yet. Try again in a moment.');
+        lastState = await keepGameWindowOnTop(targetWindow, launchMode);
+        this.assertFocusOperationCurrent(focusGeneration, game);
+        let taskbarVisible = await isWindowsTaskbarVisible();
+        if (taskbarVisible) {
+          await this.suppressWindowsTaskbar();
+          taskbarVisible = await isWindowsTaskbarVisible();
+        }
+        if (isFullscreenGamePresentation(lastState, taskbarVisible)) {
+          await logLine(
+            'info',
+            `${reason} handoff for ${game.title}: protected fullscreen confirmed on attempt ${attempt}; ` +
+              describeGamePresentation(lastState, taskbarVisible)
+          );
+          await logLine('info', `NXGS Play remains fullscreen behind ${game.title} as the protected console shell cover.`);
+          return targetWindow;
+        }
+        await logLine(
+          'warn',
+          `${reason} fullscreen attempt ${attempt}/8 failed for ${game.title}: ` +
+            describeGamePresentation(lastState, taskbarVisible)
+        );
+        if (attempt < 8) await new Promise((resolve) => setTimeout(resolve, 180));
       }
 
-      await logLine('info', `${reason} handoff for ${game.title}: visible, focused game window confirmed.`);
-      await logLine('info', `NXGS Play remains fullscreen behind ${game.title} as the protected console shell cover.`);
-      return targetWindow;
+      throw new Error(
+        `NXGS could not establish protected fullscreen gameplay after 8 attempts (${describeGamePresentation(lastState)}). ` +
+          'The game is still tracked; use Resume Game to retry.'
+      );
     } catch (error) {
       if (error instanceof FocusOperationCanceledError) {
         throw error;
@@ -1200,12 +1201,70 @@ export class GameLauncher {
     this.clearReinforcementTimers();
     for (const delayMs of [250, 750, 1500, 3000, 5000]) {
       const timer = setTimeout(() => {
-        if (this.activeGame?.id !== game.id || this.state.status !== 'running' || !this.gameInForeground) {
+        if (
+          this.activeGame?.id !== game.id ||
+          this.state.status !== 'running' ||
+          !this.gameInForeground ||
+          this.presentationReinforcementInFlight
+        ) {
           return;
         }
-        void keepGameWindowOnTop(window, launchMode).catch((error) => {
-          void logLine('warn', `Could not reinforce protected fullscreen for ${game.title}: ${String(error)}`);
-        });
+        this.presentationReinforcementInFlight = true;
+        void (async () => {
+          let lastState: GameWindowActivationState | null = null;
+          let taskbarVisible = false;
+          for (let attempt = 1; attempt <= 3; attempt += 1) {
+            lastState = await keepGameWindowOnTop(window, launchMode);
+            await this.suppressWindowsTaskbar();
+            taskbarVisible = await isWindowsTaskbarVisible();
+            if (isFullscreenGamePresentation(lastState, taskbarVisible)) return;
+            await logLine(
+              'warn',
+              `Fullscreen reinforcement ${attempt}/3 failed for ${game.title}: ` +
+                describeGamePresentation(lastState, taskbarVisible)
+            );
+            if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 140));
+          }
+
+          if (this.activeGame?.id !== game.id || this.state.status !== 'running') return;
+          const failures = gamePresentationFailures(lastState, taskbarVisible).join('; ');
+          this.lastHandoffError = `Protected fullscreen was lost: ${failures}.`;
+          this.gameInForeground = false;
+          this.clearReinforcementTimers();
+          this.showLaunchShield();
+          this.setActiveState({
+            status: 'quickOverlayOpen',
+            game,
+            message: `Fullscreen presentation was interrupted (${failures}). Choose Resume Game to retry.`,
+            windowDetected: true,
+            windowState: 'background'
+          });
+          await logLine(
+            'error',
+            `Small-window gameplay rejected for ${game.title}; NXGS restored its shell shield. ` +
+              describeGamePresentation(lastState, taskbarVisible)
+          );
+        })()
+          .catch((error) => {
+            if (this.activeGame?.id === game.id && this.state.status === 'running') {
+              const message = `Protected fullscreen enforcement failed: ${String(error)}`;
+              this.lastHandoffError = message;
+              this.gameInForeground = false;
+              this.clearReinforcementTimers();
+              this.showLaunchShield();
+              this.setActiveState({
+                status: 'quickOverlayOpen',
+                game,
+                message: `${message}. Choose Resume Game to retry.`,
+                windowDetected: true,
+                windowState: 'background'
+              });
+              void logLine('error', `${message}. NXGS restored its fullscreen shell shield.`);
+            }
+          })
+          .finally(() => {
+            this.presentationReinforcementInFlight = false;
+          });
       }, delayMs);
       this.reinforceTimers.push(timer);
     }
@@ -1243,41 +1302,6 @@ export class GameLauncher {
       );
     }
     return refreshedWindow;
-  }
-
-  private async confirmShellHostedStoreActivation(
-    game: GameRecord,
-    window: GameWindowInfo,
-    focusGeneration: number
-  ): Promise<GameWindowActivationState | null> {
-    let state: GameWindowActivationState | null = null;
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      this.assertFocusOperationCurrent(focusGeneration, game);
-      state = await getGameWindowActivationState(window);
-      if (state?.isForeground && state.isVisible && !state.isMinimized) {
-        return state;
-      }
-      if (attempt < 5) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-    }
-
-    const gameProcessRunning = await isProcessRunning(game.title);
-    if (
-      state &&
-      gameProcessRunning &&
-      state.isVisible &&
-      !state.isMinimized &&
-      state.width > 300 &&
-      state.height > 200
-    ) {
-      await logLine(
-        'info',
-        `Windows kept ${game.title} in a composition-hosted Store frame; NXGS confirmed its process and full-size visible frame after AUMID activation.`
-      );
-      return { ...state, isForeground: true };
-    }
-    return state;
   }
 
   private beginFocusOperation(reason: 'launch' | 'resume', game: GameRecord): number {

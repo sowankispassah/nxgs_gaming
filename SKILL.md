@@ -1,6 +1,6 @@
 ---
 name: nxgs-play-project-workflow
-description: Use when working in the NXGS Play project to preserve its standalone Electron/React/TypeScript launcher architecture, validate builds, publish packaged updates through GitHub Releases and the live update manifest, commit successful changes, and push to GitHub when credentials are available.
+description: Use when working in the NXGS Play project, especially on game launch, resume, switching, quick overlays, kiosk mode, window management, fullscreen presentation, or taskbar visibility, to preserve its console-shell invariants, validate builds, and publish packaged updates through GitHub Releases and the live update manifest.
 ---
 
 # NXGS Play Project Workflow
@@ -35,3 +35,15 @@ Follow these rules for every future coding change in this project:
 - Commit changes after successful checks.
 - Push to GitHub after a successful commit when credentials are available.
 - Never force push without explicit approval.
+
+## Gameplay presentation invariant
+
+Treat fullscreen gameplay as a hard success condition after every change involving game launch, resume, switching, launcher-to-game return, quick overlays, kiosk mode, window management, fullscreen behavior, or taskbar visibility:
+
+- Every launched or resumed game must cover its entire monitor in fullscreen or borderless fullscreen.
+- No title bar, resizable border, Windows taskbar, desktop, device background, or NXGS bottom navbar may remain visible over gameplay.
+- Never mark a game `running` merely because its window is visible or foreground. Verify monitor-edge coverage, non-minimized foreground state, borderless window styles, and hidden taskbar first.
+- Keep the fullscreen NXGS shell shield behind every handoff so failed or delayed activation cannot expose the desktop.
+- If validation fails, keep retrying native fullscreen enforcement with bounded, logged attempts. Keep or restore the NXGS shield and leave the session visibly unresolved instead of accepting small-window gameplay.
+- Log the game rect, monitor rect, foreground/minimized/visible state, window chrome state, taskbar state, and specific validation failures.
+- Add or run regression coverage for exact monitor coverage, overscan, small-window rejection, chrome rejection, taskbar rejection, and lost-foreground rejection.

@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { GameLaunchMode } from '../shared/types';
+import { describeGamePresentation, isFullscreenGamePresentation } from './gamePresentation';
 import { normalizeProcessName } from './windowsProcess';
 
 const execFileAsync = promisify(execFile);
@@ -30,10 +31,15 @@ interface ActivationOptions {
 
 export interface GameWindowActivationState {
   foregroundHandle: number;
+  hasWindowChrome: boolean;
   isForeground: boolean;
   isMinimized: boolean;
   isVisible: boolean;
   height: number;
+  monitorHeight: number;
+  monitorWidth: number;
+  monitorX: number;
+  monitorY: number;
   width: number;
   x: number;
   y: number;
@@ -74,6 +80,38 @@ foreach ($class in $classes) {
 `;
 
   await runPowerShell(script);
+}
+
+export async function isWindowsTaskbarVisible(): Promise<boolean> {
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class TaskbarVisibilityWin32 {
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+}
+"@
+$visible = $false
+foreach ($class in @("Shell_TrayWnd", "Shell_SecondaryTrayWnd")) {
+  $main = [TaskbarVisibilityWin32]::FindWindow($class, $null)
+  if ($main -ne [IntPtr]::Zero -and [TaskbarVisibilityWin32]::IsWindowVisible($main)) { $visible = $true }
+  $after = [IntPtr]::Zero
+  while ($true) {
+    $hwnd = [TaskbarVisibilityWin32]::FindWindowEx([IntPtr]::Zero, $after, $class, $null)
+    if ($hwnd -eq [IntPtr]::Zero) { break }
+    if ([TaskbarVisibilityWin32]::IsWindowVisible($hwnd)) { $visible = $true }
+    $after = $hwnd
+  }
+}
+if ($visible) { "true" } else { "false" }
+`;
+  return (await runPowerShell(script)).trim().toLowerCase() === 'true';
 }
 
 function powershellQuote(value: string): string {
@@ -290,10 +328,15 @@ function parseActivationState(raw: string): GameWindowActivationState | null {
     const parsed = JSON.parse(raw) as Partial<GameWindowActivationState>;
     return {
       foregroundHandle: Number(parsed.foregroundHandle ?? 0),
+      hasWindowChrome: Boolean(parsed.hasWindowChrome),
       isForeground: Boolean(parsed.isForeground),
       isMinimized: Boolean(parsed.isMinimized),
       isVisible: Boolean(parsed.isVisible),
       height: Number(parsed.height ?? 0),
+      monitorHeight: Number(parsed.monitorHeight ?? 0),
+      monitorWidth: Number(parsed.monitorWidth ?? 0),
+      monitorX: Number(parsed.monitorX ?? 0),
+      monitorY: Number(parsed.monitorY ?? 0),
       width: Number(parsed.width ?? 0),
       x: Number(parsed.x ?? 0),
       y: Number(parsed.y ?? 0)
@@ -386,18 +429,18 @@ $useProcessActivate = ${processActivate ? '$true' : '$false'}
 $useTopMost = ${topMost ? '$true' : '$false'}
 $overscanPx = ${overscanPx}
 $compensateFrameChrome = ${compensateFrameChrome ? '$true' : '$false'}
+$gwlStyle = -16
+$gwlExStyle = -20
+$wsPopup = 0x80000000L
+$wsVisible = 0x10000000L
+$wsOverlappedWindow = 0x00CF0000L
+$borderExStyles = 0x00000001L -bor 0x00000100L -bor 0x00000200L -bor 0x00020000L -bor 0x00040000L
 [Win32]::AllowSetForegroundWindow(-1) | Out-Null
 [Win32]::OpenIcon($hwnd) | Out-Null
 [Win32]::ShowWindow($hwnd, 9) | Out-Null
 Start-Sleep -Milliseconds 80
 [Win32]::ShowWindowAsync($hwnd, 9) | Out-Null
 if ($useBorderless) {
-  $gwlStyle = -16
-  $gwlExStyle = -20
-  $wsPopup = 0x80000000L
-  $wsVisible = 0x10000000L
-  $wsOverlappedWindow = 0x00CF0000L
-  $borderExStyles = 0x00000001L -bor 0x00000100L -bor 0x00000200L -bor 0x00020000L -bor 0x00040000L
   $style = [Win32]::GetWindowLongPtr($hwnd, $gwlStyle).ToInt64()
   $exStyle = [Win32]::GetWindowLongPtr($hwnd, $gwlExStyle).ToInt64()
   $newStyle = ($style -band (-bnot $wsOverlappedWindow)) -bor $wsPopup -bor $wsVisible
@@ -491,8 +534,16 @@ Start-Sleep -Milliseconds 160
 $foreground = [Win32]::GetForegroundWindow()
 $rect = New-Object RECT
 [Win32]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
+$finalStyle = [Win32]::GetWindowLongPtr($hwnd, $gwlStyle).ToInt64()
+$finalExStyle = [Win32]::GetWindowLongPtr($hwnd, $gwlExStyle).ToInt64()
+$hasWindowChrome = (($finalStyle -band $wsOverlappedWindow) -ne 0) -or (($finalExStyle -band $borderExStyles) -ne 0)
+$finalMonitor = [Win32]::MonitorFromWindow($hwnd, 2)
+$finalMonitorInfo = New-Object MONITORINFO
+$finalMonitorInfo.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type][MONITORINFO])
+$hasMonitorInfo = [Win32]::GetMonitorInfo($finalMonitor, [ref]$finalMonitorInfo)
 [pscustomobject]@{
   foregroundHandle = [int64]$foreground
+  hasWindowChrome = [bool]$hasWindowChrome
   isForeground = ($foreground -eq $hwnd)
   isMinimized = [Win32]::IsIconic($hwnd)
   isVisible = [Win32]::IsWindowVisible($hwnd)
@@ -500,6 +551,10 @@ $rect = New-Object RECT
   y = [int]$rect.Top
   width = [int]($rect.Right - $rect.Left)
   height = [int]($rect.Bottom - $rect.Top)
+  monitorX = if ($hasMonitorInfo) { [int]$finalMonitorInfo.rcMonitor.Left } else { 0 }
+  monitorY = if ($hasMonitorInfo) { [int]$finalMonitorInfo.rcMonitor.Top } else { 0 }
+  monitorWidth = if ($hasMonitorInfo) { [int]($finalMonitorInfo.rcMonitor.Right - $finalMonitorInfo.rcMonitor.Left) } else { 0 }
+  monitorHeight = if ($hasMonitorInfo) { [int]($finalMonitorInfo.rcMonitor.Bottom - $finalMonitorInfo.rcMonitor.Top) } else { 0 }
 } | ConvertTo-Json -Compress
 `;
 
@@ -522,26 +577,20 @@ export async function prepareGameWindowForReveal(
 export async function activateGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode = 'maximized'): Promise<void> {
   const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
   let lastAttempt: GameWindowActivationState | null = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     lastAttempt = await runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
       processActivate: !isShellHostedStoreFrame(window)
     });
-    if (
-      lastAttempt &&
-      lastAttempt.isForeground &&
-      lastAttempt.isVisible &&
-      !lastAttempt.isMinimized &&
-      lastAttempt.width > 32 &&
-      lastAttempt.height > 32
-    ) {
+    if (isFullscreenGamePresentation(lastAttempt)) {
       return;
     }
+    if (attempt < 5) await new Promise((resolve) => setTimeout(resolve, 180));
   }
 
-  const state = lastAttempt
-    ? `visible=${lastAttempt.isVisible}, minimized=${lastAttempt.isMinimized}, foreground=${lastAttempt.isForeground}, size=${lastAttempt.width}x${lastAttempt.height}`
-    : 'no activation state returned';
-  throw new Error(`This game is not ready to resume yet (${state}). Try Resume Game again in a moment.`);
+  throw new Error(
+    `NXGS could not establish protected fullscreen gameplay (${describeGamePresentation(lastAttempt)}). ` +
+      'The session remains unresolved; try Resume Game again.'
+  );
 }
 
 export async function keepGameWindowOnTop(
@@ -613,19 +662,43 @@ Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public struct InspectWindowRect { public int Left; public int Top; public int Right; public int Bottom; }
+public struct InspectMonitorInfo {
+  public int cbSize;
+  public InspectWindowRect rcMonitor;
+  public InspectWindowRect rcWork;
+  public uint dwFlags;
+}
 public static class InspectGameWindowWin32 {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr monitor, ref InspectMonitorInfo info);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out InspectWindowRect rect);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+  [DllImport("user32.dll", EntryPoint="GetWindowLong")] public static extern int GetWindowLong32(IntPtr hwnd, int index);
+  [DllImport("user32.dll", EntryPoint="GetWindowLongPtr")] public static extern IntPtr GetWindowLongPtr64(IntPtr hwnd, int index);
+  public static IntPtr GetWindowLongPtr(IntPtr hwnd, int index) {
+    if (IntPtr.Size == 8) return GetWindowLongPtr64(hwnd, index);
+    return new IntPtr(GetWindowLong32(hwnd, index));
+  }
 }
 "@
 $hwnd = [IntPtr]${Math.trunc(window.handle)}
 $foreground = [InspectGameWindowWin32]::GetForegroundWindow()
 $rect = New-Object InspectWindowRect
 [InspectGameWindowWin32]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
+$monitor = [InspectGameWindowWin32]::MonitorFromWindow($hwnd, 2)
+$monitorInfo = New-Object InspectMonitorInfo
+$monitorInfo.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type][InspectMonitorInfo])
+$hasMonitorInfo = [InspectGameWindowWin32]::GetMonitorInfo($monitor, [ref]$monitorInfo)
+$style = [InspectGameWindowWin32]::GetWindowLongPtr($hwnd, -16).ToInt64()
+$exStyle = [InspectGameWindowWin32]::GetWindowLongPtr($hwnd, -20).ToInt64()
+$wsOverlappedWindow = 0x00CF0000L
+$borderExStyles = 0x00000001L -bor 0x00000100L -bor 0x00000200L -bor 0x00020000L -bor 0x00040000L
+$hasWindowChrome = (($style -band $wsOverlappedWindow) -ne 0) -or (($exStyle -band $borderExStyles) -ne 0)
 [pscustomobject]@{
   foregroundHandle = [int64]$foreground
+  hasWindowChrome = [bool]$hasWindowChrome
   isForeground = ($foreground -eq $hwnd)
   isMinimized = [InspectGameWindowWin32]::IsIconic($hwnd)
   isVisible = [InspectGameWindowWin32]::IsWindowVisible($hwnd)
@@ -633,6 +706,10 @@ $rect = New-Object InspectWindowRect
   y = [int]$rect.Top
   width = [int]($rect.Right - $rect.Left)
   height = [int]($rect.Bottom - $rect.Top)
+  monitorX = if ($hasMonitorInfo) { [int]$monitorInfo.rcMonitor.Left } else { 0 }
+  monitorY = if ($hasMonitorInfo) { [int]$monitorInfo.rcMonitor.Top } else { 0 }
+  monitorWidth = if ($hasMonitorInfo) { [int]($monitorInfo.rcMonitor.Right - $monitorInfo.rcMonitor.Left) } else { 0 }
+  monitorHeight = if ($hasMonitorInfo) { [int]($monitorInfo.rcMonitor.Bottom - $monitorInfo.rcMonitor.Top) } else { 0 }
 } | ConvertTo-Json -Compress
 `;
   return parseActivationState(await runPowerShell(script));
@@ -664,5 +741,5 @@ export async function closeGameWindow(window: GameWindowInfo): Promise<void> {
 }
 
 function isShellHostedStoreFrame(window: GameWindowInfo): boolean {
-  return /^explorer$/i.test(window.processName) && !window.title.trim();
+  return /^applicationframehost$/i.test(window.processName) || (/^explorer$/i.test(window.processName) && !window.title.trim());
 }
