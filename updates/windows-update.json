@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.14",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.14/NXGS-Play-Setup.exe",
-    "sha256":  "31d4804c40c6d3dbc445d7007c753d9135fc186e5ada24798230bd550527a997",
+    "version":  "0.14.15",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.15/NXGS-Play-Setup.exe",
+    "sha256":  "134776f3282ba6801cdd2c9fb54b841566c7f87fc9daf5c69c1f5fde7e61c8f6",
     "required":  false,
-    "notes":  "Fixes the launch confirmation staying on Launching after the game window is already running. The dialog and blocking transition now clear at confirmed window detection, and the selected session timer starts once at that same boundary."
+    "notes":  "Keeps NXGS responsive while games close: the bottom-switcher Close action returns to an interactive launcher immediately, stale focus handoffs are canceled, exit checks run in the background, and recurring PowerShell visibility probes no longer create contention."
 }
