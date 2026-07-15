@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.11",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.11/NXGS-Play-Setup.exe",
-    "sha256":  "597cc91e72bd653c700747cb6545565561026bd01a362b9f54ecceba6ba12716",
+    "version":  "0.14.12",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.12/NXGS-Play-Setup.exe",
+    "sha256":  "1dd5da948b68d6c7c8544e3eafde3258aa9704c3b1efde53b79f8ba9e780b7f0",
     "required":  false,
-    "notes":  "The Audio and Brightness quick panel is now centered above the full bottom navbar with reference-matched spacing and proportions."
+    "notes":  "Quick Audio and Brightness controls now open ready to use, respond immediately to mouse and controller input, and align their slider thumbs precisely at 0% and 100%."
 }
