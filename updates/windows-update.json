@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.18",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.18/NXGS-Play-Setup.exe",
-    "sha256":  "b505c300affdafe0e20b315b82c5125d32e1f57d6cc32b3ef720a8bf2bdce3e3",
+    "version":  "0.14.19",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.19/NXGS-Play-Setup.exe",
+    "sha256":  "43da338ece5de78e9b128d99cd958832561e77362f2582002832510728c0e231",
     "required":  false,
-    "notes":  "The Microsoft Store/source indicator has been removed from customer Home. Game titles now stay on one line, use the available launcher width, and end with an ellipsis when too long."
+    "notes":  "Controller navigation is now global and predictable: one press or stick flick moves one item, held directions repeat after a console-style delay, Home reaches Search/Settings/User, and time selection, Settings, quick controls, switcher, PIN, Admin options, and game menus support A/X confirm and B/Circle back."
 }
