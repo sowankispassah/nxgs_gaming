@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.23",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.23/NXGS-Play-Setup.exe",
-    "sha256":  "a63766f7a07fd29f1ba26007558b44d9d3392150b0727c7f4b7f31ebfe137023",
+    "version":  "0.14.24",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.24/NXGS-Play-Setup.exe",
+    "sha256":  "bce27b5d354881cd01b6ba954084e4034f4483321551b490dc4a093b49781bf9",
     "required":  false,
-    "notes":  "Fixes Bluetooth controllers that appear connected but cannot navigate NXGS. The launcher now detects whether controller input is actually ready and provides Repair Input for stale Bluetooth links."
+    "notes":  "Fixes Bluetooth status and Scan for Devices failing with ENAMETOOLONG by streaming native Bluetooth commands instead of placing them on the Windows command line."
 }
