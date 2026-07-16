@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.27",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.27/NXGS-Play-Setup.exe",
-    "sha256":  "6b577c8cf08fe055c7931568b7b5eba701311e7861874633a2d19749b66170d0",
+    "version":  "0.14.28",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.28/NXGS-Play-Setup.exe",
+    "sha256":  "2175f7e0f4ffefa07857292eeeb90384262cd500018199b1b41e18a953a77b72",
     "required":  false,
-    "notes":  "Settings navigation is now instant. Bluetooth and System keep cached values visible, avoid refresh work on hover, and update stale status quietly."
+    "notes":  "Settings pages now preview instantly while navigating, without earlier Bluetooth or System loads slowing continued scrolling."
 }
