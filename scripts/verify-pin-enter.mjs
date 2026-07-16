@@ -87,8 +87,10 @@ try {
   }
   await evaluate("Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [] })");
   await waitFor("Boolean(document.querySelector('button[aria-label=Settings]'))", 'Settings button did not render.');
-  const initialFocusDesign = await evaluate("(() => { const games = [...document.querySelectorAll('.console-tabs button')].find((button) => button.textContent.trim() === 'Games'); games.focus(); const button = getComputedStyle(games); const group = getComputedStyle(games.closest('.console-tabs')); return { outlineStyle: button.outlineStyle, outlineWidth: button.outlineWidth, groupRadius: group.borderRadius, groupShadow: group.boxShadow }; })()");
-  if (initialFocusDesign.outlineStyle !== 'none' || initialFocusDesign.outlineWidth !== '0px' || initialFocusDesign.groupRadius === '0px' || initialFocusDesign.groupShadow === 'none') {
+  await waitFor("window.nxgs.getDiagnostics().then((data) => data.controllerCompatibility.driverInstalled && data.controllerCompatibility.mapperRunning)", 'Controller compatibility mapper did not start with the launcher.');
+  console.log('PASS: Controller compatibility started hidden with the launcher and detected the installed virtual controller driver.');
+  const initialFocusDesign = await evaluate("(() => { const games = [...document.querySelectorAll('.console-tabs button')].find((button) => button.textContent.trim() === 'Games'); games.focus(); const button = getComputedStyle(games); const group = getComputedStyle(games.closest('.console-tabs')); return { outlineStyle: button.outlineStyle, outlineWidth: button.outlineWidth, buttonShadow: button.boxShadow, groupRadius: group.borderRadius, groupShadow: group.boxShadow }; })()");
+  if (initialFocusDesign.outlineStyle !== 'none' || initialFocusDesign.outlineWidth !== '0px' || initialFocusDesign.buttonShadow === 'none' || initialFocusDesign.groupRadius === '0px' || initialFocusDesign.groupShadow === 'none') {
     throw new Error(`Initial fullscreen focus did not use the rounded NXGS style: ${JSON.stringify(initialFocusDesign)}`);
   }
   console.log('PASS: Initial fullscreen focus suppressed the browser outline and kept the rounded NXGS highlight.');
@@ -134,6 +136,10 @@ try {
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40 });
   }
   await waitFor("document.activeElement?.textContent.includes('Unlock')", 'PIN keypad Down navigation did not reach Unlock.');
+  const unlockFocusDesign = await evaluate("(() => { const style = getComputedStyle(document.activeElement); return { shadow: style.boxShadow, borderColor: style.borderColor, outline: style.outlineStyle }; })()");
+  if (unlockFocusDesign.shadow === 'none' || unlockFocusDesign.outline !== 'none' || !unlockFocusDesign.borderColor) {
+    throw new Error(`Unlock did not show the custom controller focus design: ${JSON.stringify(unlockFocusDesign)}`);
+  }
   await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38, nativeVirtualKeyCode: 38 });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38, nativeVirtualKeyCode: 38 });
   await waitFor("Boolean(document.activeElement?.closest('.pin-keypad'))", 'PIN Unlock Up navigation did not return to the keypad.');

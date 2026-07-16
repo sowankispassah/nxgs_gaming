@@ -1,6 +1,6 @@
 {
   "name": "nxgs-play",
-  "version": "0.14.20",
+  "version": "0.14.21",
   "description": "Windows-only PC gaming launcher and kiosk MVP.",
   "private": true,
   "main": "out/main/main.js",
@@ -22,6 +22,7 @@
     "test:notification-guard": "node scripts/verify-notification-guard.mjs",
     "test:home-hero": "node scripts/verify-home-hero.mjs",
     "test:controller-navigation": "node --experimental-strip-types scripts/verify-controller-navigation.mjs",
+    "test:controller-bridge": "node scripts/verify-controller-bridge.mjs",
     "test:pin-enter": "node scripts/verify-pin-enter.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit"
@@ -61,6 +62,15 @@
       {
         "from": "build/native-kiosk-hook.ps1",
         "to": "native-kiosk-hook.ps1"
+      },
+      {
+        "from": "vendor/controller-bridge",
+        "to": "controller-bridge",
+        "filter": [
+          "**/*",
+          "!BezierCurveEditor{,/**/*}",
+          "!Logs{,/**/*}"
+        ]
       }
     ],
     "win": {

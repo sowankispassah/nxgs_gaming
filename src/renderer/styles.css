@@ -10,7 +10,11 @@
   --focus-border: rgba(244, 247, 251, 0.62);
   --focus-bg: rgba(244, 247, 251, 0.1);
   --focus-bg-strong: rgba(244, 247, 251, 0.15);
-  --focus-glow: 0 0 0 3px rgba(244, 247, 251, 0.07), 0 10px 28px rgba(0, 0, 0, 0.28);
+  --focus-accent: rgba(139, 220, 255, 0.96);
+  --focus-accent-soft: rgba(109, 203, 255, 0.2);
+  --focus-glow: 0 0 0 2px var(--focus-accent), 0 0 0 6px var(--focus-accent-soft), 0 12px 30px rgba(0, 0, 0, 0.34);
+  --focus-ring: 0 0 0 2px var(--focus-accent), 0 0 0 6px var(--focus-accent-soft), 0 12px 30px rgba(0, 0, 0, 0.34);
+  --hover-ring: 0 0 0 1px rgba(244, 247, 251, 0.52), 0 8px 22px rgba(0, 0, 0, 0.24);
   --panel-bg: rgba(8, 12, 18, 0.82);
   --panel-bg-strong: rgba(10, 14, 20, 0.94);
   --panel-border: rgba(231, 236, 242, 0.17);
@@ -54,11 +58,41 @@ select {
 
 button {
   color: inherit;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease,
+    filter 80ms ease;
 }
 
 :where(button, input, select, textarea, a, [tabindex]):focus,
 :where(button, input, select, textarea, a, [tabindex]):focus-visible {
   outline: none;
+}
+
+button:not(:disabled):hover {
+  border-color: rgba(244, 247, 251, 0.58);
+  box-shadow: var(--hover-ring);
+  filter: brightness(1.08);
+}
+
+button:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
+  border-color: var(--focus-accent);
+  box-shadow: var(--focus-ring);
+  filter: brightness(1.1);
+  outline: none;
+}
+
+button:not(:disabled):is(.selected, [aria-selected='true'], [aria-pressed='true']) {
+  border-color: rgba(181, 230, 255, 0.78);
+}
+
+button:not(:disabled):active {
+  box-shadow:
+    inset 0 0 0 2px rgba(8, 14, 22, 0.34),
+    0 0 0 2px rgba(139, 220, 255, 0.72);
+  filter: brightness(0.86);
 }
 
 .app-shell {

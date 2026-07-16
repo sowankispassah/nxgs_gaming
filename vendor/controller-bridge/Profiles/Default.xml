@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DS4Windows app_version="3.5" config_version="5">
+  <outputDataToDS4>True</outputDataToDS4>
+  <OutputContDevice>X360</OutputContDevice>
+</DS4Windows>

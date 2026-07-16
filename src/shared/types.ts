@@ -141,6 +141,26 @@ export type ControllerHomeSupport = 'yes' | 'no' | 'unknown';
 
 export type KioskMode = 'customer' | 'admin';
 
+export type ControllerCompatibilityStatus =
+  | 'unavailable'
+  | 'idle'
+  | 'starting'
+  | 'installingDriver'
+  | 'driverRequired'
+  | 'waitingForController'
+  | 'ready'
+  | 'error';
+
+export interface ControllerCompatibilityDiagnostics {
+  status: ControllerCompatibilityStatus;
+  driverInstalled: boolean;
+  mapperRunning: boolean;
+  xinputReady: boolean;
+  message?: string;
+  lastError?: string;
+  updatedAt?: string;
+}
+
 export type KioskAdminAction =
   | 'minimize'
   | 'exitFullscreen'
@@ -170,6 +190,7 @@ export interface AppDiagnostics {
     lastButtonPressed?: string;
     lastNavigationAction?: string;
   };
+  controllerCompatibility: ControllerCompatibilityDiagnostics;
   activeGame: {
     title?: string;
     processId?: number;

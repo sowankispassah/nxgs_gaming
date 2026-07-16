@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, ty
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { DataStore } from './database';
+import { ControllerCompatibilityService } from './controllerCompatibilityService';
 import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
@@ -47,6 +48,7 @@ let controllerDiagnostics: AppDiagnostics['controller'] = {
 };
 
 const store = new DataStore();
+const controllerCompatibility = new ControllerCompatibilityService();
 
 function getAppIconPath(): string {
   return app.isPackaged ? join(process.resourcesPath, 'icon.ico') : join(app.getAppPath(), 'build', 'icon.ico');
@@ -152,6 +154,7 @@ function buildDiagnostics(): AppDiagnostics {
   return {
     shortcuts: inputDiagnostics.shortcuts,
     controller: controllerDiagnostics,
+    controllerCompatibility: controllerCompatibility.diagnostics,
     activeGame: launcher.diagnosticState,
     kiosk: {
       ...inputDiagnostics.kiosk,
@@ -432,6 +435,7 @@ function applyKioskSettings(_settings: AppSettings): void {
 function prepareForQuit(): void {
   isQuitting = true;
   sessionTimer.stop('idle', false);
+  controllerCompatibility.stop();
   void setWindowsTaskbarVisible(true);
   kioskInput.unregisterAll();
   stopWindowsControlWorker();
@@ -661,6 +665,10 @@ function registerIpc(): void {
         throw new Error('Game not found.');
       }
       sessionTimer.setLaunching(game, request.durationMinutes);
+      const compatibility = await controllerCompatibility.ensureReady();
+      if (!compatibility.xinputReady) {
+        await logLine('warn', `Launching ${game.title} without confirmed XInput compatibility: ${compatibility.message ?? compatibility.status}`);
+      }
       await launcher.launch(game);
       startSessionWhenGameWindowIsReady(game);
       return { ok: true };
@@ -674,9 +682,13 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle('game:resumeActive', async (_event, gameId?: string): Promise<GameControlResult> =>
-    launcher.resumeActiveGame(gameId)
-  );
+  ipcMain.handle('game:resumeActive', async (_event, gameId?: string): Promise<GameControlResult> => {
+    const compatibility = await controllerCompatibility.ensureReady();
+    if (!compatibility.xinputReady) {
+      await logLine('warn', `Resuming a game without confirmed XInput compatibility: ${compatibility.message ?? compatibility.status}`);
+    }
+    return launcher.resumeActiveGame(gameId);
+  });
 
   ipcMain.handle('game:minimizeActive', async (): Promise<GameControlResult> => {
     const result = await launcher.minimizeActiveGame();
@@ -749,6 +761,7 @@ if (!hasSingleInstanceLock) {
     await createWindow();
     warmWindowsControlWorker();
     kioskInput.register();
+    void controllerCompatibility.start({ allowDriverInstall: app.isPackaged });
     if (secondInstanceFocusPending) {
       focusExistingInstance();
     }

@@ -11,3 +11,5 @@ yarn-error.log*
 pnpm-debug.log*
 Thumbs.db
 .DS_Store
+vendor/controller-bridge/BezierCurveEditor/
+vendor/controller-bridge/Logs/

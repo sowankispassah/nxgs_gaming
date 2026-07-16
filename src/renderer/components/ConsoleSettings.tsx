@@ -879,6 +879,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             <strong>{diagnostics?.controller.detected ? diagnostics.controller.name ?? 'Controller connected' : 'No active controller'}</strong>
             <small>{diagnostics?.controller.detected ? 'Connected controller is available to the launcher.' : 'Put the controller in pairing mode, then scan.'}</small>
           </div>
+          <div className={`settings-status-card ${diagnostics?.controllerCompatibility.xinputReady ? '' : 'warning'}`}>
+            <span>Game compatibility</span>
+            <strong>{diagnostics?.controllerCompatibility.xinputReady ? 'Xbox / XInput ready' : 'Preparing controller bridge'}</strong>
+            <small>{diagnostics?.controllerCompatibility.message ?? 'NXGS is checking game controller compatibility.'}</small>
+          </div>
           {bluetoothFeedback && <div className={`settings-feedback ${bluetoothFeedback.tone}`} role="status">{bluetoothFeedback.message}</div>}
           <div className="settings-detail-heading">
             <h3>Bluetooth devices</h3>

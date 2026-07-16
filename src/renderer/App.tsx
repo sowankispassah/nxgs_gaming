@@ -1741,6 +1741,11 @@ function KioskSettingsPanel(props: {
           <DiagnosticItem label="Controller Home" value={diagnostics.controller.homeSupported} />
           <DiagnosticItem label="Last controller button" value={diagnostics.controller.lastButtonPressed ?? 'none'} />
           <DiagnosticItem label="Last controller action" value={diagnostics.controller.lastNavigationAction ?? 'none'} />
+          <DiagnosticItem label="Game controller bridge" value={diagnostics.controllerCompatibility.status} />
+          <DiagnosticItem label="Virtual controller driver" value={diagnostics.controllerCompatibility.driverInstalled ? 'installed' : 'missing'} />
+          <DiagnosticItem label="Controller mapper" value={diagnostics.controllerCompatibility.mapperRunning ? 'running' : 'stopped'} />
+          <DiagnosticItem label="XInput ready" value={diagnostics.controllerCompatibility.xinputReady ? 'yes' : 'no'} />
+          <DiagnosticItem label="Controller bridge detail" value={diagnostics.controllerCompatibility.message ?? 'none'} />
           <DiagnosticItem label="Active game state" value={diagnostics.activeGame.status} />
           <DiagnosticItem label="Current game" value={diagnostics.activeGame.title ?? 'none'} />
           <DiagnosticItem label="Game process ID" value={diagnostics.activeGame.processId?.toString() ?? 'none'} />

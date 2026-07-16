@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Profile app_version="3.5" config_version="2">
+  <useExclusiveMode>False</useExclusiveMode>
+  <startMinimized>True</startMinimized>
+  <minimizeToTaskbar>False</minimizeToTaskbar>
+  <Controller1>Default</Controller1>
+  <Controller2>Default</Controller2>
+  <Controller3>Default</Controller3>
+  <Controller4>Default</Controller4>
+  <Controller5>Default</Controller5>
+  <Controller6>Default</Controller6>
+  <Controller7>Default</Controller7>
+  <Controller8>Default</Controller8>
+  <Notifications>0</Notifications>
+  <ProfileChangedNotification>False</ProfileChangedNotification>
+  <DisconnectBTAtStop>False</DisconnectBTAtStop>
+  <CloseMinimizes>True</CloseMinimizes>
+  <UseLang>en</UseLang>
+  <DeviceOptions>
+    <DS4SupportSettings>
+      <Enabled>True</Enabled>
+    </DS4SupportSettings>
+    <DualSenseSupportSettings>
+      <Enabled>True</Enabled>
+    </DualSenseSupportSettings>
+    <SwitchProSupportSettings>
+      <Enabled>False</Enabled>
+    </SwitchProSupportSettings>
+    <JoyConSupportSettings>
+      <Enabled>False</Enabled>
+    </JoyConSupportSettings>
+    <DS3SupportSettings>
+      <Enabled>False</Enabled>
+    </DS3SupportSettings>
+  </DeviceOptions>
+</Profile>
