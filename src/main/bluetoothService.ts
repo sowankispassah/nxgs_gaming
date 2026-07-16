@@ -1,5 +1,4 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 import type {
   BluetoothActionResult,
   BluetoothDeviceSummary,
@@ -7,8 +6,6 @@ import type {
   BluetoothStatus
 } from '../shared/types';
 import { logLine } from './logger';
-
-const execFileAsync = promisify(execFile);
 
 const NATIVE_BLUETOOTH_PREAMBLE = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -334,24 +331,73 @@ interface RawBluetoothAction {
 }
 
 async function runPowerShell<T>(script: string, environment: Record<string, string> = {}): Promise<T> {
-  const encoded = Buffer.from(script, 'utf16le').toString('base64');
   try {
-    const { stdout } = await execFileAsync(
-      'powershell.exe',
-      ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
-      {
-        windowsHide: true,
-        timeout: 20000,
-        maxBuffer: 4 * 1024 * 1024,
-        env: { ...process.env, ...environment }
-      }
-    );
+    const stdout = await new Promise<string>((resolve, reject) => {
+      const child = spawn(
+        'powershell.exe',
+        ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', '-'],
+        {
+          windowsHide: true,
+          env: { ...process.env, ...environment },
+          stdio: ['pipe', 'pipe', 'pipe']
+        }
+      );
+      const output: Buffer[] = [];
+      const errors: Buffer[] = [];
+      let outputBytes = 0;
+      let settled = false;
+      const finish = (callback: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        callback();
+      };
+      const timer = setTimeout(() => {
+        child.kill();
+        finish(() => reject(new Error('Bluetooth scan timed out.')));
+      }, 20000);
+
+      child.stdout.on('data', (chunk: Buffer) => {
+        outputBytes += chunk.length;
+        if (outputBytes > 4 * 1024 * 1024) {
+          child.kill();
+          finish(() => reject(new Error('Bluetooth returned too much information.')));
+          return;
+        }
+        output.push(chunk);
+      });
+      child.stderr.on('data', (chunk: Buffer) => errors.push(chunk));
+      child.on('error', (error) => finish(() => reject(error)));
+      child.on('close', (code) => {
+        finish(() => {
+          const outputText = Buffer.concat(output).toString('utf8').trim();
+          const errorText = Buffer.concat(errors).toString('utf8').trim();
+          if (code !== 0) {
+            reject(new Error(errorText || `Bluetooth PowerShell exited with ${code ?? 'unknown'}.`));
+            return;
+          }
+          if (!outputText) {
+            reject(new Error(errorText || 'No Bluetooth information was returned.'));
+            return;
+          }
+          resolve(outputText);
+        });
+      });
+      child.stdin.on('error', (error) => finish(() => reject(error)));
+      child.stdin.end(`${script}\r\n`, 'utf8');
+    });
     const output = stdout.trim();
     if (!output) throw new Error('No Bluetooth information was returned.');
     return JSON.parse(output) as T;
   } catch (error) {
-    const failure = error as { stderr?: string | Buffer; code?: string | number; killed?: boolean; signal?: string };
-    if (failure.killed || failure.signal || failure.code === 'ETIMEDOUT') throw new Error('Bluetooth scan timed out.');
+    const failure = error as { code?: string | number; message?: string };
+    await logLine(
+      'error',
+      `Bluetooth PowerShell action failed${failure.code ? ` (${failure.code})` : ''}: ${failure.message ?? String(error)}`
+    );
+    if (failure.code === 'ETIMEDOUT' || /timed out/i.test(failure.message ?? '')) {
+      throw new Error('Bluetooth scan timed out.');
+    }
     throw new Error(`Bluetooth action failed${failure.code ? ` (${failure.code})` : ''}.`);
   }
 }

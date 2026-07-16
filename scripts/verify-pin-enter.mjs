@@ -105,6 +105,9 @@ try {
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'Bluetooth / Controller').click()");
   await waitFor("Boolean(document.querySelector('.bluetooth-device-list')) && [...document.querySelectorAll('.settings-detail-heading button')].some((button) => button.textContent.includes('Scan for Devices'))", 'Bluetooth controller status did not render.');
   const bluetoothStatus = await evaluate("window.nxgs.getBluetoothStatus()");
+  if (!bluetoothStatus.supported || /ENAMETOOLONG/i.test(bluetoothStatus.message ?? '')) {
+    throw new Error(`Bluetooth status failed in the packaged launcher: ${JSON.stringify(bluetoothStatus)}`);
+  }
   const staleControllerLink = bluetoothStatus.devices.find((device) => device.controller && device.connected && !device.inputReady);
   if (staleControllerLink) {
     await waitFor("document.querySelector('.console-settings-detail').innerText.includes('Controller input unavailable') && [...document.querySelectorAll('.bluetooth-device-list button')].some((button) => button.textContent.includes('Repair Input'))", 'A stale Bluetooth controller link did not expose the accurate warning and Repair Input action.');

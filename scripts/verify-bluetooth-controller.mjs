@@ -25,6 +25,16 @@ assert.match(
   /Get-PnpDevice -PresentOnly -Class HIDClass/,
   'Bluetooth status must check for a present HID input interface'
 );
+assert.doesNotMatch(
+  bluetoothSource,
+  /-EncodedCommand/,
+  'Bluetooth scripts must not be placed on the Windows command line'
+);
+assert.match(
+  bluetoothSource,
+  /child\.stdin\.end\(`\$\{script\}\\r\\n`, 'utf8'\)/,
+  'Bluetooth scripts must be streamed through PowerShell standard input'
+);
 assert.match(
   bluetoothSource,
   /DEVPKEY_Device_ContainerId/,
