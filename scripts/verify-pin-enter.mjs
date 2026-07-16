@@ -87,8 +87,8 @@ try {
   }
   await evaluate("Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [] })");
   await waitFor("Boolean(document.querySelector('button[aria-label=Settings]'))", 'Settings button did not render.');
-  await waitFor("window.nxgs.getDiagnostics().then((data) => data.controllerCompatibility.driverInstalled && data.controllerCompatibility.mapperRunning)", 'Controller compatibility mapper did not start with the launcher.');
-  console.log('PASS: Controller compatibility started hidden with the launcher and detected the installed virtual controller driver.');
+  await waitFor("window.nxgs.getDiagnostics().then((data) => data.controllerCompatibility.driverInstalled && data.controllerCompatibility.status === 'idle' && !data.controllerCompatibility.mapperRunning)", 'Launcher Home did not keep the gameplay controller mapper idle.');
+  console.log('PASS: Launcher Home prepared controller compatibility without starting the gameplay mapper.');
   const initialFocusDesign = await evaluate("(() => { const games = [...document.querySelectorAll('.console-tabs button')].find((button) => button.textContent.trim() === 'Games'); games.focus(); const button = getComputedStyle(games); const group = getComputedStyle(games.closest('.console-tabs')); return { outlineStyle: button.outlineStyle, outlineWidth: button.outlineWidth, buttonShadow: button.boxShadow, groupRadius: group.borderRadius, groupShadow: group.boxShadow }; })()");
   if (initialFocusDesign.outlineStyle !== 'none' || initialFocusDesign.outlineWidth !== '0px' || initialFocusDesign.buttonShadow === 'none' || initialFocusDesign.groupRadius === '0px' || initialFocusDesign.groupShadow === 'none') {
     throw new Error(`Initial fullscreen focus did not use the rounded NXGS style: ${JSON.stringify(initialFocusDesign)}`);

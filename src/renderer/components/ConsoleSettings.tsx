@@ -872,6 +872,13 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
     if (selected.key === 'controller') {
       const radioLabel = bluetooth.radioState === 'on' ? 'Bluetooth on' : bluetooth.radioState === 'off' ? 'Bluetooth off' : bluetooth.radioState === 'disabled' ? 'Bluetooth disabled' : 'Bluetooth status unknown';
+      const compatibilityStatus = diagnostics?.controllerCompatibility.status ?? 'idle';
+      const compatibilityWarning = compatibilityStatus === 'error' || compatibilityStatus === 'driverRequired';
+      const compatibilityTitle = diagnostics?.controllerCompatibility.xinputReady
+        ? 'Xbox / XInput ready'
+        : compatibilityStatus === 'idle'
+          ? 'Ready for gameplay'
+          : 'Preparing controller bridge';
       return (
         <SettingsDetail title="Bluetooth / Controller" icon={<Gamepad2 size={34} />} subtitle="Find and pair devices inside NXGS" onFocus={() => setDetailMode(true)}>
           <div className={`settings-status-card ${bluetooth.radioState !== 'on' ? 'warning' : ''}`}>
@@ -879,10 +886,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             <strong>{diagnostics?.controller.detected ? diagnostics.controller.name ?? 'Controller connected' : 'No active controller'}</strong>
             <small>{diagnostics?.controller.detected ? 'Connected controller is available to the launcher.' : 'Put the controller in pairing mode, then scan.'}</small>
           </div>
-          <div className={`settings-status-card ${diagnostics?.controllerCompatibility.xinputReady ? '' : 'warning'}`}>
+          <div className={`settings-status-card ${compatibilityWarning ? 'warning' : ''}`}>
             <span>Game compatibility</span>
-            <strong>{diagnostics?.controllerCompatibility.xinputReady ? 'Xbox / XInput ready' : 'Preparing controller bridge'}</strong>
-            <small>{diagnostics?.controllerCompatibility.message ?? 'NXGS is checking game controller compatibility.'}</small>
+            <strong>{compatibilityTitle}</strong>
+            <small>{diagnostics?.controllerCompatibility.message ?? 'Starts automatically when a game launches or resumes.'}</small>
           </div>
           {bluetoothFeedback && <div className={`settings-feedback ${bluetoothFeedback.tone}`} role="status">{bluetoothFeedback.message}</div>}
           <div className="settings-detail-heading">

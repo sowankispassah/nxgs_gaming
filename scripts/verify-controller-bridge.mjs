@@ -37,8 +37,13 @@ assert.match(service, /spawn\(executable, \['-m'\]/, 'controller mapper must sta
 assert.match(service, /ensureReady\(\)/, 'controller bridge must expose a readiness boundary');
 assert.match(service, /probe-xinput\.ps1/, 'controller bridge must confirm actual XInput visibility');
 assert.match(service, /install-driver\.ps1/, 'packaged builds must support the signed driver setup');
+assert.match(service, /async prepare\(\)/, 'launcher startup must prepare bridge files without starting the mapper');
 assert.match(main, /await controllerCompatibility\.ensureReady\(\);[\s\S]*await launcher\.launch\(game\)/, 'launch must prepare controller compatibility before the game handoff');
 assert.match(main, /game:resumeActive[\s\S]*controllerCompatibility\.ensureReady\(\)/, 'resume must recheck controller compatibility');
+assert.doesNotMatch(main, /controllerCompatibility\.start\(\{ allowDriverInstall: app\.isPackaged \}\)/, 'launcher Home must not start the gameplay mapper');
+assert.match(main, /controllerCompatibility\.prepare\(\)/, 'launcher Home may validate bridge assets without claiming the controller');
+assert.match(main, /game:minimizeActive[\s\S]*controllerCompatibility\.stop\(\)/, 'returning to launcher Home must stop the gameplay mapper');
+assert.match(main, /onGameExited:[\s\S]*controllerCompatibility\.stop\(\)/, 'game exit must release the gameplay mapper');
 assert.match(packageJson, /"from": "vendor\/controller-bridge"[\s\S]*"to": "controller-bridge"/, 'controller bridge assets must be packaged');
 
 assert.match(styles, /button:not\(:disabled\):is\(:focus-visible, \.controller-focused, \.focused\)/, 'all focused buttons must receive the global console focus ring');

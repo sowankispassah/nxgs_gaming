@@ -45,6 +45,35 @@ export class ControllerCompatibilityService {
     return { ...this.status };
   }
 
+  async prepare(): Promise<ControllerCompatibilityDiagnostics> {
+    if (process.platform !== 'win32') return this.diagnostics;
+    try {
+      const runtimeDirectory = await this.ensureRuntime();
+      await this.validateMapper(runtimeDirectory);
+      const driverInstalled = await this.isDriverInstalled();
+      this.setStatus({
+        status: driverInstalled ? 'idle' : 'driverRequired',
+        driverInstalled,
+        mapperRunning: false,
+        xinputReady: false,
+        message: driverInstalled
+          ? 'Starts automatically when a game launches or resumes.'
+          : 'The virtual controller driver will be installed when gameplay starts.'
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setStatus({
+        status: 'error',
+        mapperRunning: false,
+        xinputReady: false,
+        lastError: message,
+        message
+      });
+      await logLine('error', `Controller compatibility preparation failed: ${message}`);
+    }
+    return this.diagnostics;
+  }
+
   start(options: { allowDriverInstall?: boolean } = {}): Promise<ControllerCompatibilityDiagnostics> {
     if (this.startPromise) return this.startPromise;
     this.startPromise = this.startInternal(Boolean(options.allowDriverInstall)).finally(() => {
@@ -75,7 +104,7 @@ export class ControllerCompatibilityService {
       mapperRunning: false,
       xinputReady: false,
       status: process.platform === 'win32' ? 'idle' : 'unavailable',
-      message: 'Controller compatibility stopped.'
+      message: 'Starts automatically when a game launches or resumes.'
     };
   }
 

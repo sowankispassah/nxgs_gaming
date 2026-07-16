@@ -264,10 +264,16 @@ const launcher = new GameLauncher(
       if (sessionTimer.current.gameId === game.id) {
         sessionTimer.stop('idle');
       }
+      if (!launcher.hasTrackedGames) {
+        controllerCompatibility.stop();
+      }
       applyKioskSettings(store.getSettings());
     },
     onError: (message) => {
       sessionTimer.setError(message);
+      if (!launcher.hasTrackedGames) {
+        controllerCompatibility.stop();
+      }
       launcher.focusLauncher();
       applyKioskSettings(store.getSettings());
     },
@@ -693,6 +699,7 @@ function registerIpc(): void {
   ipcMain.handle('game:minimizeActive', async (): Promise<GameControlResult> => {
     const result = await launcher.minimizeActiveGame();
     if (result.ok) {
+      controllerCompatibility.stop();
       applyKioskSettings(store.getSettings());
     }
     return result;
@@ -701,6 +708,7 @@ function registerIpc(): void {
   ipcMain.handle('game:goToLauncherHome', async (): Promise<GameControlResult> => {
     const result = await launcher.returnToHome();
     if (result.ok) {
+      controllerCompatibility.stop();
       applyKioskSettings(store.getSettings());
     }
     return result;
@@ -761,7 +769,7 @@ if (!hasSingleInstanceLock) {
     await createWindow();
     warmWindowsControlWorker();
     kioskInput.register();
-    void controllerCompatibility.start({ allowDriverInstall: app.isPackaged });
+    void controllerCompatibility.prepare();
     if (secondInstanceFocusPending) {
       focusExistingInstance();
     }

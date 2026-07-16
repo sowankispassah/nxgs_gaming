@@ -28,6 +28,55 @@ function buttonPressed(pad: Gamepad, index: number): boolean {
   return Boolean(pad.buttons[index]?.pressed);
 }
 
+function gamepadKey(pad: Gamepad): string {
+  return `${pad.index}:${pad.id}:${pad.mapping}:${pad.buttons.length}:${pad.axes.length}`;
+}
+
+function gamepadHasInput(pad: Gamepad): boolean {
+  return (
+    pad.buttons.some((button) => button.pressed || button.value > 0.2) ||
+    pad.axes.some((axis) => Math.abs(axis) > CONTROLLER_AXIS_NEUTRAL_THRESHOLD)
+  );
+}
+
+function isPlayStationGamepad(pad: Gamepad): boolean {
+  return /dualsense|dualshock|wireless controller|054c/i.test(pad.id);
+}
+
+export class ControllerPadSelector {
+  private activeKey: string | null = null;
+
+  reset(): void {
+    this.activeKey = null;
+  }
+
+  select(gamepads: ArrayLike<Gamepad | null>): Gamepad | null {
+    const connected = Array.from(gamepads).filter((candidate): candidate is Gamepad => Boolean(candidate?.connected ?? candidate));
+    if (connected.length === 0) {
+      this.reset();
+      return null;
+    }
+
+    const producingInput = connected.filter(gamepadHasInput);
+    if (producingInput.length > 0) {
+      const currentWithInput = producingInput.find((pad) => gamepadKey(pad) === this.activeKey);
+      const selected =
+        currentWithInput ??
+        producingInput.find(isPlayStationGamepad) ??
+        producingInput[0];
+      this.activeKey = gamepadKey(selected);
+      return selected;
+    }
+
+    const current = connected.find((pad) => gamepadKey(pad) === this.activeKey);
+    if (current) return current;
+
+    const selected = connected.find(isPlayStationGamepad) ?? connected[0];
+    this.activeKey = gamepadKey(selected);
+    return selected;
+  }
+}
+
 function activatedDirection(pad: Gamepad): ControllerDirection | null {
   if (buttonPressed(pad, 15)) return 'right';
   if (buttonPressed(pad, 14)) return 'left';
@@ -140,6 +189,7 @@ type SystemSubscription = {
 
 class ControllerInputHub {
   private readonly engine = new ControllerInputEngine();
+  private readonly padSelector = new ControllerPadSelector();
   private readonly navigationSubscriptions: NavigationSubscription[] = [];
   private readonly systemSubscriptions: SystemSubscription[] = [];
   private timer: number | null = null;
@@ -174,10 +224,11 @@ class ControllerInputHub {
     window.clearInterval(this.timer);
     this.timer = null;
     this.engine.reset();
+    this.padSelector.reset();
   }
 
   private poll(): void {
-    const pad = Array.from(navigator.getGamepads?.() ?? []).find((candidate): candidate is Gamepad => Boolean(candidate)) ?? null;
+    const pad = this.padSelector.select(navigator.getGamepads?.() ?? []);
     const result = this.engine.update(pad, performance.now());
     if (result.connectionChanged) {
       for (const subscription of this.systemSubscriptions) subscription.onConnection.current(result.pad);

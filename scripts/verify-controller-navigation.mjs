@@ -3,17 +3,18 @@ import { readFile } from 'node:fs/promises';
 import {
   CONTROLLER_INITIAL_REPEAT_DELAY_MS,
   CONTROLLER_REPEAT_INTERVAL_MS,
-  ControllerInputEngine
+  ControllerInputEngine,
+  ControllerPadSelector
 } from '../src/renderer/controllerNavigation.ts';
 
-function createPad() {
+function createPad(id = 'NXGS Test Controller', index = 0) {
   return {
-    id: 'NXGS Test Controller',
+    id,
     mapping: 'standard',
     buttons: Array.from({ length: 18 }, () => ({ pressed: false, touched: false, value: 0 })),
     axes: [0, 0],
     connected: true,
-    index: 0,
+    index,
     timestamp: 0,
     vibrationActuator: null
   };
@@ -27,6 +28,23 @@ function directions(result) {
 
 const engine = new ControllerInputEngine();
 const pad = createPad();
+const selector = new ControllerPadSelector();
+const idleVirtualPad = createPad('Xbox 360 Controller (XInput STANDARD GAMEPAD)', 0);
+const physicalDualSense = createPad('DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)', 1);
+
+physicalDualSense.buttons[0].pressed = true;
+assert.equal(
+  selector.select([idleVirtualPad, physicalDualSense]),
+  physicalDualSense,
+  'launcher must choose the Bluetooth controller producing input instead of an idle virtual slot'
+);
+physicalDualSense.buttons[0].pressed = false;
+assert.equal(selector.select([idleVirtualPad, physicalDualSense]), physicalDualSense, 'active physical controller must stay selected after release');
+idleVirtualPad.buttons[0].pressed = true;
+assert.equal(selector.select([idleVirtualPad, physicalDualSense]), idleVirtualPad, 'launcher must switch when the virtual controller becomes the input source');
+idleVirtualPad.buttons[0].pressed = false;
+selector.reset();
+assert.equal(selector.select([idleVirtualPad, physicalDualSense]), physicalDualSense, 'launcher must prefer a physical PlayStation controller when all pads are idle');
 
 pad.buttons[15].pressed = true;
 assert.deepEqual(directions(engine.update(pad, 0)), ['right'], 'first D-pad press must move exactly once');
