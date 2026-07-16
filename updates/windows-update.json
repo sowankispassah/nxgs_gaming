@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.21",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.21/NXGS-Play-Setup.exe",
-    "sha256":  "9fafb163322db463821af02d51dbb5595c22e65403954807b62bcefdcfd3cb68",
+    "version":  "0.14.22",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.22/NXGS-Play-Setup.exe",
+    "sha256":  "4b9c08b4ee7d33e562e034aca9e65b6a19b482293d18b244b40b4cb53512a6b0",
     "required":  false,
-    "notes":  "PlayStation controllers now receive managed Xbox/XInput compatibility for gameplay, and all buttons have consistent visible rounded hover, focus, selected, and pressed feedback."
+    "notes":  "Fixes Bluetooth controller navigation in the launcher. NXGS now uses the controller that is actually producing input, while the XInput compatibility mapper runs only during game launch and resume."
 }
