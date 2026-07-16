@@ -2496,7 +2496,8 @@ button:not(:disabled):active {
   backdrop-filter: blur(10px);
 }
 .wifi-forget-confirmation,
-.bluetooth-remove-confirmation {
+.bluetooth-remove-confirmation,
+.bluetooth-pairing-confirmation {
   display: grid;
   width: min(460px, calc(100vw - 40px));
   justify-items: start;
@@ -2513,6 +2514,45 @@ button:not(:disabled):active {
 .bluetooth-remove-confirmation > strong { font-size: 19px; }
 .wifi-forget-confirmation p,
 .bluetooth-remove-confirmation p { margin: 0 0 6px; color: rgba(226, 235, 245, 0.68); line-height: 1.5; }
+
+.bluetooth-pairing-confirmation {
+  width: min(520px, calc(100vw - 40px));
+  border-color: rgba(128, 221, 255, 0.4);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(76, 181, 220, 0.17), transparent 42%),
+    #101522;
+}
+.bluetooth-pairing-confirmation.connected { border-color: rgba(113, 240, 215, 0.44); }
+.bluetooth-pairing-confirmation.failed { border-color: rgba(255, 113, 128, 0.4); }
+.bluetooth-pairing-confirmation.staff-approval-required { border-color: rgba(255, 196, 92, 0.42); }
+.bluetooth-pairing-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 1px solid rgba(128, 221, 255, 0.34);
+  border-radius: 17px;
+  background: rgba(71, 174, 213, 0.13);
+  color: #9de7ff;
+}
+.bluetooth-pairing-confirmation.connected .bluetooth-pairing-icon { border-color: rgba(113, 240, 215, 0.34); background: rgba(63, 167, 148, 0.14); color: #9bf2df; }
+.bluetooth-pairing-confirmation.failed .bluetooth-pairing-icon { border-color: rgba(255, 113, 128, 0.34); background: rgba(137, 45, 56, 0.18); color: #ff9eaa; }
+.bluetooth-pairing-confirmation.staff-approval-required .bluetooth-pairing-icon { border-color: rgba(255, 196, 92, 0.34); background: rgba(125, 89, 30, 0.18); color: #ffda94; }
+.bluetooth-pairing-eyebrow { color: rgba(184, 226, 242, 0.68); font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+.bluetooth-pairing-confirmation h3 { margin: -3px 0 2px; font-size: 26px; }
+.bluetooth-pairing-device {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 10px;
+}
+.bluetooth-pairing-device > span { display: grid; gap: 5px; border: 1px solid rgba(255, 255, 255, 0.11); border-radius: 12px; background: rgba(2, 7, 14, 0.34); padding: 12px 14px; }
+.bluetooth-pairing-device small { color: rgba(226, 235, 245, 0.56); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.bluetooth-pairing-device strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.bluetooth-pairing-confirmation > p { margin: 2px 0 5px; color: rgba(226, 235, 245, 0.72); line-height: 1.5; }
+.bluetooth-pairing-confirmation .settings-action-row { width: 100%; justify-content: flex-end; }
+.bluetooth-pairing-confirmation .settings-action-row button { min-width: 132px; justify-content: center; }
+.bluetooth-pairing-confirmation .settings-action-row button.primary { border-color: rgba(128, 221, 255, 0.46); background: rgba(70, 176, 215, 0.22); color: #dff8ff; }
 
 .controller-diagnostic-list > div { grid-template-columns: minmax(120px, 0.5fr) minmax(0, 1fr); }
 .settings-placeholder { color: rgba(226, 235, 245, 0.7); font-size: 17px; line-height: 1.85; }

@@ -192,7 +192,8 @@ public static class NxgsLockdownKeyboardHook {
   }
 
   private static bool IsWindowsShellNotificationHost(string processName) {
-    return processName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase) ||
+    return processName.Equals("ShellHost", StringComparison.OrdinalIgnoreCase) ||
+      processName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase) ||
       processName.Equals("StartMenuExperienceHost", StringComparison.OrdinalIgnoreCase) ||
       processName.Equals("SecurityHealthHost", StringComparison.OrdinalIgnoreCase) ||
       processName.Equals("SecurityHealthSystray", StringComparison.OrdinalIgnoreCase) ||

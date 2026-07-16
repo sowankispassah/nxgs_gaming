@@ -153,6 +153,24 @@ try {
   if (!bluetoothStatus.supported || /ENAMETOOLONG/i.test(bluetoothStatus.message ?? '')) {
     throw new Error(`Bluetooth status failed in the packaged launcher: ${JSON.stringify(bluetoothStatus)}`);
   }
+  const availableController = bluetoothStatus.devices.find((device) => device.controller && !device.paired);
+  if (availableController) {
+    await waitFor(`(() => { const row = [...document.querySelectorAll('.bluetooth-device-list > div')].find((item) => item.textContent.includes(${JSON.stringify(availableController.name)})); return Boolean(row) && [...row.querySelectorAll('button')].some((button) => button.textContent.trim() === 'Pair'); })()`, 'An available controller did not expose the NXGS Pair action.');
+    await evaluate(`(() => { const row = [...document.querySelectorAll('.bluetooth-device-list > div')].find((item) => item.textContent.includes(${JSON.stringify(availableController.name)})); [...row.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Pair').click(); })()`);
+    await waitFor("Boolean(document.querySelector('.bluetooth-pairing-confirmation'))", 'The NXGS pairing confirmation did not open.');
+    const pairingPrompt = await evaluate("document.querySelector('.bluetooth-pairing-confirmation').innerText");
+    for (const requiredText of ['Pairing request', `Pair ${availableController.name}?`, 'Device name', 'Device type', 'Wireless controller', 'Cancel', 'Pair']) {
+      if (!pairingPrompt.toLowerCase().includes(requiredText.toLowerCase())) throw new Error(`NXGS pairing confirmation omitted ${requiredText}: ${pairingPrompt}`);
+    }
+    assertConsoleLanguage(pairingPrompt, 'NXGS pairing confirmation');
+    const pairingKiosk = await evaluate("window.nxgs.getDiagnostics().then((data) => data.kiosk)");
+    if (pairingKiosk.mode !== 'customer' || !pairingKiosk.fullscreen || !pairingKiosk.taskbarHidden) {
+      throw new Error(`Pairing confirmation left locked fullscreen: ${JSON.stringify(pairingKiosk)}`);
+    }
+    await evaluate("document.querySelector('#bluetooth-pair-cancel').click()");
+    await waitFor("!document.querySelector('.bluetooth-pairing-confirmation')", 'Cancel did not close the NXGS pairing confirmation.');
+    console.log('PASS: Available controller opened the NXGS pairing confirmation without leaving locked fullscreen.');
+  }
   const staleControllerLink = bluetoothStatus.devices.find((device) => device.controller && device.connected && !device.inputReady);
   if (staleControllerLink) {
     await waitFor("document.querySelector('.console-settings-detail').innerText.includes('Controller input unavailable') && [...document.querySelectorAll('.bluetooth-device-list button')].some((button) => button.textContent.includes('Check Input'))", 'A stale Bluetooth controller link did not expose the accurate warning and Check Input action.');

@@ -10,6 +10,7 @@ const [nativeHook, hookService, mainProcess] = await Promise.all([
 assert.match(nativeHook, /SetWinEventHook\(/, 'customer guard must react to native shell popup events');
 assert.match(nativeHook, /EVENT_OBJECT_SHOW/, 'new notification windows must be intercepted as they appear');
 assert.match(nativeHook, /EVENT_OBJECT_LOCATIONCHANGE/, 'notification windows must be rechecked after Windows positions them');
+assert.match(nativeHook, /ShellHost/, 'the current shell notification host must be recognized');
 assert.match(nativeHook, /ShellExperienceHost/, 'Windows shell notification host must be recognized');
 assert.match(nativeHook, /SecurityHealthHost/, 'Windows Security notification host must be recognized');
 assert.match(nativeHook, /GameBarFTServer/, 'Xbox Game Bar controller surfaces must be recognized');

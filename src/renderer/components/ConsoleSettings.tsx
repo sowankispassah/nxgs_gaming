@@ -61,6 +61,7 @@ type SettingsKey =
 type Feedback = { tone: 'info' | 'success' | 'warning' | 'error'; message: string };
 type CachedSettingsValue<T> = { value: T; updatedAt: number };
 type RefreshOptions = { quiet?: boolean };
+type BluetoothPairingStage = 'confirm' | 'pairing' | 'connected' | 'failed' | 'staff-approval-required';
 
 const NETWORK_CACHE_TTL_MS = 30_000;
 const BLUETOOTH_CACHE_TTL_MS = 60_000;
@@ -142,6 +143,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [bluetoothPending, setBluetoothPending] = useState<string | null>(null);
   const [bluetoothFeedback, setBluetoothFeedback] = useState<Feedback | null>(null);
   const [bluetoothDeviceStatuses, setBluetoothDeviceStatuses] = useState<Record<string, string>>({});
+  const [bluetoothPairingTarget, setBluetoothPairingTarget] = useState<BluetoothDeviceSummary | null>(null);
+  const [bluetoothPairingStage, setBluetoothPairingStage] = useState<BluetoothPairingStage>('confirm');
+  const [bluetoothPairingMessage, setBluetoothPairingMessage] = useState('Confirm pairing to connect this device with NXGS.');
   const [removeBluetoothTarget, setRemoveBluetoothTarget] = useState<BluetoothDeviceSummary | null>(null);
   const [audio, setAudio] = useState<AudioStatus>(() => settingsDataCache.audio?.value ?? EMPTY_AUDIO);
   const [displayVolume, setDisplayVolume] = useState(() => settingsDataCache.audio?.value.masterVolume ?? 0);
@@ -578,10 +582,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   }, [openedIndex, previewSettingsIndex]);
 
   const handleSettingsBack = useCallback((): void => {
-    if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget) {
+    if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget || bluetoothPairingTarget) {
+      if (bluetoothPairingStage === 'pairing') return;
       setForgetWifiTarget(null);
       setWifiContextMenu(null);
       setRemoveBluetoothTarget(null);
+      setBluetoothPairingTarget(null);
       return;
     }
     if (selectedWifi) {
@@ -599,7 +605,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       return;
     }
     props.onBack();
-  }, [detailMode, displayInfoExpanded, forgetWifiTarget, leaveDetail, props, removeBluetoothTarget, selectedWifi, wifiContextMenu]);
+  }, [bluetoothPairingStage, bluetoothPairingTarget, detailMode, displayInfoExpanded, forgetWifiTarget, leaveDetail, props, removeBluetoothTarget, selectedWifi, wifiContextMenu]);
 
   const moveDetailFocus = useCallback((direction: number): void => {
     const actions = focusableDetailActions();
@@ -689,10 +695,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       else if (event.direction === 'up') moveDetailFocus(-1);
       else if (event.direction === 'down') moveDetailFocus(1);
       else if (event.direction === 'left') {
-        if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget) {
+        if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget || bluetoothPairingTarget) {
+          if (bluetoothPairingStage === 'pairing') return;
           setForgetWifiTarget(null);
           setWifiContextMenu(null);
           setRemoveBluetoothTarget(null);
+          setBluetoothPairingTarget(null);
         } else {
           leaveDetail();
         }
@@ -707,7 +715,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     } else if (event.direction === 'right') {
       activateSelected();
     }
-  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, handleSettingsBack, leaveDetail, moveDetailFocus, moveSettingsPreview, removeBluetoothTarget, selected.label, wifiContextMenu]);
+  }, [activateSelected, adjustFocusedSlider, bluetoothPairingStage, bluetoothPairingTarget, detailMode, forgetWifiTarget, handleSettingsBack, leaveDetail, moveDetailFocus, moveSettingsPreview, removeBluetoothTarget, selected.label, wifiContextMenu]);
 
   useControllerNavigation(!props.inputBlocked, handleSettingsControllerEvent);
 
@@ -859,6 +867,54 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       setBluetoothPending(null);
     }
   }, [commitBluetooth]);
+
+  const requestPairBluetoothDevice = useCallback((device: BluetoothDeviceSummary): void => {
+    if (device.paired || bluetoothBusy.current) return;
+    setBluetoothPairingTarget(device);
+    setBluetoothPairingStage('confirm');
+    setBluetoothPairingMessage('Confirm pairing to connect this device with NXGS.');
+    setBluetoothFeedback(null);
+    window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-pair-cancel')?.focus(), 0);
+  }, []);
+
+  const confirmPairBluetoothDevice = useCallback(async (): Promise<void> => {
+    if (!bluetoothPairingTarget || bluetoothBusy.current) return;
+    const target = bluetoothPairingTarget;
+    bluetoothBusy.current = true;
+    bluetoothActionStartedAt.current = Date.now();
+    setBluetoothPending(`pair:${target.id}`);
+    setBluetoothPairingStage('pairing');
+    setBluetoothPairingMessage('Pairing... Keep the controller awake and in pairing mode.');
+    setBluetoothFeedback({ tone: 'info', message: `Pairing ${target.name}...` });
+    try {
+      const result = await window.nxgs.pairBluetoothDevice(target.id);
+      commitBluetooth(result.bluetooth);
+      setBluetoothPairingMessage(result.message);
+      setBluetoothFeedback({
+        tone: result.ok ? result.status === 'paired' ? 'warning' : 'success' : result.status === 'staff-approval-required' ? 'warning' : 'error',
+        message: result.message
+      });
+      setBluetoothDeviceStatuses((current) => ({
+        ...current,
+        [target.id]: result.ok
+          ? result.status === 'connected' ? target.controller ? 'Controller input ready' : 'Connected' : 'Pairing complete'
+          : result.status === 'staff-approval-required' ? 'Staff approval required' : 'Pairing failed'
+      }));
+      setBluetoothPairingStage(
+        result.ok ? 'connected' : result.status === 'staff-approval-required' ? 'staff-approval-required' : 'failed'
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Pairing failed. Try again.';
+      setBluetoothPairingStage('failed');
+      setBluetoothPairingMessage(message);
+      setBluetoothFeedback({ tone: 'error', message });
+      setBluetoothDeviceStatuses((current) => ({ ...current, [target.id]: 'Pairing failed' }));
+    } finally {
+      bluetoothBusy.current = false;
+      setBluetoothPending(null);
+      window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-pair-primary')?.focus(), 0);
+    }
+  }, [bluetoothPairingTarget, commitBluetooth]);
 
   const requestRemoveBluetoothDevice = useCallback((device: BluetoothDeviceSummary): void => {
     if (!device.paired || bluetoothBusy.current) return;
@@ -1064,6 +1120,15 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         : compatibilityStatus === 'idle'
           ? 'Ready for gameplay'
           : 'Preparing controller bridge';
+      const pairingStatusTitle = bluetoothPairingStage === 'pairing'
+        ? 'Pairing...'
+        : bluetoothPairingStage === 'connected'
+          ? 'Pairing complete'
+          : bluetoothPairingStage === 'failed'
+            ? 'Pairing failed'
+            : bluetoothPairingStage === 'staff-approval-required'
+              ? 'Staff approval required'
+              : 'Confirm pairing';
       return (
         <SettingsDetail title="Bluetooth / Controller" icon={<Gamepad2 size={34} />} subtitle="Find and pair devices inside NXGS" onFocus={() => setDetailMode(true)}>
           <div className={`settings-status-card ${bluetooth.radioState !== 'on' || controllerWarning ? 'warning' : ''}`}>
@@ -1115,7 +1180,14 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
                   <Bluetooth size={21} />
                   <span><strong>{device.name}</strong><small>{status}{device.address ? ` · ${device.address}` : ''}</small></span>
                   <div className="bluetooth-device-actions">
-                    <button data-settings-action type="button" disabled={bluetoothPending !== null || (!device.connectable && !device.paired)} onClick={() => void handleBluetoothDevice(device, shouldDisconnect ? 'disconnect' : 'connect')}>
+                    <button
+                      data-settings-action
+                      type="button"
+                      disabled={bluetoothPending !== null || (!device.connectable && !device.paired)}
+                      onClick={() => device.paired
+                        ? void handleBluetoothDevice(device, shouldDisconnect ? 'disconnect' : 'connect')
+                        : requestPairBluetoothDevice(device)}
+                    >
                       {pending && pendingAction !== 'remove' ? <LoaderCircle size={17} className="spin" /> : shouldDisconnect ? <Unplug size={17} /> : <Bluetooth size={17} />}
                       {pendingAction === 'connect' ? inputInactive ? 'Checking...' : 'Connecting...' : pendingAction === 'disconnect' ? 'Disconnecting...' : label}
                     </button>
@@ -1131,6 +1203,78 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             }) : <p className="settings-placeholder">No Bluetooth devices found. Put the controller in pairing mode and select Scan for Devices.</p>}
           </div>
           <p className="settings-capability-note">Disconnect keeps the device paired. Remove Device clears the saved pairing, so the device must be scanned and paired again. Some device profiles control their own final connection; NXGS will show a clear message when they cannot be disconnected here.</p>
+          {bluetoothPairingTarget && (
+            <div
+              className="bluetooth-confirmation-backdrop"
+              role="presentation"
+              onPointerDown={(event) => {
+                if (event.target === event.currentTarget && bluetoothPairingStage !== 'pairing') setBluetoothPairingTarget(null);
+              }}
+            >
+              <div
+                className={`bluetooth-pairing-confirmation settings-confirmation-dialog ${bluetoothPairingStage}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="bluetooth-pair-title"
+                aria-describedby="bluetooth-pair-description"
+              >
+                <div className="bluetooth-pairing-icon" aria-hidden="true">
+                  {bluetoothPairingStage === 'pairing'
+                    ? <LoaderCircle size={34} className="spin" />
+                    : bluetoothPairingStage === 'connected'
+                      ? <CheckCircle2 size={34} />
+                      : bluetoothPairingStage === 'staff-approval-required'
+                        ? <LockKeyhole size={34} />
+                        : <Gamepad2 size={34} />}
+                </div>
+                <span className="bluetooth-pairing-eyebrow">Pairing request</span>
+                <h3 id="bluetooth-pair-title">
+                  {bluetoothPairingStage === 'confirm' ? `Pair ${bluetoothPairingTarget.name}?` : pairingStatusTitle}
+                </h3>
+                <div className="bluetooth-pairing-device">
+                  <span><small>Device name</small><strong>{bluetoothPairingTarget.name}</strong></span>
+                  <span><small>Device type</small><strong>{bluetoothPairingTarget.controller ? 'Wireless controller' : 'Bluetooth device'}</strong></span>
+                </div>
+                <p id="bluetooth-pair-description" role="status">{bluetoothPairingMessage}</p>
+                <div className="settings-action-row">
+                  {bluetoothPairingStage === 'connected' ? (
+                    <button id="bluetooth-pair-primary" className="primary" data-settings-action type="button" onClick={() => setBluetoothPairingTarget(null)}>
+                      <CheckCircle2 size={17} />Done
+                    </button>
+                  ) : bluetoothPairingStage === 'staff-approval-required' ? (
+                    <button id="bluetooth-pair-primary" data-settings-action type="button" onClick={() => setBluetoothPairingTarget(null)}>Cancel</button>
+                  ) : (
+                    <>
+                      <button
+                        id="bluetooth-pair-cancel"
+                        data-settings-action
+                        type="button"
+                        disabled={bluetoothPairingStage === 'pairing'}
+                        onClick={() => setBluetoothPairingTarget(null)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        id="bluetooth-pair-primary"
+                        className="primary"
+                        data-settings-action
+                        type="button"
+                        disabled={bluetoothPairingStage === 'pairing'}
+                        onClick={() => void confirmPairBluetoothDevice()}
+                      >
+                        {bluetoothPairingStage === 'pairing'
+                          ? <LoaderCircle size={17} className="spin" />
+                          : bluetoothPairingStage === 'failed'
+                            ? <RefreshCw size={17} />
+                            : <Bluetooth size={17} />}
+                        {bluetoothPairingStage === 'pairing' ? 'Pairing...' : bluetoothPairingStage === 'failed' ? 'Try again' : 'Pair'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           {removeBluetoothTarget && (
             <div
               className="bluetooth-confirmation-backdrop"
@@ -1314,7 +1458,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls.<br />It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayInfoExpanded, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, opened, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
+  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPairingMessage, bluetoothPairingStage, bluetoothPairingTarget, bluetoothPending, brightnessSyncing, confirmPairBluetoothDevice, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayInfoExpanded, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, opened, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestPairBluetoothDevice, requestRemoveBluetoothDevice, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">

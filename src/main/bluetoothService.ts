@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 public sealed class NxgsBluetoothDevice {
     public string Id { get; set; }
@@ -30,6 +31,8 @@ public sealed class NxgsBluetoothDevice {
 public sealed class NxgsBluetoothAction {
     public bool Found { get; set; }
     public bool Success { get; set; }
+    public bool ApprovalRequired { get; set; }
+    public string Method { get; set; }
     public int Code { get; set; }
 }
 
@@ -72,6 +75,35 @@ public static class NxgsBluetoothNative {
     [StructLayout(LayoutKind.Sequential)]
     private struct BLUETOOTH_FIND_RADIO_PARAMS { public int Size; }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS {
+        public BLUETOOTH_DEVICE_INFO DeviceInfo;
+        public int AuthenticationMethod;
+        public int IoCapability;
+        public int AuthenticationRequirements;
+        public uint NumericValueOrPasskey;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BLUETOOTH_AUTHENTICATE_RESPONSE {
+        public BLUETOOTH_ADDRESS Address;
+        public int AuthenticationMethod;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] AuthenticationData;
+        public byte NegativeResponse;
+    }
+
+    private sealed class PairingContext {
+        public bool Controller;
+        public bool ApprovalRequired;
+        public string Method = "unknown";
+        public int ResponseCode;
+        public readonly ManualResetEvent CallbackCompleted = new ManualResetEvent(false);
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private delegate bool AuthenticationCallbackEx(IntPtr context, ref BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS parameters);
+
     [DllImport("bthprops.cpl", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr BluetoothFindFirstDevice(ref BLUETOOTH_DEVICE_SEARCH_PARAMS search, ref BLUETOOTH_DEVICE_INFO info);
 
@@ -104,6 +136,16 @@ public static class NxgsBluetoothNative {
 
     [DllImport("bthprops.cpl", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int BluetoothAuthenticateDeviceEx(IntPtr parentWindow, IntPtr radio, ref BLUETOOTH_DEVICE_INFO info, IntPtr oobData, int requirements);
+
+    [DllImport("bthprops.cpl", SetLastError = true)]
+    private static extern int BluetoothRegisterForAuthenticationEx(ref BLUETOOTH_DEVICE_INFO info, out IntPtr registration, AuthenticationCallbackEx callback, IntPtr context);
+
+    [DllImport("bthprops.cpl", SetLastError = true)]
+    private static extern int BluetoothSendAuthenticationResponseEx(IntPtr radio, ref BLUETOOTH_AUTHENTICATE_RESPONSE response);
+
+    [DllImport("bthprops.cpl", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BluetoothUnregisterAuthentication(IntPtr registration);
 
     [DllImport("bthprops.cpl", SetLastError = true)]
     private static extern int BluetoothSetServiceState(IntPtr radio, ref BLUETOOTH_DEVICE_INFO info, ref Guid service, uint flags);
@@ -180,15 +222,91 @@ public static class NxgsBluetoothNative {
         return devices.ToArray();
     }
 
-    public static NxgsBluetoothAction Pair(string id, long ownerWindow) {
+    private static bool IsController(BLUETOOTH_DEVICE_INFO info) {
+        return info.Name != null && (
+            info.Name.IndexOf("controller", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            info.Name.IndexOf("gamepad", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            info.Name.IndexOf("dualsense", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            info.Name.IndexOf("dualshock", StringComparison.OrdinalIgnoreCase) >= 0
+        );
+    }
+
+    private static bool PairingCallback(IntPtr contextPointer, ref BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS parameters) {
+        var handle = GCHandle.FromIntPtr(contextPointer);
+        var context = handle.Target as PairingContext;
+        if (context == null) return true;
+
+        context.Method = parameters.AuthenticationMethod == 1 ? "legacy-pin" :
+            parameters.AuthenticationMethod == 3 ? "numeric-comparison" :
+            parameters.AuthenticationMethod == 4 ? "passkey-notification" :
+            parameters.AuthenticationMethod == 2 ? "out-of-band" :
+            parameters.AuthenticationMethod == 5 ? "passkey-entry" : "unsupported";
+
+        var response = new BLUETOOTH_AUTHENTICATE_RESPONSE {
+            Address = parameters.DeviceInfo.Address,
+            AuthenticationMethod = parameters.AuthenticationMethod,
+            AuthenticationData = new byte[32],
+            NegativeResponse = 0
+        };
+
+        if (!context.Controller || parameters.AuthenticationMethod == 2 || parameters.AuthenticationMethod == 5) {
+            context.ApprovalRequired = true;
+            response.NegativeResponse = 1;
+        } else if (parameters.AuthenticationMethod == 1) {
+            byte[] pin = System.Text.Encoding.ASCII.GetBytes("0000");
+            Array.Copy(pin, response.AuthenticationData, pin.Length);
+            response.AuthenticationData[16] = (byte)pin.Length;
+        } else if (parameters.AuthenticationMethod == 3 || parameters.AuthenticationMethod == 4) {
+            Array.Copy(BitConverter.GetBytes(parameters.NumericValueOrPasskey), response.AuthenticationData, 4);
+        } else {
+            context.ApprovalRequired = true;
+            response.NegativeResponse = 1;
+        }
+
+        context.ResponseCode = BluetoothSendAuthenticationResponseEx(IntPtr.Zero, ref response);
+        context.CallbackCompleted.Set();
+        return true;
+    }
+
+    public static NxgsBluetoothAction Pair(string id) {
         BLUETOOTH_ADDRESS address;
         if (!TryAddress(id, out address)) return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
         foreach (var infoValue in Find(1, true)) {
             if (infoValue.Address.Value != address.Value) continue;
             var info = infoValue;
             if (info.Authenticated || info.Remembered) return new NxgsBluetoothAction { Found = true, Success = true, Code = 0 };
-            int code = BluetoothAuthenticateDeviceEx(new IntPtr(ownerWindow), IntPtr.Zero, ref info, IntPtr.Zero, 0);
-            return new NxgsBluetoothAction { Found = true, Success = code == 0, Code = code };
+            bool controller = IsController(info);
+            if (!controller) {
+                return new NxgsBluetoothAction { Found = true, Success = false, ApprovalRequired = true, Method = "staff", Code = 5 };
+            }
+
+            var context = new PairingContext { Controller = true };
+            var contextHandle = GCHandle.Alloc(context);
+            var callback = new AuthenticationCallbackEx(PairingCallback);
+            IntPtr registration = IntPtr.Zero;
+            try {
+                int registrationCode = BluetoothRegisterForAuthenticationEx(ref info, out registration, callback, GCHandle.ToIntPtr(contextHandle));
+                if (registrationCode != 0) {
+                    return new NxgsBluetoothAction { Found = true, Success = false, Method = "registration", Code = registrationCode };
+                }
+
+                // A registered callback keeps authentication inside NXGS. Passing no
+                // parent window also prevents creation of an external pairing wizard.
+                int code = BluetoothAuthenticateDeviceEx(IntPtr.Zero, IntPtr.Zero, ref info, IntPtr.Zero, 0);
+                bool callbackCompleted = code == 0 && context.CallbackCompleted.WaitOne(15000);
+                return new NxgsBluetoothAction {
+                    Found = true,
+                    Success = callbackCompleted && !context.ApprovalRequired && context.ResponseCode == 0,
+                    ApprovalRequired = context.ApprovalRequired,
+                    Method = context.Method,
+                    Code = !callbackCompleted && code == 0 ? 1460 : context.ResponseCode != 0 ? context.ResponseCode : code
+                };
+            } finally {
+                if (registration != IntPtr.Zero) BluetoothUnregisterAuthentication(registration);
+                if (contextHandle.IsAllocated) contextHandle.Free();
+                context.CallbackCompleted.Dispose();
+                GC.KeepAlive(callback);
+            }
         }
         return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
     }
@@ -334,10 +452,8 @@ if ($hasRadio) {
 `;
 
 const PAIR_SCRIPT = `${NATIVE_BLUETOOTH_PREAMBLE}
-$owner = 0L
-[void][long]::TryParse($env:NXGS_BLUETOOTH_OWNER, [ref]$owner)
-$result = [NxgsBluetoothNative]::Pair($env:NXGS_BLUETOOTH_DEVICE_ID, $owner)
-[pscustomobject]@{ found = $result.Found; success = $result.Success; status = [string]$result.Code } | ConvertTo-Json -Compress
+$result = [NxgsBluetoothNative]::Pair($env:NXGS_BLUETOOTH_DEVICE_ID)
+[pscustomobject]@{ found = $result.Found; success = $result.Success; approvalRequired = $result.ApprovalRequired; method = $result.Method; status = [string]$result.Code } | ConvertTo-Json -Compress
 `;
 
 const CONNECT_CONTROLLER_SCRIPT = `${NATIVE_BLUETOOTH_PREAMBLE}
@@ -374,6 +490,8 @@ interface RawBluetoothScan {
 interface RawBluetoothAction {
   found?: unknown;
   success?: unknown;
+  approvalRequired?: unknown;
+  method?: unknown;
   status?: unknown;
 }
 
@@ -553,7 +671,7 @@ async function requestControllerConnection(deviceId: string): Promise<RawBluetoo
   return result;
 }
 
-export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): Promise<BluetoothActionResult> {
+export async function pairBluetoothDevice(deviceId: string): Promise<BluetoothActionResult> {
   if (!/^[0-9a-f]{12}$/i.test(deviceId)) {
     const bluetooth = await scanBluetoothDevices(false);
     return { ok: false, status: 'device-not-found', message: 'Device not found. Scan again and retry.', bluetooth };
@@ -597,8 +715,7 @@ export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): 
       };
     }
     const result = await runPowerShell<RawBluetoothAction>(PAIR_SCRIPT, {
-      NXGS_BLUETOOTH_DEVICE_ID: deviceId,
-      NXGS_BLUETOOTH_OWNER: ownerWindow
+      NXGS_BLUETOOTH_DEVICE_ID: deviceId
     });
     if (!asBoolean(result.found)) {
       const bluetooth = await scanBluetoothDevices(false);
@@ -606,6 +723,14 @@ export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): 
     }
     if (!asBoolean(result.success)) {
       const bluetooth = await scanBluetoothDevices(false);
+      if (asBoolean(result.approvalRequired)) {
+        return {
+          ok: false,
+          status: 'staff-approval-required',
+          message: 'Staff approval required for this pairing method.',
+          bluetooth
+        };
+      }
       return { ok: false, status: 'failed', message: windowsPairingError(String(result.status ?? 'unknown')), bluetooth };
     }
     let checked = await waitForControllerInput(deviceId);

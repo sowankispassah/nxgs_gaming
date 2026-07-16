@@ -56,6 +56,26 @@ assert.match(
 );
 assert.match(
   bluetoothSource,
+  /BluetoothRegisterForAuthenticationEx/,
+  'pairing must register NXGS for native authentication so no external pairing wizard is shown'
+);
+assert.match(
+  bluetoothSource,
+  /BluetoothSendAuthenticationResponseEx/,
+  'NXGS must answer compatible controller pairing requests through the native callback'
+);
+assert.match(
+  bluetoothSource,
+  /BluetoothAuthenticateDeviceEx\(IntPtr\.Zero/,
+  'native pairing must not attach an external authentication wizard to the launcher'
+);
+assert.match(
+  bluetoothSource,
+  /staff-approval-required/,
+  'unsupported pairing methods must stay inside NXGS and report staff approval required'
+);
+assert.match(
+  bluetoothSource,
   /CONNECT_CONTROLLER_SCRIPT/,
   'paired controllers must have an explicit connection request path'
 );
@@ -98,6 +118,31 @@ assert.match(
   settingsSource,
   /const effectiveConnected = device\.connected \|\| device\.inputReady \|\| launcherInputActive/,
   'the Bluetooth row must treat active launcher input as a connected controller'
+);
+assert.match(
+  settingsSource,
+  /Pairing request/,
+  'unpaired devices must use an NXGS pairing request inside the launcher'
+);
+assert.match(
+  settingsSource,
+  /Pairing complete/,
+  'the NXGS pairing flow must show its completion state'
+);
+assert.match(
+  settingsSource,
+  /Pairing failed/,
+  'the NXGS pairing flow must show a retryable failure state'
+);
+assert.match(
+  settingsSource,
+  /Staff approval required/,
+  'unsupported authentication must be explained without leaving the launcher'
+);
+assert.match(
+  settingsSource,
+  /bluetoothPairingStage === 'pairing'[^]*disabled=/,
+  'the pairing dialog must disable repeat actions while native pairing is pending'
 );
 
 if (process.platform === 'win32') {

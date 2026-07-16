@@ -285,7 +285,14 @@ export interface BluetoothStatus {
   message?: string;
 }
 
-export type BluetoothActionStatus = 'connected' | 'paired' | 'disconnected' | 'removed' | 'device-not-found' | 'failed';
+export type BluetoothActionStatus =
+  | 'connected'
+  | 'paired'
+  | 'disconnected'
+  | 'removed'
+  | 'device-not-found'
+  | 'staff-approval-required'
+  | 'failed';
 
 export interface BluetoothActionResult {
   ok: boolean;
