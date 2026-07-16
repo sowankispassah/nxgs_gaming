@@ -338,8 +338,7 @@ export function ConsoleHome(props: {
                   onPlay={props.onSelectGame}
                 />
                 <section className="console-hero-copy" aria-live="polite">
-                  <p>{props.selectedGame?.source || 'NXGS library'}</p>
-                  <h1>{props.selectedGame?.title}</h1>
+                  <h1 title={props.selectedGame?.title}>{props.selectedGame?.title}</h1>
                   <span>{props.selectedGame?.availabilityStatus === 'available' ? 'Installed and ready' : 'Ready from your saved library'}</span>
                   <button
                     className="console-play-button"
