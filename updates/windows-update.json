@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.24",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.24/NXGS-Play-Setup.exe",
-    "sha256":  "bce27b5d354881cd01b6ba954084e4034f4483321551b490dc4a093b49781bf9",
+    "version":  "0.14.25",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.25/NXGS-Play-Setup.exe",
+    "sha256":  "fd19e164d916dd5a4c57e9985379de9d01b7c0579a880cf1ebde241a7d2039f0",
     "required":  false,
-    "notes":  "Fixes Bluetooth status and Scan for Devices failing with ENAMETOOLONG by streaming native Bluetooth commands instead of placing them on the Windows command line."
+    "notes":  "Preserves paired Bluetooth controller connections during input checks and prevents Xbox Game Bar from opening over NXGS when the controller Home or PS button is pressed."
 }
