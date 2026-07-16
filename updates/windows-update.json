@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.22",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.22/NXGS-Play-Setup.exe",
-    "sha256":  "4b9c08b4ee7d33e562e034aca9e65b6a19b482293d18b244b40b4cb53512a6b0",
+    "version":  "0.14.23",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.23/NXGS-Play-Setup.exe",
+    "sha256":  "a63766f7a07fd29f1ba26007558b44d9d3392150b0727c7f4b7f31ebfe137023",
     "required":  false,
-    "notes":  "Fixes Bluetooth controller navigation in the launcher. NXGS now uses the controller that is actually producing input, while the XInput compatibility mapper runs only during game launch and resume."
+    "notes":  "Fixes Bluetooth controllers that appear connected but cannot navigate NXGS. The launcher now detects whether controller input is actually ready and provides Repair Input for stale Bluetooth links."
 }
