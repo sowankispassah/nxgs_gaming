@@ -111,8 +111,32 @@ try {
   console.log('PASS: Settings shell matched the compact dark console layout geometry.');
   const settingsCategories = await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].map((button) => button.textContent.trim())");
   if (settingsCategories.includes('Sound') || settingsCategories.includes('Screen and Video')) throw new Error(`Sound or Screen and Video remained as a separate Settings category: ${JSON.stringify(settingsCategories)}`);
+  await evaluate(`(() => {
+    const buttons = [...document.querySelectorAll('.console-settings-layout > nav button')];
+    const bluetooth = buttons.find((button) => button.textContent.trim() === 'Bluetooth / Controller');
+    const system = buttons.find((button) => button.textContent.trim() === 'System');
+    bluetooth.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    system.focus();
+  })()`);
+  await delay(150);
+  const hoverResult = await evaluate(`(() => {
+    const buttons = [...document.querySelectorAll('.console-settings-layout > nav button')];
+    return {
+      selected: buttons.find((button) => button.classList.contains('selected'))?.textContent.trim(),
+      opened: document.querySelector('.console-settings-detail h2')?.textContent.trim(),
+      searching: document.querySelector('.console-settings-detail')?.innerText.includes('Searching...')
+    };
+  })()`);
+  if (hoverResult.selected !== 'System' || hoverResult.opened !== 'Guide & Tips / Info' || hoverResult.searching) {
+    throw new Error(`Settings focus performed page work instead of highlighting only: ${JSON.stringify(hoverResult)}`);
+  }
+  console.log('PASS: Hover and controller-style focus changed only the Settings highlight without opening or refreshing a page.');
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'Bluetooth / Controller').click()");
   await waitFor("Boolean(document.querySelector('.bluetooth-device-list')) && [...document.querySelectorAll('.settings-detail-heading button')].some((button) => button.textContent.includes('Scan for Devices'))", 'Bluetooth controller status did not render.');
+  const bluetoothOpenState = await evaluate("(() => { const button = [...document.querySelectorAll('.settings-detail-heading button')].find((item) => item.textContent.includes('Scan for Devices') || item.textContent.includes('Searching')); return { button: button?.textContent.trim(), page: document.querySelector('.console-settings-detail h2')?.textContent.trim() }; })()");
+  if (bluetoothOpenState.page !== 'Bluetooth / Controller' || bluetoothOpenState.button !== 'Scan for Devices') {
+    throw new Error(`Opening Bluetooth started discovery without an explicit Scan action: ${JSON.stringify(bluetoothOpenState)}`);
+  }
   const bluetoothStatus = await evaluate("window.nxgs.getBluetoothStatus()");
   if (!bluetoothStatus.supported || /ENAMETOOLONG/i.test(bluetoothStatus.message ?? '')) {
     throw new Error(`Bluetooth status failed in the packaged launcher: ${JSON.stringify(bluetoothStatus)}`);
@@ -127,6 +151,14 @@ try {
     await waitFor(`(() => { const row = [...document.querySelectorAll('.bluetooth-device-list > div')].find((item) => item.textContent.includes(${JSON.stringify(readyController.name)})); return Boolean(row) && row.textContent.includes('Controller input ready') && [...row.querySelectorAll('button')].some((button) => button.textContent.includes('Disconnect')); })()`, 'An active controller still showed Reconnect instead of Disconnect.');
     console.log('PASS: Active controller input was detected as Connected with a Disconnect action.');
   }
+  await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'Guide & Tips / Info').click()");
+  await waitFor("document.querySelector('.console-settings-detail h2')?.textContent.trim() === 'Guide & Tips / Info'", 'Guide page did not open between Bluetooth cache checks.');
+  await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'Bluetooth / Controller').click()");
+  const bluetoothRevisit = await evaluate("(() => { const button = [...document.querySelectorAll('.settings-detail-heading button')].find((item) => item.textContent.includes('Scan for Devices') || item.textContent.includes('Searching')); return { button: button?.textContent.trim(), deviceRows: document.querySelectorAll('.bluetooth-device-list > div').length }; })()");
+  if (bluetoothRevisit.button !== 'Scan for Devices') {
+    throw new Error(`Revisiting Bluetooth restarted discovery instead of showing cached state: ${JSON.stringify(bluetoothRevisit)}`);
+  }
+  console.log(`PASS: Bluetooth revisit kept ${bluetoothRevisit.deviceRows} cached device rows visible without restarting discovery.`);
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System').click()");
   await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('input[aria-label=\"Master volume\"]')) && Boolean(document.querySelector('.system-collapsible-heading')) && document.querySelectorAll('.system-device-section').length === 2; if (!ready) [...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System')?.click(); return ready; })()", 'System did not render the combined display and sound controls.');
   await waitFor("document.querySelector('.system-refresh-button')?.textContent.trim() === 'Refresh'", 'System controls did not finish their initial refresh.');
@@ -151,9 +183,17 @@ try {
   if (!displayFeatures.hdr.message || !displayFeatures.colorProfile.message || !displayFeatures.nightLight.message) throw new Error('Display feature capability messages were incomplete.');
   console.log(`INFO: HDR ${displayFeatures.hdr.support}/${displayFeatures.hdr.enabled ? 'on' : 'off'} (${displayFeatures.hdr.message}); nonessential color controls hidden.`);
   console.log('PASS: System kept Audio visible initially and expanded or collapsed Display information on demand.');
+  await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'Guide & Tips / Info').click()");
+  await waitFor("document.querySelector('.console-settings-detail h2')?.textContent.trim() === 'Guide & Tips / Info'", 'Guide page did not open between System cache checks.');
+  await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System').click()");
+  const systemRevisit = await evaluate("(() => ({ title: document.querySelector('.console-settings-detail h2')?.textContent.trim(), refresh: document.querySelector('.system-refresh-button')?.textContent.trim(), volume: document.querySelector('input[aria-label=\"Master volume\"]')?.value, brightness: document.querySelector('input[aria-label=\"Display brightness\"]')?.value }))()");
+  if (systemRevisit.title !== 'System' || systemRevisit.refresh !== 'Refresh' || systemRevisit.volume === undefined || systemRevisit.brightness === undefined) {
+    throw new Error(`Revisiting System did not render cached controls immediately: ${JSON.stringify(systemRevisit)}`);
+  }
+  console.log('PASS: System revisit rendered cached display and audio values immediately without a visible reload.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Control Room').click()");
-  await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Enter Control Room'))", 'Control Room detail did not open.');
-  await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Enter Control Room')).click()");
+  await waitFor("Boolean(document.querySelector('.pin-modal input[type=password]')) || [...document.querySelectorAll('button')].some((button) => button.textContent.includes('Enter Control Room'))", 'Control Room did not open its protected entry flow.');
+  await evaluate("(() => { const button = [...document.querySelectorAll('button')].find((item) => item.textContent.includes('Enter Control Room')); if (button) button.click(); })()");
   await waitFor("Boolean(document.querySelector('.pin-modal input[type=password]'))", 'PIN dialog did not open.');
   await waitFor("document.activeElement?.closest('.pin-keypad') && document.activeElement.textContent.trim() === '1'", 'PIN modal did not focus the first keypad item.');
   for (let attempt = 0; attempt < 4; attempt += 1) {

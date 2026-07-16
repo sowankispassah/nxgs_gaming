@@ -59,6 +59,18 @@ type SettingsKey =
   | 'control-room';
 
 type Feedback = { tone: 'info' | 'success' | 'warning' | 'error'; message: string };
+type CachedSettingsValue<T> = { value: T; updatedAt: number };
+type RefreshOptions = { quiet?: boolean };
+
+const NETWORK_CACHE_TTL_MS = 30_000;
+const BLUETOOTH_CACHE_TTL_MS = 60_000;
+const SYSTEM_CACHE_TTL_MS = 10_000;
+const settingsDataCache: {
+  network?: CachedSettingsValue<NetworkStatus>;
+  bluetooth?: CachedSettingsValue<BluetoothStatus>;
+  audio?: CachedSettingsValue<AudioStatus>;
+  display?: CachedSettingsValue<DisplayStatus>;
+} = {};
 
 const SETTINGS_ITEMS: Array<{ key: SettingsKey; label: string; icon: JSX.Element }> = [
   { key: 'guide', label: 'Guide & Tips / Info', icon: <BookOpen size={25} /> },
@@ -115,8 +127,9 @@ function focusableDetailActions(): HTMLElement[] {
 
 export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => void; onControlRoom: () => void }): JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [openedIndex, setOpenedIndex] = useState(0);
   const [detailMode, setDetailMode] = useState(false);
-  const [network, setNetwork] = useState<NetworkStatus>(EMPTY_NETWORK);
+  const [network, setNetwork] = useState<NetworkStatus>(() => settingsDataCache.network?.value ?? EMPTY_NETWORK);
   const [networkPending, setNetworkPending] = useState<'refresh' | 'connect' | 'disconnect' | 'forget' | null>(null);
   const [networkFeedback, setNetworkFeedback] = useState<Feedback | null>(null);
   const [selectedWifi, setSelectedWifi] = useState<WifiNetworkSummary | null>(null);
@@ -124,61 +137,121 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [wifiContextMenu, setWifiContextMenu] = useState<{ wifi: WifiNetworkSummary; x: number; y: number } | null>(null);
   const [wifiPassword, setWifiPassword] = useState('');
   const [showWifiPassword, setShowWifiPassword] = useState(false);
-  const [bluetooth, setBluetooth] = useState<BluetoothStatus>(EMPTY_BLUETOOTH);
+  const [bluetooth, setBluetooth] = useState<BluetoothStatus>(() => settingsDataCache.bluetooth?.value ?? EMPTY_BLUETOOTH);
   const [bluetoothPending, setBluetoothPending] = useState<string | null>(null);
   const [bluetoothFeedback, setBluetoothFeedback] = useState<Feedback | null>(null);
   const [bluetoothDeviceStatuses, setBluetoothDeviceStatuses] = useState<Record<string, string>>({});
   const [removeBluetoothTarget, setRemoveBluetoothTarget] = useState<BluetoothDeviceSummary | null>(null);
-  const [audio, setAudio] = useState<AudioStatus>(EMPTY_AUDIO);
-  const [displayVolume, setDisplayVolume] = useState(0);
+  const [audio, setAudio] = useState<AudioStatus>(() => settingsDataCache.audio?.value ?? EMPTY_AUDIO);
+  const [displayVolume, setDisplayVolume] = useState(() => settingsDataCache.audio?.value.masterVolume ?? 0);
   const [audioPending, setAudioPending] = useState<string | null>(null);
   const [audioFeedback, setAudioFeedback] = useState<Feedback | null>(null);
-  const [display, setDisplay] = useState<DisplayStatus>(EMPTY_DISPLAY);
-  const [displayBrightness, setDisplayBrightness] = useState(0);
+  const [display, setDisplay] = useState<DisplayStatus>(() => settingsDataCache.display?.value ?? EMPTY_DISPLAY);
+  const [displayBrightness, setDisplayBrightness] = useState(() => settingsDataCache.display?.value.brightness.level ?? 0);
   const [displayPending, setDisplayPending] = useState<'refresh' | 'hdr' | null>(null);
   const [brightnessSyncing, setBrightnessSyncing] = useState(false);
   const [displayFeedback, setDisplayFeedback] = useState<Feedback | null>(null);
   const [displayInfoExpanded, setDisplayInfoExpanded] = useState(false);
   const [diagnostics, setDiagnostics] = useState<AppDiagnostics | null>(null);
   const networkBusy = useRef(false);
+  const networkStatusBusy = useRef(false);
   const bluetoothBusy = useRef(false);
+  const bluetoothStatusBusy = useRef(false);
   const audioBusy = useRef(false);
+  const audioStatusBusy = useRef(false);
   const displayBusy = useRef(false);
+  const displayStatusBusy = useRef(false);
+  const networkUpdatedAt = useRef(settingsDataCache.network?.updatedAt ?? 0);
+  const bluetoothUpdatedAt = useRef(settingsDataCache.bluetooth?.updatedAt ?? 0);
+  const audioUpdatedAt = useRef(settingsDataCache.audio?.updatedAt ?? 0);
+  const displayUpdatedAt = useRef(settingsDataCache.display?.updatedAt ?? 0);
+  const networkActionStartedAt = useRef(0);
+  const bluetoothActionStartedAt = useRef(0);
+  const audioActionStartedAt = useRef(0);
+  const displayActionStartedAt = useRef(0);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
   const selected = SETTINGS_ITEMS[selectedIndex];
+  const opened = SETTINGS_ITEMS[openedIndex];
 
-  const refreshNetwork = useCallback(async (): Promise<void> => {
-    if (networkBusy.current) return;
-    networkBusy.current = true;
-    setNetworkPending('refresh');
-    setNetworkFeedback({ tone: 'info', message: 'Scanning for Wi-Fi networks...' });
+  const commitNetwork = useCallback((next: NetworkStatus): void => {
+    const updatedAt = Date.now();
+    settingsDataCache.network = { value: next, updatedAt };
+    networkUpdatedAt.current = updatedAt;
+    setNetwork(next);
+  }, []);
+
+  const commitBluetooth = useCallback((next: BluetoothStatus): void => {
+    const updatedAt = Date.now();
+    settingsDataCache.bluetooth = { value: next, updatedAt };
+    bluetoothUpdatedAt.current = updatedAt;
+    setBluetooth(next);
+  }, []);
+
+  const commitAudio = useCallback((next: AudioStatus): void => {
+    const updatedAt = Date.now();
+    settingsDataCache.audio = { value: next, updatedAt };
+    audioUpdatedAt.current = updatedAt;
+    setAudio(next);
+    setDisplayVolume(next.masterVolume);
+  }, []);
+
+  const commitDisplay = useCallback((next: DisplayStatus, syncBrightness = true): void => {
+    const updatedAt = Date.now();
+    settingsDataCache.display = { value: next, updatedAt };
+    displayUpdatedAt.current = updatedAt;
+    setDisplay(next);
+    if (syncBrightness) setDisplayBrightness(next.brightness.level);
+  }, []);
+
+  const refreshNetwork = useCallback(async (options: RefreshOptions = {}): Promise<void> => {
+    if (options.quiet) {
+      if (networkStatusBusy.current) return;
+      networkStatusBusy.current = true;
+    } else {
+      if (networkBusy.current) return;
+      networkBusy.current = true;
+      networkActionStartedAt.current = Date.now();
+      setNetworkPending('refresh');
+      setNetworkFeedback({ tone: 'info', message: 'Scanning for Wi-Fi networks...' });
+    }
+    const startedAt = Date.now();
     try {
       const next = await window.nxgs.scanWifiNetworks();
-      setNetwork(next);
-      setSelectedWifi((current) => current ? next.availableNetworks.find((item) => item.ssid === current.ssid) ?? null : null);
-      setNetworkFeedback(next.supported
-        ? next.connected && next.connectivity !== 'internet'
-          ? { tone: 'warning', message: next.message ?? 'No internet / limited connection' }
-          : null
-        : { tone: 'error', message: next.message ?? 'Wi-Fi is unavailable.' });
+      if (!options.quiet || networkActionStartedAt.current <= startedAt) {
+        commitNetwork(next);
+        setSelectedWifi((current) => current ? next.availableNetworks.find((item) => item.ssid === current.ssid) ?? null : null);
+        if (!options.quiet || !next.supported) {
+          setNetworkFeedback(next.supported
+            ? next.connected && next.connectivity !== 'internet'
+              ? { tone: 'warning', message: next.message ?? 'No internet / limited connection' }
+              : null
+            : { tone: 'error', message: next.message ?? 'Wi-Fi is unavailable.' });
+        }
+      }
     } catch (error) {
-      setNetworkFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Wi-Fi scan failed.' });
+      if (!options.quiet || networkUpdatedAt.current === 0) {
+        setNetworkFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Wi-Fi scan failed.' });
+      }
     } finally {
-      networkBusy.current = false;
-      setNetworkPending(null);
+      if (options.quiet) networkStatusBusy.current = false;
+      else {
+        networkBusy.current = false;
+        setNetworkPending(null);
+      }
     }
-  }, []);
+  }, [commitNetwork]);
 
   const refreshBluetooth = useCallback(async (): Promise<void> => {
     if (bluetoothBusy.current) return;
     bluetoothBusy.current = true;
+    bluetoothActionStartedAt.current = Date.now();
     setBluetoothPending('scan');
     setBluetoothFeedback({ tone: 'info', message: 'Searching...' });
     setBluetoothDeviceStatuses({});
     try {
       const next = await window.nxgs.scanBluetoothDevices();
-      setBluetooth(next);
+      commitBluetooth(next);
       setBluetoothFeedback(next.message
         ? { tone: next.supported ? 'warning' : 'error', message: next.message }
         : next.devices.length === 0
@@ -190,78 +263,124 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       bluetoothBusy.current = false;
       setBluetoothPending(null);
     }
-  }, []);
+  }, [commitBluetooth]);
 
-  const refreshAudio = useCallback(async (): Promise<void> => {
-    if (audioBusy.current) return;
-    audioBusy.current = true;
-    setAudioPending('refresh');
-    setAudioFeedback({ tone: 'info', message: 'Reading audio settings...' });
+  const refreshBluetoothStatus = useCallback(async (): Promise<void> => {
+    if (bluetoothStatusBusy.current) return;
+    bluetoothStatusBusy.current = true;
+    const startedAt = Date.now();
+    try {
+      const next = await window.nxgs.getBluetoothStatus();
+      if (bluetoothActionStartedAt.current <= startedAt) {
+        commitBluetooth(next);
+        if (!next.supported) {
+          setBluetoothFeedback({ tone: 'error', message: next.message ?? 'Bluetooth is unavailable.' });
+        }
+      }
+    } catch (error) {
+      if (bluetoothUpdatedAt.current === 0) {
+        setBluetoothFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read Bluetooth status.' });
+      }
+    } finally {
+      bluetoothStatusBusy.current = false;
+    }
+  }, [commitBluetooth]);
+
+  const refreshAudio = useCallback(async (options: RefreshOptions = {}): Promise<void> => {
+    if (options.quiet) {
+      if (audioStatusBusy.current) return;
+      audioStatusBusy.current = true;
+    } else {
+      if (audioBusy.current) return;
+      audioBusy.current = true;
+      audioActionStartedAt.current = Date.now();
+      setAudioPending('refresh');
+      setAudioFeedback({ tone: 'info', message: 'Refreshing audio controls...' });
+    }
+    const startedAt = Date.now();
     try {
       const next = await window.nxgs.getAudioStatus();
-      setAudio(next);
-      setDisplayVolume(next.masterVolume);
-      setAudioFeedback(next.supported ? null : { tone: 'error', message: next.message ?? 'Audio controls are unavailable.' });
+      if (!options.quiet || audioActionStartedAt.current <= startedAt) {
+        commitAudio(next);
+        if (!options.quiet || !next.supported) {
+          setAudioFeedback(next.supported ? null : { tone: 'error', message: next.message ?? 'Audio controls are unavailable.' });
+        }
+      }
     } catch (error) {
-      setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read audio settings.' });
+      if (!options.quiet || audioUpdatedAt.current === 0) {
+        setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read audio settings.' });
+      }
     } finally {
-      audioBusy.current = false;
-      setAudioPending(null);
+      if (options.quiet) audioStatusBusy.current = false;
+      else {
+        audioBusy.current = false;
+        setAudioPending(null);
+      }
     }
-  }, []);
+  }, [commitAudio]);
 
-  const refreshDisplay = useCallback(async (): Promise<void> => {
-    if (displayBusy.current) return;
-    displayBusy.current = true;
-    setDisplayPending('refresh');
-    setDisplayFeedback({ tone: 'info', message: 'Reading display information...' });
+  const refreshDisplay = useCallback(async (options: RefreshOptions = {}): Promise<void> => {
+    if (options.quiet) {
+      if (displayStatusBusy.current) return;
+      displayStatusBusy.current = true;
+    } else {
+      if (displayBusy.current) return;
+      displayBusy.current = true;
+      displayActionStartedAt.current = Date.now();
+      setDisplayPending('refresh');
+      setDisplayFeedback({ tone: 'info', message: 'Refreshing display information...' });
+    }
+    const startedAt = Date.now();
     try {
       const next = await window.nxgs.getDisplayStatus();
-      setDisplay(next);
-      setDisplayBrightness(next.brightness.level);
-      setDisplayFeedback(next.supported
-        ? next.brightness.supported
-          ? null
-          : { tone: 'warning', message: next.brightness.message ?? 'Brightness control is not supported on this display.' }
-        : { tone: 'error', message: next.message ?? 'Display information is unavailable.' });
+      if (!options.quiet || displayActionStartedAt.current <= startedAt) {
+        commitDisplay(next);
+        if (!options.quiet || !next.supported) {
+          setDisplayFeedback(next.supported
+            ? next.brightness.supported
+              ? null
+              : { tone: 'warning', message: next.brightness.message ?? 'Brightness control is not supported on this display.' }
+            : { tone: 'error', message: next.message ?? 'Display information is unavailable.' });
+        }
+      }
     } catch (error) {
-      setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read display information.' });
+      if (!options.quiet || displayUpdatedAt.current === 0) {
+        setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to read display information.' });
+      }
     } finally {
-      displayBusy.current = false;
-      setDisplayPending(null);
+      if (options.quiet) displayStatusBusy.current = false;
+      else {
+        displayBusy.current = false;
+        setDisplayPending(null);
+      }
     }
-  }, []);
+  }, [commitDisplay]);
 
   const refreshSystem = useCallback(async (): Promise<void> => {
     await Promise.all([refreshDisplay(), refreshAudio()]);
   }, [refreshAudio, refreshDisplay]);
 
   useEffect(() => {
-    void refreshNetwork();
-  }, [refreshNetwork]);
-
-  useEffect(() => {
-    if (selected.key === 'controller' && bluetooth.radioState === 'unknown' && !bluetoothBusy.current) {
-      void refreshBluetooth();
+    const now = Date.now();
+    if (opened.key === 'network' && (networkUpdatedAt.current === 0 || now - networkUpdatedAt.current > NETWORK_CACHE_TTL_MS)) {
+      void refreshNetwork({ quiet: networkUpdatedAt.current > 0 });
     }
-  }, [bluetooth.radioState, refreshBluetooth, selected.key]);
+    if (opened.key === 'controller' && (bluetoothUpdatedAt.current === 0 || now - bluetoothUpdatedAt.current > BLUETOOTH_CACHE_TTL_MS)) {
+      void refreshBluetoothStatus();
+    }
+    if (opened.key === 'system') {
+      if (audioUpdatedAt.current === 0 || now - audioUpdatedAt.current > SYSTEM_CACHE_TTL_MS) void refreshAudio({ quiet: true });
+      if (displayUpdatedAt.current === 0 || now - displayUpdatedAt.current > SYSTEM_CACHE_TTL_MS) void refreshDisplay({ quiet: true });
+    }
+  }, [opened.key, refreshAudio, refreshBluetoothStatus, refreshDisplay, refreshNetwork]);
 
   useEffect(() => {
-    if (selected.key === 'system' && audio.outputDevices.length === 0 && !audioBusy.current) void refreshAudio();
-  }, [audio.outputDevices.length, refreshAudio, selected.key]);
-
-  useEffect(() => {
-    if (selected.key === 'system' && display.displays.length === 0 && !displayBusy.current) void refreshDisplay();
-  }, [display.displays.length, refreshDisplay, selected.key]);
-
-  useEffect(() => {
-    setDetailMode(false);
     setSelectedWifi(null);
     setForgetWifiTarget(null);
     setWifiContextMenu(null);
     setWifiPassword('');
     setDisplayInfoExpanded(false);
-  }, [selectedIndex]);
+  }, [openedIndex]);
 
   useEffect(() => {
     if (!wifiContextMenu) return;
@@ -298,12 +417,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     const nextVolume = Math.max(0, Math.min(100, Math.round(value)));
     setDisplayVolume(nextVolume);
     audioBusy.current = true;
+    audioActionStartedAt.current = Date.now();
     setAudioPending(`volume-${source}`);
     setAudioFeedback({ tone: 'info', message: `Setting volume to ${nextVolume}%...` });
     try {
       const result = await window.nxgs.setMasterVolume(nextVolume);
-      setAudio(result.audio);
-      setDisplayVolume(result.audio.masterVolume);
+      commitAudio(result.audio);
       setAudioFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
     } catch (error) {
       setDisplayVolume(audio.masterVolume);
@@ -312,7 +431,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       audioBusy.current = false;
       setAudioPending(null);
     }
-  }, [audio.masterVolume]);
+  }, [audio.masterVolume, commitAudio]);
 
   const applyDisplayBrightness = useCallback((value: number): void => {
     if (!display.brightness.supported) {
@@ -325,6 +444,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     if (brightnessFlushActive.current) return;
 
     brightnessFlushActive.current = true;
+    displayActionStartedAt.current = Date.now();
     setBrightnessSyncing(true);
     void (async () => {
       try {
@@ -332,7 +452,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           const target = brightnessTarget.current;
           brightnessTarget.current = null;
           const result = await window.nxgs.setBrightness(target);
-          setDisplay(result.display);
+          commitDisplay(result.display, false);
           if (!result.ok) {
             setDisplayFeedback({ tone: 'error', message: result.message });
             setDisplayBrightness(result.display.brightness.level);
@@ -352,16 +472,17 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         if (brightnessTarget.current !== null) applyDisplayBrightness(brightnessTarget.current);
       }
     })();
-  }, [display.brightness.message, display.brightness.supported]);
+  }, [commitDisplay, display.brightness.message, display.brightness.supported]);
 
   const toggleHdr = useCallback(async (): Promise<void> => {
     if (displayBusy.current) return;
     displayBusy.current = true;
+    displayActionStartedAt.current = Date.now();
     setDisplayPending('hdr');
     setDisplayFeedback({ tone: 'info', message: display.hdr.enabled ? 'Turning HDR off...' : 'Turning HDR on...' });
     try {
       const result = await window.nxgs.setHdr(!display.hdr.enabled);
-      setDisplay(result.display);
+      commitDisplay(result.display);
       setDisplayFeedback({ tone: result.ok ? 'success' : 'warning', message: result.message });
     } catch (error) {
       setDisplayFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'HDR could not be changed.' });
@@ -369,17 +490,17 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       displayBusy.current = false;
       setDisplayPending(null);
     }
-  }, [display.hdr.enabled]);
+  }, [commitDisplay, display.hdr.enabled]);
 
   const toggleMasterMute = useCallback(async (): Promise<void> => {
     if (audioBusy.current) return;
     audioBusy.current = true;
+    audioActionStartedAt.current = Date.now();
     setAudioPending('mute');
     setAudioFeedback({ tone: 'info', message: audio.muted ? 'Unmuting system sound...' : 'Muting system sound...' });
     try {
       const result = await window.nxgs.setMasterMuted(!audio.muted);
-      setAudio(result.audio);
-      setDisplayVolume(result.audio.masterVolume);
+      commitAudio(result.audio);
       setAudioFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
     } catch (error) {
       setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to change mute status.' });
@@ -387,19 +508,19 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       audioBusy.current = false;
       setAudioPending(null);
     }
-  }, [audio.muted]);
+  }, [audio.muted, commitAudio]);
 
   const switchAudioEndpoint = useCallback(async (device: AudioDeviceSummary): Promise<void> => {
     if (audioBusy.current || device.isDefault) return;
     audioBusy.current = true;
+    audioActionStartedAt.current = Date.now();
     setAudioPending(`switch:${device.id}`);
     setAudioFeedback({ tone: 'info', message: `Switching to ${device.name}...` });
     try {
       const result = device.kind === 'output'
         ? await window.nxgs.switchAudioOutput(device.id)
         : await window.nxgs.switchAudioInput(device.id);
-      setAudio(result.audio);
-      setDisplayVolume(result.audio.masterVolume);
+      commitAudio(result.audio);
       setAudioFeedback({ tone: result.ok ? 'success' : 'warning', message: result.message });
     } catch (error) {
       setAudioFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Failed to change the audio device.' });
@@ -407,7 +528,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       audioBusy.current = false;
       setAudioPending(null);
     }
-  }, []);
+  }, [commitAudio]);
 
   const adjustFocusedSlider = useCallback((direction: -1 | 1): boolean => {
     const active = document.activeElement;
@@ -431,8 +552,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
 
   const leaveDetail = useCallback((): void => {
     setDetailMode(false);
-    (document.querySelector<HTMLElement>(`.console-settings-layout > nav button[data-index="${selectedIndex}"]`))?.focus();
-  }, [selectedIndex]);
+    setSelectedIndex(openedIndex);
+    (document.querySelector<HTMLElement>(`.console-settings-layout > nav button[data-index="${openedIndex}"]`))?.focus();
+  }, [openedIndex]);
 
   const handleSettingsBack = useCallback((): void => {
     if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget) {
@@ -468,7 +590,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const activateSelected = useCallback((): void => {
     const key = SETTINGS_ITEMS[selectedIndex].key;
     if (key === 'control-room') props.onControlRoom();
-    else enterDetail();
+    else {
+      setOpenedIndex(selectedIndex);
+      enterDetail();
+    }
   }, [enterDetail, props, selectedIndex]);
 
   useEffect(() => {
@@ -566,11 +691,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const performWifiConnect = useCallback(async (wifi: WifiNetworkSummary, password?: string): Promise<void> => {
     if (networkBusy.current) return;
     networkBusy.current = true;
+    networkActionStartedAt.current = Date.now();
     setNetworkPending('connect');
     setNetworkFeedback({ tone: 'info', message: `Connecting to ${wifi.ssid}...` });
     try {
       const result = await window.nxgs.connectWifi({ ssid: wifi.ssid, password });
-      setNetwork(result.network);
+      commitNetwork(result.network);
       setSelectedWifi(result.network.availableNetworks.find((item) => item.ssid === wifi.ssid) ?? wifi);
       if (result.ok) {
         setWifiPassword('');
@@ -588,7 +714,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       networkBusy.current = false;
       setNetworkPending(null);
     }
-  }, []);
+  }, [commitNetwork]);
 
   const selectWifi = useCallback((wifi: WifiNetworkSummary): void => {
     if (networkBusy.current) return;
@@ -626,11 +752,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const disconnectNetwork = useCallback(async (): Promise<void> => {
     if (networkBusy.current) return;
     networkBusy.current = true;
+    networkActionStartedAt.current = Date.now();
     setNetworkPending('disconnect');
     setNetworkFeedback({ tone: 'info', message: 'Disconnecting...' });
     try {
       const result = await window.nxgs.disconnectWifi();
-      setNetwork(result.network);
+      commitNetwork(result.network);
       setSelectedWifi((current) => current ? result.network.availableNetworks.find((item) => item.ssid === current.ssid) ?? current : null);
       setNetworkFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
     } catch (error) {
@@ -639,7 +766,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       networkBusy.current = false;
       setNetworkPending(null);
     }
-  }, []);
+  }, [commitNetwork]);
 
   const requestForgetWifi = useCallback((wifi: WifiNetworkSummary): void => {
     if (!wifi.saved || networkBusy.current) return;
@@ -651,11 +778,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const forgetSelectedWifi = useCallback(async (): Promise<void> => {
     if (!forgetWifiTarget || networkBusy.current) return;
     networkBusy.current = true;
+    networkActionStartedAt.current = Date.now();
     setNetworkPending('forget');
     setNetworkFeedback({ tone: 'info', message: `Forgetting ${forgetWifiTarget.ssid}...` });
     try {
       const result = await window.nxgs.forgetWifi(forgetWifiTarget.ssid);
-      setNetwork(result.network);
+      commitNetwork(result.network);
       setSelectedWifi(result.network.availableNetworks.find((item) => item.ssid === forgetWifiTarget.ssid) ?? null);
       setWifiPassword('');
       setNetworkFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
@@ -667,11 +795,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       networkBusy.current = false;
       setNetworkPending(null);
     }
-  }, [forgetWifiTarget]);
+  }, [commitNetwork, forgetWifiTarget]);
 
   const handleBluetoothDevice = useCallback(async (device: BluetoothDeviceSummary, action: 'connect' | 'disconnect'): Promise<void> => {
     if (bluetoothBusy.current) return;
     bluetoothBusy.current = true;
+    bluetoothActionStartedAt.current = Date.now();
     const disconnecting = action === 'disconnect';
     const checkingInput = action === 'connect' && device.controller && device.connected && !device.inputReady;
     setBluetoothPending(`${action}:${device.id}`);
@@ -689,7 +818,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       const result = disconnecting
         ? await window.nxgs.disconnectBluetoothDevice(device.id)
         : await window.nxgs.pairBluetoothDevice(device.id);
-      setBluetooth(result.bluetooth);
+      commitBluetooth(result.bluetooth);
       setBluetoothFeedback({ tone: result.ok ? result.status === 'paired' ? 'warning' : 'success' : 'error', message: result.message });
       setBluetoothDeviceStatuses((current) => ({
         ...current,
@@ -706,7 +835,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       bluetoothBusy.current = false;
       setBluetoothPending(null);
     }
-  }, []);
+  }, [commitBluetooth]);
 
   const requestRemoveBluetoothDevice = useCallback((device: BluetoothDeviceSummary): void => {
     if (!device.paired || bluetoothBusy.current) return;
@@ -718,11 +847,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     if (!removeBluetoothTarget || bluetoothBusy.current) return;
     const target = removeBluetoothTarget;
     bluetoothBusy.current = true;
+    bluetoothActionStartedAt.current = Date.now();
     setBluetoothPending(`remove:${target.id}`);
     setBluetoothFeedback({ tone: 'info', message: `Removing ${target.name}...` });
     try {
       const result = await window.nxgs.removeBluetoothDevice(target.id);
-      setBluetooth(result.bluetooth);
+      commitBluetooth(result.bluetooth);
       setBluetoothFeedback({ tone: result.ok ? 'success' : 'error', message: result.message });
       if (!result.ok) setBluetoothDeviceStatuses((current) => ({ ...current, [target.id]: 'Failed' }));
       setRemoveBluetoothTarget(null);
@@ -734,10 +864,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       bluetoothBusy.current = false;
       setBluetoothPending(null);
     }
-  }, [removeBluetoothTarget]);
+  }, [commitBluetooth, removeBluetoothTarget]);
 
   const detail = useMemo(() => {
-    if (selected.key === 'network') {
+    if (opened.key === 'network') {
       const selectedConnected = Boolean(selectedWifi && network.connected && network.ssid === selectedWifi.ssid);
       const selectedNeedsPassword = Boolean(selectedWifi?.requiresPassword && !selectedWifi.saved && !selectedConnected);
       const connectedLabel = networkPending === 'connect'
@@ -879,7 +1009,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         </SettingsDetail>
       );
     }
-    if (selected.key === 'controller') {
+    if (opened.key === 'controller') {
       const radioLabel = bluetooth.radioState === 'on' ? 'Bluetooth on' : bluetooth.radioState === 'off' ? 'Bluetooth off' : bluetooth.radioState === 'disabled' ? 'Bluetooth disabled' : 'Bluetooth status unknown';
       const pairedControllers = bluetooth.devices.filter((device) => device.controller && device.paired);
       const inputReadyController = pairedControllers.find((device) => device.inputReady);
@@ -1004,7 +1134,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         </SettingsDetail>
       );
     }
-    if (selected.key === 'system') {
+    if (opened.key === 'system') {
       const activeDisplay = display.displays.find((item) => item.id === display.currentDisplayId)
         ?? display.displays.find((item) => item.primary)
         ?? display.displays[0];
@@ -1149,7 +1279,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         </SettingsDetail>
       );
     }
-    if (selected.key === 'control-room') {
+    if (opened.key === 'control-room') {
       return (
         <SettingsDetail title="Control Room" icon={<Lock size={34} />} subtitle="Protected administrator controls" onFocus={() => setDetailMode(true)}>
           <div className="control-room-card"><Lock size={32} /><h3>Admin PIN required</h3><p>Open game management, kiosk controls, diagnostics, and updates.</p><button data-settings-action type="button" onClick={props.onControlRoom}>Enter Control Room</button></div>
@@ -1157,11 +1287,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       );
     }
     return (
-      <SettingsDetail title={selected.label} icon={<Info size={34} />} subtitle="NXGS console settings">
+      <SettingsDetail title={opened.label} icon={<Info size={34} />} subtitle="NXGS console settings">
         <p className="settings-placeholder">This section is ready for its launcher-native controls.<br />It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayInfoExpanded, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selected, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
+  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPending, brightnessSyncing, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayInfoExpanded, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, opened, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestRemoveBluetoothDevice, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">
@@ -1170,14 +1300,31 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       <div className="console-settings-layout">
         <nav aria-label="Console settings categories">
           {SETTINGS_ITEMS.map((item, index) => (
-            <button data-index={index} key={item.key} type="button" className={index === selectedIndex ? 'selected' : ''} onMouseEnter={() => setSelectedIndex(index)} onClick={() => { setSelectedIndex(index); if (item.key === 'control-room') props.onControlRoom(); else window.setTimeout(enterDetail, 0); }}>
+            <button
+              data-index={index}
+              key={item.key}
+              type="button"
+              className={index === selectedIndex ? 'selected' : ''}
+              onMouseEnter={() => setSelectedIndex(index)}
+              onFocus={() => {
+                if (!detailMode) setSelectedIndex(index);
+              }}
+              onClick={() => {
+                setSelectedIndex(index);
+                if (item.key === 'control-room') props.onControlRoom();
+                else {
+                  setOpenedIndex(index);
+                  enterDetail();
+                }
+              }}
+            >
               {item.icon}<span>{item.label}</span><ChevronRight size={22} />
             </button>
           ))}
         </nav>
         {detail}
       </div>
-      <footer>{detailMode ? selected.key === 'system' ? '↑ ↓ Choose control  ·  ← → Adjust sliders  ·  X / A Select  ·  Circle / B Categories' : '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
+      <footer>{detailMode ? opened.key === 'system' ? '↑ ↓ Choose control  ·  ← → Adjust sliders  ·  X / A Select  ·  Circle / B Categories' : '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
     </section>
   );
 }

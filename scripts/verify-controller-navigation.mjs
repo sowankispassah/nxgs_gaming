@@ -109,6 +109,15 @@ for (const [name, source] of [['App', app], ['ConsoleSettings', settings], ['Qui
 }
 assert.match(app, /useControllerNavigation\(/, 'Home and modal navigation must use the shared controller hub');
 assert.match(settings, /useControllerNavigation\(/, 'Settings must use the shared controller hub');
+assert.match(settings, /const \[openedIndex, setOpenedIndex\] = useState\(0\)/, 'Settings must keep highlighted categories separate from the opened page');
+assert.match(settings, /window\.nxgs\.getBluetoothStatus\(\)/, 'Bluetooth page hydration must use a status-only read instead of device discovery');
+assert.match(settings, /window\.nxgs\.scanBluetoothDevices\(\)/, 'Bluetooth discovery must remain available as an explicit action');
+assert.match(settings, /settingsDataCache/, 'Settings system data must remain cached across page revisits');
+assert.doesNotMatch(
+  settings,
+  /selected\.key === 'controller'[\s\S]{0,180}refreshBluetooth\(/,
+  'highlighting Bluetooth must never start device discovery'
+);
 assert.match(switcher, /useControllerNavigation\(/, 'Switcher and quick settings must use the shared controller hub');
 assert.match(home, /data-home-utility-index="0"/, 'Search must be controller focusable');
 assert.match(home, /data-home-utility-index="1"/, 'Settings must be controller focusable');
