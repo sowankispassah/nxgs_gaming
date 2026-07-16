@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.19",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.19/NXGS-Play-Setup.exe",
-    "sha256":  "43da338ece5de78e9b128d99cd958832561e77362f2582002832510728c0e231",
+    "version":  "0.14.20",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.20/NXGS-Play-Setup.exe",
+    "sha256":  "803863f802800d55952cc8509c27375f846748bc80fb8e698ff34a3642631865",
     "required":  false,
-    "notes":  "Controller navigation is now global and predictable: one press or stick flick moves one item, held directions repeat after a console-style delay, Home reaches Search/Settings/User, and time selection, Settings, quick controls, switcher, PIN, Admin options, and game menus support A/X confirm and B/Circle back."
+    "notes":  "Focus now uses the rounded NXGS console highlight without browser-style square outlines. Duration selection and Launch Game are separate controller actions, and Admin PIN navigation now reaches Unlock."
 }
