@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.25",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.25/NXGS-Play-Setup.exe",
-    "sha256":  "fd19e164d916dd5a4c57e9985379de9d01b7c0579a880cf1ebde241a7d2039f0",
+    "version":  "0.14.26",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.26/NXGS-Play-Setup.exe",
+    "sha256":  "0ff8fc77fbf607620cf332e68980949a8bba583e344c0211c1dfe60c30069000",
     "required":  false,
-    "notes":  "Preserves paired Bluetooth controller connections during input checks and prevents Xbox Game Bar from opening over NXGS when the controller Home or PS button is pressed."
+    "notes":  "NXGS now detects active Bluetooth controllers correctly, requests real controller reconnection, and keeps Ctrl+Shift+H reliable in windowed Admin mode."
 }
