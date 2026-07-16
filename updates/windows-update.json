@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.20",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.20/NXGS-Play-Setup.exe",
-    "sha256":  "803863f802800d55952cc8509c27375f846748bc80fb8e698ff34a3642631865",
+    "version":  "0.14.21",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.21/NXGS-Play-Setup.exe",
+    "sha256":  "9fafb163322db463821af02d51dbb5595c22e65403954807b62bcefdcfd3cb68",
     "required":  false,
-    "notes":  "Focus now uses the rounded NXGS console highlight without browser-style square outlines. Duration selection and Launch Game are separate controller actions, and Admin PIN navigation now reaches Unlock."
+    "notes":  "PlayStation controllers now receive managed Xbox/XInput compatibility for gameplay, and all buttons have consistent visible rounded hover, focus, selected, and pressed feedback."
 }
