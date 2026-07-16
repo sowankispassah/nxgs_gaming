@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.26",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.26/NXGS-Play-Setup.exe",
-    "sha256":  "0ff8fc77fbf607620cf332e68980949a8bba583e344c0211c1dfe60c30069000",
+    "version":  "0.14.27",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.27/NXGS-Play-Setup.exe",
+    "sha256":  "6b577c8cf08fe055c7931568b7b5eba701311e7861874633a2d19749b66170d0",
     "required":  false,
-    "notes":  "NXGS now detects active Bluetooth controllers correctly, requests real controller reconnection, and keeps Ctrl+Shift+H reliable in windowed Admin mode."
+    "notes":  "Settings navigation is now instant. Bluetooth and System keep cached values visible, avoid refresh work on hover, and update stale status quietly."
 }
