@@ -64,7 +64,13 @@ export class NativeKioskHook {
     this.buffer = lines.pop() ?? '';
     for (const line of lines.map((value) => value.trim()).filter(Boolean)) {
       if (line === 'READY') {
-        void logLine('info', 'Native Windows customer-mode keyboard guard is active.');
+        void logLine('info', 'Native Windows customer-mode keyboard and notification guard is active.');
+      } else if (line.startsWith('NOTIFICATION_SUPPRESSED|')) {
+        const [, processName = 'unknown', className = 'unknown'] = line.split('|');
+        void logLine(
+          'info',
+          `Suppressed Windows system notification popup while customer fullscreen was active: ${processName}/${className}.`
+        );
       } else {
         this.onRestrictedInput(line);
       }

@@ -392,7 +392,7 @@ function setKioskTaskbarHidden(hidden: boolean, reason: string): void {
   });
 }
 
-function applyKioskSettings(settings: AppSettings): void {
+function applyKioskSettings(_settings: AppSettings): void {
   const window = getLiveMainWindow();
   if (!window) {
     return;
@@ -414,13 +414,11 @@ function applyKioskSettings(settings: AppSettings): void {
   }
 
   setKioskTaskbarHidden(true, 'customer mode');
-  const shouldStayOnTop =
-    settings.kiosk.alwaysOnTop ||
-    launcher.activeState.status === 'quickOverlayOpen' ||
-    launcher.activeState.status === 'resuming' ||
-    launcher.activeState.status === 'closing';
   window.setSkipTaskbar(true);
-  window.setAlwaysOnTop(shouldStayOnTop, shouldStayOnTop ? 'screen-saver' : undefined);
+  // Customer fullscreen is the console shell. Keep it in the highest supported
+  // Electron layer so shell popups cannot be inserted above it between native
+  // notification-guard sweeps.
+  window.setAlwaysOnTop(true, 'screen-saver');
   window.setResizable(false);
   window.setMaximizable(false);
   window.setMinimizable(false);

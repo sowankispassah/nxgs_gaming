@@ -42,6 +42,7 @@ Treat fullscreen gameplay as a hard success condition after every change involvi
 
 - Every launched or resumed game must cover its entire monitor in fullscreen or borderless fullscreen.
 - No title bar, resizable border, Windows taskbar, desktop, device background, or NXGS bottom navbar may remain visible over gameplay.
+- Windows notification toasts and shell flyouts must remain hidden behind the NXGS/game presentation throughout locked customer fullscreen; never allow them to overlay launcher or gameplay content.
 - Never mark a game `running` merely because its window is visible or foreground. Verify monitor-edge coverage, non-minimized foreground state, borderless window styles, and hidden taskbar first.
 - Keep the fullscreen NXGS shell shield behind every handoff so failed or delayed activation cannot expose the desktop.
 - If validation fails, keep retrying native fullscreen enforcement with bounded, logged attempts. Keep or restore the NXGS shield and leave the session visibly unresolved instead of accepting small-window gameplay.
