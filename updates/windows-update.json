@@ -1,7 +1,7 @@
 {
-    "version":  "0.14.17",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.17/NXGS-Play-Setup.exe",
-    "sha256":  "458d3678be7c5b8a251e0dd0031c471067102cc3afeb175928cbfb561f0aa3c6",
+    "version":  "0.14.18",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.14.18/NXGS-Play-Setup.exe",
+    "sha256":  "b505c300affdafe0e20b315b82c5125d32e1f57d6cc32b3ef720a8bf2bdce3e3",
     "required":  false,
-    "notes":  "Windows system and security notification popups now stay hidden behind NXGS during locked fullscreen use. The native kiosk guard reacts to new shell popups without polling overhead, and normal notifications return in Admin/windowed mode."
+    "notes":  "The Microsoft Store/source indicator has been removed from customer Home. Game titles now stay on one line, use the available launcher width, and end with an ellipsis when too long."
 }
