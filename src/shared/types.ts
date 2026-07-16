@@ -272,6 +272,8 @@ export interface BluetoothDeviceSummary {
   paired: boolean;
   connected: boolean;
   connectable: boolean;
+  controller: boolean;
+  inputReady: boolean;
 }
 
 export type BluetoothRadioState = 'on' | 'off' | 'disabled' | 'unknown' | 'unsupported';

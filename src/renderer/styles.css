@@ -2218,6 +2218,11 @@ button:not(:disabled):active {
 
 .bluetooth-device-list > div { grid-template-columns: 27px minmax(0, 1fr) minmax(126px, max-content); }
 .bluetooth-device-list > div.connected { color: #a7f9e8; }
+.bluetooth-device-list > div.input-inactive {
+  border-color: rgba(255, 196, 92, 0.26);
+  color: #ffda94;
+  background: rgba(125, 89, 30, 0.1);
+}
 .bluetooth-device-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .bluetooth-device-list button { display: inline-flex; min-width: 126px; align-items: center; justify-content: center; gap: 8px; }
 .bluetooth-device-list button.danger {

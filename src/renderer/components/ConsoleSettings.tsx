@@ -127,7 +127,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [bluetooth, setBluetooth] = useState<BluetoothStatus>(EMPTY_BLUETOOTH);
   const [bluetoothPending, setBluetoothPending] = useState<string | null>(null);
   const [bluetoothFeedback, setBluetoothFeedback] = useState<Feedback | null>(null);
-  const [bluetoothDeviceStatuses, setBluetoothDeviceStatuses] = useState<Record<string, 'Connected' | 'Paired / Disconnected' | 'Failed'>>({});
+  const [bluetoothDeviceStatuses, setBluetoothDeviceStatuses] = useState<Record<string, string>>({});
   const [removeBluetoothTarget, setRemoveBluetoothTarget] = useState<BluetoothDeviceSummary | null>(null);
   const [audio, setAudio] = useState<AudioStatus>(EMPTY_AUDIO);
   const [displayVolume, setDisplayVolume] = useState(0);
@@ -673,10 +673,17 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     if (bluetoothBusy.current) return;
     bluetoothBusy.current = true;
     const disconnecting = action === 'disconnect';
+    const repairingInput = action === 'connect' && device.controller && device.connected && !device.inputReady;
     setBluetoothPending(`${action}:${device.id}`);
     setBluetoothFeedback({
       tone: 'info',
-      message: disconnecting ? `Disconnecting ${device.name}...` : device.paired ? `Reconnecting ${device.name}...` : `Pairing ${device.name}...`
+      message: disconnecting
+        ? `Disconnecting ${device.name}...`
+        : repairingInput
+          ? `Resetting ${device.name} controller input...`
+          : device.paired
+            ? `Reconnecting ${device.name}...`
+            : `Pairing ${device.name}...`
     });
     try {
       const result = disconnecting
@@ -687,7 +694,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       setBluetoothDeviceStatuses((current) => ({
         ...current,
         [device.id]: result.ok
-          ? result.status === 'connected' ? 'Connected' : 'Paired / Disconnected'
+          ? result.status === 'connected'
+            ? device.controller ? 'Controller input ready' : 'Connected'
+            : device.controller ? 'Paired / press PS or Home' : 'Paired / Disconnected'
           : 'Failed'
       }));
     } catch (error) {
@@ -872,6 +881,29 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
     if (selected.key === 'controller') {
       const radioLabel = bluetooth.radioState === 'on' ? 'Bluetooth on' : bluetooth.radioState === 'off' ? 'Bluetooth off' : bluetooth.radioState === 'disabled' ? 'Bluetooth disabled' : 'Bluetooth status unknown';
+      const pairedControllers = bluetooth.devices.filter((device) => device.controller && device.paired);
+      const inputReadyController = pairedControllers.find((device) => device.inputReady);
+      const linkedInputInactiveController = pairedControllers.find((device) => device.connected && !device.inputReady);
+      const controllerDetected = Boolean(diagnostics?.controller.detected);
+      const controllerTitle = controllerDetected
+        ? diagnostics?.controller.name ?? 'Controller active'
+        : inputReadyController
+          ? `${inputReadyController.name} ready`
+          : linkedInputInactiveController
+            ? 'Controller input unavailable'
+            : pairedControllers.length > 0
+              ? 'Controller paired / asleep'
+              : 'No controller paired';
+      const controllerDetail = controllerDetected
+        ? 'Controller input is active in the launcher.'
+        : inputReadyController
+          ? 'Windows input is ready. Press any controller button to activate launcher navigation.'
+          : linkedInputInactiveController
+            ? 'Bluetooth is linked, but Windows has not exposed the game-controller input profile. Select Repair Input, then press PS / Home once.'
+            : pairedControllers.length > 0
+              ? 'Press the controller PS / Home button once to reconnect it.'
+              : 'Put the controller in pairing mode, then scan.';
+      const controllerWarning = bluetooth.radioState === 'on' && !controllerDetected && pairedControllers.length > 0;
       const compatibilityStatus = diagnostics?.controllerCompatibility.status ?? 'idle';
       const compatibilityWarning = compatibilityStatus === 'error' || compatibilityStatus === 'driverRequired';
       const compatibilityTitle = diagnostics?.controllerCompatibility.xinputReady
@@ -881,10 +913,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
           : 'Preparing controller bridge';
       return (
         <SettingsDetail title="Bluetooth / Controller" icon={<Gamepad2 size={34} />} subtitle="Find and pair devices inside NXGS" onFocus={() => setDetailMode(true)}>
-          <div className={`settings-status-card ${bluetooth.radioState !== 'on' ? 'warning' : ''}`}>
+          <div className={`settings-status-card ${bluetooth.radioState !== 'on' || controllerWarning ? 'warning' : ''}`}>
             <span>{bluetoothPending === 'scan' ? 'Searching...' : radioLabel}</span>
-            <strong>{diagnostics?.controller.detected ? diagnostics.controller.name ?? 'Controller connected' : 'No active controller'}</strong>
-            <small>{diagnostics?.controller.detected ? 'Connected controller is available to the launcher.' : 'Put the controller in pairing mode, then scan.'}</small>
+            <strong>{controllerTitle}</strong>
+            <small>{controllerDetail}</small>
           </div>
           <div className={`settings-status-card ${compatibilityWarning ? 'warning' : ''}`}>
             <span>Game compatibility</span>
@@ -903,22 +935,35 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             {bluetooth.devices.length > 0 ? bluetooth.devices.map((device) => {
               const pending = bluetoothPending?.endsWith(`:${device.id}`) ?? false;
               const pendingAction = pending ? bluetoothPending?.split(':', 1)[0] : null;
-              const label = device.connected ? 'Disconnect' : device.paired ? 'Reconnect' : 'Pair';
+              const launcherInputActive = device.controller && controllerDetected && pairedControllers.length === 1;
+              const inputInactive = device.controller && device.connected && !device.inputReady && !launcherInputActive;
+              const shouldDisconnect = device.connected && !inputInactive;
+              const label = inputInactive ? 'Repair Input' : shouldDisconnect ? 'Disconnect' : device.paired ? 'Reconnect' : 'Pair';
               const status = pendingAction === 'connect'
-                ? 'Connecting'
+                ? inputInactive ? 'Repairing controller input' : 'Connecting'
                 : pendingAction === 'disconnect'
                   ? 'Disconnecting'
                   : pendingAction === 'remove'
                     ? 'Removing'
-                    : bluetoothDeviceStatuses[device.id] ?? (device.connected ? 'Connected' : device.paired ? 'Paired / Disconnected' : 'Available');
+                    : bluetoothDeviceStatuses[device.id] ?? (
+                      launcherInputActive
+                        ? 'Controller input active'
+                        : device.inputReady
+                          ? 'Controller input ready'
+                          : inputInactive
+                            ? 'Bluetooth linked / input inactive'
+                            : device.connected
+                              ? 'Connected'
+                              : device.paired ? 'Paired / Disconnected' : 'Available'
+                    );
               return (
-                <div key={device.id} className={device.connected ? 'connected' : ''}>
+                <div key={device.id} className={launcherInputActive || device.inputReady ? 'connected' : inputInactive ? 'input-inactive' : device.connected ? 'connected' : ''}>
                   <Bluetooth size={21} />
                   <span><strong>{device.name}</strong><small>{status}{device.address ? ` · ${device.address}` : ''}</small></span>
                   <div className="bluetooth-device-actions">
-                    <button data-settings-action type="button" disabled={bluetoothPending !== null || (!device.connectable && !device.paired)} onClick={() => void handleBluetoothDevice(device, device.connected ? 'disconnect' : 'connect')}>
-                      {pending && pendingAction !== 'remove' ? <LoaderCircle size={17} className="spin" /> : device.connected ? <Unplug size={17} /> : <Bluetooth size={17} />}
-                      {pendingAction === 'connect' ? 'Connecting...' : pendingAction === 'disconnect' ? 'Disconnecting...' : label}
+                    <button data-settings-action type="button" disabled={bluetoothPending !== null || (!device.connectable && !device.paired)} onClick={() => void handleBluetoothDevice(device, shouldDisconnect ? 'disconnect' : 'connect')}>
+                      {pending && pendingAction !== 'remove' ? <LoaderCircle size={17} className="spin" /> : shouldDisconnect ? <Unplug size={17} /> : <Bluetooth size={17} />}
+                      {pendingAction === 'connect' ? inputInactive ? 'Repairing...' : 'Connecting...' : pendingAction === 'disconnect' ? 'Disconnecting...' : label}
                     </button>
                     {device.paired && (
                       <button className="danger" data-settings-action type="button" aria-label={`Remove ${device.name}`} disabled={bluetoothPending !== null} onClick={() => requestRemoveBluetoothDevice(device)}>

@@ -102,6 +102,14 @@ try {
   console.log('PASS: Settings shell matched the compact dark console layout geometry.');
   const settingsCategories = await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].map((button) => button.textContent.trim())");
   if (settingsCategories.includes('Sound') || settingsCategories.includes('Screen and Video')) throw new Error(`Sound or Screen and Video remained as a separate Settings category: ${JSON.stringify(settingsCategories)}`);
+  await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'Bluetooth / Controller').click()");
+  await waitFor("Boolean(document.querySelector('.bluetooth-device-list')) && [...document.querySelectorAll('.settings-detail-heading button')].some((button) => button.textContent.includes('Scan for Devices'))", 'Bluetooth controller status did not render.');
+  const bluetoothStatus = await evaluate("window.nxgs.getBluetoothStatus()");
+  const staleControllerLink = bluetoothStatus.devices.find((device) => device.controller && device.connected && !device.inputReady);
+  if (staleControllerLink) {
+    await waitFor("document.querySelector('.console-settings-detail').innerText.includes('Controller input unavailable') && [...document.querySelectorAll('.bluetooth-device-list button')].some((button) => button.textContent.includes('Repair Input'))", 'A stale Bluetooth controller link did not expose the accurate warning and Repair Input action.');
+    console.log('PASS: Bluetooth-linked controller without HID input showed Controller input unavailable and Repair Input.');
+  }
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System').click()");
   await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('input[aria-label=\"Master volume\"]')) && Boolean(document.querySelector('.system-collapsible-heading')) && document.querySelectorAll('.system-device-section').length === 2; if (!ready) [...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System')?.click(); return ready; })()", 'System did not render the combined display and sound controls.');
   await waitFor("document.querySelector('.system-refresh-button')?.textContent.trim() === 'Refresh'", 'System controls did not finish their initial refresh.');

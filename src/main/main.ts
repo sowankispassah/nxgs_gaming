@@ -525,8 +525,8 @@ function registerIpc(): void {
   ipcMain.handle('network:connect', async (_event, request: WifiConnectRequest) => connectWifi(request));
   ipcMain.handle('network:disconnect', async () => disconnectWifi());
   ipcMain.handle('network:forget', async (_event, ssid: string) => forgetWifi(ssid));
-  ipcMain.handle('bluetooth:getStatus', async () => scanBluetoothDevices());
-  ipcMain.handle('bluetooth:scan', async () => scanBluetoothDevices());
+  ipcMain.handle('bluetooth:getStatus', async () => scanBluetoothDevices(false));
+  ipcMain.handle('bluetooth:scan', async () => scanBluetoothDevices(true));
   ipcMain.handle('bluetooth:pair', async (_event, deviceId: string) => {
     const handle = mainWindow?.getNativeWindowHandle();
     const ownerWindow = handle
