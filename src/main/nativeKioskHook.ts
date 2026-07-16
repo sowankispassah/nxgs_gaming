@@ -69,7 +69,7 @@ export class NativeKioskHook {
         const [, processName = 'unknown', className = 'unknown'] = line.split('|');
         void logLine(
           'info',
-          `Suppressed Windows system notification popup while customer fullscreen was active: ${processName}/${className}.`
+          `Suppressed Windows system surface while customer fullscreen was active: ${processName}/${className}.`
         );
       } else {
         this.onRestrictedInput(line);

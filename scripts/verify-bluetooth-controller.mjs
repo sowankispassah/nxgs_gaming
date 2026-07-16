@@ -14,6 +14,10 @@ const sharedTypes = await readFile(
   new URL('../src/shared/types.ts', import.meta.url),
   'utf8'
 );
+const pairFunction = bluetoothSource.slice(
+  bluetoothSource.indexOf('export async function pairBluetoothDevice'),
+  bluetoothSource.indexOf('export async function disconnectBluetoothDevice')
+);
 
 assert.match(
   sharedTypes,
@@ -42,13 +46,18 @@ assert.match(
 );
 assert.match(
   bluetoothSource,
-  /Resetting stale Bluetooth controller link/,
-  'paired controllers with a stale base link must enter the recovery flow'
+  /Preserving Bluetooth link/,
+  'controller input checks must preserve the paired Bluetooth link'
+);
+assert.doesNotMatch(
+  pairFunction,
+  /DISCONNECT_SCRIPT/,
+  'pairing and input checks must never disconnect or power off the controller'
 );
 assert.match(
-  bluetoothSource,
-  /runPowerShell<RawBluetoothAction>\(DISCONNECT_SCRIPT/,
-  'controller recovery must reset the stale Bluetooth link instead of returning success without action'
+  pairFunction,
+  /waitForControllerInput/,
+  'controller input checks must wait for Windows HID enumeration'
 );
 assert.match(
   settingsSource,
@@ -57,13 +66,13 @@ assert.match(
 );
 assert.match(
   settingsSource,
-  /Repair Input/,
-  'settings must expose the controller input recovery action'
+  /Check Input/,
+  'settings must expose the non-destructive controller input check'
 );
 assert.match(
   settingsSource,
-  /Repairing\.\.\./,
-  'the asynchronous recovery action must show visible loading feedback'
+  /Checking\.\.\./,
+  'the asynchronous input check must show visible loading feedback'
 );
 assert.match(
   settingsSource,
@@ -123,4 +132,4 @@ if (process.platform === 'win32') {
 }
 
 console.log('PASS: Bluetooth status distinguishes a paired link from an active HID controller.');
-console.log('PASS: Stale controller links use the recovery flow with visible pending feedback.');
+console.log('PASS: Controller input checks preserve Bluetooth and use visible pending feedback.');

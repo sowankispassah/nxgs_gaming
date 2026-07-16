@@ -15,6 +15,7 @@ import { SessionTimer } from './sessionTimer';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
 import { setWindowsTaskbarVisible } from './windowManagerService';
 import { stopWindowsControlWorker, warmWindowsControlWorker } from './windowsControlWorker';
+import { disableXboxGameBarControllerShortcut, suppressXboxGameBarSurfaces } from './gameBarGuard';
 import type {
   AppDiagnostics,
   AppSettings,
@@ -292,6 +293,9 @@ const kioskInput = new KioskInputService({
 });
 
 function handleShellHomeRequest(reason: ShellHomeReason): void {
+  if (reason === 'controller-home' || reason === 'controller-combo') {
+    void suppressXboxGameBarSurfaces();
+  }
   if (kioskInput.currentMode === 'admin') {
     applyKioskSettings(store.getSettings());
     sendShellHome({
@@ -765,6 +769,7 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     await store.init();
+    await disableXboxGameBarControllerShortcut();
     registerIpc();
     await createWindow();
     warmWindowsControlWorker();

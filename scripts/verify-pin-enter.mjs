@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -87,6 +87,15 @@ try {
   }
   await evaluate("Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [] })");
   await waitFor("Boolean(document.querySelector('button[aria-label=Settings]'))", 'Settings button did not render.');
+  const gameBarSetting = execFileSync(
+    'reg.exe',
+    ['query', 'HKCU\\Software\\Microsoft\\GameBar', '/v', 'UseNexusForGameBarEnabled'],
+    { windowsHide: true, encoding: 'utf8' }
+  );
+  if (!/UseNexusForGameBarEnabled\s+REG_DWORD\s+0x0/i.test(gameBarSetting)) {
+    throw new Error(`NXGS did not disable the controller-to-Game-Bar shortcut: ${gameBarSetting}`);
+  }
+  console.log('PASS: Controller Home is reserved for NXGS instead of Xbox Game Bar.');
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.controllerCompatibility.driverInstalled && data.controllerCompatibility.status === 'idle' && !data.controllerCompatibility.mapperRunning)", 'Launcher Home did not keep the gameplay controller mapper idle.');
   console.log('PASS: Launcher Home prepared controller compatibility without starting the gameplay mapper.');
   const initialFocusDesign = await evaluate("(() => { const games = [...document.querySelectorAll('.console-tabs button')].find((button) => button.textContent.trim() === 'Games'); games.focus(); const button = getComputedStyle(games); const group = getComputedStyle(games.closest('.console-tabs')); return { outlineStyle: button.outlineStyle, outlineWidth: button.outlineWidth, buttonShadow: button.boxShadow, groupRadius: group.borderRadius, groupShadow: group.boxShadow }; })()");
@@ -110,8 +119,8 @@ try {
   }
   const staleControllerLink = bluetoothStatus.devices.find((device) => device.controller && device.connected && !device.inputReady);
   if (staleControllerLink) {
-    await waitFor("document.querySelector('.console-settings-detail').innerText.includes('Controller input unavailable') && [...document.querySelectorAll('.bluetooth-device-list button')].some((button) => button.textContent.includes('Repair Input'))", 'A stale Bluetooth controller link did not expose the accurate warning and Repair Input action.');
-    console.log('PASS: Bluetooth-linked controller without HID input showed Controller input unavailable and Repair Input.');
+    await waitFor("document.querySelector('.console-settings-detail').innerText.includes('Controller input unavailable') && [...document.querySelectorAll('.bluetooth-device-list button')].some((button) => button.textContent.includes('Check Input'))", 'A stale Bluetooth controller link did not expose the accurate warning and Check Input action.');
+    console.log('PASS: Bluetooth-linked controller without HID input showed Controller input unavailable and non-destructive Check Input.');
   }
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System').click()");
   await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('input[aria-label=\"Master volume\"]')) && Boolean(document.querySelector('.system-collapsible-heading')) && document.querySelectorAll('.system-device-section').length === 2; if (!ready) [...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System')?.click(); return ready; })()", 'System did not render the combined display and sound controls.');

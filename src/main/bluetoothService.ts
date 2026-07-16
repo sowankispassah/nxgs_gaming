@@ -481,6 +481,20 @@ export async function scanBluetoothDevices(issueInquiry = true): Promise<Bluetoo
   }
 }
 
+async function waitForControllerInput(
+  deviceId: string,
+  attempts = 4
+): Promise<{ bluetooth: BluetoothStatus; device?: BluetoothDeviceSummary }> {
+  let bluetooth = await scanBluetoothDevices(false);
+  let device = bluetooth.devices.find((candidate) => candidate.id.toLowerCase() === deviceId.toLowerCase());
+  for (let attempt = 1; attempt < attempts && bluetooth.supported && !device?.inputReady; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    bluetooth = await scanBluetoothDevices(false);
+    device = bluetooth.devices.find((candidate) => candidate.id.toLowerCase() === deviceId.toLowerCase());
+  }
+  return { bluetooth, device };
+}
+
 export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): Promise<BluetoothActionResult> {
   if (!/^[0-9a-f]{12}$/i.test(deviceId)) {
     const bluetooth = await scanBluetoothDevices(false);
@@ -500,41 +514,39 @@ export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): 
     if (existing?.paired && existing.controller && existing.connected && !existing.inputReady) {
       await logLine(
         'warn',
-        `Resetting stale Bluetooth controller link for ${existing.name} (${existing.id}); base link is connected but no HID game-controller interface is present.`
+        `Preserving Bluetooth link for ${existing.name} (${existing.id}); waiting for its HID game-controller interface without disconnecting the controller.`
       );
-      const reset = await runPowerShell<RawBluetoothAction>(DISCONNECT_SCRIPT, {
-        NXGS_BLUETOOTH_DEVICE_ID: deviceId
-      });
-      if (!asBoolean(reset.found) || !asBoolean(reset.success)) {
-        const bluetooth = await scanBluetoothDevices(false);
+      const checked = await waitForControllerInput(deviceId);
+      if (checked.device?.inputReady) {
         return {
-          ok: false,
-          status: 'failed',
-          message: windowsDisconnectError(String(reset.status ?? 'unknown')),
-          bluetooth
+          ok: true,
+          status: 'connected',
+          message: 'Controller input connected and ready.',
+          bluetooth: checked.bluetooth
         };
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      const bluetooth = await scanBluetoothDevices(false);
       return {
         ok: true,
         status: 'paired',
-        message: 'Controller input link reset. Press the PS / Home button once to reconnect, then move the D-pad.',
-        bluetooth
+        message: 'Bluetooth stayed connected, but controller input is not ready yet. Keep the controller on, press PS / Home once, then scan again. NXGS will not disconnect it.',
+        bluetooth: checked.bluetooth
       };
     }
     const result = await runPowerShell<RawBluetoothAction>(PAIR_SCRIPT, {
       NXGS_BLUETOOTH_DEVICE_ID: deviceId,
       NXGS_BLUETOOTH_OWNER: ownerWindow
     });
-    const bluetooth = await scanBluetoothDevices(false);
     if (!asBoolean(result.found)) {
+      const bluetooth = await scanBluetoothDevices(false);
       return { ok: false, status: 'device-not-found', message: 'Device not found. Put it in pairing mode and scan again.', bluetooth };
     }
     if (!asBoolean(result.success)) {
+      const bluetooth = await scanBluetoothDevices(false);
       return { ok: false, status: 'failed', message: windowsPairingError(String(result.status ?? 'unknown')), bluetooth };
     }
-    const connectedDevice = bluetooth.devices.find((device) => device.id.toLowerCase() === deviceId.toLowerCase());
+    const checked = await waitForControllerInput(deviceId);
+    const bluetooth = checked.bluetooth;
+    const connectedDevice = checked.device;
     if (connectedDevice?.controller && connectedDevice.inputReady) {
       return { ok: true, status: 'connected', message: 'Controller input connected and ready.', bluetooth };
     }
@@ -545,7 +557,7 @@ export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): 
       ok: true,
       status: 'paired',
       message: connectedDevice?.connected
-        ? 'Bluetooth is linked, but controller input is not active. Select Repair Input, then press the PS / Home button once.'
+        ? 'Bluetooth is linked, but controller input is not active yet. Keep the controller on, press PS / Home once, then select Check Input.'
         : 'Paired. Press the PS / Home button once to connect controller input.',
       bluetooth
     };

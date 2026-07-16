@@ -144,11 +144,21 @@ public static class NxgsLockdownKeyboardHook {
       if (processId == 0) return true;
       Process process = Process.GetProcessById((int)processId);
       string processName = process.ProcessName;
-      if (!IsWindowsShellNotificationHost(processName)) return true;
+      bool xboxGameBar = IsXboxGameBarHost(processName);
+      if (!xboxGameBar && !IsWindowsShellNotificationHost(processName)) return true;
 
       System.Text.StringBuilder classNameBuilder = new System.Text.StringBuilder(256);
       GetClassName(hwnd, classNameBuilder, classNameBuilder.Capacity);
       string className = classNameBuilder.ToString();
+      if (xboxGameBar) {
+        SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+        ShowWindowAsync(hwnd, SW_HIDE);
+        if (reportedNotifications.Add(hwnd)) {
+          Console.WriteLine("NOTIFICATION_SUPPRESSED|" + processName + "|" + className);
+          Console.Out.Flush();
+        }
+        return true;
+      }
       if (!IsNotificationSurfaceClass(className)) return true;
 
       RECT rect;
@@ -188,6 +198,12 @@ public static class NxgsLockdownKeyboardHook {
       processName.Equals("SecurityHealthSystray", StringComparison.OrdinalIgnoreCase) ||
       processName.Equals("WindowsSecurityHealthService", StringComparison.OrdinalIgnoreCase) ||
       processName.Equals("RuntimeBroker", StringComparison.OrdinalIgnoreCase);
+  }
+
+  private static bool IsXboxGameBarHost(string processName) {
+    return processName.Equals("GameBar", StringComparison.OrdinalIgnoreCase) ||
+      processName.Equals("GameBarFTServer", StringComparison.OrdinalIgnoreCase) ||
+      processName.Equals("XboxGameBarWidgets", StringComparison.OrdinalIgnoreCase);
   }
 
   private static bool IsNotificationSurfaceClass(string className) {
