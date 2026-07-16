@@ -17,6 +17,7 @@ import {
 import type { ActiveGameState, AudioStatus, DisplayStatus, TrackedGameSessionState } from '../../shared/types';
 import { SafeGameImage } from './ConsoleHome';
 import { isBackKeyboardEvent, shouldKeepEditing } from '../navigation';
+import { useControllerNavigation, type ControllerNavigationEvent } from '../controllerNavigation';
 
 type PendingAction = 'resume' | 'home' | 'close' | 'force' | null;
 type FocusArea = 'navbar' | 'menu' | 'quickAudio' | 'quickBrightness';
@@ -113,7 +114,6 @@ export function QuickHomeOverlay(props: {
   const brightnessSupportedRef = useRef(quickDisplaySnapshot?.brightness.supported ?? true);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
-  const controllerBackPressed = useRef(false);
 
   const navItems = useMemo<NavItem[]>(
     () => [
@@ -581,87 +581,57 @@ export function QuickHomeOverlay(props: {
     document.querySelector<HTMLInputElement>(selector)?.focus({ preventScroll: true });
   }, [focusArea, quickSettingsOpen]);
 
-  useEffect(() => {
-    let lastInputAt = 0;
-    const interval = window.setInterval(() => {
-      const pad = navigator.getGamepads?.()[0];
-      const liveControlFocused = quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness');
-      if (!pad) {
-        controllerBackPressed.current = false;
-        return;
+  const handleSwitcherControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') {
+      handleBack();
+      void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Switcher: back' });
+      return;
+    }
+    if (event.type === 'accept') {
+      void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: 'Switcher: select' });
+      if (quickSettingsOpen && focusArea === 'quickAudio') {
+        void toggleSystemMute();
+      } else if (confirmClose) {
+        if (menuIndex === 0) void closeGame();
+        else setConfirmClose(false);
+      } else if (focusArea === 'menu' && gameSelected) {
+        selectMenuAction(menuIndex);
+      } else {
+        selectNavAction(selectedNavIndex);
       }
-      const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
-      const backPressed = pressed(1);
-      const backJustPressed = backPressed && !controllerBackPressed.current;
-      controllerBackPressed.current = backPressed;
-      if (backJustPressed) {
-        if (!disabled) {
-          lastInputAt = Date.now();
-          handleBack();
-          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Switcher: back' });
-        }
-        return;
+      return;
+    }
+
+    if (quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness')) {
+      if (event.direction === 'left') {
+        if (focusArea === 'quickAudio') adjustSystemVolume(-1);
+        else adjustSystemBrightness(-1);
+      } else if (event.direction === 'right') {
+        if (focusArea === 'quickAudio') adjustSystemVolume(1);
+        else adjustSystemBrightness(1);
+      } else if (event.direction === 'down') {
+        setFocusArea('quickBrightness');
+      } else if (event.direction === 'up') {
+        setFocusArea('quickAudio');
       }
-      if (Date.now() - lastInputAt < (liveControlFocused ? 70 : 190) || disabled) return;
-      if (quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness')) {
-        if (pressed(14) || pad.axes[0] < -0.65) {
-          lastInputAt = Date.now();
-          if (focusArea === 'quickAudio') adjustSystemVolume(-1);
-          else adjustSystemBrightness(-1);
-          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Left', lastNavigationAction: focusArea === 'quickAudio' ? 'Switcher: volume down' : 'Switcher: brightness down' });
-        } else if (pressed(15) || pad.axes[0] > 0.65) {
-          lastInputAt = Date.now();
-          if (focusArea === 'quickAudio') adjustSystemVolume(1);
-          else adjustSystemBrightness(1);
-          void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Right', lastNavigationAction: focusArea === 'quickAudio' ? 'Switcher: volume up' : 'Switcher: brightness up' });
-        } else if (pressed(0) && focusArea === 'quickAudio') {
-          lastInputAt = Date.now();
-          void toggleSystemMute();
-        } else if (pressed(13) || pad.axes[1] > 0.65) {
-          lastInputAt = Date.now();
-          setFocusArea('quickBrightness');
-        } else if (pressed(12) || pad.axes[1] < -0.65) {
-          lastInputAt = Date.now();
-          setFocusArea('quickAudio');
-        }
-        return;
-      }
-      if (pressed(15) || pad.axes[0] > 0.65) {
-        lastInputAt = Date.now();
-        setSelectedNavKey(navItems[(selectedNavIndex + 1) % navItems.length].key);
-        setFocusArea('navbar');
-        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Right', lastNavigationAction: 'Switcher: next item' });
-      } else if (pressed(14) || pad.axes[0] < -0.65) {
-        lastInputAt = Date.now();
-        setSelectedNavKey(navItems[(selectedNavIndex - 1 + navItems.length) % navItems.length].key);
-        setFocusArea('navbar');
-        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad / Stick Left', lastNavigationAction: 'Switcher: previous item' });
-      } else if (pressed(13) || pad.axes[1] > 0.65) {
-        lastInputAt = Date.now();
-        if (focusArea === 'menu') {
-          setMenuIndex((index) => Math.min(MENU_LABELS.length - 1, index + 1));
-        }
-      } else if (pressed(12) || pad.axes[1] < -0.65) {
-        lastInputAt = Date.now();
-        if (gameSelected) {
-          setFocusArea('menu');
-          setMenuIndex((index) => Math.max(0, index - 1));
-        }
-      } else if (pressed(0)) {
-        lastInputAt = Date.now();
-        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: 'Switcher: select' });
-        if (confirmClose) {
-          if (menuIndex === 0) void closeGame();
-          else setConfirmClose(false);
-        } else if (focusArea === 'menu' && gameSelected) {
-          selectMenuAction(menuIndex);
-        } else {
-          selectNavAction(selectedNavIndex);
-        }
-      }
-    }, 90);
-    return () => window.clearInterval(interval);
-  }, [adjustSystemBrightness, adjustSystemVolume, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
+      return;
+    }
+
+    if (event.direction === 'right') {
+      setSelectedNavKey(navItems[(selectedNavIndex + 1) % navItems.length].key);
+      setFocusArea('navbar');
+    } else if (event.direction === 'left') {
+      setSelectedNavKey(navItems[(selectedNavIndex - 1 + navItems.length) % navItems.length].key);
+      setFocusArea('navbar');
+    } else if (event.direction === 'down' && focusArea === 'menu') {
+      setMenuIndex((index) => Math.min(MENU_LABELS.length - 1, index + 1));
+    } else if (event.direction === 'up' && gameSelected) {
+      setFocusArea('menu');
+      setMenuIndex((index) => Math.max(0, index - 1));
+    }
+  }, [adjustSystemBrightness, adjustSystemVolume, closeGame, confirmClose, focusArea, gameSelected, handleBack, menuIndex, navItems, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
+
+  useControllerNavigation(!disabled, handleSwitcherControllerEvent);
 
   return (
     <section

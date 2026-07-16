@@ -11,6 +11,11 @@ assert.doesNotMatch(
   /props\.selectedGame\?\.source\s*\|\|\s*'NXGS library'/,
   'customer Home must not expose the game launch source'
 );
+assert.doesNotMatch(
+  home,
+  /props\.game\?\.source/,
+  'customer dashboard cards must not expose the game launch source'
+);
 assert.match(
   home,
   /<h1 title=\{props\.selectedGame\?\.title\}>\{props\.selectedGame\?\.title\}<\/h1>/,

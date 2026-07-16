@@ -35,6 +35,11 @@ import {
   shouldShowQuickGameOverlay
 } from './launchFlow';
 import { isBackKeyboardEvent, popNavigationEntry, pushNavigationEntry, shouldKeepEditing } from './navigation';
+import {
+  useControllerNavigation,
+  useControllerSystem,
+  type ControllerNavigationEvent
+} from './controllerNavigation';
 import type {
   ActiveGameState,
   AdminUnlockRequest,
@@ -132,6 +137,8 @@ export function App(): JSX.Element {
   const [viewHistory, setViewHistory] = useState<View[]>(['home']);
   const [homeTab, setHomeTab] = useState<ConsoleTab>('games');
   const [homeFocusSection, setHomeFocusSection] = useState<ConsoleFocusSection>('games');
+  const [homeUtilityIndex, setHomeUtilityIndex] = useState(0);
+  const [homeContentIndex, setHomeContentIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [confirmGame, setConfirmGame] = useState<GameRecord | null>(null);
   const [pinOpen, setPinOpen] = useState(false);
@@ -149,7 +156,6 @@ export function App(): JSX.Element {
   const [adminModeTransitionPending, setAdminModeTransitionPending] = useState(false);
   const [adminModeError, setAdminModeError] = useState('');
   const adminModeTransitionBusy = useRef(false);
-  const controllerBackPressed = useRef(false);
 
   const view = viewHistory[viewHistory.length - 1] ?? 'home';
   const navigateToView = useCallback((nextView: View): void => {
@@ -338,11 +344,42 @@ export function App(): JSX.Element {
         return;
       }
       if (homeFocusSection === 'tabs') {
-        setHomeTab((tab) => (tab === 'games' ? 'media' : 'games'));
+        if (delta > 0 && homeTab === 'games') {
+          setHomeTab('media');
+        } else if (delta > 0) {
+          setHomeUtilityIndex(0);
+          setHomeFocusSection('utilities');
+        } else if (homeTab === 'media') {
+          setHomeTab('games');
+        }
+        return;
+      }
+      if (homeFocusSection === 'utilities') {
+        setHomeUtilityIndex((index) => {
+          const next = index + delta;
+          if (next < 0) {
+            setHomeTab('media');
+            setHomeFocusSection('tabs');
+            return 0;
+          }
+          return Math.min(2, next);
+        });
         return;
       }
       if (homeFocusSection === 'games' && homeTab === 'games' && enabledGames.length > 0) {
-        setSelectedIndex((index) => (index + delta + enabledGames.length) % enabledGames.length);
+        setSelectedIndex((index) => {
+          const next = index + delta;
+          if (next >= enabledGames.length) {
+            setHomeUtilityIndex(0);
+            setHomeFocusSection('utilities');
+            return index;
+          }
+          return Math.max(0, next);
+        });
+        return;
+      }
+      if (homeFocusSection === 'content') {
+        setHomeContentIndex((index) => Math.max(0, Math.min(3, index + delta)));
       }
     },
     [confirmGame, enabledGames.length, homeFocusSection, homeTab, pinOpen, view]
@@ -353,22 +390,38 @@ export function App(): JSX.Element {
       if (view !== 'home' || confirmGame || pinOpen) {
         return;
       }
-      const sections: ConsoleFocusSection[] = homeTab === 'games' && enabledGames.length > 0
-        ? ['tabs', 'games', 'content']
-        : ['tabs', 'content'];
       setHomeFocusSection((current) => {
-        const index = Math.max(0, sections.indexOf(current));
-        return sections[Math.max(0, Math.min(sections.length - 1, index + delta))];
+        if (delta < 0) {
+          if (current === 'content') return homeTab === 'games' && enabledGames.length > 0 ? 'hero' : 'tabs';
+          if (current === 'hero') return enabledGames.length > 0 ? 'games' : 'tabs';
+          if (current === 'games') return 'tabs';
+          return current;
+        }
+        if (current === 'tabs' || current === 'utilities') {
+          return homeTab === 'games' && enabledGames.length > 0 ? 'games' : 'content';
+        }
+        if (current === 'games') return 'hero';
+        if (current === 'hero') return 'content';
+        return current;
       });
     },
     [confirmGame, enabledGames.length, homeTab, pinOpen, view]
   );
 
   const acceptSelection = useCallback(() => {
-    if (view === 'home' && homeTab === 'games' && homeFocusSection === 'games' && selectedGame && !confirmGame && !pinOpen) {
+    if (view !== 'home' || confirmGame || pinOpen) return;
+    if (homeFocusSection === 'utilities') {
+      document.querySelector<HTMLButtonElement>(`[data-home-utility-index="${homeUtilityIndex}"]`)?.click();
+      return;
+    }
+    if (
+      homeTab === 'games' &&
+      (homeFocusSection === 'games' || homeFocusSection === 'hero') &&
+      selectedGame
+    ) {
       setConfirmGame(selectedGame);
     }
-  }, [confirmGame, homeFocusSection, homeTab, pinOpen, selectedGame, view]);
+  }, [confirmGame, homeFocusSection, homeTab, homeUtilityIndex, pinOpen, selectedGame, view]);
 
   const back = useCallback(() => {
     if (confirmGame) {
@@ -435,81 +488,63 @@ export function App(): JSX.Element {
   }, [acceptSelection, adminOptionsOpen, back, moveHorizontal, moveVertical, openConsoleSettings, pinOpen, view]);
 
 
-  useEffect(() => {
-    let lastInput = 0;
-    let lastHomeInput = 0;
-    let lastControllerKey = '';
-    const interval = window.setInterval(() => {
-      const pad = navigator.getGamepads?.()[0];
-      const controllerKey = pad ? `${pad.id}:${pad.mapping}:${pad.buttons.length}` : 'none';
-      if (controllerKey !== lastControllerKey) {
-        lastControllerKey = controllerKey;
-        void window.nxgs.reportControllerState({
-          detected: Boolean(pad),
-          homeSupported: pad && pad.buttons.length > 16 ? 'unknown' : 'no',
-          name: pad?.id
-        });
-      }
-      if (!pad) {
-        controllerBackPressed.current = false;
-        return;
-      }
-      const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
-      const backPressed = pressed(1);
-      const backJustPressed = backPressed && !controllerBackPressed.current;
-      controllerBackPressed.current = backPressed;
-      const guidePressed = pressed(16) || pressed(17);
-      const optionsSharePressed = pressed(8) && pressed(9);
-      const shoulderOptionsPressed = pressed(4) && pressed(5) && pressed(9);
-      if ((guidePressed || optionsSharePressed || shoulderOptionsPressed) && Date.now() - lastHomeInput > 900) {
-        lastInput = Date.now();
-        lastHomeInput = Date.now();
-        void window.nxgs.reportControllerState({
-          detected: true,
-          homeSupported: guidePressed ? 'yes' : 'unknown',
-          name: pad.id,
-          lastButtonPressed: guidePressed ? 'PS / Home' : optionsSharePressed ? 'Options + Share' : 'L1 + R1 + Options',
-          lastNavigationAction: 'Open quick switcher'
-        });
-        void window.nxgs.requestShellHome(guidePressed ? 'controller-home' : 'controller-combo');
-        return;
-      }
-      if (quickNavOpen || view !== 'home' || shouldShowQuickGameOverlay(activeGame)) {
-        return;
-      }
-      if (backJustPressed) {
-        lastInput = Date.now();
-        back();
-        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'Circle / B', lastNavigationAction: 'Back' });
-        return;
-      }
-      if (Date.now() - lastInput < 180) {
-        return;
-      }
-      if (pressed(15) || pad.axes[0] > 0.65) {
-        lastInput = Date.now();
-        moveHorizontal(1);
-        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'D-pad / Stick Right', lastNavigationAction: 'Move right' });
-      } else if (pressed(14) || pad.axes[0] < -0.65) {
-        lastInput = Date.now();
-        moveHorizontal(-1);
-        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'D-pad / Stick Left', lastNavigationAction: 'Move left' });
-      } else if (pressed(13) || pad.axes[1] > 0.65) {
-        lastInput = Date.now();
-        moveVertical(1);
-        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'D-pad / Stick Down', lastNavigationAction: 'Move down' });
-      } else if (pressed(12) || pad.axes[1] < -0.65) {
-        lastInput = Date.now();
-        moveVertical(-1);
-        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'D-pad / Stick Up', lastNavigationAction: 'Move up' });
-      } else if (pressed(0)) {
-        lastInput = Date.now();
-        acceptSelection();
-        void window.nxgs.reportControllerState({ detected: true, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', name: pad.id, lastButtonPressed: 'X / A', lastNavigationAction: 'Select' });
-      }
-    }, 90);
-    return () => window.clearInterval(interval);
-  }, [acceptSelection, activeGame.status, back, moveHorizontal, moveVertical, quickNavOpen, view]);
+  useControllerSystem(
+    useCallback((pad: Gamepad | null) => {
+      void window.nxgs.reportControllerState({
+        detected: Boolean(pad),
+        homeSupported: pad && pad.buttons.length > 16 ? 'unknown' : 'no',
+        name: pad?.id
+      });
+    }, []),
+    useCallback((event) => {
+      const guidePressed = event.reason === 'guide';
+      void window.nxgs.reportControllerState({
+        detected: true,
+        homeSupported: guidePressed ? 'yes' : 'unknown',
+        name: event.pad.id,
+        lastButtonPressed: guidePressed
+          ? 'PS / Home'
+          : event.reason === 'options-share'
+            ? 'Options + Share'
+            : 'L1 + R1 + Options',
+        lastNavigationAction: 'Open quick switcher'
+      });
+      void window.nxgs.requestShellHome(guidePressed ? 'controller-home' : 'controller-combo');
+    }, [])
+  );
+
+  const handleHomeControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') {
+      back();
+      void window.nxgs.reportControllerState({ detected: true, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', name: event.pad.id, lastButtonPressed: 'Circle / B', lastNavigationAction: 'Back' });
+      return;
+    }
+    if (event.type === 'accept') {
+      acceptSelection();
+      void window.nxgs.reportControllerState({ detected: true, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', name: event.pad.id, lastButtonPressed: 'X / A', lastNavigationAction: 'Select' });
+      return;
+    }
+    const horizontal = event.direction === 'left' || event.direction === 'right';
+    if (horizontal) moveHorizontal(event.direction === 'right' ? 1 : -1);
+    else moveVertical(event.direction === 'down' ? 1 : -1);
+    void window.nxgs.reportControllerState({
+      detected: true,
+      homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no',
+      name: event.pad.id,
+      lastButtonPressed: `D-pad / Stick ${event.direction[0].toUpperCase()}${event.direction.slice(1)}`,
+      lastNavigationAction: `Move ${event.direction}`
+    });
+  }, [acceptSelection, back, moveHorizontal, moveVertical]);
+
+  useControllerNavigation(
+    view === 'home' &&
+      !confirmGame &&
+      !pinOpen &&
+      !adminOptionsOpen &&
+      !quickNavOpen &&
+      !shouldShowQuickGameOverlay(activeGame),
+    handleHomeControllerEvent
+  );
 
   if (bootError) {
     return (
@@ -552,6 +587,8 @@ export function App(): JSX.Element {
           activeGame={activeGame}
           activeTab={homeTab}
           focusSection={homeFocusSection}
+          utilityIndex={homeUtilityIndex}
+          contentIndex={homeContentIndex}
           homeOverlayRequestId={homeOverlayRequestId}
           emergencyCloseRequestId={emergencyCloseRequestId}
           onTabChange={(tab) => {
@@ -561,6 +598,14 @@ export function App(): JSX.Element {
           onHighlightGame={(index) => {
             setSelectedIndex(index);
             setHomeFocusSection('games');
+          }}
+          onUtilityFocus={(index) => {
+            setHomeUtilityIndex(index);
+            setHomeFocusSection('utilities');
+          }}
+          onContentFocus={(index) => {
+            setHomeContentIndex(index);
+            setHomeFocusSection('content');
           }}
           onOpenAdmin={openConsoleSettings}
           onSelectGame={setConfirmGame}
@@ -694,6 +739,8 @@ export function App(): JSX.Element {
 function AdminOptionsDialog(props: { onAction: (action: KioskAdminAction) => Promise<void> }): JSX.Element {
   const [pendingAction, setPendingAction] = useState<KioskAdminAction | null>(null);
   const [error, setError] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const actionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const actions: Array<{ action: KioskAdminAction; label: string; pendingLabel: string }> = [
     { action: 'minimize', label: 'Minimize App', pendingLabel: 'Minimizing...' },
     { action: 'exitFullscreen', label: 'Exit Full Screen', pendingLabel: 'Exiting...' },
@@ -714,16 +761,41 @@ function AdminOptionsDialog(props: { onAction: (action: KioskAdminAction) => Pro
     }
   }, [pendingAction, props]);
 
+  const selectedAction = selectedIndex < actions.length ? actions[selectedIndex].action : 'returnLocked';
+
+  useEffect(() => {
+    actionRefs.current[selectedIndex]?.focus({ preventScroll: true });
+  }, [selectedIndex]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Backspace'].includes(event.key)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      void runAction('returnLocked');
+      if (pendingAction) return;
+      if (event.key === 'Escape' || event.key === 'Backspace') void runAction('returnLocked');
+      else if (event.key === 'Enter') void runAction(selectedAction);
+      else {
+        const delta = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+        setSelectedIndex((index) => (index + delta + actions.length + 1) % (actions.length + 1));
+      }
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [runAction]);
+  }, [actions.length, pendingAction, runAction, selectedAction]);
+
+  const handleAdminOptionsControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') {
+      void runAction('returnLocked');
+    } else if (event.type === 'accept') {
+      void runAction(selectedAction);
+    } else {
+      const delta = event.direction === 'left' || event.direction === 'up' ? -1 : 1;
+      setSelectedIndex((index) => (index + delta + actions.length + 1) % (actions.length + 1));
+    }
+  }, [actions.length, runAction, selectedAction]);
+
+  useControllerNavigation(!pendingAction, handleAdminOptionsControllerEvent);
 
   return (
     <div className="modal-backdrop admin-options-backdrop">
@@ -733,10 +805,14 @@ function AdminOptionsDialog(props: { onAction: (action: KioskAdminAction) => Pro
         <div className="admin-options-grid">
           {actions.map(({ action, label, pendingLabel }) => (
             <button
+              ref={(element) => {
+                actionRefs.current[actions.findIndex((item) => item.action === action)] = element;
+              }}
               key={action}
               type="button"
-              className="secondary-action"
+              className={`secondary-action ${selectedAction === action ? 'controller-focused' : ''}`}
               disabled={Boolean(pendingAction)}
+              onFocus={() => setSelectedIndex(actions.findIndex((item) => item.action === action))}
               onClick={() => void runAction(action)}
             >
               {pendingAction === action ? pendingLabel : label}
@@ -745,9 +821,13 @@ function AdminOptionsDialog(props: { onAction: (action: KioskAdminAction) => Pro
         </div>
         {error && <p className="error-text">{error}</p>}
         <button
+          ref={(element) => {
+            actionRefs.current[actions.length] = element;
+          }}
           type="button"
-          className="primary-action wide"
+          className={`primary-action wide ${selectedAction === 'returnLocked' ? 'controller-focused' : ''}`}
           disabled={Boolean(pendingAction)}
+          onFocus={() => setSelectedIndex(actions.length)}
           onClick={() => void runAction('returnLocked')}
         >
           {pendingAction === 'returnLocked' ? 'Locking...' : 'Return to Locked Mode'}
@@ -783,9 +863,78 @@ function LaunchConfirm(props: {
   onClose: () => void;
   onLaunched: () => void;
 }): JSX.Element {
-  const [duration, setDuration] = useState(props.durations[0] ?? 30);
+  const durationOptions = props.durations.length > 0 ? props.durations : [30];
+  const [durationIndex, setDurationIndex] = useState(0);
+  const [focusArea, setFocusArea] = useState<'durations' | 'launch'>('durations');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const durationRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const launchButtonRef = useRef<HTMLButtonElement | null>(null);
+  const duration = durationOptions[durationIndex] ?? durationOptions[0];
+
+  const launch = useCallback(async (): Promise<void> => {
+    if (pending) return;
+    setPending(true);
+    setError('');
+    try {
+      const result = await window.nxgs.launchGame({ gameId: props.game.id, durationMinutes: duration });
+      if (!result.ok) {
+        setError(result.error ?? 'Launch failed.');
+        return;
+      }
+      props.onLaunched();
+    } catch (launchError) {
+      setError(launchError instanceof Error ? launchError.message : String(launchError));
+    } finally {
+      setPending(false);
+    }
+  }, [duration, pending, props]);
+
+  const moveDuration = useCallback((delta: number): void => {
+    setFocusArea('durations');
+    setDurationIndex((index) => Math.max(0, Math.min(durationOptions.length - 1, index + delta)));
+  }, [durationOptions.length]);
+
+  useEffect(() => {
+    if (focusArea === 'launch') launchButtonRef.current?.focus({ preventScroll: true });
+    else durationRefs.current[durationIndex]?.focus({ preventScroll: true });
+  }, [durationIndex, focusArea]);
+
+  const handleLaunchControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') {
+      if (!pending) props.onClose();
+      return;
+    }
+    if (event.type === 'accept') {
+      if (focusArea === 'launch') void launch();
+      else setFocusArea('launch');
+      return;
+    }
+    if (event.direction === 'left' && focusArea === 'durations') moveDuration(-1);
+    else if (event.direction === 'right' && focusArea === 'durations') moveDuration(1);
+    else if (event.direction === 'down') setFocusArea('launch');
+    else if (event.direction === 'up') setFocusArea('durations');
+  }, [focusArea, launch, moveDuration, pending, props]);
+
+  useControllerNavigation(!pending, handleLaunchControllerEvent);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Backspace'].includes(event.key)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (pending) return;
+      if (event.key === 'Escape' || event.key === 'Backspace') props.onClose();
+      else if (event.key === 'ArrowLeft' && focusArea === 'durations') moveDuration(-1);
+      else if (event.key === 'ArrowRight' && focusArea === 'durations') moveDuration(1);
+      else if (event.key === 'ArrowDown') setFocusArea('launch');
+      else if (event.key === 'ArrowUp') setFocusArea('durations');
+      else if (focusArea === 'launch') void launch();
+      else setFocusArea('launch');
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [focusArea, launch, moveDuration, pending, props]);
 
   return (
     <div className="modal-backdrop">
@@ -797,12 +946,27 @@ function LaunchConfirm(props: {
         <h2>{props.game.title}</h2>
         <p className="muted">Choose a duration before launching. NXGS Play will monitor the game and return here when it closes.</p>
         <div className="duration-grid">
-          {props.durations.map((minutes) => (
+          {durationOptions.map((minutes, index) => (
             <button
+              ref={(element) => {
+                durationRefs.current[index] = element;
+              }}
               key={minutes}
               type="button"
-              className={duration === minutes ? 'selected' : ''}
-              onClick={() => setDuration(minutes)}
+              className={durationIndex === index ? 'selected' : ''}
+              aria-pressed={durationIndex === index}
+              onFocus={() => {
+                setDurationIndex(index);
+                setFocusArea('durations');
+              }}
+              onMouseEnter={() => {
+                setDurationIndex(index);
+                setFocusArea('durations');
+              }}
+              onClick={() => {
+                setDurationIndex(index);
+                setFocusArea('launch');
+              }}
               disabled={pending}
             >
               <Clock size={18} />
@@ -812,25 +976,12 @@ function LaunchConfirm(props: {
         </div>
         {error && <p className="error-text">{error}</p>}
         <button
-          className="primary-action wide"
+          ref={launchButtonRef}
+          className={`primary-action wide ${focusArea === 'launch' ? 'controller-focused' : ''}`}
           type="button"
           disabled={pending}
-          onClick={async () => {
-            setPending(true);
-            setError('');
-            try {
-              const result = await window.nxgs.launchGame({ gameId: props.game.id, durationMinutes: duration });
-              if (!result.ok) {
-                setError(result.error ?? 'Launch failed.');
-                return;
-              }
-              props.onLaunched();
-            } catch (launchError) {
-              setError(launchError instanceof Error ? launchError.message : String(launchError));
-            } finally {
-              setPending(false);
-            }
-          }}
+          onFocus={() => setFocusArea('launch')}
+          onClick={() => void launch()}
         >
           <Play size={20} />
           {pending ? 'Launching...' : 'Launch Game'}
@@ -850,6 +1001,9 @@ function AdminScreen(props: {
 }): JSX.Element {
   const [tab, setTab] = useState<AdminTab>('games');
   const adminTabs: AdminTab[] = ['games', 'scan', 'sessions', 'kiosk', 'updates'];
+  const moveAdminTab = useCallback((delta: number): void => {
+    setTab((current) => adminTabs[(adminTabs.indexOf(current) + delta + adminTabs.length) % adminTabs.length]);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -864,25 +1018,15 @@ function AdminScreen(props: {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [props]);
 
-  useEffect(() => {
-    let lastInputAt = 0;
-    const timer = window.setInterval(() => {
-      const pad = navigator.getGamepads?.()[0];
-      if (!pad || Date.now() - lastInputAt < 220) return;
-      const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
-      if (pressed(12) || pressed(14) || pad.axes[0] < -0.65 || pad.axes[1] < -0.65) {
-        lastInputAt = Date.now();
-        setTab((current) => adminTabs[(adminTabs.indexOf(current) - 1 + adminTabs.length) % adminTabs.length]);
-      } else if (pressed(13) || pressed(15) || pad.axes[0] > 0.65 || pad.axes[1] > 0.65) {
-        lastInputAt = Date.now();
-        setTab((current) => adminTabs[(adminTabs.indexOf(current) + 1) % adminTabs.length]);
-      } else if (pressed(1)) {
-        lastInputAt = Date.now();
-        props.onClose();
-      }
-    }, 100);
-    return () => window.clearInterval(timer);
-  }, [props]);
+  const handleAdminControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') {
+      props.onClose();
+    } else if (event.type === 'direction') {
+      moveAdminTab(event.direction === 'left' || event.direction === 'up' ? -1 : 1);
+    }
+  }, [moveAdminTab, props]);
+
+  useControllerNavigation(true, handleAdminControllerEvent);
 
   return (
     <section className="admin-screen">
@@ -1670,6 +1814,7 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
   const [downloadedInstallerSha256, setDownloadedInstallerSha256] = useState('');
   const [downloadProgress, setDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
   const [restartPromptOpen, setRestartPromptOpen] = useState(false);
+  const [restartPromptIndex, setRestartPromptIndex] = useState(0);
   const [operationMessage, setOperationMessage] = useState('');
   const [operationOk, setOperationOk] = useState(true);
 
@@ -1704,6 +1849,19 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
       setPendingAction(null);
     }
   };
+
+  const handleUpdatePromptControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') {
+      setRestartPromptOpen(false);
+    } else if (event.type === 'accept') {
+      if (restartPromptIndex === 0) setRestartPromptOpen(false);
+      else void installDownloadedUpdate();
+    } else {
+      setRestartPromptIndex(event.direction === 'left' || event.direction === 'up' ? 0 : 1);
+    }
+  }, [installDownloadedUpdate, restartPromptIndex]);
+
+  useControllerNavigation(restartPromptOpen && !pending, handleUpdatePromptControllerEvent);
 
   return (
     <section className="panel narrow-panel">
@@ -1832,14 +1990,21 @@ function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
             </div>
             <div className="dialog-actions">
               <button
-                className="secondary-action"
+                className={`secondary-action ${restartPromptIndex === 0 ? 'controller-focused' : ''}`}
                 type="button"
                 disabled={pendingAction === 'install'}
+                onFocus={() => setRestartPromptIndex(0)}
                 onClick={() => setRestartPromptOpen(false)}
               >
                 Later
               </button>
-              <button className="primary-action" type="button" disabled={pendingAction === 'install'} onClick={installDownloadedUpdate}>
+              <button
+                className={`primary-action ${restartPromptIndex === 1 ? 'controller-focused' : ''}`}
+                type="button"
+                disabled={pendingAction === 'install'}
+                onFocus={() => setRestartPromptIndex(1)}
+                onClick={installDownloadedUpdate}
+              >
                 <Power size={18} />
                 {pendingAction === 'install' ? 'Restarting...' : 'Restart Now'}
               </button>
@@ -1907,21 +2072,24 @@ function PinDialog(props: {
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [keypad.length, pending, props, submitPin]);
 
-  useEffect(() => {
-    let lastInputAt = 0;
-    const timer = window.setInterval(() => {
-      const pad = navigator.getGamepads?.()[0];
-      if (!pad || pending || Date.now() - lastInputAt < 190) return;
-      const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
-      if (pressed(14) || pad.axes[0] < -0.65) { lastInputAt = Date.now(); setKeypadIndex((index) => (index - 1 + keypad.length) % keypad.length); }
-      else if (pressed(15) || pad.axes[0] > 0.65) { lastInputAt = Date.now(); setKeypadIndex((index) => (index + 1) % keypad.length); }
-      else if (pressed(12) || pad.axes[1] < -0.65) { lastInputAt = Date.now(); setKeypadIndex((index) => (index - 3 + keypad.length) % keypad.length); }
-      else if (pressed(13) || pad.axes[1] > 0.65) { lastInputAt = Date.now(); setKeypadIndex((index) => (index + 3) % keypad.length); }
-      else if (pressed(0)) { lastInputAt = Date.now(); activateKeypad(); void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: 'PIN keypad: select' }); }
-      else if (pressed(1)) { lastInputAt = Date.now(); props.onClose(); void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'PIN keypad: cancel' }); }
-    }, 90);
-    return () => window.clearInterval(timer);
-  }, [activateKeypad, keypad.length, pending, props]);
+  const handlePinControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') {
+      props.onClose();
+      void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'PIN keypad: cancel' });
+      return;
+    }
+    if (event.type === 'accept') {
+      activateKeypad();
+      void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: 'PIN keypad: select' });
+      return;
+    }
+    if (event.direction === 'left') setKeypadIndex((index) => (index - 1 + keypad.length) % keypad.length);
+    else if (event.direction === 'right') setKeypadIndex((index) => (index + 1) % keypad.length);
+    else if (event.direction === 'up') setKeypadIndex((index) => (index - 3 + keypad.length) % keypad.length);
+    else setKeypadIndex((index) => (index + 3) % keypad.length);
+  }, [activateKeypad, keypad.length, props]);
+
+  useControllerNavigation(!pending, handlePinControllerEvent);
 
   return (
     <div className="modal-backdrop">
@@ -1979,6 +2147,21 @@ function ExpiredDialog(props: { session: SessionState; onDismiss: () => Promise<
   const [pendingDismiss, setPendingDismiss] = useState(false);
   const [pendingForce, setPendingForce] = useState(false);
   const [error, setError] = useState('');
+  const dismiss = useCallback(async (): Promise<void> => {
+    if (pendingDismiss) return;
+    setPendingDismiss(true);
+    try {
+      await props.onDismiss();
+    } finally {
+      setPendingDismiss(false);
+    }
+  }, [pendingDismiss, props]);
+
+  const handleExpiredControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'accept' || event.type === 'back') void dismiss();
+  }, [dismiss]);
+
+  useControllerNavigation(!pendingDismiss && !pendingForce, handleExpiredControllerEvent);
 
   return (
     <div className="modal-backdrop urgent">
@@ -1988,17 +2171,10 @@ function ExpiredDialog(props: { session: SessionState; onDismiss: () => Promise<
         <p className="muted">{props.session.gameTitle ? `${props.session.gameTitle} time has ended.` : 'The session time has ended.'}</p>
         {error && <p className="error-text">{error}</p>}
         <button
-          className="primary-action wide"
+          className="primary-action wide controller-focused"
           type="button"
           disabled={pendingDismiss}
-          onClick={async () => {
-            setPendingDismiss(true);
-            try {
-              await props.onDismiss();
-            } finally {
-              setPendingDismiss(false);
-            }
-          }}
+          onClick={() => void dismiss()}
         >
           <Home size={19} />
           {pendingDismiss ? 'Returning...' : 'Return Home'}

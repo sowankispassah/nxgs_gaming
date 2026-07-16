@@ -46,6 +46,7 @@ import type {
   WifiNetworkSummary
 } from '../../shared/types';
 import { isBackKeyboardEvent, shouldKeepEditing } from '../navigation';
+import { useControllerNavigation, type ControllerNavigationEvent } from '../controllerNavigation';
 
 type SettingsKey =
   | 'guide'
@@ -145,7 +146,6 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const displayBusy = useRef(false);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
-  const controllerBackPressed = useRef(false);
   const selected = SETTINGS_ITEMS[selectedIndex];
 
   const refreshNetwork = useCallback(async (): Promise<void> => {
@@ -515,72 +515,53 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [activateSelected, adjustFocusedSlider, detailMode, handleSettingsBack, leaveDetail, moveDetailFocus, props.inputBlocked]);
 
-  useEffect(() => {
-    let lastInputAt = 0;
-    const timer = window.setInterval(() => {
-      if (props.inputBlocked) return;
-      const pad = navigator.getGamepads?.()[0];
-      if (!pad) {
-        controllerBackPressed.current = false;
-        return;
-      }
-      const pressed = (index: number): boolean => Boolean(pad.buttons[index]?.pressed);
-      const backPressed = pressed(1);
-      const backJustPressed = backPressed && !controllerBackPressed.current;
-      controllerBackPressed.current = backPressed;
-      if (backJustPressed) {
-        lastInputAt = Date.now();
-        handleSettingsBack();
-        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Settings: back' });
-        return;
-      }
-      if (Date.now() - lastInputAt < 190) return;
+  const handleSettingsControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') {
+      handleSettingsBack();
+      void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Settings: back' });
+      return;
+    }
+    if (event.type === 'accept') {
       if (detailMode) {
-        const sliderFocused = document.activeElement instanceof HTMLInputElement && ['volume', 'brightness'].includes(document.activeElement.dataset.settingsSlider ?? '');
-        if (sliderFocused && (pressed(14) || pad.axes[0] < -0.65)) {
-          lastInputAt = Date.now();
-          adjustFocusedSlider(-1);
-        } else if (sliderFocused && (pressed(15) || pad.axes[0] > 0.65)) {
-          lastInputAt = Date.now();
-          adjustFocusedSlider(1);
-        } else if (pressed(12) || pad.axes[1] < -0.65) {
-          lastInputAt = Date.now();
-          moveDetailFocus(-1);
-        } else if (pressed(13) || pad.axes[1] > 0.65) {
-          lastInputAt = Date.now();
-          moveDetailFocus(1);
-        } else if (pressed(14)) {
-          lastInputAt = Date.now();
-          if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget) {
-            setForgetWifiTarget(null);
-            setWifiContextMenu(null);
-            setRemoveBluetoothTarget(null);
-          } else {
-            leaveDetail();
-          }
-        } else if (pressed(0)) {
-          lastInputAt = Date.now();
-          const active = document.activeElement;
-          if (active instanceof HTMLButtonElement) active.click();
-        }
-        return;
-      }
-      if (pressed(12) || pad.axes[1] < -0.65) {
-        lastInputAt = Date.now();
-        setSelectedIndex((index) => (index - 1 + SETTINGS_ITEMS.length) % SETTINGS_ITEMS.length);
-        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad Up', lastNavigationAction: 'Settings: move up' });
-      } else if (pressed(13) || pad.axes[1] > 0.65) {
-        lastInputAt = Date.now();
-        setSelectedIndex((index) => (index + 1) % SETTINGS_ITEMS.length);
-        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'D-pad Down', lastNavigationAction: 'Settings: move down' });
-      } else if (pressed(15) || pressed(0)) {
-        lastInputAt = Date.now();
+        const active = document.activeElement;
+        if (active instanceof HTMLButtonElement) active.click();
+      } else {
         activateSelected();
-        void window.nxgs.reportControllerState({ detected: true, name: pad.id, homeSupported: pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: `Settings: select ${selected.label}` });
       }
-    }, 90);
-    return () => window.clearInterval(timer);
-  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, handleSettingsBack, leaveDetail, moveDetailFocus, props.inputBlocked, removeBluetoothTarget, selected.label, wifiContextMenu]);
+      void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: `Settings: select ${selected.label}` });
+      return;
+    }
+
+    if (detailMode) {
+      const sliderFocused =
+        document.activeElement instanceof HTMLInputElement &&
+        ['volume', 'brightness'].includes(document.activeElement.dataset.settingsSlider ?? '');
+      if (sliderFocused && event.direction === 'left') adjustFocusedSlider(-1);
+      else if (sliderFocused && event.direction === 'right') adjustFocusedSlider(1);
+      else if (event.direction === 'up') moveDetailFocus(-1);
+      else if (event.direction === 'down') moveDetailFocus(1);
+      else if (event.direction === 'left') {
+        if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget) {
+          setForgetWifiTarget(null);
+          setWifiContextMenu(null);
+          setRemoveBluetoothTarget(null);
+        } else {
+          leaveDetail();
+        }
+      }
+      return;
+    }
+
+    if (event.direction === 'up') {
+      setSelectedIndex((index) => (index - 1 + SETTINGS_ITEMS.length) % SETTINGS_ITEMS.length);
+    } else if (event.direction === 'down') {
+      setSelectedIndex((index) => (index + 1) % SETTINGS_ITEMS.length);
+    } else if (event.direction === 'right') {
+      activateSelected();
+    }
+  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, handleSettingsBack, leaveDetail, moveDetailFocus, removeBluetoothTarget, selected.label, wifiContextMenu]);
+
+  useControllerNavigation(!props.inputBlocked, handleSettingsControllerEvent);
 
   const performWifiConnect = useCallback(async (wifi: WifiNetworkSummary, password?: string): Promise<void> => {
     if (networkBusy.current) return;

@@ -14,7 +14,7 @@ import {
 import type { ActiveGameState, GameRecord, SessionState } from '../../shared/types';
 
 export type ConsoleTab = 'games' | 'media';
-export type ConsoleFocusSection = 'tabs' | 'games' | 'content';
+export type ConsoleFocusSection = 'tabs' | 'utilities' | 'games' | 'hero' | 'content';
 
 function fileUrl(path: string): string {
   if (!path) {
@@ -138,10 +138,19 @@ export function GameHeroBackground(props: { game: GameRecord | null }): JSX.Elem
 export function TopNav(props: {
   activeTab: ConsoleTab;
   focusSection: ConsoleFocusSection;
+  utilityIndex: number;
   onTabChange: (tab: ConsoleTab) => void;
+  onUtilityFocus: (index: number) => void;
   session: SessionState;
   onOpenAdmin: () => void;
 }): JSX.Element {
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    if (props.focusSection !== 'tabs') return;
+    tabRefs.current[props.activeTab === 'games' ? 0 : 1]?.focus({ preventScroll: true });
+  }, [props.activeTab, props.focusSection]);
+
   return (
     <header className="console-top-nav">
       <div className="console-nav-left">
@@ -150,6 +159,9 @@ export function TopNav(props: {
         </div>
         <nav className={`console-tabs ${props.focusSection === 'tabs' ? 'keyboard-focus' : ''}`} aria-label="Dashboard sections">
           <button
+            ref={(element) => {
+              tabRefs.current[0] = element;
+            }}
             className={props.activeTab === 'games' ? 'active' : ''}
             type="button"
             onClick={() => props.onTabChange('games')}
@@ -157,6 +169,9 @@ export function TopNav(props: {
             Games
           </button>
           <button
+            ref={(element) => {
+              tabRefs.current[1] = element;
+            }}
             className={props.activeTab === 'media' ? 'active' : ''}
             type="button"
             onClick={() => props.onTabChange('media')}
@@ -165,14 +180,27 @@ export function TopNav(props: {
           </button>
         </nav>
       </div>
-      <UtilityIcons session={props.session} onOpenAdmin={props.onOpenAdmin} />
+      <UtilityIcons
+        session={props.session}
+        focused={props.focusSection === 'utilities'}
+        focusedIndex={props.utilityIndex}
+        onFocusIndex={props.onUtilityFocus}
+        onOpenAdmin={props.onOpenAdmin}
+      />
     </header>
   );
 }
 
-export function UtilityIcons(props: { session: SessionState; onOpenAdmin: () => void }): JSX.Element {
+export function UtilityIcons(props: {
+  session: SessionState;
+  focused: boolean;
+  focusedIndex: number;
+  onFocusIndex: (index: number) => void;
+  onOpenAdmin: () => void;
+}): JSX.Element {
   const [now, setNow] = useState(() => new Date());
   const [notice, setNotice] = useState('');
+  const utilityRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
@@ -187,23 +215,61 @@ export function UtilityIcons(props: { session: SessionState; onOpenAdmin: () => 
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    if (!props.focused) return;
+    utilityRefs.current[props.focusedIndex]?.focus({ preventScroll: true });
+  }, [props.focused, props.focusedIndex]);
+
   return (
-    <div className="console-utilities">
+    <div className={`console-utilities ${props.focused ? 'keyboard-focus' : ''}`}>
       {props.session.status === 'running' && (
         <div className={`console-session-time ${props.session.warningFiveMinutes ? 'warning' : ''}`}>
           <Timer size={16} />
           {formatSessionTime(props.session.remainingSeconds)}
         </div>
       )}
-      <button className="console-icon-button" type="button" title="Search" onClick={() => setNotice('Search coming soon')}>
+      <button
+        ref={(element) => {
+          utilityRefs.current[0] = element;
+        }}
+        data-home-utility-index="0"
+        className={`console-icon-button ${props.focused && props.focusedIndex === 0 ? 'controller-focused' : ''}`}
+        type="button"
+        title="Search"
+        aria-label="Search"
+        onFocus={() => props.onFocusIndex(0)}
+        onClick={() => setNotice('Search coming soon')}
+      >
         <Search size={21} />
       </button>
-      <button className="console-icon-button" type="button" title="Settings" aria-label="Settings" onClick={props.onOpenAdmin}>
+      <button
+        ref={(element) => {
+          utilityRefs.current[1] = element;
+        }}
+        data-home-utility-index="1"
+        className={`console-icon-button ${props.focused && props.focusedIndex === 1 ? 'controller-focused' : ''}`}
+        type="button"
+        title="Settings"
+        aria-label="Settings"
+        onFocus={() => props.onFocusIndex(1)}
+        onClick={props.onOpenAdmin}
+      >
         <Settings size={21} />
       </button>
-      <div className="console-avatar" title="Player profile placeholder" aria-label="Player profile placeholder">
+      <button
+        ref={(element) => {
+          utilityRefs.current[2] = element;
+        }}
+        data-home-utility-index="2"
+        className={`console-avatar ${props.focused && props.focusedIndex === 2 ? 'controller-focused' : ''}`}
+        type="button"
+        title="Player profile"
+        aria-label="Player profile"
+        onFocus={() => props.onFocusIndex(2)}
+        onClick={() => setNotice('Player profile coming soon')}
+      >
         <UserRound size={20} />
-      </div>
+      </button>
       <time dateTime={now.toISOString()}>
         {new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(now)}
       </time>
@@ -230,7 +296,10 @@ export function GameAvatarRow(props: {
     }
     const centeredLeft = tile.offsetLeft - (row.clientWidth - tile.clientWidth) / 2;
     row.scrollTo({ left: Math.max(0, centeredLeft), behavior: 'smooth' });
-  }, [props.selectedIndex]);
+    if (props.focusSection === 'games') {
+      tile.focus({ preventScroll: true });
+    }
+  }, [props.focusSection, props.selectedIndex]);
 
   return (
     <div ref={rowRef} className={`console-game-row ${props.focusSection === 'games' ? 'keyboard-focus' : ''}`} aria-label="Game library">
@@ -261,13 +330,24 @@ export function GameAvatarRow(props: {
   );
 }
 
-export function DashboardContentRow(props: { focusSection: ConsoleFocusSection; game: GameRecord | null }): JSX.Element {
+export function DashboardContentRow(props: {
+  focusSection: ConsoleFocusSection;
+  selectedIndex: number;
+  game: GameRecord | null;
+  onFocusIndex: (index: number) => void;
+}): JSX.Element {
+  const cardRefs = useRef<Array<HTMLElement | null>>([]);
   const cards = [
     { icon: <Sparkles size={19} />, label: 'Recently added', value: props.game?.title ?? 'Your library' },
     { icon: <Library size={19} />, label: 'Installed games', value: 'Ready to play' },
     { icon: <Play size={19} />, label: 'Continue playing', value: props.game ? `Return to ${props.game.title}` : 'Choose a game' },
-    { icon: <Layers3 size={19} />, label: 'Game details', value: props.game?.source || 'Local library' }
+    { icon: <Layers3 size={19} />, label: 'Game details', value: props.game ? 'Available in your library' : 'Your library' }
   ];
+
+  useEffect(() => {
+    if (props.focusSection !== 'content') return;
+    cardRefs.current[props.selectedIndex]?.focus({ preventScroll: true });
+  }, [props.focusSection, props.selectedIndex]);
 
   return (
     <section className={`dashboard-content ${props.focusSection === 'content' ? 'keyboard-focus' : ''}`} aria-label="Dashboard content">
@@ -277,7 +357,16 @@ export function DashboardContentRow(props: { focusSection: ConsoleFocusSection; 
       </div>
       <div className="content-card-row">
         {cards.map((card, index) => (
-          <article key={card.label} className="dashboard-card">
+          <article
+            ref={(element) => {
+              cardRefs.current[index] = element;
+            }}
+            key={card.label}
+            className={`dashboard-card ${props.focusSection === 'content' && index === props.selectedIndex ? 'selected' : ''}`}
+            tabIndex={-1}
+            onFocus={() => props.onFocusIndex(index)}
+            onMouseEnter={() => props.onFocusIndex(index)}
+          >
             {props.game && (index === 0 || index === 2) && (
               <div className="dashboard-card-art">
                 <SafeGameImage game={props.game} kind="cover" alt="" />
@@ -301,18 +390,29 @@ export function ConsoleHome(props: {
   activeGame: ActiveGameState;
   activeTab: ConsoleTab;
   focusSection: ConsoleFocusSection;
+  utilityIndex: number;
+  contentIndex: number;
   homeOverlayRequestId: number;
   emergencyCloseRequestId: number;
   onTabChange: (tab: ConsoleTab) => void;
   onHighlightGame: (index: number) => void;
+  onUtilityFocus: (index: number) => void;
+  onContentFocus: (index: number) => void;
   onOpenAdmin: () => void;
   onSelectGame: (game: GameRecord) => void;
 }): JSX.Element {
+  const playButtonRef = useRef<HTMLButtonElement | null>(null);
   const showingGames = props.activeTab === 'games';
   const heroGame = showingGames ? props.selectedGame : null;
   const hasActiveGame = Boolean(
     props.activeGame.game && !['idle', 'closed', 'error'].includes(props.activeGame.status)
   );
+
+  useEffect(() => {
+    if (props.focusSection === 'hero') {
+      playButtonRef.current?.focus({ preventScroll: true });
+    }
+  }, [props.focusSection]);
 
   return (
     <section className="console-home">
@@ -321,7 +421,9 @@ export function ConsoleHome(props: {
         <TopNav
           activeTab={props.activeTab}
           focusSection={props.focusSection}
+          utilityIndex={props.utilityIndex}
           onTabChange={props.onTabChange}
+          onUtilityFocus={props.onUtilityFocus}
           session={props.session}
           onOpenAdmin={props.onOpenAdmin}
         />
@@ -341,7 +443,8 @@ export function ConsoleHome(props: {
                   <h1 title={props.selectedGame?.title}>{props.selectedGame?.title}</h1>
                   <span>{props.selectedGame?.availabilityStatus === 'available' ? 'Installed and ready' : 'Ready from your saved library'}</span>
                   <button
-                    className="console-play-button"
+                    ref={playButtonRef}
+                    className={`console-play-button ${props.focusSection === 'hero' ? 'controller-focused' : ''}`}
                     type="button"
                     onClick={() => props.selectedGame && props.onSelectGame(props.selectedGame)}
                   >
@@ -349,7 +452,12 @@ export function ConsoleHome(props: {
                     Play
                   </button>
                 </section>
-                <DashboardContentRow focusSection={props.focusSection} game={props.selectedGame} />
+                <DashboardContentRow
+                  focusSection={props.focusSection}
+                  selectedIndex={props.contentIndex}
+                  game={props.selectedGame}
+                  onFocusIndex={props.onContentFocus}
+                />
               </>
             ) : (
               <section className="console-empty-state">

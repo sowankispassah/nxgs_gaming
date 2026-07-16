@@ -252,6 +252,13 @@ button {
   color: #11151b;
 }
 
+.primary-action.controller-focused,
+.secondary-action.controller-focused {
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-glow);
+  outline: none;
+}
+
 .secondary-action {
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.08);
@@ -720,6 +727,13 @@ button {
 .console-utilities {
   position: relative;
   gap: 12px;
+  border-radius: 999px;
+  padding: 4px;
+  transition: box-shadow 180ms ease;
+}
+
+.console-utilities.keyboard-focus {
+  box-shadow: 0 0 0 1px rgba(139, 247, 225, 0.24);
 }
 
 .console-icon-button,
@@ -741,7 +755,8 @@ button {
 }
 
 .console-icon-button:hover,
-.console-icon-button:focus-visible {
+.console-icon-button:focus-visible,
+.console-icon-button.controller-focused {
   border-color: var(--focus-border);
   background: var(--focus-bg);
   box-shadow: var(--focus-glow);
@@ -750,8 +765,22 @@ button {
 }
 
 .console-avatar {
+  border: 1px solid rgba(255, 255, 255, 0.13);
   background: linear-gradient(145deg, rgba(130, 246, 222, 0.26), rgba(45, 83, 117, 0.34));
   color: #bdfbed;
+  cursor: pointer;
+  padding: 0;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.console-avatar:hover,
+.console-avatar:focus-visible,
+.console-avatar.controller-focused {
+  border-color: var(--focus-border);
+  background: var(--focus-bg);
+  box-shadow: var(--focus-glow);
+  outline: none;
+  transform: translateY(-2px);
 }
 
 .console-utilities time {
@@ -970,7 +999,8 @@ button {
 }
 
 .console-play-button:hover,
-.console-play-button:focus-visible {
+.console-play-button:focus-visible,
+.console-play-button.controller-focused {
   background: #fff;
   box-shadow: 0 14px 44px rgba(0, 0, 0, 0.3), var(--focus-glow);
   outline: none;
@@ -1040,6 +1070,15 @@ button {
   box-shadow: 0 13px 38px rgba(0, 0, 0, 0.2);
   padding: 15px 17px;
   backdrop-filter: blur(22px);
+  outline: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.dashboard-card.selected,
+.dashboard-card:focus-visible {
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-glow), 0 16px 42px rgba(0, 0, 0, 0.28);
+  transform: translateY(-3px);
 }
 
 .dashboard-card:nth-child(2) {
