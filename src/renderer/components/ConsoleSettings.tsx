@@ -65,6 +65,7 @@ type RefreshOptions = { quiet?: boolean };
 const NETWORK_CACHE_TTL_MS = 30_000;
 const BLUETOOTH_CACHE_TTL_MS = 60_000;
 const SYSTEM_CACHE_TTL_MS = 10_000;
+const SETTINGS_PREVIEW_HYDRATION_DELAY_MS = 700;
 const settingsDataCache: {
   network?: CachedSettingsValue<NetworkStatus>;
   bluetooth?: CachedSettingsValue<BluetoothStatus>;
@@ -169,6 +170,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const bluetoothActionStartedAt = useRef(0);
   const audioActionStartedAt = useRef(0);
   const displayActionStartedAt = useRef(0);
+  const selectedIndexRef = useRef(0);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
   const selected = SETTINGS_ITEMS[selectedIndex];
@@ -360,19 +362,27 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     await Promise.all([refreshDisplay(), refreshAudio()]);
   }, [refreshAudio, refreshDisplay]);
 
-  useEffect(() => {
+  const hydrateSettingsPage = useCallback((key: SettingsKey, explicit = false): void => {
     const now = Date.now();
-    if (opened.key === 'network' && (networkUpdatedAt.current === 0 || now - networkUpdatedAt.current > NETWORK_CACHE_TTL_MS)) {
-      void refreshNetwork({ quiet: networkUpdatedAt.current > 0 });
+    if (key === 'network' && (networkUpdatedAt.current === 0 || now - networkUpdatedAt.current > NETWORK_CACHE_TTL_MS)) {
+      void refreshNetwork({ quiet: !explicit || networkUpdatedAt.current > 0 });
     }
-    if (opened.key === 'controller' && (bluetoothUpdatedAt.current === 0 || now - bluetoothUpdatedAt.current > BLUETOOTH_CACHE_TTL_MS)) {
+    if (key === 'controller' && (bluetoothUpdatedAt.current === 0 || now - bluetoothUpdatedAt.current > BLUETOOTH_CACHE_TTL_MS)) {
       void refreshBluetoothStatus();
     }
-    if (opened.key === 'system') {
+    if (key === 'system') {
       if (audioUpdatedAt.current === 0 || now - audioUpdatedAt.current > SYSTEM_CACHE_TTL_MS) void refreshAudio({ quiet: true });
       if (displayUpdatedAt.current === 0 || now - displayUpdatedAt.current > SYSTEM_CACHE_TTL_MS) void refreshDisplay({ quiet: true });
     }
-  }, [opened.key, refreshAudio, refreshBluetoothStatus, refreshDisplay, refreshNetwork]);
+  }, [refreshAudio, refreshBluetoothStatus, refreshDisplay, refreshNetwork]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => hydrateSettingsPage(opened.key),
+      SETTINGS_PREVIEW_HYDRATION_DELAY_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [hydrateSettingsPage, opened.key]);
 
   useEffect(() => {
     setSelectedWifi(null);
@@ -545,16 +555,27 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     return false;
   }, [applyDisplayBrightness, applyMasterVolume, displayBrightness, displayVolume]);
 
+  const previewSettingsIndex = useCallback((index: number): void => {
+    selectedIndexRef.current = index;
+    setSelectedIndex(index);
+    setOpenedIndex(index);
+    setDetailMode(false);
+  }, []);
+
+  const moveSettingsPreview = useCallback((direction: -1 | 1): void => {
+    const next = (selectedIndexRef.current + direction + SETTINGS_ITEMS.length) % SETTINGS_ITEMS.length;
+    previewSettingsIndex(next);
+  }, [previewSettingsIndex]);
+
   const enterDetail = useCallback((): void => {
     setDetailMode(true);
     window.setTimeout(() => focusableDetailActions()[0]?.focus(), 0);
   }, []);
 
   const leaveDetail = useCallback((): void => {
-    setDetailMode(false);
-    setSelectedIndex(openedIndex);
+    previewSettingsIndex(openedIndex);
     (document.querySelector<HTMLElement>(`.console-settings-layout > nav button[data-index="${openedIndex}"]`))?.focus();
-  }, [openedIndex]);
+  }, [openedIndex, previewSettingsIndex]);
 
   const handleSettingsBack = useCallback((): void => {
     if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget) {
@@ -588,13 +609,15 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   }, []);
 
   const activateSelected = useCallback((): void => {
-    const key = SETTINGS_ITEMS[selectedIndex].key;
+    const index = selectedIndexRef.current;
+    const key = SETTINGS_ITEMS[index].key;
     if (key === 'control-room') props.onControlRoom();
     else {
-      setOpenedIndex(selectedIndex);
+      setOpenedIndex(index);
+      hydrateSettingsPage(key, true);
       enterDetail();
     }
-  }, [enterDetail, props, selectedIndex]);
+  }, [enterDetail, hydrateSettingsPage, props]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -631,14 +654,14 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       }
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (event.key === 'ArrowUp') setSelectedIndex((index) => (index - 1 + SETTINGS_ITEMS.length) % SETTINGS_ITEMS.length);
-      else if (event.key === 'ArrowDown') setSelectedIndex((index) => (index + 1) % SETTINGS_ITEMS.length);
+      if (event.key === 'ArrowUp') moveSettingsPreview(-1);
+      else if (event.key === 'ArrowDown') moveSettingsPreview(1);
       else if (event.key === 'Enter' || event.key === 'ArrowRight') activateSelected();
       else handleSettingsBack();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activateSelected, adjustFocusedSlider, detailMode, handleSettingsBack, leaveDetail, moveDetailFocus, props.inputBlocked]);
+  }, [activateSelected, adjustFocusedSlider, detailMode, handleSettingsBack, leaveDetail, moveDetailFocus, moveSettingsPreview, props.inputBlocked]);
 
   const handleSettingsControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
     if (event.type === 'back') {
@@ -678,13 +701,13 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     }
 
     if (event.direction === 'up') {
-      setSelectedIndex((index) => (index - 1 + SETTINGS_ITEMS.length) % SETTINGS_ITEMS.length);
+      moveSettingsPreview(-1);
     } else if (event.direction === 'down') {
-      setSelectedIndex((index) => (index + 1) % SETTINGS_ITEMS.length);
+      moveSettingsPreview(1);
     } else if (event.direction === 'right') {
       activateSelected();
     }
-  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, handleSettingsBack, leaveDetail, moveDetailFocus, removeBluetoothTarget, selected.label, wifiContextMenu]);
+  }, [activateSelected, adjustFocusedSlider, detailMode, forgetWifiTarget, handleSettingsBack, leaveDetail, moveDetailFocus, moveSettingsPreview, removeBluetoothTarget, selected.label, wifiContextMenu]);
 
   useControllerNavigation(!props.inputBlocked, handleSettingsControllerEvent);
 
@@ -1305,15 +1328,16 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
               key={item.key}
               type="button"
               className={index === selectedIndex ? 'selected' : ''}
-              onMouseEnter={() => setSelectedIndex(index)}
+              onMouseEnter={() => previewSettingsIndex(index)}
               onFocus={() => {
-                if (!detailMode) setSelectedIndex(index);
+                if (!detailMode) previewSettingsIndex(index);
               }}
               onClick={() => {
-                setSelectedIndex(index);
+                previewSettingsIndex(index);
                 if (item.key === 'control-room') props.onControlRoom();
                 else {
                   setOpenedIndex(index);
+                  hydrateSettingsPage(item.key, true);
                   enterDetail();
                 }
               }}

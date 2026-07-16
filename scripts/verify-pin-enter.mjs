@@ -111,6 +111,18 @@ try {
   console.log('PASS: Settings shell matched the compact dark console layout geometry.');
   const settingsCategories = await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].map((button) => button.textContent.trim())");
   if (settingsCategories.includes('Sound') || settingsCategories.includes('Screen and Video')) throw new Error(`Sound or Screen and Video remained as a separate Settings category: ${JSON.stringify(settingsCategories)}`);
+  for (let step = 0; step < 6; step += 1) {
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40 });
+  }
+  await delay(100);
+  const rapidScrollResult = await evaluate("(() => ({ selected: [...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.classList.contains('selected'))?.textContent.trim(), opened: document.querySelector('.console-settings-detail h2')?.textContent.trim(), loading: /Searching\\.\\.\\.|Refreshing\\.\\.\\./.test(document.querySelector('.console-settings-detail')?.innerText ?? '') }))()");
+  if (rapidScrollResult.selected !== 'Storage' || rapidScrollResult.opened !== 'Storage' || rapidScrollResult.loading) {
+    throw new Error(`Rapid Settings navigation did not preview smoothly: ${JSON.stringify(rapidScrollResult)}`);
+  }
+  console.log('PASS: Rapid controller scrolling previewed every Settings page without waiting for earlier page data.');
+  await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'Guide & Tips / Info').focus()");
+  await delay(50);
   await evaluate(`(() => {
     const buttons = [...document.querySelectorAll('.console-settings-layout > nav button')];
     const bluetooth = buttons.find((button) => button.textContent.trim() === 'Bluetooth / Controller');
@@ -127,10 +139,10 @@ try {
       searching: document.querySelector('.console-settings-detail')?.innerText.includes('Searching...')
     };
   })()`);
-  if (hoverResult.selected !== 'System' || hoverResult.opened !== 'Guide & Tips / Info' || hoverResult.searching) {
-    throw new Error(`Settings focus performed page work instead of highlighting only: ${JSON.stringify(hoverResult)}`);
+  if (hoverResult.selected !== 'System' || hoverResult.opened !== 'System' || hoverResult.searching) {
+    throw new Error(`Settings hover did not preview instantly and quietly: ${JSON.stringify(hoverResult)}`);
   }
-  console.log('PASS: Hover and controller-style focus changed only the Settings highlight without opening or refreshing a page.');
+  console.log('PASS: Hover and focus instantly previewed the matching page without starting Bluetooth discovery.');
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'Bluetooth / Controller').click()");
   await waitFor("Boolean(document.querySelector('.bluetooth-device-list')) && [...document.querySelectorAll('.settings-detail-heading button')].some((button) => button.textContent.includes('Scan for Devices'))", 'Bluetooth controller status did not render.');
   const bluetoothOpenState = await evaluate("(() => { const button = [...document.querySelectorAll('.settings-detail-heading button')].find((item) => item.textContent.includes('Scan for Devices') || item.textContent.includes('Searching')); return { button: button?.textContent.trim(), page: document.querySelector('.console-settings-detail h2')?.textContent.trim() }; })()");

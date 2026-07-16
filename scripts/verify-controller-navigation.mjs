@@ -109,7 +109,9 @@ for (const [name, source] of [['App', app], ['ConsoleSettings', settings], ['Qui
 }
 assert.match(app, /useControllerNavigation\(/, 'Home and modal navigation must use the shared controller hub');
 assert.match(settings, /useControllerNavigation\(/, 'Settings must use the shared controller hub');
-assert.match(settings, /const \[openedIndex, setOpenedIndex\] = useState\(0\)/, 'Settings must keep highlighted categories separate from the opened page');
+assert.match(settings, /previewSettingsIndex[\s\S]*setSelectedIndex\(index\);[\s\S]*setOpenedIndex\(index\);/, 'Settings menu movement must immediately preview the highlighted page');
+assert.match(settings, /SETTINGS_PREVIEW_HYDRATION_DELAY_MS/, 'Settings preview hydration must be cancellably delayed during rapid navigation');
+assert.match(settings, /hydrateSettingsPage\(item\.key, true\)/, 'Explicit page selection must hydrate immediately');
 assert.match(settings, /window\.nxgs\.getBluetoothStatus\(\)/, 'Bluetooth page hydration must use a status-only read instead of device discovery');
 assert.match(settings, /window\.nxgs\.scanBluetoothDevices\(\)/, 'Bluetooth discovery must remain available as an explicit action');
 assert.match(settings, /settingsDataCache/, 'Settings system data must remain cached across page revisits');
