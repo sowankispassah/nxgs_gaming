@@ -39,6 +39,7 @@ export class KioskInputService {
   private lastRestrictedInput: string | undefined;
   private lastInputError: string | undefined;
   private restrictedRegistered = new Set<string>();
+  private shortcutWatchdog: NodeJS.Timeout | null = null;
   private readonly shortcutDiagnostics: AppDiagnostics['shortcuts'] = {
     homeRegistered: false,
     f10Registered: false,
@@ -83,14 +84,19 @@ export class KioskInputService {
 
   register(): void {
     this.shortcutDiagnostics.failures = [];
-    this.registerShortcut('CommandOrControl+Shift+H', 'homeRegistered', () => this.requestHome('global-home'));
-    this.registerShortcut('F10', 'f10Registered', () => this.requestHome('global-f10'));
-    this.registerShortcut('CommandOrControl+Shift+X', 'emergencyCloseRegistered', () => this.events.onEmergencyClose());
+    this.ensureCoreShortcuts();
+    if (!this.shortcutWatchdog) {
+      this.shortcutWatchdog = setInterval(() => this.ensureCoreShortcuts(true), 2000);
+    }
     this.shortcutDiagnostics.adminUnlockRegistered = false;
     this.refreshRestrictedShortcuts();
   }
 
   unregisterAll(): void {
+    if (this.shortcutWatchdog) {
+      clearInterval(this.shortcutWatchdog);
+      this.shortcutWatchdog = null;
+    }
     this.nativeHook.stop();
     globalShortcut.unregisterAll();
     this.restrictedRegistered.clear();
@@ -136,6 +142,7 @@ export class KioskInputService {
     } else {
       this.adminControlsUnlocked = false;
     }
+    this.ensureCoreShortcuts(true);
     this.refreshRestrictedShortcuts();
     void logLine('info', `Kiosk input mode changed to ${mode}.`);
   }
@@ -165,6 +172,10 @@ export class KioskInputService {
   }
 
   private registerShortcut(accelerator: string, label: ShortcutLabel, handler: () => void): void {
+    if (globalShortcut.isRegistered(accelerator)) {
+      this.shortcutDiagnostics[label] = true;
+      return;
+    }
     try {
       const registered = globalShortcut.register(accelerator, handler);
       this.shortcutDiagnostics[label] = registered;
@@ -173,14 +184,36 @@ export class KioskInputService {
         void logLine('info', message);
         return;
       }
-      this.shortcutDiagnostics.failures.push(message);
-      void logLine('warn', message);
+      if (!this.shortcutDiagnostics.failures.includes(message)) {
+        this.shortcutDiagnostics.failures.push(message);
+        void logLine('warn', message);
+      }
     } catch (error) {
       const message = `${accelerator} global shortcut failed: ${error instanceof Error ? error.message : String(error)}`;
       this.shortcutDiagnostics[label] = false;
-      this.shortcutDiagnostics.failures.push(message);
+      if (!this.shortcutDiagnostics.failures.includes(message)) {
+        this.shortcutDiagnostics.failures.push(message);
+        void logLine('warn', message);
+      }
       this.lastInputError = message;
-      void logLine('warn', message);
+    }
+  }
+
+  private ensureCoreShortcuts(recoveryCheck = false): void {
+    const homeWasRegistered = globalShortcut.isRegistered('CommandOrControl+Shift+H');
+    const f10WasRegistered = globalShortcut.isRegistered('F10');
+    const emergencyWasRegistered = globalShortcut.isRegistered('CommandOrControl+Shift+X');
+    this.registerShortcut('CommandOrControl+Shift+H', 'homeRegistered', () => this.requestHome('global-home'));
+    this.registerShortcut('F10', 'f10Registered', () => this.requestHome('global-f10'));
+    this.registerShortcut('CommandOrControl+Shift+X', 'emergencyCloseRegistered', () => this.events.onEmergencyClose());
+    if (recoveryCheck && !homeWasRegistered && this.shortcutDiagnostics.homeRegistered) {
+      void logLine('warn', 'Recovered the Ctrl+Shift+H Home shortcut after its registration was lost.');
+    }
+    if (recoveryCheck && !f10WasRegistered && this.shortcutDiagnostics.f10Registered) {
+      void logLine('warn', 'Recovered the F10 Home shortcut after its registration was lost.');
+    }
+    if (recoveryCheck && !emergencyWasRegistered && this.shortcutDiagnostics.emergencyCloseRegistered) {
+      void logLine('warn', 'Recovered the emergency close shortcut after its registration was lost.');
     }
   }
 

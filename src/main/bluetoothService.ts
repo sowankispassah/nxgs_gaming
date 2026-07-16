@@ -106,6 +106,9 @@ public static class NxgsBluetoothNative {
     private static extern int BluetoothAuthenticateDeviceEx(IntPtr parentWindow, IntPtr radio, ref BLUETOOTH_DEVICE_INFO info, IntPtr oobData, int requirements);
 
     [DllImport("bthprops.cpl", SetLastError = true)]
+    private static extern int BluetoothSetServiceState(IntPtr radio, ref BLUETOOTH_DEVICE_INFO info, ref Guid service, uint flags);
+
+    [DllImport("bthprops.cpl", SetLastError = true)]
     private static extern int BluetoothRemoveDevice(ref BLUETOOTH_ADDRESS address);
 
     private static NxgsBluetoothDevice Convert(BLUETOOTH_DEVICE_INFO info) {
@@ -188,6 +191,44 @@ public static class NxgsBluetoothNative {
             return new NxgsBluetoothAction { Found = true, Success = code == 0, Code = code };
         }
         return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
+    }
+
+    public static NxgsBluetoothAction RequestHidConnection(string id) {
+        BLUETOOTH_ADDRESS address;
+        if (!TryAddress(id, out address)) return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
+        BLUETOOTH_DEVICE_INFO selected = new BLUETOOTH_DEVICE_INFO();
+        bool found = false;
+        foreach (var info in Find(1, false)) {
+            if (info.Address.Value != address.Value) continue;
+            selected = info;
+            found = true;
+            break;
+        }
+        if (!found) return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
+        if (selected.Connected) return new NxgsBluetoothAction { Found = true, Success = true, Code = 0 };
+
+        var search = new BLUETOOTH_FIND_RADIO_PARAMS { Size = Marshal.SizeOf(typeof(BLUETOOTH_FIND_RADIO_PARAMS)) };
+        IntPtr radio;
+        IntPtr radioFind = BluetoothFindFirstRadio(ref search, out radio);
+        if (radioFind == IntPtr.Zero) return new NxgsBluetoothAction { Found = true, Success = false, Code = Marshal.GetLastWin32Error() };
+        var hidService = new Guid("00001124-0000-1000-8000-00805F9B34FB");
+        int lastError = 1;
+        try {
+            do {
+                try {
+                    int code = BluetoothSetServiceState(radio, ref selected, ref hidService, 1);
+                    lastError = code;
+                    if (code == 0 || code == unchecked((int)0x80070057)) {
+                        return new NxgsBluetoothAction { Found = true, Success = true, Code = code };
+                    }
+                } finally {
+                    if (radio != IntPtr.Zero) CloseHandle(radio);
+                }
+            } while (BluetoothFindNextRadio(radioFind, out radio));
+        } finally {
+            BluetoothFindRadioClose(radioFind);
+        }
+        return new NxgsBluetoothAction { Found = true, Success = false, Code = lastError };
     }
 
     public static NxgsBluetoothAction Disconnect(string id) {
@@ -286,6 +327,7 @@ if ($hasRadio) {
         }
         $device.Controller = $isController
         $device.InputReady = $inputReady
+        $device.Connected = [bool]$device.Connected -or $inputReady
     }
 }
 [pscustomobject]@{ radioState = if ($hasRadio) { 'on' } else { 'off' }; devices = $devices } | ConvertTo-Json -Depth 5 -Compress
@@ -295,6 +337,11 @@ const PAIR_SCRIPT = `${NATIVE_BLUETOOTH_PREAMBLE}
 $owner = 0L
 [void][long]::TryParse($env:NXGS_BLUETOOTH_OWNER, [ref]$owner)
 $result = [NxgsBluetoothNative]::Pair($env:NXGS_BLUETOOTH_DEVICE_ID, $owner)
+[pscustomobject]@{ found = $result.Found; success = $result.Success; status = [string]$result.Code } | ConvertTo-Json -Compress
+`;
+
+const CONNECT_CONTROLLER_SCRIPT = `${NATIVE_BLUETOOTH_PREAMBLE}
+$result = [NxgsBluetoothNative]::RequestHidConnection($env:NXGS_BLUETOOTH_DEVICE_ID)
 [pscustomobject]@{ found = $result.Found; success = $result.Success; status = [string]$result.Code } | ConvertTo-Json -Compress
 `;
 
@@ -483,7 +530,7 @@ export async function scanBluetoothDevices(issueInquiry = true): Promise<Bluetoo
 
 async function waitForControllerInput(
   deviceId: string,
-  attempts = 4
+  attempts = 8
 ): Promise<{ bluetooth: BluetoothStatus; device?: BluetoothDeviceSummary }> {
   let bluetooth = await scanBluetoothDevices(false);
   let device = bluetooth.devices.find((candidate) => candidate.id.toLowerCase() === deviceId.toLowerCase());
@@ -493,6 +540,17 @@ async function waitForControllerInput(
     device = bluetooth.devices.find((candidate) => candidate.id.toLowerCase() === deviceId.toLowerCase());
   }
   return { bluetooth, device };
+}
+
+async function requestControllerConnection(deviceId: string): Promise<RawBluetoothAction> {
+  const result = await runPowerShell<RawBluetoothAction>(CONNECT_CONTROLLER_SCRIPT, {
+    NXGS_BLUETOOTH_DEVICE_ID: deviceId
+  });
+  await logLine(
+    asBoolean(result.success) ? 'info' : 'warn',
+    `Controller connection request for ${deviceId} ${asBoolean(result.success) ? 'was accepted' : `failed with ${String(result.status ?? 'unknown')}`}.`
+  );
+  return result;
 }
 
 export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): Promise<BluetoothActionResult> {
@@ -511,11 +569,15 @@ export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): 
         bluetooth: before
       };
     }
-    if (existing?.paired && existing.controller && existing.connected && !existing.inputReady) {
+    if (existing?.paired && existing.controller) {
       await logLine(
-        'warn',
-        `Preserving Bluetooth link for ${existing.name} (${existing.id}); waiting for its HID game-controller interface without disconnecting the controller.`
+        'info',
+        `Requesting the HID controller service for ${existing.name} (${existing.id}) without removing its saved pairing.`
       );
+      const request = await requestControllerConnection(deviceId);
+      if (!asBoolean(request.found)) {
+        return { ok: false, status: 'device-not-found', message: 'Controller not found. Scan again and retry.', bluetooth: before };
+      }
       const checked = await waitForControllerInput(deviceId);
       if (checked.device?.inputReady) {
         return {
@@ -526,9 +588,11 @@ export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): 
         };
       }
       return {
-        ok: true,
+        ok: asBoolean(request.success),
         status: 'paired',
-        message: 'Bluetooth stayed connected, but controller input is not ready yet. Keep the controller on, press PS / Home once, then scan again. NXGS will not disconnect it.',
+        message: asBoolean(request.success)
+          ? 'Connection requested. Keep the controller awake and press PS / Home once; NXGS will detect it automatically.'
+          : 'The controller stayed paired, but the connection request was not accepted. Press PS / Home once and NXGS will detect it automatically.',
         bluetooth: checked.bluetooth
       };
     }
@@ -544,9 +608,15 @@ export async function pairBluetoothDevice(deviceId: string, ownerWindow = '0'): 
       const bluetooth = await scanBluetoothDevices(false);
       return { ok: false, status: 'failed', message: windowsPairingError(String(result.status ?? 'unknown')), bluetooth };
     }
-    const checked = await waitForControllerInput(deviceId);
-    const bluetooth = checked.bluetooth;
-    const connectedDevice = checked.device;
+    let checked = await waitForControllerInput(deviceId);
+    let bluetooth = checked.bluetooth;
+    let connectedDevice = checked.device;
+    if (connectedDevice?.controller && !connectedDevice.inputReady) {
+      await requestControllerConnection(deviceId);
+      checked = await waitForControllerInput(deviceId);
+      bluetooth = checked.bluetooth;
+      connectedDevice = checked.device;
+    }
     if (connectedDevice?.controller && connectedDevice.inputReady) {
       return { ok: true, status: 'connected', message: 'Controller input connected and ready.', bluetooth };
     }

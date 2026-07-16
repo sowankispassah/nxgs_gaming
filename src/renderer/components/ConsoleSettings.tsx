@@ -897,9 +897,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       const controllerDetail = controllerDetected
         ? 'Controller input is active in the launcher.'
         : inputReadyController
-          ? 'Windows input is ready. Press any controller button to activate launcher navigation.'
+          ? 'Controller input is ready. Press any controller button to activate launcher navigation.'
           : linkedInputInactiveController
-            ? 'Bluetooth is linked, but Windows has not exposed the game-controller input profile. Keep the controller on, press PS / Home, then select Check Input. NXGS will not disconnect it.'
+            ? 'Bluetooth is linked, but controller input is not active yet. Keep the controller on, press PS / Home, then select Check Input. NXGS will not disconnect it.'
             : pairedControllers.length > 0
               ? 'Press the controller PS / Home button once to reconnect it.'
               : 'Put the controller in pairing mode, then scan.';
@@ -936,8 +936,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
               const pending = bluetoothPending?.endsWith(`:${device.id}`) ?? false;
               const pendingAction = pending ? bluetoothPending?.split(':', 1)[0] : null;
               const launcherInputActive = device.controller && controllerDetected && pairedControllers.length === 1;
-              const inputInactive = device.controller && device.connected && !device.inputReady && !launcherInputActive;
-              const shouldDisconnect = device.connected && !inputInactive;
+              const effectiveConnected = device.connected || device.inputReady || launcherInputActive;
+              const inputInactive = device.controller && effectiveConnected && !device.inputReady && !launcherInputActive;
+              const shouldDisconnect = effectiveConnected && !inputInactive;
               const label = inputInactive ? 'Check Input' : shouldDisconnect ? 'Disconnect' : device.paired ? 'Reconnect' : 'Pair';
               const status = pendingAction === 'connect'
                 ? inputInactive ? 'Checking controller input' : 'Connecting'
@@ -952,7 +953,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
                           ? 'Controller input ready'
                           : inputInactive
                             ? 'Bluetooth linked / input inactive'
-                            : device.connected
+                            : effectiveConnected
                               ? 'Connected'
                               : device.paired ? 'Paired / Disconnected' : 'Available'
                     );

@@ -277,6 +277,7 @@ export function App(): JSX.Element {
       setPinOpen(false);
       setAdminUnlockRequest(null);
       setAdminOptionsOpen(false);
+      resetToHome();
       if (event.preserveAdminWindow) {
         setAdminControlsActive(true);
         setWindowedAdminMode(true);
@@ -452,12 +453,12 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (pinOpen || adminOptionsOpen) return;
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'h') {
         event.preventDefault();
         void window.nxgs.requestShellHome('renderer-request');
         return;
       }
+      if (pinOpen || adminOptionsOpen) return;
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault();
         openConsoleSettings();

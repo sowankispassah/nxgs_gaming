@@ -46,8 +46,23 @@ assert.match(
 );
 assert.match(
   bluetoothSource,
-  /Preserving Bluetooth link/,
-  'controller input checks must preserve the paired Bluetooth link'
+  /\$device\.Connected = \[bool\]\$device\.Connected -or \$inputReady/,
+  'active HID controller input must promote the Bluetooth device to connected'
+);
+assert.match(
+  bluetoothSource,
+  /BluetoothSetServiceState/,
+  'paired controller reconnect must request the HID service through the supported native API'
+);
+assert.match(
+  bluetoothSource,
+  /CONNECT_CONTROLLER_SCRIPT/,
+  'paired controllers must have an explicit connection request path'
+);
+assert.match(
+  bluetoothSource,
+  /Requesting the HID controller service/,
+  'controller reconnect must request service activation instead of reporting pairing success immediately'
 );
 assert.doesNotMatch(
   pairFunction,
@@ -78,6 +93,11 @@ assert.match(
   settingsSource,
   /disabled=\{bluetoothPending !== null/,
   'Bluetooth actions must reject duplicate clicks while recovery is pending'
+);
+assert.match(
+  settingsSource,
+  /const effectiveConnected = device\.connected \|\| device\.inputReady \|\| launcherInputActive/,
+  'the Bluetooth row must treat active launcher input as a connected controller'
 );
 
 if (process.platform === 'win32') {

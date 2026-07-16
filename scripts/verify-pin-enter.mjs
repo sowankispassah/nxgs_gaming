@@ -122,6 +122,11 @@ try {
     await waitFor("document.querySelector('.console-settings-detail').innerText.includes('Controller input unavailable') && [...document.querySelectorAll('.bluetooth-device-list button')].some((button) => button.textContent.includes('Check Input'))", 'A stale Bluetooth controller link did not expose the accurate warning and Check Input action.');
     console.log('PASS: Bluetooth-linked controller without HID input showed Controller input unavailable and non-destructive Check Input.');
   }
+  const readyController = bluetoothStatus.devices.find((device) => device.controller && device.inputReady);
+  if (readyController) {
+    await waitFor(`(() => { const row = [...document.querySelectorAll('.bluetooth-device-list > div')].find((item) => item.textContent.includes(${JSON.stringify(readyController.name)})); return Boolean(row) && row.textContent.includes('Controller input ready') && [...row.querySelectorAll('button')].some((button) => button.textContent.includes('Disconnect')); })()`, 'An active controller still showed Reconnect instead of Disconnect.');
+    console.log('PASS: Active controller input was detected as Connected with a Disconnect action.');
+  }
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System').click()");
   await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('input[aria-label=\"Master volume\"]')) && Boolean(document.querySelector('.system-collapsible-heading')) && document.querySelectorAll('.system-device-section').length === 2; if (!ready) [...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System')?.click(); return ready; })()", 'System did not render the combined display and sound controls.');
   await waitFor("document.querySelector('.system-refresh-button')?.textContent.trim() === 'Refresh'", 'System controls did not finish their initial refresh.');
@@ -175,6 +180,15 @@ try {
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'admin' && !data.kiosk.fullscreen && !data.kiosk.maximized && data.kiosk.resizable && !data.kiosk.taskbarHidden && !data.kiosk.alwaysOnTop)", 'Exit Full Screen did not produce a normal admin window.');
   await waitFor("!document.querySelector('.admin-options-modal') && !document.querySelector('.quick-home-overlay') && Boolean(document.querySelector('.console-home')) && Boolean(document.querySelector('.windowed-admin-lock:not(:disabled)')) && !document.querySelector('main').classList.contains('cursor-hidden')", 'Windowed admin mode did not close options, show Home, expose the lock control, and keep the cursor visible.');
   console.log('PASS: Exit Full Screen produced a resizable admin Home window with taskbar, cursor, and lock control.');
+  await evaluate("document.querySelector('button[aria-label=Settings]').click()");
+  await waitFor("Boolean(document.querySelector('.console-settings-screen'))", 'Settings did not open in windowed Admin mode.');
+  await delay(650);
+  await pressCtrlShiftH();
+  await waitFor("Boolean(document.querySelector('.quick-home-overlay button[aria-label=\"Quick Settings\"]')) && Boolean(document.querySelector('.console-home')) && !document.querySelector('.console-settings-screen')", 'Ctrl+Shift+H did not leave Settings and visibly open the windowed Quick Switcher.');
+  await waitFor("window.nxgs.getDiagnostics().then((data) => Boolean(data.kiosk.lastHomeTrigger) && data.kiosk.mode === 'admin' && !data.kiosk.fullscreen && data.kiosk.resizable)", 'Ctrl+Shift+H was not handled or windowed Admin mode was not preserved.');
+  await pressB();
+  await waitFor("!document.querySelector('.quick-home-overlay') && Boolean(document.querySelector('.console-home'))", 'Closing the windowed Quick Switcher did not return to Home.');
+  console.log('PASS: Ctrl+Shift+H left Settings, opened the Quick Switcher, and preserved windowed Admin mode.');
   for (let attempt = 0; attempt < 6; attempt += 1) {
     await delay(650);
     await pressCtrlShiftH();
