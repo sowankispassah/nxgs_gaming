@@ -56,6 +56,11 @@ button {
   color: inherit;
 }
 
+:where(button, input, select, textarea, a, [tabindex]):focus,
+:where(button, input, select, textarea, a, [tabindex]):focus-visible {
+  outline: none;
+}
+
 .app-shell {
   position: fixed;
   inset: 0;
@@ -1731,8 +1736,9 @@ button {
 .quick-settings-control > header button:hover,
 .quick-settings-control > header button:focus-visible {
   background: var(--focus-bg);
+  box-shadow: 0 0 0 1px var(--focus-border), var(--focus-glow);
   color: #fff;
-  outline: 1px solid var(--focus-border);
+  outline: none;
 }
 
 .quick-settings-control > header button.muted { color: var(--text-secondary); }

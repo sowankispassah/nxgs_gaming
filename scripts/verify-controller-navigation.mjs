@@ -78,11 +78,12 @@ engine.update(pad, 1010);
 pad.buttons[0].pressed = true;
 assert.equal(engine.update(pad, 1020).navigation.filter((event) => event.type === 'accept').length, 1);
 
-const [app, home, settings, switcher] = await Promise.all([
+const [app, home, settings, switcher, styles] = await Promise.all([
   readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/ConsoleHome.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/ConsoleSettings.tsx', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/components/QuickHomeOverlay.tsx', import.meta.url), 'utf8')
+  readFile(new URL('../src/renderer/components/QuickHomeOverlay.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8')
 ]);
 
 for (const [name, source] of [['App', app], ['ConsoleSettings', settings], ['QuickHomeOverlay', switcher]]) {
@@ -97,5 +98,18 @@ assert.match(home, /data-home-utility-index="2"/, 'User profile must be controll
 assert.match(app, /homeFocusSection === 'utilities'/, 'Home focus graph must include top-right utilities');
 assert.match(app, /focusArea === 'launch'/, 'time selection must include a controller-focused launch action');
 assert.match(app, /useControllerNavigation\(!pending, handleLaunchControllerEvent\)/, 'time selection must own controller input while open');
+assert.doesNotMatch(
+  app,
+  /if \(focusArea === 'launch'\) void launch\(\);\s*else setFocusArea\('launch'\)/,
+  'A/X on a duration must not jump to or activate Launch Game'
+);
+assert.match(app, /event\.direction === 'down'\) setFocusArea\('launch'\)/, 'Down must move from duration to Launch Game');
+assert.match(app, /focusArea === 'unlock'/, 'PIN modal must include Unlock in its controller focus map');
+assert.match(app, /unlockButtonRef/, 'PIN Unlock must receive real DOM focus');
+assert.match(
+  styles,
+  /:where\(button, input, select, textarea, a, \[tabindex\]\):focus[\s\S]*outline:\s*none;/,
+  'all focusable launcher controls must suppress the browser outline'
+);
 
 console.log('Global controller edge, repeat, focus graph, and modal navigation verified.');

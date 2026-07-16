@@ -907,7 +907,6 @@ function LaunchConfirm(props: {
     }
     if (event.type === 'accept') {
       if (focusArea === 'launch') void launch();
-      else setFocusArea('launch');
       return;
     }
     if (event.direction === 'left' && focusArea === 'durations') moveDuration(-1);
@@ -930,7 +929,6 @@ function LaunchConfirm(props: {
       else if (event.key === 'ArrowDown') setFocusArea('launch');
       else if (event.key === 'ArrowUp') setFocusArea('durations');
       else if (focusArea === 'launch') void launch();
-      else setFocusArea('launch');
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
@@ -965,7 +963,7 @@ function LaunchConfirm(props: {
               }}
               onClick={() => {
                 setDurationIndex(index);
-                setFocusArea('launch');
+                setFocusArea('durations');
               }}
               disabled={pending}
             >
@@ -2029,13 +2027,9 @@ function PinDialog(props: {
   const [error, setError] = useState('');
   const keypad = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Clear', '0', 'Submit'] as const;
   const [keypadIndex, setKeypadIndex] = useState(0);
-
-  const isEnterKey = (event: React.KeyboardEvent | KeyboardEvent): boolean =>
-    event.key === 'Enter' ||
-    event.key === 'Return' ||
-    event.code === 'Enter' ||
-    event.code === 'NumpadEnter' ||
-    event.keyCode === 13;
+  const [focusArea, setFocusArea] = useState<'keypad' | 'unlock'>('keypad');
+  const keypadRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const unlockButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const submitPin = useCallback(async (): Promise<void> => {
     if (pending) return;
@@ -2057,20 +2051,47 @@ function PinDialog(props: {
   }, [keypad, keypadIndex, submitPin]);
 
   useEffect(() => {
+    if (focusArea === 'unlock') unlockButtonRef.current?.focus({ preventScroll: true });
+    else keypadRefs.current[keypadIndex]?.focus({ preventScroll: true });
+  }, [focusArea, keypadIndex]);
+
+  const movePinVertical = useCallback((direction: -1 | 1): void => {
+    if (focusArea === 'unlock') {
+      if (direction < 0) setFocusArea('keypad');
+      return;
+    }
+    const row = Math.floor(keypadIndex / 3);
+    if (direction > 0 && row === 3) {
+      setFocusArea('unlock');
+      return;
+    }
+    setKeypadIndex((index) => Math.max(0, Math.min(keypad.length - 1, index + direction * 3)));
+  }, [focusArea, keypad.length, keypadIndex]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Escape', 'b', 'B'].includes(event.key)) return;
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Backspace', 'b', 'B'].includes(event.key)) return;
+      if (event.target instanceof HTMLInputElement && event.key === 'Backspace') return;
       event.preventDefault();
       event.stopImmediatePropagation();
       if (pending) return;
-      if (event.key === 'ArrowLeft') setKeypadIndex((index) => (index - 1 + keypad.length) % keypad.length);
-      else if (event.key === 'ArrowRight') setKeypadIndex((index) => (index + 1) % keypad.length);
-      else if (event.key === 'ArrowUp') setKeypadIndex((index) => (index - 3 + keypad.length) % keypad.length);
-      else if (event.key === 'ArrowDown') setKeypadIndex((index) => (index + 3) % keypad.length);
-      else props.onClose();
+      if (event.key === 'Escape' || event.key === 'Backspace' || event.key.toLowerCase() === 'b') props.onClose();
+      else if (event.key === 'Enter') {
+        if (event.target instanceof HTMLInputElement || focusArea === 'unlock') void submitPin();
+        else activateKeypad();
+      } else if (event.key === 'ArrowLeft' && focusArea === 'keypad') {
+        setKeypadIndex((index) => (index - 1 + keypad.length) % keypad.length);
+      } else if (event.key === 'ArrowRight' && focusArea === 'keypad') {
+        setKeypadIndex((index) => (index + 1) % keypad.length);
+      } else if (event.key === 'ArrowUp') {
+        movePinVertical(-1);
+      } else if (event.key === 'ArrowDown') {
+        movePinVertical(1);
+      }
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [keypad.length, pending, props, submitPin]);
+  }, [activateKeypad, focusArea, keypad.length, movePinVertical, pending, props, submitPin]);
 
   const handlePinControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
     if (event.type === 'back') {
@@ -2079,15 +2100,21 @@ function PinDialog(props: {
       return;
     }
     if (event.type === 'accept') {
-      activateKeypad();
-      void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: 'PIN keypad: select' });
+      if (focusArea === 'unlock') void submitPin();
+      else activateKeypad();
+      void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: focusArea === 'unlock' ? 'PIN: unlock' : 'PIN keypad: select' });
       return;
     }
-    if (event.direction === 'left') setKeypadIndex((index) => (index - 1 + keypad.length) % keypad.length);
-    else if (event.direction === 'right') setKeypadIndex((index) => (index + 1) % keypad.length);
-    else if (event.direction === 'up') setKeypadIndex((index) => (index - 3 + keypad.length) % keypad.length);
-    else setKeypadIndex((index) => (index + 3) % keypad.length);
-  }, [activateKeypad, keypad.length, props]);
+    if (event.direction === 'left' && focusArea === 'keypad') {
+      setKeypadIndex((index) => (index - 1 + keypad.length) % keypad.length);
+    } else if (event.direction === 'right' && focusArea === 'keypad') {
+      setKeypadIndex((index) => (index + 1) % keypad.length);
+    } else if (event.direction === 'up') {
+      movePinVertical(-1);
+    } else if (event.direction === 'down') {
+      movePinVertical(1);
+    }
+  }, [activateKeypad, focusArea, keypad.length, movePinVertical, props, submitPin]);
 
   useControllerNavigation(!pending, handlePinControllerEvent);
 
@@ -2095,12 +2122,6 @@ function PinDialog(props: {
     <div className="modal-backdrop">
       <form
         className="modal pin-modal"
-        onKeyDownCapture={(event) => {
-          if (!isEnterKey(event)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          void submitPin();
-        }}
         onSubmit={async (event) => {
           event.preventDefault();
           await submitPin();
@@ -2112,15 +2133,25 @@ function PinDialog(props: {
         <Lock size={34} />
         <h2>{props.title}</h2>
         {props.message && <p className="muted">{props.message}</p>}
-        <input autoFocus type="password" value={pin} onChange={(event) => setPin(event.target.value)} />
+        <input type="password" value={pin} onChange={(event) => setPin(event.target.value)} />
         <div className="pin-keypad" aria-label="Controller PIN keypad">
           {keypad.map((key, index) => (
             <button
+              ref={(element) => {
+                keypadRefs.current[index] = element;
+              }}
               key={key}
               type="button"
-              className={index === keypadIndex ? 'selected' : ''}
+              className={focusArea === 'keypad' && index === keypadIndex ? 'selected' : ''}
               disabled={pending}
-              onMouseEnter={() => setKeypadIndex(index)}
+              onFocus={() => {
+                setKeypadIndex(index);
+                setFocusArea('keypad');
+              }}
+              onMouseEnter={() => {
+                setKeypadIndex(index);
+                setFocusArea('keypad');
+              }}
               onClick={() => {
                 setKeypadIndex(index);
                 if (key === 'Submit') void submitPin();
@@ -2133,7 +2164,13 @@ function PinDialog(props: {
           ))}
         </div>
         {error && <p className="error-text">{error}</p>}
-        <button className="primary-action wide" type="submit" disabled={pending}>
+        <button
+          ref={unlockButtonRef}
+          className={`primary-action wide ${focusArea === 'unlock' ? 'controller-focused' : ''}`}
+          type="submit"
+          disabled={pending}
+          onFocus={() => setFocusArea('unlock')}
+        >
           <Lock size={18} />
           {pending ? props.pendingLabel : props.actionLabel}
         </button>

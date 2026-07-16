@@ -87,6 +87,11 @@ try {
   }
   await evaluate("Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [] })");
   await waitFor("Boolean(document.querySelector('button[aria-label=Settings]'))", 'Settings button did not render.');
+  const initialFocusDesign = await evaluate("(() => { const games = [...document.querySelectorAll('.console-tabs button')].find((button) => button.textContent.trim() === 'Games'); games.focus(); const button = getComputedStyle(games); const group = getComputedStyle(games.closest('.console-tabs')); return { outlineStyle: button.outlineStyle, outlineWidth: button.outlineWidth, groupRadius: group.borderRadius, groupShadow: group.boxShadow }; })()");
+  if (initialFocusDesign.outlineStyle !== 'none' || initialFocusDesign.outlineWidth !== '0px' || initialFocusDesign.groupRadius === '0px' || initialFocusDesign.groupShadow === 'none') {
+    throw new Error(`Initial fullscreen focus did not use the rounded NXGS style: ${JSON.stringify(initialFocusDesign)}`);
+  }
+  console.log('PASS: Initial fullscreen focus suppressed the browser outline and kept the rounded NXGS highlight.');
   assertConsoleLanguage(await evaluate("document.querySelector('main').innerText + ' ' + [...document.querySelectorAll('main [aria-label]')].map((node) => node.getAttribute('aria-label')).join(' ')"), 'Launcher Home');
   await evaluate("document.querySelector('button[aria-label=Settings]').click()");
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Control Room'))", 'Control Room did not render.');
@@ -123,6 +128,16 @@ try {
   await waitFor("[...document.querySelectorAll('button')].some((button) => button.textContent.includes('Enter Control Room'))", 'Control Room detail did not open.');
   await evaluate("[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Enter Control Room')).click()");
   await waitFor("Boolean(document.querySelector('.pin-modal input[type=password]'))", 'PIN dialog did not open.');
+  await waitFor("document.activeElement?.closest('.pin-keypad') && document.activeElement.textContent.trim() === '1'", 'PIN modal did not focus the first keypad item.');
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40 });
+  }
+  await waitFor("document.activeElement?.textContent.includes('Unlock')", 'PIN keypad Down navigation did not reach Unlock.');
+  await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38, nativeVirtualKeyCode: 38 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38, nativeVirtualKeyCode: 38 });
+  await waitFor("Boolean(document.activeElement?.closest('.pin-keypad'))", 'PIN Unlock Up navigation did not return to the keypad.');
+  console.log('PASS: PIN controller focus moved from the keypad to Unlock and back.');
   await evaluate("document.querySelector('.pin-modal input[type=password]').focus()");
   await send('Input.insertText', { text: '1234' });
   await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
@@ -162,6 +177,29 @@ try {
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.kiosk.mode === 'customer' && data.kiosk.fullscreen && data.kiosk.taskbarHidden)", 'Return to Locked Mode did not restore fullscreen kiosk mode.');
   await waitFor("Boolean(document.querySelector('.console-home')) && !document.querySelector('.windowed-admin-lock')", 'Locked mode did not retain Home or hide the windowed admin lock control.');
   console.log('PASS: Lock control restored customer fullscreen, taskbar hiding, and the launcher Home page.');
+  if (await evaluate("Boolean(document.querySelector('.console-game-avatar.selected'))")) {
+    await evaluate("document.querySelector('.console-game-avatar.selected').click()");
+    await waitFor("Boolean(document.querySelector('.launch-modal'))", 'Duration modal did not open.');
+    await waitFor("document.activeElement?.closest('.duration-grid') && document.activeElement.getAttribute('aria-pressed') === 'true'", 'Duration modal did not focus the default duration.');
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await delay(200);
+    if (!(await evaluate("Boolean(document.activeElement?.closest('.duration-grid')) && Boolean(document.querySelector('.launch-modal'))"))) {
+      throw new Error('Selecting a duration moved focus or launched the game automatically.');
+    }
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40 });
+    await waitFor("document.activeElement?.textContent.includes('Launch Game')", 'Duration modal Down navigation did not reach Launch Game.');
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38, nativeVirtualKeyCode: 38 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38, nativeVirtualKeyCode: 38 });
+    await waitFor("Boolean(document.activeElement?.closest('.duration-grid'))", 'Duration modal Up navigation did not return to the duration options.');
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+    await waitFor("!document.querySelector('.launch-modal')", 'Duration modal Escape did not close the modal.');
+    console.log('PASS: Duration selection remained separate from Launch Game and supported Down/Up navigation.');
+  } else {
+    console.log('INFO: Duration runtime check skipped because the isolated test profile has no saved games.');
+  }
   await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'h', code: 'KeyH', modifiers: 10, windowsVirtualKeyCode: 72, nativeVirtualKeyCode: 72 });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'h', code: 'KeyH', modifiers: 10, windowsVirtualKeyCode: 72, nativeVirtualKeyCode: 72 });
   await waitFor("Boolean(document.querySelector('.quick-home-overlay button[aria-label=\"Quick Settings\"]'))", 'Quick switcher did not render the Quick Settings button.');
