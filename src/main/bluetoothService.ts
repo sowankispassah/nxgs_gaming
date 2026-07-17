@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import type {
   BluetoothActionResult,
   BluetoothDeviceSummary,
@@ -7,6 +7,8 @@ import type {
   BluetoothStatus
 } from '../shared/types';
 import { logLine } from './logger';
+
+let activePairingProcess: ChildProcess | null = null;
 
 const NATIVE_BLUETOOTH_PREAMBLE = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -507,7 +509,7 @@ interface RawBluetoothAction {
   status?: unknown;
 }
 
-async function runPowerShell<T>(script: string, environment: Record<string, string> = {}): Promise<T> {
+async function runPowerShell<T>(script: string, environment: Record<string, string> = {}, trackPairing = false): Promise<T> {
   try {
     const stdout = await new Promise<string>((resolve, reject) => {
       const child = spawn(
@@ -519,6 +521,7 @@ async function runPowerShell<T>(script: string, environment: Record<string, stri
           stdio: ['pipe', 'pipe', 'pipe']
         }
       );
+      if (trackPairing) activePairingProcess = child;
       const output: Buffer[] = [];
       const errors: Buffer[] = [];
       let outputBytes = 0;
@@ -526,6 +529,7 @@ async function runPowerShell<T>(script: string, environment: Record<string, stri
       const finish = (callback: () => void): void => {
         if (settled) return;
         settled = true;
+        if (activePairingProcess === child) activePairingProcess = null;
         clearTimeout(timer);
         callback();
       };
@@ -733,7 +737,7 @@ export async function pairBluetoothDevice(request: BluetoothPairRequest): Promis
     }
     const result = await runPowerShell<RawBluetoothAction>(PAIR_SCRIPT, {
       NXGS_BLUETOOTH_DEVICE_ID: deviceId
-    });
+    }, true);
     if (!asBoolean(result.found)) {
       const bluetooth = request.fastPairing ? before : await scanBluetoothDevices(false);
       return { ok: false, status: 'device-not-found', message: 'Device not found. Turn pairing mode on, then select Try again.', bluetooth };
@@ -800,6 +804,13 @@ export async function pairBluetoothDevice(request: BluetoothPairRequest): Promis
     const bluetooth = request.fastPairing ? fallbackBluetooth : await scanBluetoothDevices(false);
     return { ok: false, status: 'failed', message: safeError(error), bluetooth };
   }
+}
+
+export function cancelBluetoothPairing(): { ok: boolean } {
+  const child = activePairingProcess;
+  if (!child) return { ok: true };
+  activePairingProcess = null;
+  return { ok: child.kill() };
 }
 
 export async function disconnectBluetoothDevice(deviceId: string): Promise<BluetoothActionResult> {

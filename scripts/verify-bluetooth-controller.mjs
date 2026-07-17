@@ -169,8 +169,18 @@ assert.match(
 );
 assert.match(
   settingsSource,
-  /if \(bluetoothPairingStage === 'pairing'\) return;[^]*setBluetoothPairingTarget\(null\)/,
-  'B and Escape must dismiss the pairing confirmation when pairing is not pending'
+  /bluetoothPairingAttempt\.current \+= 1;[^]*cancelBluetoothPairing\(\);[^]*setBluetoothPairingTarget\(null\)/,
+  'B and Escape must terminate an in-flight pairing request before dismissing the confirmation'
+);
+assert.match(
+  settingsSource,
+  /if \(attempt !== bluetoothPairingAttempt\.current\) return;/,
+  'a cancelled pairing request must not restore stale modal state when its promise settles'
+);
+assert.match(
+  bluetoothSource,
+  /export function cancelBluetoothPairing\(\)/,
+  'the main Bluetooth service must expose in-flight native pairing cancellation'
 );
 assert.match(
   settingsSource,

@@ -173,6 +173,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const displayUpdatedAt = useRef(settingsDataCache.display?.updatedAt ?? 0);
   const networkActionStartedAt = useRef(0);
   const bluetoothActionStartedAt = useRef(0);
+  const bluetoothPairingAttempt = useRef(0);
   const audioActionStartedAt = useRef(0);
   const displayActionStartedAt = useRef(0);
   const selectedIndexRef = useRef(0);
@@ -584,7 +585,13 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
 
   const handleSettingsBack = useCallback((): void => {
     if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget || bluetoothPairingTarget) {
-      if (bluetoothPairingStage === 'pairing') return;
+      if (bluetoothPairingTarget && bluetoothPairingStage === 'pairing') {
+        bluetoothPairingAttempt.current += 1;
+        void window.nxgs.cancelBluetoothPairing();
+        setBluetoothPending(null);
+        setBluetoothPairingTarget(null);
+        return;
+      }
       setForgetWifiTarget(null);
       setWifiContextMenu(null);
       setRemoveBluetoothTarget(null);
@@ -881,6 +888,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const confirmPairBluetoothDevice = useCallback(async (): Promise<void> => {
     if (!bluetoothPairingTarget || bluetoothBusy.current) return;
     const target = bluetoothPairingTarget;
+    const attempt = ++bluetoothPairingAttempt.current;
     bluetoothBusy.current = true;
     bluetoothActionStartedAt.current = Date.now();
     setBluetoothPending(`pair:${target.id}`);
@@ -889,6 +897,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     setBluetoothFeedback({ tone: 'info', message: `Pairing ${target.name}...` });
     try {
       const result = await window.nxgs.pairBluetoothDevice({ device: target, bluetooth, fastPairing: true });
+      if (attempt !== bluetoothPairingAttempt.current) return;
       commitBluetooth(result.bluetooth);
       setBluetoothPairingMessage(result.message);
       setBluetoothFeedback({
@@ -906,6 +915,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       );
       if (result.ok) window.setTimeout(() => void refreshBluetoothStatus(), 1800);
     } catch (error) {
+      if (attempt !== bluetoothPairingAttempt.current) return;
       const message = error instanceof Error ? error.message : 'Pairing failed. Try again.';
       setBluetoothPairingStage('failed');
       setBluetoothPairingMessage(message);
@@ -914,7 +924,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     } finally {
       bluetoothBusy.current = false;
       setBluetoothPending(null);
-      window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-pair-primary')?.focus(), 0);
+      if (attempt === bluetoothPairingAttempt.current) {
+        window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-pair-primary')?.focus(), 0);
+      }
     }
   }, [bluetooth, bluetoothPairingTarget, commitBluetooth, refreshBluetoothStatus]);
 

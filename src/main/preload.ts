@@ -48,6 +48,7 @@ const api = {
   getBluetoothStatus: (): Promise<BluetoothStatus> => ipcRenderer.invoke('bluetooth:getStatus'),
   scanBluetoothDevices: (): Promise<BluetoothStatus> => ipcRenderer.invoke('bluetooth:scan'),
   pairBluetoothDevice: (request: BluetoothPairRequest): Promise<BluetoothActionResult> => ipcRenderer.invoke('bluetooth:pair', request),
+  cancelBluetoothPairing: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('bluetooth:cancelPair'),
   disconnectBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> =>
     ipcRenderer.invoke('bluetooth:disconnect', deviceId),
   removeBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> => ipcRenderer.invoke('bluetooth:remove', deviceId),

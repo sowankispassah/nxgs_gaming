@@ -6,7 +6,7 @@ import { ControllerCompatibilityService } from './controllerCompatibilityService
 import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
-import { disconnectBluetoothDevice, pairBluetoothDevice, removeBluetoothDevice, scanBluetoothDevices } from './bluetoothService';
+import { cancelBluetoothPairing, disconnectBluetoothDevice, pairBluetoothDevice, removeBluetoothDevice, scanBluetoothDevices } from './bluetoothService';
 import { getAudioStatus, setMasterMuted, setMasterVolume, switchAudioDevice } from './audioService';
 import { getDisplayStatus, setColorProfile, setDisplayBrightness, setHdr, setNightLight } from './displayService';
 import { connectWifi, disconnectWifi, forgetWifi, getNetworkStatus } from './networkService';
@@ -533,6 +533,7 @@ function registerIpc(): void {
   ipcMain.handle('bluetooth:getStatus', async () => scanBluetoothDevices(false));
   ipcMain.handle('bluetooth:scan', async () => scanBluetoothDevices(true));
   ipcMain.handle('bluetooth:pair', async (_event, request: BluetoothPairRequest) => pairBluetoothDevice(request));
+  ipcMain.handle('bluetooth:cancelPair', () => cancelBluetoothPairing());
   ipcMain.handle('bluetooth:disconnect', async (_event, deviceId: string) => disconnectBluetoothDevice(deviceId));
   ipcMain.handle('bluetooth:remove', async (_event, deviceId: string) => removeBluetoothDevice(deviceId));
   ipcMain.handle('audio:getStatus', async () => getAudioStatus());
