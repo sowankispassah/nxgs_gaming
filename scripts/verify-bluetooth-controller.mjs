@@ -14,9 +14,17 @@ const sharedTypes = await readFile(
   new URL('../src/shared/types.ts', import.meta.url),
   'utf8'
 );
+const settingsStyles = await readFile(
+  new URL('../src/renderer/styles.css', import.meta.url),
+  'utf8'
+);
 const pairFunction = bluetoothSource.slice(
   bluetoothSource.indexOf('export async function pairBluetoothDevice'),
   bluetoothSource.indexOf('export async function disconnectBluetoothDevice')
+);
+const fastPairSuccess = pairFunction.slice(
+  pairFunction.indexOf('    if (request.fastPairing) {'),
+  pairFunction.indexOf('    let checked = await waitForControllerInput')
 );
 
 assert.match(
@@ -71,6 +79,11 @@ assert.match(
 );
 assert.match(
   bluetoothSource,
+  /TryFindDevice\(address, false, out info\) \|\| TryFindDevice\(address, true, out info\)/,
+  'pairing must reuse the selected scan record before spending time on another inquiry'
+);
+assert.match(
+  bluetoothSource,
   /staff-approval-required/,
   'unsupported pairing methods must stay inside NXGS and report staff approval required'
 );
@@ -93,6 +106,21 @@ assert.match(
   pairFunction,
   /waitForControllerInput/,
   'controller input checks must wait for Windows HID enumeration'
+);
+assert.match(
+  pairFunction,
+  /const before = request\.fastPairing \? fallbackBluetooth : await scanBluetoothDevices\(false\)/,
+  'new pairing must skip the redundant pre-authentication status scan'
+);
+assert.doesNotMatch(
+  fastPairSuccess,
+  /waitForControllerInput/,
+  'successful new pairing must not keep the confirmation waiting for HID enumeration'
+);
+assert.match(
+  fastPairSuccess,
+  /Background controller activation failed after pairing/,
+  'controller input activation must continue in the background after pairing completes'
 );
 assert.match(
   settingsSource,
@@ -123,6 +151,26 @@ assert.match(
   settingsSource,
   /Pairing request/,
   'unpaired devices must use an NXGS pairing request inside the launcher'
+);
+assert.match(
+  settingsSource,
+  /createPortal\(/,
+  'the pairing confirmation must be portaled outside the scrollable settings panel'
+);
+assert.match(
+  settingsSource,
+  /#bluetooth-pair-primary/,
+  'the pairing confirmation must move focus to its primary controller action'
+);
+assert.match(
+  settingsStyles,
+  /\.bluetooth-confirmation-backdrop\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*place-items:\s*center;/s,
+  'the pairing overlay must cover and center within the visible viewport'
+);
+assert.match(
+  settingsSource,
+  /if \(bluetoothPairingStage === 'pairing'\) return;[^]*setBluetoothPairingTarget\(null\)/,
+  'B and Escape must dismiss the pairing confirmation when pairing is not pending'
 );
 assert.match(
   settingsSource,

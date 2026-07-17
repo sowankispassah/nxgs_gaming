@@ -19,6 +19,7 @@ import { disableXboxGameBarControllerShortcut, suppressXboxGameBarSurfaces } fro
 import type {
   AppDiagnostics,
   AppSettings,
+  BluetoothPairRequest,
   ControllerStateReport,
   DisplayDeviceInfo,
   FilePickerResult,
@@ -531,7 +532,7 @@ function registerIpc(): void {
   ipcMain.handle('network:forget', async (_event, ssid: string) => forgetWifi(ssid));
   ipcMain.handle('bluetooth:getStatus', async () => scanBluetoothDevices(false));
   ipcMain.handle('bluetooth:scan', async () => scanBluetoothDevices(true));
-  ipcMain.handle('bluetooth:pair', async (_event, deviceId: string) => pairBluetoothDevice(deviceId));
+  ipcMain.handle('bluetooth:pair', async (_event, request: BluetoothPairRequest) => pairBluetoothDevice(request));
   ipcMain.handle('bluetooth:disconnect', async (_event, deviceId: string) => disconnectBluetoothDevice(deviceId));
   ipcMain.handle('bluetooth:remove', async (_event, deviceId: string) => removeBluetoothDevice(deviceId));
   ipcMain.handle('audio:getStatus', async () => getAudioStatus());

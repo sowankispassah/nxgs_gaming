@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type {
   BluetoothActionResult,
   BluetoothDeviceSummary,
+  BluetoothPairRequest,
   BluetoothRadioState,
   BluetoothStatus
 } from '../shared/types';
@@ -231,6 +232,16 @@ public static class NxgsBluetoothNative {
         );
     }
 
+    private static bool TryFindDevice(BLUETOOTH_ADDRESS address, bool inquiry, out BLUETOOTH_DEVICE_INFO selected) {
+        foreach (var info in Find(1, inquiry)) {
+            if (info.Address.Value != address.Value) continue;
+            selected = info;
+            return true;
+        }
+        selected = new BLUETOOTH_DEVICE_INFO();
+        return false;
+    }
+
     private static bool PairingCallback(IntPtr contextPointer, ref BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS parameters) {
         var handle = GCHandle.FromIntPtr(contextPointer);
         var context = handle.Target as PairingContext;
@@ -271,9 +282,10 @@ public static class NxgsBluetoothNative {
     public static NxgsBluetoothAction Pair(string id) {
         BLUETOOTH_ADDRESS address;
         if (!TryAddress(id, out address)) return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
-        foreach (var infoValue in Find(1, true)) {
-            if (infoValue.Address.Value != address.Value) continue;
-            var info = infoValue;
+        BLUETOOTH_DEVICE_INFO info;
+        // The customer already selected this device from an NXGS scan. Reuse the
+        // cached record first so authentication starts before pairing mode expires.
+        if (TryFindDevice(address, false, out info) || TryFindDevice(address, true, out info)) {
             if (info.Authenticated || info.Remembered) return new NxgsBluetoothAction { Found = true, Success = true, Code = 0 };
             bool controller = IsController(info);
             if (!controller) {
@@ -605,11 +617,11 @@ function safeError(error: unknown): string {
 }
 
 function windowsPairingError(code: string): string {
-  if (code === '1223') return 'Pairing was cancelled.';
-  if (code === '1460') return 'Pairing timed out. Keep the device in pairing mode and try again.';
-  if (code === '1244' || code === '86') return 'Device authentication was rejected.';
+  if (code === '1223') return 'Pairing was cancelled. Turn pairing mode on, then select Try again.';
+  if (code === '1460') return 'Pairing timed out. Turn pairing mode on, then select Try again.';
+  if (code === '1244' || code === '86') return 'Pairing was not confirmed. Turn pairing mode on, then select Try again.';
   if (code === '5') return 'Permission to pair this device was denied.';
-  return `Pairing failed (error ${code}). Keep the device in pairing mode and try again.`;
+  return `Pairing failed (error ${code}). Turn pairing mode on, then select Try again.`;
 }
 
 function windowsDisconnectError(code: string): string {
@@ -671,14 +683,19 @@ async function requestControllerConnection(deviceId: string): Promise<RawBluetoo
   return result;
 }
 
-export async function pairBluetoothDevice(deviceId: string): Promise<BluetoothActionResult> {
+export async function pairBluetoothDevice(request: BluetoothPairRequest): Promise<BluetoothActionResult> {
+  const deviceId = request?.device?.id ?? '';
+  const fallbackBluetooth = request?.bluetooth && Array.isArray(request.bluetooth.devices)
+    ? request.bluetooth
+    : { supported: true, radioState: 'unknown' as const, devices: [] };
   if (!/^[0-9a-f]{12}$/i.test(deviceId)) {
-    const bluetooth = await scanBluetoothDevices(false);
-    return { ok: false, status: 'device-not-found', message: 'Device not found. Scan again and retry.', bluetooth };
+    return { ok: false, status: 'device-not-found', message: 'Device not found. Scan again and retry.', bluetooth: fallbackBluetooth };
   }
   try {
-    const before = await scanBluetoothDevices(false);
-    const existing = before.devices.find((device) => device.id.toLowerCase() === deviceId.toLowerCase());
+    // A new pairing request comes directly from the NXGS scan results. Reusing
+    // that snapshot avoids another slow status pass before authentication.
+    const before = request.fastPairing ? fallbackBluetooth : await scanBluetoothDevices(false);
+    const existing = before.devices.find((device) => device.id.toLowerCase() === deviceId.toLowerCase()) ?? request.device;
     if (existing?.paired && existing.controller && existing.inputReady) {
       return {
         ok: true,
@@ -718,11 +735,11 @@ export async function pairBluetoothDevice(deviceId: string): Promise<BluetoothAc
       NXGS_BLUETOOTH_DEVICE_ID: deviceId
     });
     if (!asBoolean(result.found)) {
-      const bluetooth = await scanBluetoothDevices(false);
-      return { ok: false, status: 'device-not-found', message: 'Device not found. Put it in pairing mode and scan again.', bluetooth };
+      const bluetooth = request.fastPairing ? before : await scanBluetoothDevices(false);
+      return { ok: false, status: 'device-not-found', message: 'Device not found. Turn pairing mode on, then select Try again.', bluetooth };
     }
     if (!asBoolean(result.success)) {
-      const bluetooth = await scanBluetoothDevices(false);
+      const bluetooth = request.fastPairing ? before : await scanBluetoothDevices(false);
       if (asBoolean(result.approvalRequired)) {
         return {
           ok: false,
@@ -732,6 +749,29 @@ export async function pairBluetoothDevice(deviceId: string): Promise<BluetoothAc
         };
       }
       return { ok: false, status: 'failed', message: windowsPairingError(String(result.status ?? 'unknown')), bluetooth };
+    }
+    if (request.fastPairing) {
+      const optimisticDevice = { ...existing, paired: true, connectable: true };
+      const otherDevices = before.devices.filter((device) => device.id.toLowerCase() !== deviceId.toLowerCase());
+      const bluetooth = { ...before, devices: [optimisticDevice, ...otherDevices] };
+      if (optimisticDevice.controller && !optimisticDevice.inputReady) {
+        void (async () => {
+          await new Promise((resolve) => setTimeout(resolve, 350));
+          try {
+            await requestControllerConnection(deviceId);
+          } catch (error) {
+            await logLine('warn', `Background controller activation failed after pairing ${deviceId}: ${safeError(error)}`);
+          }
+        })();
+      }
+      return {
+        ok: true,
+        status: optimisticDevice.inputReady ? 'connected' : 'paired',
+        message: optimisticDevice.inputReady
+          ? 'Controller input connected and ready.'
+          : 'Pairing complete. Controller input is connecting automatically.',
+        bluetooth
+      };
     }
     let checked = await waitForControllerInput(deviceId);
     let bluetooth = checked.bluetooth;
@@ -757,7 +797,7 @@ export async function pairBluetoothDevice(deviceId: string): Promise<BluetoothAc
       bluetooth
     };
   } catch (error) {
-    const bluetooth = await scanBluetoothDevices(false);
+    const bluetooth = request.fastPairing ? fallbackBluetooth : await scanBluetoothDevices(false);
     return { ok: false, status: 'failed', message: safeError(error), bluetooth };
   }
 }

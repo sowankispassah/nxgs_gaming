@@ -7,6 +7,7 @@ import type {
   AudioActionResult,
   AudioStatus,
   BluetoothActionResult,
+  BluetoothPairRequest,
   BluetoothStatus,
   ControllerStateReport,
   DisplayActionResult,
@@ -46,7 +47,7 @@ const api = {
   forgetWifi: (ssid: string): Promise<WifiActionResult> => ipcRenderer.invoke('network:forget', ssid),
   getBluetoothStatus: (): Promise<BluetoothStatus> => ipcRenderer.invoke('bluetooth:getStatus'),
   scanBluetoothDevices: (): Promise<BluetoothStatus> => ipcRenderer.invoke('bluetooth:scan'),
-  pairBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> => ipcRenderer.invoke('bluetooth:pair', deviceId),
+  pairBluetoothDevice: (request: BluetoothPairRequest): Promise<BluetoothActionResult> => ipcRenderer.invoke('bluetooth:pair', request),
   disconnectBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> =>
     ipcRenderer.invoke('bluetooth:disconnect', deviceId),
   removeBluetoothDevice: (deviceId: string): Promise<BluetoothActionResult> => ipcRenderer.invoke('bluetooth:remove', deviceId),

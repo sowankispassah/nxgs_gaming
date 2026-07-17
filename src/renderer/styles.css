@@ -1949,7 +1949,8 @@ button:not(:disabled):active {
 }
 
 .console-settings-screen > header button,
-.console-settings-detail button {
+.console-settings-detail button,
+.settings-confirmation-dialog button {
   border: 1px solid var(--panel-border);
   border-radius: 12px;
   background: rgba(244, 247, 251, 0.055);
@@ -2093,16 +2094,19 @@ button:not(:disabled):active {
 }
 
 .settings-detail-heading button { display: inline-flex; align-items: center; gap: 8px; }
-.console-settings-detail button:disabled { cursor: progress; opacity: 0.56; }
+.console-settings-detail button:disabled,
+.settings-confirmation-dialog button:disabled { cursor: progress; opacity: 0.56; }
 
-.console-settings-detail [data-settings-action]:focus-visible {
+.console-settings-detail [data-settings-action]:focus-visible,
+.settings-confirmation-dialog [data-settings-action]:focus-visible {
   border-color: var(--focus-border);
   background: var(--focus-bg);
   box-shadow: var(--focus-glow);
   outline: none;
 }
 
-.console-settings-detail [data-settings-action]:hover:not(:disabled) {
+.console-settings-detail [data-settings-action]:hover:not(:disabled),
+.settings-confirmation-dialog [data-settings-action]:hover:not(:disabled) {
   border-color: var(--focus-border);
   background: var(--focus-bg);
 }
@@ -2489,7 +2493,7 @@ button:not(:disabled):active {
 .bluetooth-confirmation-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 120;
   display: grid;
   place-items: center;
   background: rgba(2, 5, 10, 0.76);
@@ -2518,6 +2522,7 @@ button:not(:disabled):active {
 .bluetooth-pairing-confirmation {
   width: min(520px, calc(100vw - 40px));
   border-color: rgba(128, 221, 255, 0.4);
+  color: #fff;
   background:
     radial-gradient(circle at 100% 0%, rgba(76, 181, 220, 0.17), transparent 42%),
     #101522;

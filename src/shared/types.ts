@@ -285,6 +285,12 @@ export interface BluetoothStatus {
   message?: string;
 }
 
+export interface BluetoothPairRequest {
+  device: BluetoothDeviceSummary;
+  bluetooth: BluetoothStatus;
+  fastPairing: boolean;
+}
+
 export type BluetoothActionStatus =
   | 'connected'
   | 'paired'

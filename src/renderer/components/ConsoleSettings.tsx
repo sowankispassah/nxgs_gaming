@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Accessibility,
   Bluetooth,
@@ -848,7 +849,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     try {
       const result = disconnecting
         ? await window.nxgs.disconnectBluetoothDevice(device.id)
-        : await window.nxgs.pairBluetoothDevice(device.id);
+        : await window.nxgs.pairBluetoothDevice({ device, bluetooth, fastPairing: false });
       commitBluetooth(result.bluetooth);
       setBluetoothFeedback({ tone: result.ok ? result.status === 'paired' ? 'warning' : 'success' : 'error', message: result.message });
       setBluetoothDeviceStatuses((current) => ({
@@ -866,7 +867,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       bluetoothBusy.current = false;
       setBluetoothPending(null);
     }
-  }, [commitBluetooth]);
+  }, [bluetooth, commitBluetooth]);
 
   const requestPairBluetoothDevice = useCallback((device: BluetoothDeviceSummary): void => {
     if (device.paired || bluetoothBusy.current) return;
@@ -874,7 +875,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     setBluetoothPairingStage('confirm');
     setBluetoothPairingMessage('Confirm pairing to connect this device with NXGS.');
     setBluetoothFeedback(null);
-    window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-pair-cancel')?.focus(), 0);
+    window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-pair-primary')?.focus(), 0);
   }, []);
 
   const confirmPairBluetoothDevice = useCallback(async (): Promise<void> => {
@@ -887,7 +888,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     setBluetoothPairingMessage('Pairing... Keep the controller awake and in pairing mode.');
     setBluetoothFeedback({ tone: 'info', message: `Pairing ${target.name}...` });
     try {
-      const result = await window.nxgs.pairBluetoothDevice(target.id);
+      const result = await window.nxgs.pairBluetoothDevice({ device: target, bluetooth, fastPairing: true });
       commitBluetooth(result.bluetooth);
       setBluetoothPairingMessage(result.message);
       setBluetoothFeedback({
@@ -903,6 +904,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       setBluetoothPairingStage(
         result.ok ? 'connected' : result.status === 'staff-approval-required' ? 'staff-approval-required' : 'failed'
       );
+      if (result.ok) window.setTimeout(() => void refreshBluetoothStatus(), 1800);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Pairing failed. Try again.';
       setBluetoothPairingStage('failed');
@@ -914,7 +916,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
       setBluetoothPending(null);
       window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-pair-primary')?.focus(), 0);
     }
-  }, [bluetoothPairingTarget, commitBluetooth]);
+  }, [bluetooth, bluetoothPairingTarget, commitBluetooth, refreshBluetoothStatus]);
 
   const requestRemoveBluetoothDevice = useCallback((device: BluetoothDeviceSummary): void => {
     if (!device.paired || bluetoothBusy.current) return;
@@ -1203,7 +1205,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             }) : <p className="settings-placeholder">No Bluetooth devices found. Put the controller in pairing mode and select Scan for Devices.</p>}
           </div>
           <p className="settings-capability-note">Disconnect keeps the device paired. Remove Device clears the saved pairing, so the device must be scanned and paired again. Some device profiles control their own final connection; NXGS will show a clear message when they cannot be disconnected here.</p>
-          {bluetoothPairingTarget && (
+          {bluetoothPairingTarget && createPortal(
             <div
               className="bluetooth-confirmation-backdrop"
               role="presentation"
@@ -1273,7 +1275,8 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
                   )}
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
           {removeBluetoothTarget && (
             <div

@@ -156,6 +156,7 @@ try {
   const availableController = bluetoothStatus.devices.find((device) => device.controller && !device.paired);
   if (availableController) {
     await waitFor(`(() => { const row = [...document.querySelectorAll('.bluetooth-device-list > div')].find((item) => item.textContent.includes(${JSON.stringify(availableController.name)})); return Boolean(row) && [...row.querySelectorAll('button')].some((button) => button.textContent.trim() === 'Pair'); })()`, 'An available controller did not expose the NXGS Pair action.');
+    await evaluate(`(() => { const row = [...document.querySelectorAll('.bluetooth-device-list > div')].find((item) => item.textContent.includes(${JSON.stringify(availableController.name)})); row.scrollIntoView({ block: 'end' }); return document.querySelector('.console-settings-detail').scrollTop; })()`);
     await evaluate(`(() => { const row = [...document.querySelectorAll('.bluetooth-device-list > div')].find((item) => item.textContent.includes(${JSON.stringify(availableController.name)})); [...row.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Pair').click(); })()`);
     await waitFor("Boolean(document.querySelector('.bluetooth-pairing-confirmation'))", 'The NXGS pairing confirmation did not open.');
     const pairingPrompt = await evaluate("document.querySelector('.bluetooth-pairing-confirmation').innerText");
@@ -167,9 +168,27 @@ try {
     if (pairingKiosk.mode !== 'customer' || !pairingKiosk.fullscreen || !pairingKiosk.taskbarHidden) {
       throw new Error(`Pairing confirmation left locked fullscreen: ${JSON.stringify(pairingKiosk)}`);
     }
-    await evaluate("document.querySelector('#bluetooth-pair-cancel').click()");
-    await waitFor("!document.querySelector('.bluetooth-pairing-confirmation')", 'Cancel did not close the NXGS pairing confirmation.');
-    console.log('PASS: Available controller opened the NXGS pairing confirmation without leaving locked fullscreen.');
+    const pairingLayout = await evaluate(`(() => {
+      const backdrop = document.querySelector('.bluetooth-confirmation-backdrop');
+      const dialog = document.querySelector('.bluetooth-pairing-confirmation');
+      const backdropRect = backdrop.getBoundingClientRect();
+      const dialogRect = dialog.getBoundingClientRect();
+      return {
+        portaledToBody: backdrop.parentElement === document.body,
+        position: getComputedStyle(backdrop).position,
+        backdrop: { left: backdropRect.left, top: backdropRect.top, right: backdropRect.right, bottom: backdropRect.bottom },
+        dialog: { left: dialogRect.left, top: dialogRect.top, right: dialogRect.right, bottom: dialogRect.bottom },
+        centeredX: Math.abs((dialogRect.left + dialogRect.right) / 2 - innerWidth / 2) < 3,
+        centeredY: Math.abs((dialogRect.top + dialogRect.bottom) / 2 - innerHeight / 2) < 3,
+        focused: document.activeElement?.id
+      };
+    })()`);
+    if (!pairingLayout.portaledToBody || pairingLayout.position !== 'fixed' || !pairingLayout.centeredX || !pairingLayout.centeredY || pairingLayout.backdrop.left !== 0 || pairingLayout.backdrop.top !== 0 || pairingLayout.backdrop.right !== await evaluate('innerWidth') || pairingLayout.backdrop.bottom !== await evaluate('innerHeight') || pairingLayout.dialog.top < 0 || pairingLayout.dialog.bottom > pairingLayout.backdrop.bottom || pairingLayout.focused !== 'bluetooth-pair-primary') {
+      throw new Error(`Pairing confirmation was not centered and focused in the visible viewport: ${JSON.stringify(pairingLayout)}`);
+    }
+    await pressB();
+    await waitFor("!document.querySelector('.bluetooth-pairing-confirmation')", 'B / Escape did not close the NXGS pairing confirmation.');
+    console.log('PASS: Available controller opened a viewport-centered NXGS pairing confirmation, focused Pair, and B closed it without leaving locked fullscreen.');
   }
   const staleControllerLink = bluetoothStatus.devices.find((device) => device.controller && device.connected && !device.inputReady);
   if (staleControllerLink) {
