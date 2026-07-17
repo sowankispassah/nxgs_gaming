@@ -1,7 +1,7 @@
 {
-    "version":  "0.15.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.15.1/NXGS-Play-Setup.exe",
-    "sha256":  "833e896246d5287421b3eed619cc94a73dd897ba028840460cdc6222c2fd18f6",
+    "version":  "0.15.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.15.2/NXGS-Play-Setup.exe",
+    "sha256":  "23c1751f57ee8fc08c3bb145141db47654bef2264b458950b0b2d62a86997188",
     "required":  false,
-    "notes":  "Controller pairing now starts faster, completes without waiting for controller-input setup, keeps Try again ready after recoverable failures, and shows a centered confirmation that remains visible above scrolled content."
+    "notes":  "Controller pairing now starts faster, completes without waiting for input setup, keeps Try again ready, stays centered above scrolled content, and lets B / Escape cancel the active pairing request."
 }
