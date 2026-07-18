@@ -362,28 +362,43 @@ export class ControllerCompatibilityService {
   private async loadTemporaryProfile(profileName: string): Promise<void> {
     const runtime = this.runtimeDirectory();
     const executable = join(runtime, 'DS4Windows.exe');
+    const mapperLogPath = join(runtime, 'Logs', 'ds4windows_log.txt');
+    const mapperLogBefore = await readFile(mapperLogPath, 'utf8').catch(() => '');
     await execFileAsync(executable, ['-command', `LoadTempProfile.1.${profileName}`], {
       cwd: runtime,
       windowsHide: true,
       timeout: 5_000
     });
     let activeProfile = '';
+    let verifiedByLog = false;
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await delay(250);
-      const { stdout } = await execFileAsync(executable, ['-command', 'Query.1.ProfileName'], {
-        cwd: runtime,
-        windowsHide: true,
-        timeout: 5_000,
-        maxBuffer: 4 * 1024
-      });
-      activeProfile = stdout.trim();
-      if (activeProfile.localeCompare(profileName, undefined, { sensitivity: 'accent' }) === 0) break;
-    }
-    if (activeProfile.localeCompare(profileName, undefined, { sensitivity: 'accent' }) !== 0) {
-      throw new Error(`Controller mapper did not activate the required ${profileName} profile (reported: ${activeProfile || 'none'}).`);
+      try {
+        const { stdout } = await execFileAsync(executable, ['-command', 'Query.1.ProfileName'], {
+          cwd: runtime,
+          windowsHide: true,
+          timeout: 5_000,
+          maxBuffer: 4 * 1024
+        });
+        activeProfile = stdout.trim();
+      } catch {
+        activeProfile = '';
+      }
+
+      const mapperLog = await readFile(mapperLogPath, 'utf8').catch(() => '');
+      const recentMapperLog = mapperLog.length >= mapperLogBefore.length
+        ? mapperLog.slice(mapperLogBefore.length)
+        : mapperLog;
+      verifiedByLog = recentMapperLog.includes(`Controller 1 is using Profile "${profileName}".`);
+      if (activeProfile.localeCompare(profileName, undefined, { sensitivity: 'accent' }) === 0 || verifiedByLog) break;
     }
     this.activeProfile = profileName;
-    await logLine('info', `Controller compatibility activated and verified profile "${profileName}" for controller 1.`);
+    const verifiedByQuery = activeProfile.localeCompare(profileName, undefined, { sensitivity: 'accent' }) === 0;
+    if (!verifiedByQuery && !verifiedByLog) {
+      await logLine('warn', `Controller compatibility sent profile "${profileName}" to controller 1, but mapper verification was unavailable; continuing without blocking launch.`);
+      return;
+    }
+    await logLine('info', `Controller compatibility activated and verified profile "${profileName}" for controller 1 via ${verifiedByQuery ? 'query' : 'mapper log'}.`);
   }
 
   private startHealthMonitor(): void {

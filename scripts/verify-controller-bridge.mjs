@@ -42,6 +42,9 @@ assert.match(service, /ensureReady\(\)/, 'controller bridge must expose a readin
 assert.match(service, /ensureReadyForGame\(game: GameRecord\)/, 'controller bridge must expose deterministic per-game profile activation');
 assert.match(service, /LoadTempProfile\.1\.\$\{profileName\}/, 'per-game profiles must be loaded explicitly through the mapper IPC');
 assert.match(service, /Query\.1\.ProfileName/, 'per-game profile activation must be verified through the mapper IPC');
+assert.match(service, /Logs[',\s]+ds4windows_log\.txt/, 'profile activation must fall back to the mapper log when its query channel returns none');
+assert.match(service, /continuing without blocking launch/, 'an unavailable mapper verification channel must never reject a game launch');
+assert.doesNotMatch(service, /did not activate the required/, 'a broken mapper query must not throw after the profile command succeeds');
 assert.match(service, /probe-xinput\.ps1/, 'controller bridge must confirm actual XInput visibility');
 assert.match(service, /install-driver\.ps1/, 'packaged builds must support the signed driver setup');
 assert.match(service, /async prepare\(\)/, 'launcher startup must prepare bridge files without starting the mapper');
