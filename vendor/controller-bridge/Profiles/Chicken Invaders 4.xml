@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <DS4Windows app_version="3.5" config_version="5">
   <outputDataToDS4>True</outputDataToDS4>
+  <Color>0,160,255</Color>
+  <LightbarMode>DS4Win</LightbarMode>
+  <ledAsBatteryIndicator>False</ledAsBatteryIndicator>
+  <LowColor>255,0,0</LowColor>
+  <ChargingColor>0,255,0</ChargingColor>
+  <FlashColor>255,0,0</FlashColor>
   <DinputOnly>True</DinputOnly>
   <OutputContDevice>X360</OutputContDevice>
   <Control>
     <Macro>
       <Cross>32/13/350/13/32</Cross>
+      <PS>121/350/121</PS>
     </Macro>
     <Key>
       <LYNeg>38</LYNeg>

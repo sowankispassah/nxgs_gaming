@@ -37,7 +37,7 @@ assert.equal(
 );
 
 assert.match(service, /spawn\(executable, \['-m'\]/, 'controller mapper must start minimized');
-assert.match(service, /ds4windows-3\.5-nxgs-5/, 'controller bridge runtime version must refresh bundled game profiles and actions');
+assert.match(service, /ds4windows-3\.5-nxgs-6/, 'controller bridge runtime version must refresh bundled game profiles and actions');
 assert.match(service, /ensureReady\(\)/, 'controller bridge must expose a readiness boundary');
 assert.match(service, /ensureReadyForGame\(game: GameRecord\)/, 'controller bridge must expose deterministic per-game profile activation');
 assert.match(service, /LoadTempProfile\.1\.\$\{profileName\}/, 'per-game profiles must be loaded explicitly through the mapper IPC');
@@ -74,6 +74,9 @@ for (const [control, virtualKey] of [
   );
 }
 assert.match(chickenInvadersProfile, /<Macro>[\s\S]*<Cross>32\/13\/350\/13\/32<\/Cross>[\s\S]*<\/Macro>/, 'Cross must hold Space and Enter long enough for fire and menu confirmation');
+assert.match(chickenInvadersProfile, /<Macro>[\s\S]*<PS>121\/350\/121<\/PS>[\s\S]*<\/Macro>/, 'PS must emit the reserved F10 launcher Home shortcut');
+assert.match(chickenInvadersProfile, /<Color>0,160,255<\/Color>/, 'Chicken Invaders must keep the controller light visibly blue');
+assert.match(chickenInvadersProfile, /<LightbarMode>DS4Win<\/LightbarMode>/, 'Chicken Invaders must apply its explicit controller light color');
 assert.doesNotMatch(chickenInvadersProfile, /<Triangle>13<\/Triangle>/, 'Triangle must not be the hidden menu confirmation button');
 assert.match(actions, /<Actions\s*\/>/, 'controller mapper special actions must be empty');
 assert.doesNotMatch(actions, /DisconnectBT|PS\/Options/, 'Home and Options must never trigger a mapper Bluetooth disconnect');
