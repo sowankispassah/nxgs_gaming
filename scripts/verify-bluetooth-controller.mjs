@@ -22,10 +22,6 @@ const pairFunction = bluetoothSource.slice(
   bluetoothSource.indexOf('export async function pairBluetoothDevice'),
   bluetoothSource.indexOf('export async function disconnectBluetoothDevice')
 );
-const fastPairSuccess = pairFunction.slice(
-  pairFunction.indexOf('    if (request.fastPairing) {'),
-  pairFunction.indexOf('    let checked = await waitForControllerInput')
-);
 
 assert.match(
   sharedTypes,
@@ -79,6 +75,16 @@ assert.match(
 );
 assert.match(
   bluetoothSource,
+  /verified\.Authenticated && verified\.Remembered/,
+  'an accepted authentication callback must be verified as an authenticated, saved bond'
+);
+assert.match(
+  bluetoothSource,
+  /Success = responseAccepted && paired/,
+  'native pairing success must require the verified saved bond'
+);
+assert.match(
+  bluetoothSource,
   /TryFindDevice\(address, false, out info\) \|\| TryFindDevice\(address, true, out info\)/,
   'pairing must reuse the selected scan record before spending time on another inquiry'
 );
@@ -112,15 +118,28 @@ assert.match(
   /const before = request\.fastPairing \? fallbackBluetooth : await scanBluetoothDevices\(false\)/,
   'new pairing must skip the redundant pre-authentication status scan'
 );
+assert.match(
+  bluetoothSource,
+  /\$connection = if \(\$result\.Success -and \$result\.Paired\)/,
+  'controller input activation must be requested immediately after verified pairing'
+);
 assert.doesNotMatch(
-  fastPairSuccess,
-  /waitForControllerInput/,
-  'successful new pairing must not keep the confirmation waiting for HID enumeration'
+  bluetoothSource.slice(
+    bluetoothSource.indexOf('public static NxgsBluetoothAction RequestHidConnection'),
+    bluetoothSource.indexOf('public static NxgsBluetoothAction Disconnect')
+  ),
+  /if \(selected\.Connected\) return/,
+  'a base Bluetooth link must not skip the controller input service request'
 );
 assert.match(
-  fastPairSuccess,
-  /Background controller activation failed after pairing/,
-  'controller input activation must continue in the background after pairing completes'
+  pairFunction,
+  /const checked = await waitForControllerInput\(deviceId, 5\)/,
+  'new pairing must check for real controller input before reporting a connected result'
+);
+assert.doesNotMatch(
+  pairFunction,
+  /optimisticDevice|Pairing complete\. Controller input is connecting automatically/,
+  'pairing must never create an optimistic completed device state'
 );
 assert.match(
   settingsSource,
@@ -184,8 +203,13 @@ assert.match(
 );
 assert.match(
   settingsSource,
-  /Pairing complete/,
-  'the NXGS pairing flow must show its completion state'
+  /bluetoothPairingStage === 'input-required'/,
+  'the pairing modal must preserve a recoverable state when controller input is unavailable'
+);
+assert.match(
+  settingsSource,
+  /bluetoothPairingStage === 'connected'[\s\S]*?\? 'Connected'/,
+  'the pairing modal must reserve its completed state for verified controller input'
 );
 assert.match(
   settingsSource,
@@ -204,25 +228,17 @@ assert.match(
 );
 
 if (process.platform === 'win32') {
-  const preambleMatch = bluetoothSource.match(
-    /const NATIVE_BLUETOOTH_PREAMBLE = String\.raw`([\s\S]*?)`;\s+const SCAN_SCRIPT/
-  );
-  const scanMatch = bluetoothSource.match(
-    /const SCAN_SCRIPT = `\$\{NATIVE_BLUETOOTH_PREAMBLE\}([\s\S]*?)`;\s+const PAIR_SCRIPT/
-  );
-  assert.ok(preambleMatch?.[1] && scanMatch?.[1], 'live Bluetooth scan script must be extractable');
-  const script = `${preambleMatch[1]}${scanMatch[1]}`;
-  const stdout = await new Promise((resolve, reject) => {
+  const runBluetoothScript = (script, environment = {}) => new Promise((resolve, reject) => {
     const child = spawn(
       'powershell.exe',
       ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', '-'],
-      { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }
+      { windowsHide: true, env: { ...process.env, ...environment }, stdio: ['pipe', 'pipe', 'pipe'] }
     );
     const output = [];
     const errors = [];
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error('Live Bluetooth scan timed out.'));
+      reject(new Error('Live Bluetooth script timed out.'));
     }, 25000);
     child.stdout.on('data', (chunk) => output.push(chunk));
     child.stderr.on('data', (chunk) => errors.push(chunk));
@@ -239,6 +255,15 @@ if (process.platform === 'win32') {
     });
     child.stdin.end(`${script}\r\n`);
   });
+  const preambleMatch = bluetoothSource.match(
+    /const NATIVE_BLUETOOTH_PREAMBLE = String\.raw`([\s\S]*?)`;\s+const SCAN_SCRIPT/
+  );
+  const scanMatch = bluetoothSource.match(
+    /const SCAN_SCRIPT = `\$\{NATIVE_BLUETOOTH_PREAMBLE\}([\s\S]*?)`;\s+const PAIR_SCRIPT/
+  );
+  assert.ok(preambleMatch?.[1] && scanMatch?.[1], 'live Bluetooth scan script must be extractable');
+  const script = `${preambleMatch[1]}${scanMatch[1]}`;
+  const stdout = await runBluetoothScript(script);
   const live = JSON.parse(stdout.trim());
   const devices = !live.devices ? [] : Array.isArray(live.devices) ? live.devices : [live.devices];
   for (const device of devices) {
@@ -248,8 +273,16 @@ if (process.platform === 'win32') {
   const dualSense = devices.find((device) => /dualsense/i.test(String(device.Name)));
   if (dualSense) {
     assert.equal(dualSense.Controller, true, 'the live DualSense must be classified as a controller');
+    const inputScriptMatch = bluetoothSource.match(
+      /const CONTROLLER_INPUT_SCRIPT = String\.raw`([\s\S]*?)`;\s+const CONNECT_CONTROLLER_SCRIPT/
+    );
+    assert.ok(inputScriptMatch?.[1], 'lightweight controller input probe must be extractable');
+    const inputProbe = JSON.parse(await runBluetoothScript(inputScriptMatch[1], {
+      NXGS_BLUETOOTH_DEVICE_ID: String(dualSense.Id)
+    }));
+    assert.equal(typeof inputProbe.inputReady, 'boolean', 'live controller input probe must return a Boolean readiness state');
     console.log(
-      `INFO: Live DualSense Bluetooth link connected=${Boolean(dualSense.Connected)}, inputReady=${Boolean(dualSense.InputReady)}.`
+      `INFO: Live DualSense Bluetooth link connected=${Boolean(dualSense.Connected)}, inputReady=${Boolean(dualSense.InputReady)}, fastProbe=${inputProbe.inputReady}.`
     );
   }
 }

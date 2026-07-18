@@ -34,6 +34,8 @@ public sealed class NxgsBluetoothDevice {
 public sealed class NxgsBluetoothAction {
     public bool Found { get; set; }
     public bool Success { get; set; }
+    public bool Paired { get; set; }
+    public bool Connected { get; set; }
     public bool ApprovalRequired { get; set; }
     public string Method { get; set; }
     public int Code { get; set; }
@@ -288,7 +290,9 @@ public static class NxgsBluetoothNative {
         // The customer already selected this device from an NXGS scan. Reuse the
         // cached record first so authentication starts before pairing mode expires.
         if (TryFindDevice(address, false, out info) || TryFindDevice(address, true, out info)) {
-            if (info.Authenticated || info.Remembered) return new NxgsBluetoothAction { Found = true, Success = true, Code = 0 };
+            if (info.Authenticated && info.Remembered) {
+                return new NxgsBluetoothAction { Found = true, Success = true, Paired = true, Connected = info.Connected, Code = 0 };
+            }
             bool controller = IsController(info);
             if (!controller) {
                 return new NxgsBluetoothAction { Found = true, Success = false, ApprovalRequired = true, Method = "staff", Code = 5 };
@@ -308,12 +312,35 @@ public static class NxgsBluetoothNative {
                 // parent window also prevents creation of an external pairing wizard.
                 int code = BluetoothAuthenticateDeviceEx(IntPtr.Zero, IntPtr.Zero, ref info, IntPtr.Zero, 0);
                 bool callbackCompleted = code == 0 && context.CallbackCompleted.WaitOne(15000);
+                bool responseAccepted = callbackCompleted && !context.ApprovalRequired && context.ResponseCode == 0;
+                bool paired = false;
+                bool connected = false;
+                if (responseAccepted) {
+                    // A successful callback only confirms that the authentication
+                    // response was accepted. Wait briefly for the native cache to
+                    // prove that the controller was both authenticated and saved.
+                    for (int attempt = 0; attempt < 12; attempt++) {
+                        BLUETOOTH_DEVICE_INFO verified;
+                        if (TryFindDevice(address, false, out verified)) {
+                            paired = verified.Authenticated && verified.Remembered;
+                            connected = verified.Connected;
+                            if (paired) break;
+                        }
+                        Thread.Sleep(250);
+                    }
+                }
                 return new NxgsBluetoothAction {
                     Found = true,
-                    Success = callbackCompleted && !context.ApprovalRequired && context.ResponseCode == 0,
+                    Success = responseAccepted && paired,
+                    Paired = paired,
+                    Connected = connected,
                     ApprovalRequired = context.ApprovalRequired,
                     Method = context.Method,
-                    Code = !callbackCompleted && code == 0 ? 1460 : context.ResponseCode != 0 ? context.ResponseCode : code
+                    Code = !callbackCompleted && code == 0
+                        ? 1460
+                        : context.ResponseCode != 0
+                            ? context.ResponseCode
+                            : responseAccepted && !paired ? 1244 : code
                 };
             } finally {
                 if (registration != IntPtr.Zero) BluetoothUnregisterAuthentication(registration);
@@ -337,8 +364,6 @@ public static class NxgsBluetoothNative {
             break;
         }
         if (!found) return new NxgsBluetoothAction { Found = false, Success = false, Code = 1168 };
-        if (selected.Connected) return new NxgsBluetoothAction { Found = true, Success = true, Code = 0 };
-
         var search = new BLUETOOTH_FIND_RADIO_PARAMS { Size = Marshal.SizeOf(typeof(BLUETOOTH_FIND_RADIO_PARAMS)) };
         IntPtr radio;
         IntPtr radioFind = BluetoothFindFirstRadio(ref search, out radio);
@@ -467,7 +492,43 @@ if ($hasRadio) {
 
 const PAIR_SCRIPT = `${NATIVE_BLUETOOTH_PREAMBLE}
 $result = [NxgsBluetoothNative]::Pair($env:NXGS_BLUETOOTH_DEVICE_ID)
-[pscustomobject]@{ found = $result.Found; success = $result.Success; approvalRequired = $result.ApprovalRequired; method = $result.Method; status = [string]$result.Code } | ConvertTo-Json -Compress
+$connection = if ($result.Success -and $result.Paired) { [NxgsBluetoothNative]::RequestHidConnection($env:NXGS_BLUETOOTH_DEVICE_ID) } else { $null }
+[pscustomobject]@{
+    found = $result.Found
+    success = $result.Success
+    paired = $result.Paired
+    connected = $result.Connected
+    approvalRequired = $result.ApprovalRequired
+    method = $result.Method
+    status = [string]$result.Code
+    connectionRequested = $null -ne $connection -and $connection.Success
+    connectionStatus = if ($null -ne $connection) { [string]$connection.Code } else { '' }
+} | ConvertTo-Json -Compress
+`;
+
+const CONTROLLER_INPUT_SCRIPT = String.raw`
+$ErrorActionPreference = 'Stop'
+$deviceId = $env:NXGS_BLUETOOTH_DEVICE_ID
+$bluetoothDevice = Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object {
+    $_.InstanceId -like "BTHENUM\DEV_$deviceId*"
+} | Select-Object -First 1
+$inputReady = $false
+if ($null -ne $bluetoothDevice) {
+    $bluetoothContainer = Get-PnpDeviceProperty -InstanceId $bluetoothDevice.InstanceId -KeyName 'DEVPKEY_Device_ContainerId' -ErrorAction SilentlyContinue
+    if ($null -ne $bluetoothContainer -and $null -ne $bluetoothContainer.Data) {
+        $hidDevices = @(Get-PnpDevice -PresentOnly -Class HIDClass -ErrorAction SilentlyContinue | Where-Object {
+            $_.FriendlyName -eq 'HID-compliant game controller' -or $_.InstanceId -match '(?i)VID_054C|VID&0002054C|IG_'
+        })
+        foreach ($hidDevice in $hidDevices) {
+            $hidContainer = Get-PnpDeviceProperty -InstanceId $hidDevice.InstanceId -KeyName 'DEVPKEY_Device_ContainerId' -ErrorAction SilentlyContinue
+            if ($null -ne $hidContainer -and [string]$hidContainer.Data -eq [string]$bluetoothContainer.Data) {
+                $inputReady = $true
+                break
+            }
+        }
+    }
+}
+[pscustomobject]@{ inputReady = $inputReady } | ConvertTo-Json -Compress
 `;
 
 const CONNECT_CONTROLLER_SCRIPT = `${NATIVE_BLUETOOTH_PREAMBLE}
@@ -504,6 +565,10 @@ interface RawBluetoothScan {
 interface RawBluetoothAction {
   found?: unknown;
   success?: unknown;
+  paired?: unknown;
+  connected?: unknown;
+  connectionRequested?: unknown;
+  connectionStatus?: unknown;
   approvalRequired?: unknown;
   method?: unknown;
   status?: unknown;
@@ -666,12 +731,19 @@ async function waitForControllerInput(
   deviceId: string,
   attempts = 8
 ): Promise<{ bluetooth: BluetoothStatus; device?: BluetoothDeviceSummary }> {
-  let bluetooth = await scanBluetoothDevices(false);
+  let inputReady = false;
+  for (let attempt = 0; attempt < attempts && !inputReady; attempt += 1) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 800));
+    const probe = await runPowerShell<{ inputReady?: unknown }>(CONTROLLER_INPUT_SCRIPT, {
+      NXGS_BLUETOOTH_DEVICE_ID: deviceId
+    });
+    inputReady = asBoolean(probe.inputReady);
+  }
+  const bluetooth = await scanBluetoothDevices(false);
   let device = bluetooth.devices.find((candidate) => candidate.id.toLowerCase() === deviceId.toLowerCase());
-  for (let attempt = 1; attempt < attempts && bluetooth.supported && !device?.inputReady; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    bluetooth = await scanBluetoothDevices(false);
-    device = bluetooth.devices.find((candidate) => candidate.id.toLowerCase() === deviceId.toLowerCase());
+  if (device && inputReady && !device.inputReady) {
+    device = { ...device, connected: true, inputReady: true };
+    bluetooth.devices = bluetooth.devices.map((candidate) => candidate.id.toLowerCase() === deviceId.toLowerCase() ? device! : candidate);
   }
   return { bluetooth, device };
 }
@@ -682,7 +754,7 @@ async function requestControllerConnection(deviceId: string): Promise<RawBluetoo
   });
   await logLine(
     asBoolean(result.success) ? 'info' : 'warn',
-    `Controller connection request for ${deviceId} ${asBoolean(result.success) ? 'was accepted' : `failed with ${String(result.status ?? 'unknown')}`}.`
+    `Controller input service request for ${deviceId} ${asBoolean(result.success) ? 'returned without an API error; awaiting HID input' : `failed with ${String(result.status ?? 'unknown')}`}.`
   );
   return result;
 }
@@ -727,11 +799,11 @@ export async function pairBluetoothDevice(request: BluetoothPairRequest): Promis
         };
       }
       return {
-        ok: asBoolean(request.success),
+        ok: false,
         status: 'paired',
         message: asBoolean(request.success)
-          ? 'Connection requested. Keep the controller awake and press PS / Home once; NXGS will detect it automatically.'
-          : 'The controller stayed paired, but the connection request was not accepted. Press PS / Home once and NXGS will detect it automatically.',
+          ? 'Controller input did not connect. Keep the controller awake, press PS / Home once, then select Check Input.'
+          : 'Controller input did not connect. Press PS / Home once, then select Check Input. If it turns off again, remove the saved device and pair it again.',
         bluetooth: checked.bluetooth
       };
     }
@@ -754,26 +826,41 @@ export async function pairBluetoothDevice(request: BluetoothPairRequest): Promis
       }
       return { ok: false, status: 'failed', message: windowsPairingError(String(result.status ?? 'unknown')), bluetooth };
     }
+    if (!asBoolean(result.paired)) {
+      const bluetooth = request.fastPairing ? before : await scanBluetoothDevices(false);
+      return {
+        ok: false,
+        status: 'failed',
+        message: 'Pairing was not confirmed. Keep the controller in pairing mode, then select Try again.',
+        bluetooth
+      };
+    }
+    await logLine(
+      'info',
+      `Verified saved pairing for ${deviceId}; controller input service request ${asBoolean(result.connectionRequested) ? 'was sent' : `returned ${String(result.connectionStatus ?? 'unknown')}`}.`
+    );
     if (request.fastPairing) {
-      const optimisticDevice = { ...existing, paired: true, connectable: true };
+      const verifiedDevice = { ...existing, paired: true, connected: asBoolean(result.connected), connectable: true };
       const otherDevices = before.devices.filter((device) => device.id.toLowerCase() !== deviceId.toLowerCase());
-      const bluetooth = { ...before, devices: [optimisticDevice, ...otherDevices] };
-      if (optimisticDevice.controller && !optimisticDevice.inputReady) {
-        void (async () => {
-          await new Promise((resolve) => setTimeout(resolve, 350));
-          try {
-            await requestControllerConnection(deviceId);
-          } catch (error) {
-            await logLine('warn', `Background controller activation failed after pairing ${deviceId}: ${safeError(error)}`);
-          }
-        })();
+      let bluetooth = { ...before, devices: [verifiedDevice, ...otherDevices] };
+      if (verifiedDevice.controller) {
+        const checked = await waitForControllerInput(deviceId, 5);
+        bluetooth = checked.bluetooth.supported ? checked.bluetooth : bluetooth;
+        if (checked.device?.inputReady) {
+          return {
+            ok: true,
+            status: 'connected',
+            message: 'Connected. Controller input is ready.',
+            bluetooth
+          };
+        }
       }
       return {
         ok: true,
-        status: optimisticDevice.inputReady ? 'connected' : 'paired',
-        message: optimisticDevice.inputReady
-          ? 'Controller input connected and ready.'
-          : 'Pairing complete. Controller input is connecting automatically.',
+        status: 'paired',
+        message: verifiedDevice.controller
+          ? 'Pairing confirmed, but controller input is not connected yet. Press PS / Home once, then select Check Input.'
+          : 'Pairing confirmed.',
         bluetooth
       };
     }
