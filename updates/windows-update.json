@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.2/NXGS-Play-Setup.exe",
-    "sha256":  "0ded1cce63c217dc569760372d59bd335537ecaf095c14b396663368e2108016",
+    "version":  "0.16.3",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.3/NXGS-Play-Setup.exe",
+    "sha256":  "510ccf1ee9b9102593bd6240ab528532c8e603e36b6dc2dda839f208201a0b3c",
     "required":  false,
-    "notes":  "Adds a Chicken Invaders 4 controller profile: left stick and D-pad movement now send arrow keys, while Cross remains primary fire."
+    "notes":  "Fixes Chicken Invaders movement controls and prevents controller idle shutdown during active gameplay."
 }
