@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.5",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.5/NXGS-Play-Setup.exe",
-    "sha256":  "8f7ffc6d82b8fbaf27302870e4158ee11673a9ae4a1a98a4348cf598a8f948e8",
+    "version":  "0.16.6",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.6/NXGS-Play-Setup.exe",
+    "sha256":  "85cb89b1911dac1b3f27dde35f95ed323502a97e7de43b39c4aeb4547acec8fc",
     "required":  false,
-    "notes":  "Fixes the false controller-profile activation error that blocked Chicken Invaders from launching."
+    "notes":  "Restores reliable controller Home navigation and the blue controller light indicator in Chicken Invaders while preserving movement and X fire/confirm."
 }
