@@ -4,17 +4,20 @@ import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { ControllerCompatibilityDiagnostics } from '../shared/types';
+import type { ControllerCompatibilityDiagnostics, GameRecord } from '../shared/types';
 import { logLine } from './logger';
 
 const execFileAsync = promisify(execFile);
-const BRIDGE_VERSION = 'ds4windows-3.5-nxgs-3';
+const BRIDGE_VERSION = 'ds4windows-3.5-nxgs-4';
 const DS4WINDOWS_EXE_SHA256 = '6267cba17b87ada8f13ec6e187b309e3c76aa087acf2c255ab19dc2db6799a34';
 const DS4WINDOWS_DLL_SHA256 = 'bd7497e24cfcededa70683fa58c738901e4ca86c1d8ec98567a971faf03ebffd';
 const DRIVER_REGISTRY_KEY =
   'HKLM\\SOFTWARE\\WOW6432Node\\Nefarius Software Solutions e.U.\\ViGEm Bus Driver';
 const STARTUP_WAIT_MS = 14_000;
 const HEALTH_INTERVAL_MS = 15_000;
+const DEFAULT_PROFILE = 'Default';
+const CHICKEN_INVADERS_PROFILE = 'Chicken Invaders 4';
+const CHICKEN_INVADERS_AUMID = 'f7e879f5.chickeninvaders4_m9yrg34ad3crj!app';
 
 type XInputProbe = {
   connected: boolean;
@@ -31,6 +34,7 @@ async function sha256(path: string): Promise<string> {
 
 export class ControllerCompatibilityService {
   private mapper: ChildProcess | null = null;
+  private activeProfile = DEFAULT_PROFILE;
   private healthTimer: NodeJS.Timeout | null = null;
   private startPromise: Promise<ControllerCompatibilityDiagnostics> | null = null;
   private status: ControllerCompatibilityDiagnostics = {
@@ -89,6 +93,23 @@ export class ControllerCompatibilityService {
     return this.waitForXInput(STARTUP_WAIT_MS);
   }
 
+  async ensureReadyForGame(game: GameRecord): Promise<ControllerCompatibilityDiagnostics> {
+    const desiredProfile = this.profileForGame(game);
+    if (desiredProfile !== DEFAULT_PROFILE && this.mapper && !this.mapper.killed && this.activeProfile === desiredProfile) {
+      return this.refreshHealth();
+    }
+
+    if (this.activeProfile !== DEFAULT_PROFILE && desiredProfile === DEFAULT_PROFILE) {
+      await this.loadTemporaryProfile(DEFAULT_PROFILE);
+    }
+
+    const result = await this.ensureReady();
+    if (desiredProfile === DEFAULT_PROFILE || !result.mapperRunning || result.status !== 'ready') return result;
+
+    await this.loadTemporaryProfile(desiredProfile);
+    return this.refreshHealth();
+  }
+
   stop(): void {
     if (this.healthTimer) {
       clearInterval(this.healthTimer);
@@ -96,6 +117,7 @@ export class ControllerCompatibilityService {
     }
     const mapper = this.mapper;
     this.mapper = null;
+    this.activeProfile = DEFAULT_PROFILE;
     if (mapper && !mapper.killed) {
       mapper.kill();
     }
@@ -236,6 +258,7 @@ export class ControllerCompatibilityService {
       stdio: 'ignore'
     });
     this.mapper = mapper;
+    this.activeProfile = DEFAULT_PROFILE;
     this.setStatus({
       status: 'starting',
       mapperRunning: true,
@@ -245,6 +268,7 @@ export class ControllerCompatibilityService {
     mapper.once('exit', (code, signal) => {
       if (this.mapper !== mapper) return;
       this.mapper = null;
+      this.activeProfile = DEFAULT_PROFILE;
       this.setStatus({
         mapperRunning: false,
         xinputReady: false,
@@ -303,8 +327,19 @@ export class ControllerCompatibilityService {
   }
 
   private async refreshHealth(): Promise<ControllerCompatibilityDiagnostics> {
-    const probe = await this.probeXInput();
     const mapperRunning = Boolean(this.mapper && !this.mapper.killed);
+    if (mapperRunning && this.activeProfile !== DEFAULT_PROFILE) {
+      this.setStatus({
+        status: 'ready',
+        mapperRunning: true,
+        xinputReady: false,
+        lastError: undefined,
+        message: `${this.activeProfile} keyboard controller profile is active.`
+      });
+      return this.diagnostics;
+    }
+
+    const probe = await this.probeXInput();
     this.setStatus({
       status: probe.connected ? 'ready' : mapperRunning ? 'waitingForController' : 'error',
       mapperRunning,
@@ -316,6 +351,34 @@ export class ControllerCompatibilityService {
           : 'Controller mapper is not running.'
     });
     return this.diagnostics;
+  }
+
+  private profileForGame(game: GameRecord): string {
+    return game.launchType === 'microsoftStore' && game.launchCommand.trim().toLowerCase() === CHICKEN_INVADERS_AUMID
+      ? CHICKEN_INVADERS_PROFILE
+      : DEFAULT_PROFILE;
+  }
+
+  private async loadTemporaryProfile(profileName: string): Promise<void> {
+    const runtime = this.runtimeDirectory();
+    const executable = join(runtime, 'DS4Windows.exe');
+    await execFileAsync(executable, ['-command', `LoadTempProfile.1.${profileName}`], {
+      cwd: runtime,
+      windowsHide: true,
+      timeout: 5_000
+    });
+    await delay(250);
+    const { stdout: activeProfile } = await execFileAsync(executable, ['-command', 'Query.1.ProfileName'], {
+      cwd: runtime,
+      windowsHide: true,
+      timeout: 5_000,
+      maxBuffer: 4 * 1024
+    });
+    if (activeProfile.trim() !== profileName) {
+      throw new Error(`Controller mapper did not activate the required ${profileName} profile.`);
+    }
+    this.activeProfile = profileName;
+    await logLine('info', `Controller compatibility activated and verified profile "${profileName}" for controller 1.`);
   }
 
   private startHealthMonitor(): void {

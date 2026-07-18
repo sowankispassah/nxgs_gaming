@@ -23,6 +23,7 @@ export type ControllerIdleAction =
 export class ControllerIdlePolicy {
   private readonly controllers = new Map<string, IdleController>();
   private settings: ControllerIdleSettings;
+  private gameplayActive = false;
 
   constructor(settings: ControllerIdleSettings) {
     this.settings = settings;
@@ -30,6 +31,26 @@ export class ControllerIdlePolicy {
 
   get connectedControllers(): IdleController[] {
     return [...this.controllers.values()].map((controller) => ({ ...controller }));
+  }
+
+  get isGameplayActive(): boolean {
+    return this.gameplayActive;
+  }
+
+  setGameplayActive(active: boolean, now: number): ControllerIdleAction[] {
+    if (this.gameplayActive === active) return [];
+    this.gameplayActive = active;
+    const actions: ControllerIdleAction[] = [];
+    for (const controller of this.controllers.values()) {
+      controller.lastActivityAt = now;
+      controller.shutdownPending = false;
+      if (!active && controller.sessionGraceStartedAt !== undefined) controller.sessionGraceStartedAt = now;
+      if (controller.warningShown) {
+        controller.warningShown = false;
+        actions.push({ type: 'warning-cancelled', controller: { ...controller } });
+      }
+    }
+    return actions;
   }
 
   updateSettings(settings: ControllerIdleSettings): ControllerIdleAction[] {
@@ -98,7 +119,7 @@ export class ControllerIdlePolicy {
   }
 
   tick(now: number): ControllerIdleAction[] {
-    if (this.settings.autoTurnOffMinutes === 0) return [];
+    if (this.settings.autoTurnOffMinutes === 0 || this.gameplayActive) return [];
     const actions: ControllerIdleAction[] = [];
     const normalTimeoutMs = this.settings.autoTurnOffMinutes * 60_000;
     for (const controller of this.controllers.values()) {

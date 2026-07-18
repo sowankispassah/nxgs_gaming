@@ -1,14 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Programs>
-  <Program path="*f7e879f5.chickeninvaders4" title="Chicken Invaders 4 HD">
-    <Controller1>Chicken Invaders 4</Controller1>
-    <Controller2>Chicken Invaders 4</Controller2>
-    <Controller3>Chicken Invaders 4</Controller3>
-    <Controller4>Chicken Invaders 4</Controller4>
-    <Controller5>Chicken Invaders 4</Controller5>
-    <Controller6>Chicken Invaders 4</Controller6>
-    <Controller7>Chicken Invaders 4</Controller7>
-    <Controller8>Chicken Invaders 4</Controller8>
-    <TurnOff>False</TurnOff>
-  </Program>
-</Programs>
+<Programs />

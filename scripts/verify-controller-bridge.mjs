@@ -36,13 +36,16 @@ assert.equal(
 );
 
 assert.match(service, /spawn\(executable, \['-m'\]/, 'controller mapper must start minimized');
-assert.match(service, /ds4windows-3\.5-nxgs-3/, 'controller bridge runtime version must refresh bundled game profiles');
+assert.match(service, /ds4windows-3\.5-nxgs-4/, 'controller bridge runtime version must refresh bundled game profiles');
 assert.match(service, /ensureReady\(\)/, 'controller bridge must expose a readiness boundary');
+assert.match(service, /ensureReadyForGame\(game: GameRecord\)/, 'controller bridge must expose deterministic per-game profile activation');
+assert.match(service, /LoadTempProfile\.1\.\$\{profileName\}/, 'per-game profiles must be loaded explicitly through the mapper IPC');
+assert.match(service, /Query\.1\.ProfileName/, 'per-game profile activation must be verified through the mapper IPC');
 assert.match(service, /probe-xinput\.ps1/, 'controller bridge must confirm actual XInput visibility');
 assert.match(service, /install-driver\.ps1/, 'packaged builds must support the signed driver setup');
 assert.match(service, /async prepare\(\)/, 'launcher startup must prepare bridge files without starting the mapper');
-assert.match(main, /await controllerCompatibility\.ensureReady\(\);[\s\S]*await launcher\.launch\(game\)/, 'launch must prepare controller compatibility before the game handoff');
-assert.match(main, /game:resumeActive[\s\S]*controllerCompatibility\.ensureReady\(\)/, 'resume must recheck controller compatibility');
+assert.match(main, /await controllerCompatibility\.ensureReadyForGame\(game\);[\s\S]*await launcher\.launch\(game\)/, 'launch must activate the correct controller profile before the game handoff');
+assert.match(main, /game:resumeActive[\s\S]*controllerCompatibility\.ensureReadyForGame\(game\)/, 'resume must reactivate the correct game profile');
 assert.doesNotMatch(main, /controllerCompatibility\.start\(\{ allowDriverInstall: app\.isPackaged \}\)/, 'launcher Home must not start the gameplay mapper');
 assert.match(main, /controllerCompatibility\.prepare\(\)/, 'launcher Home may validate bridge assets without claiming the controller');
 assert.match(main, /game:minimizeActive[\s\S]*controllerCompatibility\.stop\(\)/, 'returning to launcher Home must stop the gameplay mapper');
@@ -67,8 +70,8 @@ for (const [control, virtualKey] of [
     `${control} must map to the expected Chicken Invaders keyboard control`
   );
 }
-assert.match(autoProfiles, /path="\*f7e879f5\.chickeninvaders4" title="Chicken Invaders 4 HD"/, 'Chicken Invaders profile must be application-specific');
-assert.match(autoProfiles, /<Controller1>Chicken Invaders 4<\/Controller1>/, 'Chicken Invaders profile must load for the primary controller');
+assert.match(autoProfiles, /<Programs\s*\/>/, 'unreliable foreground-process auto profiles must remain disabled');
+assert.match(service, /CHICKEN_INVADERS_AUMID[\s\S]*CHICKEN_INVADERS_PROFILE/, 'Chicken Invaders must be matched by its stable Store application identity');
 
 assert.match(styles, /button:not\(:disabled\):is\(:focus-visible, \.controller-focused, \.focused\)/, 'all focused buttons must receive the global console focus ring');
 assert.match(styles, /button:not\(:disabled\):hover/, 'all buttons must have a hover state');

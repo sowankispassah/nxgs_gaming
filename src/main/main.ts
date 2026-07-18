@@ -273,6 +273,7 @@ const launcher = new GameLauncher(
       }
       if (endedPaidSession) controllerIdleService?.paidSessionEnded();
       if (!launcher.hasTrackedGames) {
+        controllerIdleService?.setGameplayActive(false);
         controllerCompatibility.stop();
       }
       applyKioskSettings(store.getSettings());
@@ -280,6 +281,7 @@ const launcher = new GameLauncher(
     onError: (message) => {
       sessionTimer.setError(message);
       if (!launcher.hasTrackedGames) {
+        controllerIdleService?.setGameplayActive(false);
         controllerCompatibility.stop();
       }
       launcher.focusLauncher();
@@ -287,6 +289,7 @@ const launcher = new GameLauncher(
     },
     onGameWindowDetected: startSessionWhenGameWindowIsReady,
     onActiveGameChanged: () => {
+      controllerIdleService?.setGameplayActive(launcher.hasTrackedGames);
       broadcastActiveGame();
     }
   },
@@ -679,10 +682,11 @@ function registerIpc(): void {
       if (!game) {
         throw new Error('Game not found.');
       }
+      controllerIdleService?.setGameplayActive(true);
       sessionTimer.setLaunching(game, request.durationMinutes);
-      const compatibility = await controllerCompatibility.ensureReady();
-      if (!compatibility.xinputReady) {
-        await logLine('warn', `Launching ${game.title} without confirmed XInput compatibility: ${compatibility.message ?? compatibility.status}`);
+      const compatibility = await controllerCompatibility.ensureReadyForGame(game);
+      if (compatibility.status !== 'ready') {
+        await logLine('warn', `Launching ${game.title} without ready controller compatibility: ${compatibility.message ?? compatibility.status}`);
       }
       await launcher.launch(game);
       startSessionWhenGameWindowIsReady(game);
@@ -691,6 +695,7 @@ function registerIpc(): void {
       const message = error instanceof Error ? error.message : String(error);
       await logLine('error', `Launch request failed: ${message}`);
       sessionTimer.setError(message);
+      if (!launcher.hasTrackedGames) controllerIdleService?.setGameplayActive(false);
       launcher.focusLauncher();
       applyKioskSettings(store.getSettings());
       return { ok: false, error: message };
@@ -698,9 +703,14 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('game:resumeActive', async (_event, gameId?: string): Promise<GameControlResult> => {
-    const compatibility = await controllerCompatibility.ensureReady();
-    if (!compatibility.xinputReady) {
-      await logLine('warn', `Resuming a game without confirmed XInput compatibility: ${compatibility.message ?? compatibility.status}`);
+    const game = gameId
+      ? launcher.activeState.sessions?.find((session) => session.game.id === gameId)?.game ?? launcher.active
+      : launcher.active;
+    const compatibility = game
+      ? await controllerCompatibility.ensureReadyForGame(game)
+      : await controllerCompatibility.ensureReady();
+    if (compatibility.status !== 'ready') {
+      await logLine('warn', `Resuming a game without ready controller compatibility: ${compatibility.message ?? compatibility.status}`);
     }
     return launcher.resumeActiveGame(gameId);
   });

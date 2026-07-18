@@ -54,6 +54,30 @@ assert.equal(
 actions = sessionPolicy.tick(start + 50_000 + SESSION_END_IDLE_MS);
 assert.equal(actions[0]?.type, 'shutdown', 'activity must reset the session-end idle grace timer');
 
+const gameplayPolicy = new ControllerIdlePolicy({ autoTurnOffMinutes: 5, shutdownWarning: true });
+gameplayPolicy.connect('001122AABBCC', 'DualSense', start);
+actions = gameplayPolicy.tick(start + 5 * 60_000 - CONTROLLER_SHUTDOWN_WARNING_MS);
+assert.equal(actions[0]?.type, 'warning');
+actions = gameplayPolicy.setGameplayActive(true, start + 5 * 60_000 - 10_000);
+assert.equal(actions[0]?.type, 'warning-cancelled', 'starting gameplay must cancel a pending shutdown warning');
+assert.deepEqual(
+  gameplayPolicy.tick(start + 24 * 60 * 60_000),
+  [],
+  'automatic shutdown must remain blocked for the entire active game session'
+);
+gameplayPolicy.paidSessionEnded(start + 24 * 60 * 60_000);
+gameplayPolicy.setGameplayActive(false, start + 24 * 60 * 60_000 + 5_000);
+assert.equal(
+  gameplayPolicy.tick(start + 24 * 60 * 60_000 + 5_000 + SESSION_END_IDLE_MS - 1).some((action) => action.type === 'shutdown'),
+  false,
+  'ending gameplay must start a fresh session-end grace period'
+);
+assert.equal(
+  gameplayPolicy.tick(start + 24 * 60 * 60_000 + 5_000 + SESSION_END_IDLE_MS)[0]?.type,
+  'shutdown',
+  'idle shutdown may resume only after gameplay has ended and the full grace period elapsed'
+);
+
 sessionPolicy.shutdownFailed('001122AABBCC', start + 120_000);
 assert.deepEqual(sessionPolicy.tick(start + 120_000 + SHUTDOWN_RETRY_COOLDOWN_MS - 1), [], 'failures must use a retry cooldown');
 
@@ -118,6 +142,14 @@ assert.doesNotMatch(helperSource, /BluetoothRemoveDevice|UnpairAsync/);
 const databaseSource = readFileSync(join(root, 'src', 'main', 'database.ts'), 'utf8');
 assert.match(databaseSource, /autoTurnOffMinutes: 10/);
 assert.match(databaseSource, /shutdownWarning: true/);
+
+const mainSource = readFileSync(join(root, 'src', 'main', 'main.ts'), 'utf8');
+assert.match(
+  mainSource,
+  /controllerIdleService\?\.setGameplayActive\(true\);[\s\S]*controllerCompatibility\.ensureReadyForGame\(game\)/,
+  'launch must suspend idle shutdown before waiting for controller compatibility'
+);
+assert.match(mainSource, /onActiveGameChanged:[\s\S]*setGameplayActive\(launcher\.hasTrackedGames\)/);
 
 const packageConfig = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 assert.ok(packageConfig.build.extraResources.some((resource) => resource.to === 'controller-idle-helper'));

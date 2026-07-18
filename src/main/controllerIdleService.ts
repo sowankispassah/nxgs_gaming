@@ -43,6 +43,17 @@ export class ControllerIdleService {
     this.processActions(this.policy.updateSettings(settings));
   }
 
+  setGameplayActive(active: boolean): void {
+    if (this.policy.isGameplayActive === active) return;
+    this.processActions(this.policy.setGameplayActive(active, Date.now()));
+    void logLine(
+      'info',
+      active
+        ? 'Controller idle shutdown suspended while a game session is active.'
+        : 'Controller idle shutdown resumed after all game sessions ended.'
+    );
+  }
+
   paidSessionEnded(): void {
     this.policy.paidSessionEnded(Date.now());
     void logLine('info', 'Controller idle monitor started the 60-second paid-session-end idle grace period.');
