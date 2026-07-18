@@ -37,6 +37,7 @@ export class ControllerCompatibilityService {
   private activeProfile = DEFAULT_PROFILE;
   private healthTimer: NodeJS.Timeout | null = null;
   private startPromise: Promise<ControllerCompatibilityDiagnostics> | null = null;
+  private stopPromise: Promise<void> | null = null;
   private status: ControllerCompatibilityDiagnostics = {
     status: process.platform === 'win32' ? 'idle' : 'unavailable',
     driverInstalled: false,
@@ -80,7 +81,8 @@ export class ControllerCompatibilityService {
 
   start(options: { allowDriverInstall?: boolean } = {}): Promise<ControllerCompatibilityDiagnostics> {
     if (this.startPromise) return this.startPromise;
-    this.startPromise = this.startInternal(Boolean(options.allowDriverInstall)).finally(() => {
+    const waitForStop = this.stopPromise?.catch(() => undefined) ?? Promise.resolve();
+    this.startPromise = waitForStop.then(() => this.startInternal(Boolean(options.allowDriverInstall))).finally(() => {
       this.startPromise = null;
     });
     return this.startPromise;
@@ -118,8 +120,12 @@ export class ControllerCompatibilityService {
     const mapper = this.mapper;
     this.mapper = null;
     this.activeProfile = DEFAULT_PROFILE;
-    if (mapper && !mapper.killed) {
-      mapper.kill();
+    if (mapper && mapper.exitCode === null) {
+      const stopPromise = this.stopMapperGracefully(mapper);
+      this.stopPromise = stopPromise;
+      void stopPromise.finally(() => {
+        if (this.stopPromise === stopPromise) this.stopPromise = null;
+      });
     }
     this.status = {
       ...this.status,
@@ -128,6 +134,34 @@ export class ControllerCompatibilityService {
       status: process.platform === 'win32' ? 'idle' : 'unavailable',
       message: 'Starts automatically when a game launches or resumes.'
     };
+  }
+
+  private async stopMapperGracefully(mapper: ChildProcess): Promise<void> {
+    const executable = join(this.runtimeDirectory(), 'DS4Windows.exe');
+    try {
+      await execFileAsync(executable, ['-command', 'Stop'], {
+        cwd: this.runtimeDirectory(),
+        windowsHide: true,
+        timeout: 5_000
+      });
+      await delay(1_500);
+      await execFileAsync(executable, ['-command', 'Shutdown'], {
+        cwd: this.runtimeDirectory(),
+        windowsHide: true,
+        timeout: 5_000
+      });
+      const deadline = Date.now() + 3_000;
+      while (mapper.exitCode === null && Date.now() < deadline) await delay(100);
+      if (mapper.exitCode !== null) {
+        await logLine('info', 'Controller compatibility mapper stopped gracefully and released controller output.');
+        return;
+      }
+    } catch (error) {
+      await logLine('warn', `Controller compatibility mapper graceful stop failed: ${String(error)}`);
+    }
+
+    if (mapper.exitCode === null && !mapper.killed) mapper.kill();
+    await logLine('warn', 'Controller compatibility mapper required forced termination after its graceful stop timeout.');
   }
 
   private async startInternal(allowDriverInstall: boolean): Promise<ControllerCompatibilityDiagnostics> {

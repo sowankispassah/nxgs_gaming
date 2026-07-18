@@ -48,6 +48,8 @@ assert.doesNotMatch(service, /did not activate the required/, 'a broken mapper q
 assert.match(service, /probe-xinput\.ps1/, 'controller bridge must confirm actual XInput visibility');
 assert.match(service, /install-driver\.ps1/, 'packaged builds must support the signed driver setup');
 assert.match(service, /async prepare\(\)/, 'launcher startup must prepare bridge files without starting the mapper');
+assert.match(service, /\['-command', 'Stop'\][\s\S]*\['-command', 'Shutdown'\]/, 'mapper shutdown must release controller output through supported IPC before closing');
+assert.match(service, /graceful stop timeout[\s\S]*mapper\.kill\(\)|mapper\.kill\(\)[\s\S]*graceful stop timeout/, 'mapper shutdown must retain a bounded forced-termination fallback');
 assert.match(main, /await controllerCompatibility\.ensureReadyForGame\(game\);[\s\S]*await launcher\.launch\(game\)/, 'launch must activate the correct controller profile before the game handoff');
 assert.match(main, /game:resumeActive[\s\S]*controllerCompatibility\.ensureReadyForGame\(game\)/, 'resume must reactivate the correct game profile');
 assert.doesNotMatch(main, /controllerCompatibility\.start\(\{ allowDriverInstall: app\.isPackaged \}\)/, 'launcher Home must not start the gameplay mapper');

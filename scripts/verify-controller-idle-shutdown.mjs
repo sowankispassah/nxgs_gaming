@@ -107,7 +107,7 @@ if (process.env.NXGS_LIVE_CONTROLLER_TEST === '1') {
       }
       if (shouldShutdown && /^SHUTDOWN_RESULT\|[0-9A-F]{12}\|(?:OK|FAIL)\|/m.test(stdout) && !stopScheduled) {
         stopScheduled = true;
-        setTimeout(() => child.stdin.end('STOP\n'), 500);
+        setTimeout(() => child.stdin.end('STOP\n'), 6_000);
       } else if (!shouldShutdown && stdout.includes('READY|1') && !stopScheduled) {
         stopScheduled = true;
         setTimeout(() => child.stdin.end('STOP\n'), 2_000);
@@ -125,7 +125,7 @@ if (process.env.NXGS_LIVE_CONTROLLER_TEST === '1') {
   assert.match(liveOutput, /^CONNECTED\|[0-9A-F]{12}\|[^|]+\|bluetooth\|[0-9A-F]{12}$/m, 'live Bluetooth DualSense must be detected with a resolvable address');
   if (shouldShutdown) {
     assert.match(liveOutput, /^SHUTDOWN_RESULT\|[0-9A-F]{12}\|OK\|(?:0|1167)\|IOCTL_BTH_DISCONNECT_DEVICE\|paired-link-disconnected$/m, 'live DualSense shutdown must use the paired-safe Bluetooth disconnect action');
-    assert.match(liveOutput, /^DISCONNECTED\|[0-9A-F]{12}\|shutdown$/m, 'the helper must clear the connected HID state after shutdown');
+    assert.match(liveOutput, /^DISCONNECTED\|[0-9A-F]{12}\|(?:device-change|input-timeout)$/m, 'the helper must observe real HID removal after shutdown');
     console.log('Live Bluetooth DualSense paired-safe shutdown passed.');
   }
   console.log('Live Bluetooth DualSense detection and helper IPC handshake passed.');
@@ -137,6 +137,7 @@ assert.match(helperSource, /SonyVendorId = 0x054C/);
 assert.match(helperSource, /IsBluetoothPath/);
 assert.match(helperSource, /IoctlBthDisconnectDevice = 0x0041000C/);
 assert.match(helperSource, /report\[0\] == 0x01 \? 0x03 : 0xF7/, 'compact Bluetooth reports must ignore the rolling sequence counter');
+assert.doesNotMatch(helperSource, /MarkDisconnected\(controller, "shutdown"\)/, 'shutdown must wait for real HID removal instead of synthesizing a disconnect that final packets can undo');
 assert.doesNotMatch(helperSource, /BluetoothRemoveDevice|UnpairAsync/);
 
 const databaseSource = readFileSync(join(root, 'src', 'main', 'database.ts'), 'utf8');

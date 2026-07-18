@@ -195,10 +195,6 @@ namespace Nxgs.ControllerIdleHelper
             int code;
             var ok = BluetoothDisconnect.TryDisconnect(controller.Address, out code);
             EmitShutdown(id, ok, code, "IOCTL_BTH_DISCONNECT_DEVICE", ok ? "paired-link-disconnected" : "windows-bluetooth-error");
-            if (ok)
-            {
-                MarkDisconnected(controller, "shutdown");
-            }
         }
 
         private void ProcessRawInput(IntPtr rawInputHandle)
@@ -402,20 +398,6 @@ namespace Nxgs.ControllerIdleHelper
         private void EmitShutdown(string id, bool ok, int code, string action, string detail)
         {
             Emit("SHUTDOWN_RESULT", id, ok ? "OK" : "FAIL", code.ToString(CultureInfo.InvariantCulture), Uri.EscapeDataString(action), Uri.EscapeDataString(detail));
-        }
-
-        private void MarkDisconnected(ControllerState controller, string reason)
-        {
-            var shouldEmit = false;
-            lock (sync)
-            {
-                if (controller.Announced)
-                {
-                    controller.Announced = false;
-                    shouldEmit = true;
-                }
-            }
-            if (shouldEmit) Emit("DISCONNECTED", controller.Id, Uri.EscapeDataString(reason));
         }
 
         private void Emit(params string[] values)
