@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.6",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.6/NXGS-Play-Setup.exe",
-    "sha256":  "85cb89b1911dac1b3f27dde35f95ed323502a97e7de43b39c4aeb4547acec8fc",
+    "version":  "0.16.7",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.7/NXGS-Play-Setup.exe",
+    "sha256":  "3f39021acea333164160166dbcb312e28fef561b97ae610ea399c0d903875ff5",
     "required":  false,
-    "notes":  "Restores reliable controller Home navigation and the blue controller light indicator in Chicken Invaders while preserving movement and X fire/confirm."
+    "notes":  "Fixes the DualSense remaining powered but undetected after automatic idle shutdown by cleanly releasing the game mapper before the paired-safe Bluetooth disconnect."
 }
