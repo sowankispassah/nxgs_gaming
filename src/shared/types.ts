@@ -55,10 +55,26 @@ export interface KioskSettings {
   refocusOnBlur: boolean;
 }
 
+export type ControllerAutoTurnOffMinutes = 0 | 5 | 10 | 15 | 30;
+
+export interface ControllerIdleSettings {
+  autoTurnOffMinutes: ControllerAutoTurnOffMinutes;
+  shutdownWarning: boolean;
+}
+
 export interface AppSettings {
   adminPin: string;
   sessionDurationsMinutes: number[];
   kiosk: KioskSettings;
+  controllerIdle: ControllerIdleSettings;
+}
+
+export interface ControllerIdleNotification {
+  action: 'show' | 'clear';
+  controllerId: string;
+  kind: 'warning' | 'error';
+  title?: string;
+  message?: string;
 }
 
 export interface AppDatabase {

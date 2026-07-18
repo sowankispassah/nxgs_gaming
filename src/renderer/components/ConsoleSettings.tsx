@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import type {
   AppDiagnostics,
+  AppSettings,
   AudioDeviceSummary,
   AudioStatus,
   BluetoothDeviceSummary,
@@ -128,7 +129,7 @@ function focusableDetailActions(): HTMLElement[] {
     .filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length > 0);
 }
 
-export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => void; onControlRoom: () => void }): JSX.Element {
+export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSettings; onSettingsChanged: (settings: AppSettings) => void; onBack: () => void; onControlRoom: () => void }): JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [openedIndex, setOpenedIndex] = useState(0);
   const [detailMode, setDetailMode] = useState(false);
@@ -143,6 +144,8 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
   const [bluetooth, setBluetooth] = useState<BluetoothStatus>(() => settingsDataCache.bluetooth?.value ?? EMPTY_BLUETOOTH);
   const [bluetoothPending, setBluetoothPending] = useState<string | null>(null);
   const [bluetoothFeedback, setBluetoothFeedback] = useState<Feedback | null>(null);
+  const [controllerIdlePending, setControllerIdlePending] = useState(false);
+  const [controllerIdleFeedback, setControllerIdleFeedback] = useState<Feedback | null>(null);
   const [bluetoothDeviceStatuses, setBluetoothDeviceStatuses] = useState<Record<string, string>>({});
   const [bluetoothPairingTarget, setBluetoothPairingTarget] = useState<BluetoothDeviceSummary | null>(null);
   const [bluetoothPairingStage, setBluetoothPairingStage] = useState<BluetoothPairingStage>('confirm');
@@ -195,6 +198,21 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
     bluetoothUpdatedAt.current = updatedAt;
     setBluetooth(next);
   }, []);
+
+  const saveControllerIdle = useCallback(async (controllerIdle: AppSettings['controllerIdle']): Promise<void> => {
+    if (controllerIdlePending) return;
+    setControllerIdlePending(true);
+    setControllerIdleFeedback({ tone: 'info', message: 'Saving controller power settings...' });
+    try {
+      const updated = await window.nxgs.updateSettings({ ...props.settings, controllerIdle });
+      props.onSettingsChanged(updated);
+      setControllerIdleFeedback({ tone: 'success', message: 'Controller power settings saved.' });
+    } catch (error) {
+      setControllerIdleFeedback({ tone: 'error', message: error instanceof Error ? error.message : 'Could not save controller power settings.' });
+    } finally {
+      setControllerIdlePending(false);
+    }
+  }, [controllerIdlePending, props]);
 
   const commitAudio = useCallback((next: AudioStatus): void => {
     const updatedAt = Date.now();
@@ -1170,6 +1188,39 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
             <strong>{compatibilityTitle}</strong>
             <small>{diagnostics?.controllerCompatibility.message ?? 'Starts automatically when a game launches or resumes.'}</small>
           </div>
+          <section className="controller-power-settings" aria-labelledby="controller-power-title">
+            <div className="settings-detail-heading">
+              <div><h3 id="controller-power-title">Controller power</h3><small>Bluetooth DualSense controllers only</small></div>
+            </div>
+            <label>Auto turn off controller</label>
+            <div className="controller-power-options" role="group" aria-label="Auto turn off controller">
+              {([0, 5, 10, 15, 30] as const).map((minutes) => (
+                <button
+                  data-settings-action
+                  type="button"
+                  key={minutes}
+                  className={props.settings.controllerIdle.autoTurnOffMinutes === minutes ? 'selected' : ''}
+                  disabled={controllerIdlePending}
+                  onClick={() => void saveControllerIdle({ ...props.settings.controllerIdle, autoTurnOffMinutes: minutes })}
+                >
+                  {minutes === 0 ? 'Never' : `After ${minutes} minutes`}
+                </button>
+              ))}
+            </div>
+            <button
+              className={`controller-warning-toggle ${props.settings.controllerIdle.shutdownWarning ? 'enabled' : ''}`}
+              data-settings-action
+              type="button"
+              role="switch"
+              aria-checked={props.settings.controllerIdle.shutdownWarning}
+              disabled={controllerIdlePending}
+              onClick={() => void saveControllerIdle({ ...props.settings.controllerIdle, shutdownWarning: !props.settings.controllerIdle.shutdownWarning })}
+            >
+              <span><strong>Controller shutdown warning</strong><small>Show an NXGS notification 30 seconds before turn off</small></span>
+              <em>{props.settings.controllerIdle.shutdownWarning ? 'Enabled' : 'Disabled'}</em>
+            </button>
+            {controllerIdleFeedback && <div className={`settings-feedback ${controllerIdleFeedback.tone}`} role="status">{controllerIdleFeedback.message}</div>}
+          </section>
           {bluetoothFeedback && <div className={`settings-feedback ${bluetoothFeedback.tone}`} role="status">{bluetoothFeedback.message}</div>}
           <div className="settings-detail-heading">
             <h3>Bluetooth devices</h3>
@@ -1494,7 +1545,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; onBack: () => vo
         <p className="settings-placeholder">This section is ready for its launcher-native controls.<br />It will remain inside NXGS and use the same controller-first navigation.</p>
       </SettingsDetail>
     );
-  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPairingMessage, bluetoothPairingStage, bluetoothPairingTarget, bluetoothPending, brightnessSyncing, confirmPairBluetoothDevice, confirmRemoveBluetoothDevice, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayInfoExpanded, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, opened, performWifiConnect, props.onControlRoom, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestPairBluetoothDevice, requestRemoveBluetoothDevice, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
+  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPairingMessage, bluetoothPairingStage, bluetoothPairingTarget, bluetoothPending, brightnessSyncing, confirmPairBluetoothDevice, confirmRemoveBluetoothDevice, controllerIdleFeedback, controllerIdlePending, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayInfoExpanded, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, opened, performWifiConnect, props.onControlRoom, props.settings.controllerIdle, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestPairBluetoothDevice, requestRemoveBluetoothDevice, saveControllerIdle, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
 
   return (
     <section className="console-settings-screen">

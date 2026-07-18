@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -208,6 +208,20 @@ try {
     throw new Error(`Revisiting Bluetooth restarted discovery instead of showing cached state: ${JSON.stringify(bluetoothRevisit)}`);
   }
   console.log(`PASS: Bluetooth revisit kept ${bluetoothRevisit.deviceRows} cached device rows visible without restarting discovery.`);
+  const controllerPowerDefaults = await evaluate("(() => ({ options: [...document.querySelectorAll('.controller-power-options button')].map((button) => button.textContent.trim()), selected: document.querySelector('.controller-power-options button.selected')?.textContent.trim(), warning: document.querySelector('.controller-warning-toggle')?.getAttribute('aria-checked') }))()");
+  if (JSON.stringify(controllerPowerDefaults.options) !== JSON.stringify(['Never', 'After 5 minutes', 'After 10 minutes', 'After 15 minutes', 'After 30 minutes']) || controllerPowerDefaults.selected !== 'After 10 minutes' || controllerPowerDefaults.warning !== 'true') {
+    throw new Error(`Controller idle defaults or options are incorrect: ${JSON.stringify(controllerPowerDefaults)}`);
+  }
+  await evaluate("[...document.querySelectorAll('.controller-power-options button')].find((button) => button.textContent.trim() === 'After 15 minutes').click()");
+  await waitFor("window.nxgs.getInitialData().then((data) => data.settings.controllerIdle.autoTurnOffMinutes === 15)", 'Controller idle timeout did not save through the trusted settings IPC.');
+  const dataPath = await evaluate("window.nxgs.getInitialData().then((data) => data.dataPath)");
+  const savedData = JSON.parse(await readFile(dataPath, 'utf8'));
+  if (savedData.settings?.controllerIdle?.autoTurnOffMinutes !== 15 || savedData.settings?.controllerIdle?.shutdownWarning !== true) {
+    throw new Error(`Controller idle settings were not persisted on disk: ${JSON.stringify(savedData.settings?.controllerIdle)}`);
+  }
+  await evaluate("[...document.querySelectorAll('.controller-power-options button')].find((button) => button.textContent.trim() === 'After 10 minutes').click()");
+  await waitFor("window.nxgs.getInitialData().then((data) => data.settings.controllerIdle.autoTurnOffMinutes === 10)", 'Controller idle timeout did not restore after the persistence check.');
+  console.log('PASS: Controller idle options, 10-minute default, warning default, trusted IPC, and disk persistence verified.');
   await evaluate("[...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System').click()");
   await waitFor("(() => { const ready = Boolean(document.querySelector('input[aria-label=\"Display brightness\"]')) && Boolean(document.querySelector('input[aria-label=\"Master volume\"]')) && Boolean(document.querySelector('.system-collapsible-heading')) && document.querySelectorAll('.system-device-section').length === 2; if (!ready) [...document.querySelectorAll('.console-settings-layout > nav button')].find((button) => button.textContent.trim() === 'System')?.click(); return ready; })()", 'System did not render the combined display and sound controls.');
   await waitFor("document.querySelector('.system-refresh-button')?.textContent.trim() === 'Refresh'", 'System controls did not finish their initial refresh.');

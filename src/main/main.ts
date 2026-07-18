@@ -3,6 +3,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { DataStore } from './database';
 import { ControllerCompatibilityService } from './controllerCompatibilityService';
+import { ControllerIdleService } from './controllerIdleService';
 import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
@@ -51,6 +52,7 @@ let controllerDiagnostics: AppDiagnostics['controller'] = {
 
 const store = new DataStore();
 const controllerCompatibility = new ControllerCompatibilityService();
+let controllerIdleService: ControllerIdleService | null = null;
 
 function getAppIconPath(): string {
   return app.isPackaged ? join(process.resourcesPath, 'icon.ico') : join(app.getAppPath(), 'build', 'icon.ico');
@@ -242,6 +244,7 @@ function handleRestrictedCustomerInput(input: string): void {
 const sessionTimer = new SessionTimer({
   onTick: broadcastSession,
   onExpired: (game) => {
+    controllerIdleService?.paidSessionEnded();
     launcher.focusLauncher();
     void launcher.closeActiveGame(false, { gameId: game.id });
     void logLine('warn', `Session expired for ${game.title}; requested graceful close.`);
@@ -263,9 +266,12 @@ const launcher = new GameLauncher(
   () => mainWindow,
   {
     onGameExited: (game) => {
+      const endedPaidSession = sessionTimer.current.gameId === game.id
+        && (sessionTimer.current.status === 'running' || sessionTimer.current.status === 'expired');
       if (sessionTimer.current.gameId === game.id) {
         sessionTimer.stop('idle');
       }
+      if (endedPaidSession) controllerIdleService?.paidSessionEnded();
       if (!launcher.hasTrackedGames) {
         controllerCompatibility.stop();
       }
@@ -447,6 +453,8 @@ function prepareForQuit(): void {
   isQuitting = true;
   sessionTimer.stop('idle', false);
   controllerCompatibility.stop();
+  controllerIdleService?.stop();
+  controllerIdleService = null;
   void setWindowsTaskbarVisible(true);
   kioskInput.unregisterAll();
   stopWindowsControlWorker();
@@ -607,6 +615,7 @@ function registerIpc(): void {
   ipcMain.handle('settings:update', async (_event, settings: AppSettings) => {
     const updated = await store.updateSettings(settings);
     applyKioskSettings(updated);
+    controllerIdleService?.updateSettings(updated.controllerIdle);
     return updated;
   });
 
@@ -768,6 +777,10 @@ if (!hasSingleInstanceLock) {
     await disableXboxGameBarControllerShortcut();
     registerIpc();
     await createWindow();
+    controllerIdleService = new ControllerIdleService(store.getSettings().controllerIdle, {
+      onNotification: (notification) => sendToRenderer('controllerIdle:notification', notification)
+    });
+    controllerIdleService.start();
     warmWindowsControlWorker();
     kioskInput.register();
     void controllerCompatibility.prepare();

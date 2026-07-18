@@ -45,6 +45,7 @@ import type {
   AdminUnlockRequest,
   AppDiagnostics,
   AppSettings,
+  ControllerIdleNotification,
   GameInput,
   GameRecord,
   GameSuggestion,
@@ -155,6 +156,7 @@ export function App(): JSX.Element {
   const [windowedAdminMode, setWindowedAdminMode] = useState(false);
   const [adminModeTransitionPending, setAdminModeTransitionPending] = useState(false);
   const [adminModeError, setAdminModeError] = useState('');
+  const [controllerIdleNotification, setControllerIdleNotification] = useState<ControllerIdleNotification | null>(null);
   const adminModeTransitionBusy = useRef(false);
 
   const view = viewHistory[viewHistory.length - 1] ?? 'home';
@@ -295,11 +297,17 @@ export function App(): JSX.Element {
         setEmergencyCloseRequestId((value) => value + 1);
       }
     });
+    const unsubscribeControllerIdle = window.nxgs.onControllerIdleNotification((notification) => {
+      setControllerIdleNotification((current) => notification.action === 'clear'
+        ? current?.controllerId === notification.controllerId ? null : current
+        : notification);
+    });
     return () => {
       mounted = false;
       unsubscribeSession();
       unsubscribeActiveGame();
       unsubscribeShellHome();
+      unsubscribeControllerIdle();
     };
   }, [resetToHome]);
 
@@ -614,6 +622,8 @@ export function App(): JSX.Element {
       ) : view === 'settings' ? (
         <ConsoleSettings
           inputBlocked={pinOpen || adminOptionsOpen}
+          settings={settings}
+          onSettingsChanged={setSettings}
           onBack={navigateBack}
           onControlRoom={() => openAdminPin({ source: 'Control Room', message: 'Enter Admin PIN to open Control Room.' })}
         />
@@ -634,6 +644,16 @@ export function App(): JSX.Element {
           emergencyCloseRequestId={emergencyCloseRequestId}
           onDismiss={() => setQuickNavOpen(false)}
         />
+      )}
+
+      {controllerIdleNotification?.action === 'show' && (
+        <aside className={`controller-idle-notification ${controllerIdleNotification.kind}`} role="status" aria-live="polite">
+          <Gamepad2 size={24} />
+          <div>
+            <strong>{controllerIdleNotification.title}</strong>
+            <span>{controllerIdleNotification.message}</span>
+          </div>
+        </aside>
       )}
 
       {confirmGame && (

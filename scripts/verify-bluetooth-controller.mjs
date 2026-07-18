@@ -239,7 +239,7 @@ if (process.platform === 'win32') {
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error('Live Bluetooth script timed out.'));
-    }, 25000);
+    }, 60000);
     child.stdout.on('data', (chunk) => output.push(chunk));
     child.stderr.on('data', (chunk) => errors.push(chunk));
     child.on('error', (error) => {

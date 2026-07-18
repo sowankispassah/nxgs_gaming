@@ -12,8 +12,14 @@ const DEFAULT_SETTINGS: AppSettings = {
     hideCursorAfterSeconds: 5,
     preventClose: true,
     refocusOnBlur: false
+  },
+  controllerIdle: {
+    autoTurnOffMinutes: 10,
+    shutdownWarning: true
   }
 };
+
+const CONTROLLER_IDLE_TIMEOUTS = new Set([0, 5, 10, 15, 30]);
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -104,7 +110,7 @@ export class DataStore {
 
     if (!existsSync(this.databasePath)) {
       this.data = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         settings: DEFAULT_SETTINGS,
         games: []
       };
@@ -115,13 +121,17 @@ export class DataStore {
     const raw = await readFile(this.databasePath, 'utf8');
     const parsed = JSON.parse(raw) as Partial<AppDatabase>;
     this.data = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       settings: {
         ...DEFAULT_SETTINGS,
         ...(parsed.settings ?? {}),
         kiosk: {
           ...DEFAULT_SETTINGS.kiosk,
           ...(parsed.settings?.kiosk ?? {})
+        },
+        controllerIdle: {
+          ...DEFAULT_SETTINGS.controllerIdle,
+          ...(parsed.settings?.controllerIdle ?? {})
         }
       },
       games: (parsed.games ?? []).map((game) => {
@@ -194,6 +204,12 @@ export class DataStore {
         hideCursorAfterSeconds: Math.max(0, Number(settings.kiosk.hideCursorAfterSeconds) || 0),
         preventClose: Boolean(settings.kiosk.preventClose),
         refocusOnBlur: Boolean(settings.kiosk.refocusOnBlur)
+      },
+      controllerIdle: {
+        autoTurnOffMinutes: CONTROLLER_IDLE_TIMEOUTS.has(Number(settings.controllerIdle?.autoTurnOffMinutes))
+          ? settings.controllerIdle.autoTurnOffMinutes
+          : DEFAULT_SETTINGS.controllerIdle.autoTurnOffMinutes,
+        shutdownWarning: settings.controllerIdle?.shutdownWarning !== false
       }
     };
     await this.persist();
