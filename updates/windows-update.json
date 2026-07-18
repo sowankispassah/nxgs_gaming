@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.1/NXGS-Play-Setup.exe",
-    "sha256":  "71d1dc6bdc5d184d560a7f1b91c1cf0665ffb26d08e247f3e3cc5369c3a46c42",
+    "version":  "0.16.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.2/NXGS-Play-Setup.exe",
+    "sha256":  "0ded1cce63c217dc569760372d59bd335537ecaf095c14b396663368e2108016",
     "required":  false,
-    "notes":  "Fixes DualSense idle detection so Bluetooth report sequence counters no longer reset the auto-turn-off timer."
+    "notes":  "Adds a Chicken Invaders 4 controller profile: left stick and D-pad movement now send arrow keys, while Cross remains primary fire."
 }
