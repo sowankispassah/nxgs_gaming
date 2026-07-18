@@ -63,8 +63,9 @@ assert.equal(execFileSync(helper, ['--self-test'], { encoding: 'utf8' }).trim(),
 
 if (process.env.NXGS_LIVE_CONTROLLER_TEST === '1') {
   const shouldShutdown = process.env.NXGS_LIVE_CONTROLLER_SHUTDOWN_TEST === '1';
+  const traceInput = process.env.NXGS_TRACE_CONTROLLER_INPUT === '1';
   const liveOutput = await new Promise((resolve, reject) => {
-    const child = spawn(helper, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(helper, traceInput ? ['--trace-input'] : [], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let shutdownRequested = false;
@@ -104,12 +105,14 @@ if (process.env.NXGS_LIVE_CONTROLLER_TEST === '1') {
     console.log('Live Bluetooth DualSense paired-safe shutdown passed.');
   }
   console.log('Live Bluetooth DualSense detection and helper IPC handshake passed.');
+  if (traceInput) console.log(liveOutput.split(/\r?\n/).filter((line) => line.startsWith('TRACE|')).join('\n'));
 }
 
 const helperSource = readFileSync(join(root, 'native', 'controller-idle-helper', 'Program.cs'), 'utf8');
 assert.match(helperSource, /SonyVendorId = 0x054C/);
 assert.match(helperSource, /IsBluetoothPath/);
 assert.match(helperSource, /IoctlBthDisconnectDevice = 0x0041000C/);
+assert.match(helperSource, /report\[0\] == 0x01 \? 0x03 : 0xF7/, 'compact Bluetooth reports must ignore the rolling sequence counter');
 assert.doesNotMatch(helperSource, /BluetoothRemoveDevice|UnpairAsync/);
 
 const databaseSource = readFileSync(join(root, 'src', 'main', 'database.ts'), 'utf8');

@@ -26,7 +26,8 @@ namespace Nxgs.ControllerIdleHelper
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            using (var monitor = new RawInputMonitor())
+            var traceInput = args.Length == 1 && args[0] == "--trace-input";
+            using (var monitor = new RawInputMonitor(traceInput))
             {
                 monitor.Start();
                 Application.Run();
@@ -77,6 +78,13 @@ namespace Nxgs.ControllerIdleHelper
         private volatile bool stopping;
         private int stickDeadZone = 32;
         private int triggerThreshold = 15;
+        private readonly bool traceInput;
+        private int tracedReports;
+
+        public RawInputMonitor(bool traceInput = false)
+        {
+            this.traceInput = traceInput;
+        }
 
         public void Start()
         {
@@ -231,6 +239,11 @@ namespace Nxgs.ControllerIdleHelper
                 for (var index = 0; index < reportCount; index++)
                 {
                     Marshal.Copy(IntPtr.Add(reportData, index * reportSize), report, 0, reportSize);
+                    if (traceInput && tracedReports < 20)
+                    {
+                        tracedReports++;
+                        Emit("TRACE", controller.Id, report.Length.ToString(CultureInfo.InvariantCulture), BitConverter.ToString(report.Take(Math.Min(report.Length, 20)).ToArray()).Replace("-", String.Empty), DualSenseInput.Describe(report, stickDeadZone, triggerThreshold));
+                    }
                     if (!DualSenseInput.IsMeaningful(report, stickDeadZone, triggerThreshold)) continue;
                     var now = receivedAt;
                     controller.LastMeaningfulInputUtc = now;
@@ -424,6 +437,21 @@ namespace Nxgs.ControllerIdleHelper
 
     internal static class DualSenseInput
     {
+        public static string Describe(byte[] report, int stickDeadZone, int triggerThreshold)
+        {
+            if (report == null || report.Length < 10) return "short";
+            if (report[0] != 0x31 && report[0] != 0x01) return "unsupported";
+            var full = report[0] == 0x31 && report.Length >= 12;
+            var axes = full ? 2 : 1;
+            var triggerLeft = full ? 6 : 8;
+            var triggerRight = full ? 7 : 9;
+            var buttons0 = full ? 9 : 5;
+            var buttons1 = full ? 10 : 6;
+            var buttons2 = full ? 11 : 7;
+            if (buttons2 >= report.Length || triggerRight >= report.Length) return "short";
+            return String.Format(CultureInfo.InvariantCulture, "axes={0},{1},{2},{3};triggers={4},{5};buttons={6:X2},{7:X2},{8:X2};meaningful={9}", report[axes], report[axes + 1], report[axes + 2], report[axes + 3], report[triggerLeft], report[triggerRight], report[buttons0], report[buttons1], report[buttons2], IsMeaningful(report, stickDeadZone, triggerThreshold));
+        }
+
         public static bool IsMeaningful(byte[] report, int stickDeadZone, int triggerThreshold)
         {
             if (report == null || report.Length < 10) return false;
@@ -463,7 +491,8 @@ namespace Nxgs.ControllerIdleHelper
             }
             if (report[triggerLeft] > triggerThreshold || report[triggerRight] > triggerThreshold) return true;
             var dpad = report[buttons0] & 0x0F;
-            return dpad != 8 || (report[buttons0] & 0xF0) != 0 || report[buttons1] != 0 || (report[buttons2] & 0xF7) != 0;
+            var buttons2Mask = report[0] == 0x01 ? 0x03 : 0xF7;
+            return dpad != 8 || (report[buttons0] & 0xF0) != 0 || report[buttons1] != 0 || (report[buttons2] & buttons2Mask) != 0;
         }
 
         public static bool SelfTest()
@@ -482,7 +511,16 @@ namespace Nxgs.ControllerIdleHelper
             if (!IsMeaningful(neutral, 32, 15)) return false;
             neutral[10] = 0;
             neutral[6] = 20; // trigger
-            return IsMeaningful(neutral, 32, 15);
+            if (!IsMeaningful(neutral, 32, 15)) return false;
+
+            var compact = new byte[78];
+            compact[0] = 0x01;
+            compact[1] = compact[2] = compact[3] = compact[4] = 128;
+            compact[5] = 8;
+            compact[7] = 0xFC; // rolling sequence counter in the upper six bits
+            if (IsMeaningful(compact, 32, 15)) return false;
+            compact[7] = 0xFD; // PS button plus sequence counter
+            return IsMeaningful(compact, 32, 15);
         }
     }
 
