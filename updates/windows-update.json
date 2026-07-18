@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.0/NXGS-Play-Setup.exe",
-    "sha256":  "cecb8941a4ee3ff5f469253562e1527ca3c2a5bdee9d00040eadf9e9a593d1c2",
+    "version":  "0.16.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.1/NXGS-Play-Setup.exe",
+    "sha256":  "71d1dc6bdc5d184d560a7f1b91c1cf0665ffb26d08e247f3e3cc5369c3a46c42",
     "required":  false,
-    "notes":  "Automatic idle shutdown for Bluetooth PS5 DualSense controllers, with independent timers, drift filtering, a 30-second warning, paid-session-end handling, safe paired reconnection, and helper recovery."
+    "notes":  "Fixes DualSense idle detection so Bluetooth report sequence counters no longer reset the auto-turn-off timer."
 }
