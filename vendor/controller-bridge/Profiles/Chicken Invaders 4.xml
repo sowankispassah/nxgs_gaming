@@ -4,6 +4,9 @@
   <DinputOnly>True</DinputOnly>
   <OutputContDevice>X360</OutputContDevice>
   <Control>
+    <Macro>
+      <Cross>32/13/350/13/32</Cross>
+    </Macro>
     <Key>
       <LYNeg>38</LYNeg>
       <LYPos>40</LYPos>
@@ -13,9 +16,7 @@
       <DpadDown>40</DpadDown>
       <DpadLeft>37</DpadLeft>
       <DpadRight>39</DpadRight>
-      <Cross>32</Cross>
       <Square>77</Square>
-      <Triangle>13</Triangle>
       <Circle>27</Circle>
       <Options>27</Options>
     </Key>

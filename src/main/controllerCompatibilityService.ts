@@ -8,7 +8,7 @@ import type { ControllerCompatibilityDiagnostics, GameRecord } from '../shared/t
 import { logLine } from './logger';
 
 const execFileAsync = promisify(execFile);
-const BRIDGE_VERSION = 'ds4windows-3.5-nxgs-4';
+const BRIDGE_VERSION = 'ds4windows-3.5-nxgs-5';
 const DS4WINDOWS_EXE_SHA256 = '6267cba17b87ada8f13ec6e187b309e3c76aa087acf2c255ab19dc2db6799a34';
 const DS4WINDOWS_DLL_SHA256 = 'bd7497e24cfcededa70683fa58c738901e4ca86c1d8ec98567a971faf03ebffd';
 const DRIVER_REGISTRY_KEY =
@@ -367,15 +367,20 @@ export class ControllerCompatibilityService {
       windowsHide: true,
       timeout: 5_000
     });
-    await delay(250);
-    const { stdout: activeProfile } = await execFileAsync(executable, ['-command', 'Query.1.ProfileName'], {
-      cwd: runtime,
-      windowsHide: true,
-      timeout: 5_000,
-      maxBuffer: 4 * 1024
-    });
-    if (activeProfile.trim() !== profileName) {
-      throw new Error(`Controller mapper did not activate the required ${profileName} profile.`);
+    let activeProfile = '';
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await delay(250);
+      const { stdout } = await execFileAsync(executable, ['-command', 'Query.1.ProfileName'], {
+        cwd: runtime,
+        windowsHide: true,
+        timeout: 5_000,
+        maxBuffer: 4 * 1024
+      });
+      activeProfile = stdout.trim();
+      if (activeProfile.localeCompare(profileName, undefined, { sensitivity: 'accent' }) === 0) break;
+    }
+    if (activeProfile.localeCompare(profileName, undefined, { sensitivity: 'accent' }) !== 0) {
+      throw new Error(`Controller mapper did not activate the required ${profileName} profile (reported: ${activeProfile || 'none'}).`);
     }
     this.activeProfile = profileName;
     await logLine('info', `Controller compatibility activated and verified profile "${profileName}" for controller 1.`);

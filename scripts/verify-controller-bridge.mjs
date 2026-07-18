@@ -10,13 +10,14 @@ async function hash(relativePath) {
   return createHash('sha256').update(await readFile(resolve(root, relativePath))).digest('hex');
 }
 
-const [service, main, styles, packageJson, chickenInvadersProfile, autoProfiles] = await Promise.all([
+const [service, main, styles, packageJson, chickenInvadersProfile, autoProfiles, actions] = await Promise.all([
   readFile(resolve(root, 'src/main/controllerCompatibilityService.ts'), 'utf8'),
   readFile(resolve(root, 'src/main/main.ts'), 'utf8'),
   readFile(resolve(root, 'src/renderer/styles.css'), 'utf8'),
   readFile(resolve(root, 'package.json'), 'utf8'),
   readFile(resolve(root, 'vendor/controller-bridge/Profiles/Chicken Invaders 4.xml'), 'utf8'),
-  readFile(resolve(root, 'vendor/controller-bridge/Auto Profiles.xml'), 'utf8')
+  readFile(resolve(root, 'vendor/controller-bridge/Auto Profiles.xml'), 'utf8'),
+  readFile(resolve(root, 'vendor/controller-bridge/Actions.xml'), 'utf8')
 ]);
 
 assert.equal(
@@ -36,7 +37,7 @@ assert.equal(
 );
 
 assert.match(service, /spawn\(executable, \['-m'\]/, 'controller mapper must start minimized');
-assert.match(service, /ds4windows-3\.5-nxgs-4/, 'controller bridge runtime version must refresh bundled game profiles');
+assert.match(service, /ds4windows-3\.5-nxgs-5/, 'controller bridge runtime version must refresh bundled game profiles and actions');
 assert.match(service, /ensureReady\(\)/, 'controller bridge must expose a readiness boundary');
 assert.match(service, /ensureReadyForGame\(game: GameRecord\)/, 'controller bridge must expose deterministic per-game profile activation');
 assert.match(service, /LoadTempProfile\.1\.\$\{profileName\}/, 'per-game profiles must be loaded explicitly through the mapper IPC');
@@ -61,8 +62,7 @@ for (const [control, virtualKey] of [
   ['DpadUp', 38],
   ['DpadDown', 40],
   ['DpadLeft', 37],
-  ['DpadRight', 39],
-  ['Cross', 32]
+  ['DpadRight', 39]
 ]) {
   assert.match(
     chickenInvadersProfile,
@@ -70,6 +70,10 @@ for (const [control, virtualKey] of [
     `${control} must map to the expected Chicken Invaders keyboard control`
   );
 }
+assert.match(chickenInvadersProfile, /<Macro>[\s\S]*<Cross>32\/13\/350\/13\/32<\/Cross>[\s\S]*<\/Macro>/, 'Cross must hold Space and Enter long enough for fire and menu confirmation');
+assert.doesNotMatch(chickenInvadersProfile, /<Triangle>13<\/Triangle>/, 'Triangle must not be the hidden menu confirmation button');
+assert.match(actions, /<Actions\s*\/>/, 'controller mapper special actions must be empty');
+assert.doesNotMatch(actions, /DisconnectBT|PS\/Options/, 'Home and Options must never trigger a mapper Bluetooth disconnect');
 assert.match(autoProfiles, /<Programs\s*\/>/, 'unreliable foreground-process auto profiles must remain disabled');
 assert.match(service, /CHICKEN_INVADERS_AUMID[\s\S]*CHICKEN_INVADERS_PROFILE/, 'Chicken Invaders must be matched by its stable Store application identity');
 
