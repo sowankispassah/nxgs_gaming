@@ -1,7 +1,7 @@
 {
-    "version":  "0.15.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.15.2/NXGS-Play-Setup.exe",
-    "sha256":  "23c1751f57ee8fc08c3bb145141db47654bef2264b458950b0b2d62a86997188",
+    "version":  "0.15.3",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.15.3/NXGS-Play-Setup.exe",
+    "sha256":  "e2ae06e596c7cab6e040939bcf629c8a628e717309a7e968ef838cc87cffe40e",
     "required":  false,
-    "notes":  "Controller pairing now starts faster, completes without waiting for input setup, keeps Try again ready, stays centered above scrolled content, and lets B / Escape cancel the active pairing request."
+    "notes":  "Bluetooth pairing now verifies both the saved pairing and controller input before showing Connected. NXGS requests controller input immediately and provides Check Input recovery when needed."
 }
