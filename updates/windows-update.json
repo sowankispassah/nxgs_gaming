@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.3/NXGS-Play-Setup.exe",
-    "sha256":  "510ccf1ee9b9102593bd6240ab528532c8e603e36b6dc2dda839f208201a0b3c",
+    "version":  "0.16.4",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.4/NXGS-Play-Setup.exe",
+    "sha256":  "e2af9c45ed80d393e6ed9df7579c5f6b3421b3d23f7f61261f69a9ab1cf64aaf",
     "required":  false,
-    "notes":  "Fixes Chicken Invaders movement controls and prevents controller idle shutdown during active gameplay."
+    "notes":  "Prevents the DualSense from disconnecting when Home is pressed and makes X both fire and confirm in Chicken Invaders."
 }
