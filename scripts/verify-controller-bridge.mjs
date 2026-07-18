@@ -10,11 +10,13 @@ async function hash(relativePath) {
   return createHash('sha256').update(await readFile(resolve(root, relativePath))).digest('hex');
 }
 
-const [service, main, styles, packageJson] = await Promise.all([
+const [service, main, styles, packageJson, chickenInvadersProfile, autoProfiles] = await Promise.all([
   readFile(resolve(root, 'src/main/controllerCompatibilityService.ts'), 'utf8'),
   readFile(resolve(root, 'src/main/main.ts'), 'utf8'),
   readFile(resolve(root, 'src/renderer/styles.css'), 'utf8'),
-  readFile(resolve(root, 'package.json'), 'utf8')
+  readFile(resolve(root, 'package.json'), 'utf8'),
+  readFile(resolve(root, 'vendor/controller-bridge/Profiles/Chicken Invaders 4.xml'), 'utf8'),
+  readFile(resolve(root, 'vendor/controller-bridge/Auto Profiles.xml'), 'utf8')
 ]);
 
 assert.equal(
@@ -34,6 +36,7 @@ assert.equal(
 );
 
 assert.match(service, /spawn\(executable, \['-m'\]/, 'controller mapper must start minimized');
+assert.match(service, /ds4windows-3\.5-nxgs-3/, 'controller bridge runtime version must refresh bundled game profiles');
 assert.match(service, /ensureReady\(\)/, 'controller bridge must expose a readiness boundary');
 assert.match(service, /probe-xinput\.ps1/, 'controller bridge must confirm actual XInput visibility');
 assert.match(service, /install-driver\.ps1/, 'packaged builds must support the signed driver setup');
@@ -45,6 +48,27 @@ assert.match(main, /controllerCompatibility\.prepare\(\)/, 'launcher Home may va
 assert.match(main, /game:minimizeActive[\s\S]*controllerCompatibility\.stop\(\)/, 'returning to launcher Home must stop the gameplay mapper');
 assert.match(main, /onGameExited:[\s\S]*controllerCompatibility\.stop\(\)/, 'game exit must release the gameplay mapper');
 assert.match(packageJson, /"from": "vendor\/controller-bridge"[\s\S]*"to": "controller-bridge"/, 'controller bridge assets must be packaged');
+
+assert.match(chickenInvadersProfile, /<DinputOnly>True<\/DinputOnly>/, 'Chicken Invaders must suppress duplicate virtual-controller output');
+for (const [control, virtualKey] of [
+  ['LYNeg', 38],
+  ['LYPos', 40],
+  ['LXNeg', 37],
+  ['LXPos', 39],
+  ['DpadUp', 38],
+  ['DpadDown', 40],
+  ['DpadLeft', 37],
+  ['DpadRight', 39],
+  ['Cross', 32]
+]) {
+  assert.match(
+    chickenInvadersProfile,
+    new RegExp(`<${control}>${virtualKey}<\\/${control}>`),
+    `${control} must map to the expected Chicken Invaders keyboard control`
+  );
+}
+assert.match(autoProfiles, /path="\*f7e879f5\.chickeninvaders4" title="Chicken Invaders 4 HD"/, 'Chicken Invaders profile must be application-specific');
+assert.match(autoProfiles, /<Controller1>Chicken Invaders 4<\/Controller1>/, 'Chicken Invaders profile must load for the primary controller');
 
 assert.match(styles, /button:not\(:disabled\):is\(:focus-visible, \.controller-focused, \.focused\)/, 'all focused buttons must receive the global console focus ring');
 assert.match(styles, /button:not\(:disabled\):hover/, 'all buttons must have a hover state');

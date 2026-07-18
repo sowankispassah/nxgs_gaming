@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DS4Windows app_version="3.5" config_version="5">
+  <outputDataToDS4>True</outputDataToDS4>
+  <DinputOnly>True</DinputOnly>
+  <OutputContDevice>X360</OutputContDevice>
+  <Control>
+    <Key>
+      <LYNeg>38</LYNeg>
+      <LYPos>40</LYPos>
+      <LXNeg>37</LXNeg>
+      <LXPos>39</LXPos>
+      <DpadUp>38</DpadUp>
+      <DpadDown>40</DpadDown>
+      <DpadLeft>37</DpadLeft>
+      <DpadRight>39</DpadRight>
+      <Cross>32</Cross>
+      <Square>77</Square>
+      <Triangle>13</Triangle>
+      <Circle>27</Circle>
+      <Options>27</Options>
+    </Key>
+  </Control>
+</DS4Windows>

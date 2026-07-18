@@ -8,7 +8,7 @@ import type { ControllerCompatibilityDiagnostics } from '../shared/types';
 import { logLine } from './logger';
 
 const execFileAsync = promisify(execFile);
-const BRIDGE_VERSION = 'ds4windows-3.5-nxgs-2';
+const BRIDGE_VERSION = 'ds4windows-3.5-nxgs-3';
 const DS4WINDOWS_EXE_SHA256 = '6267cba17b87ada8f13ec6e187b309e3c76aa087acf2c255ab19dc2db6799a34';
 const DS4WINDOWS_DLL_SHA256 = 'bd7497e24cfcededa70683fa58c738901e4ca86c1d8ec98567a971faf03ebffd';
 const DRIVER_REGISTRY_KEY =
