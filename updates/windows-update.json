@@ -1,7 +1,7 @@
 {
-    "version":  "0.15.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.15.3/NXGS-Play-Setup.exe",
-    "sha256":  "e2ae06e596c7cab6e040939bcf629c8a628e717309a7e968ef838cc87cffe40e",
+    "version":  "0.16.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.0/NXGS-Play-Setup.exe",
+    "sha256":  "cecb8941a4ee3ff5f469253562e1527ca3c2a5bdee9d00040eadf9e9a593d1c2",
     "required":  false,
-    "notes":  "Bluetooth pairing now verifies both the saved pairing and controller input before showing Connected. NXGS requests controller input immediately and provides Check Input recovery when needed."
+    "notes":  "Automatic idle shutdown for Bluetooth PS5 DualSense controllers, with independent timers, drift filtering, a 30-second warning, paid-session-end handling, safe paired reconnection, and helper recovery."
 }
