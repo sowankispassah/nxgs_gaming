@@ -53,6 +53,23 @@ namespace Nxgs.ControllerIdleHelper
         public DateTime LastRawInputUtc;
         public DateTime LastMeaningfulInputUtc;
         public DateTime LastActivityEventUtc;
+        public string LastInputState;
+    }
+
+    internal sealed class ControllerInputState
+    {
+        public string Direction;
+        public bool Accept;
+        public bool Back;
+        public bool Home;
+
+        public string Signature
+        {
+            get
+            {
+                return Direction + "|" + (Accept ? "1" : "0") + "|" + (Back ? "1" : "0") + "|" + (Home ? "1" : "0");
+            }
+        }
     }
 
     internal sealed class RawInputMonitor : NativeWindow, IDisposable
@@ -240,6 +257,20 @@ namespace Nxgs.ControllerIdleHelper
                         tracedReports++;
                         Emit("TRACE", controller.Id, report.Length.ToString(CultureInfo.InvariantCulture), BitConverter.ToString(report.Take(Math.Min(report.Length, 20)).ToArray()).Replace("-", String.Empty), DualSenseInput.Describe(report, stickDeadZone, triggerThreshold));
                     }
+                    ControllerInputState inputState;
+                    if (DualSenseInput.TryReadControllerState(report, Math.Max(stickDeadZone, 64), out inputState)
+                        && !String.Equals(controller.LastInputState, inputState.Signature, StringComparison.Ordinal))
+                    {
+                        controller.LastInputState = inputState.Signature;
+                        Emit(
+                            "INPUT_STATE",
+                            controller.Id,
+                            inputState.Direction,
+                            inputState.Accept ? "1" : "0",
+                            inputState.Back ? "1" : "0",
+                            inputState.Home ? "1" : "0"
+                        );
+                    }
                     if (!DualSenseInput.IsMeaningful(report, stickDeadZone, triggerThreshold)) continue;
                     var now = receivedAt;
                     controller.LastMeaningfulInputUtc = now;
@@ -292,7 +323,8 @@ namespace Nxgs.ControllerIdleHelper
                         Announced = false,
                         LastRawInputUtc = DateTime.MinValue,
                         LastMeaningfulInputUtc = DateTime.UtcNow,
-                        LastActivityEventUtc = DateTime.MinValue
+                        LastActivityEventUtc = DateTime.MinValue,
+                        LastInputState = null
                     };
                     lock (sync)
                     {
@@ -419,6 +451,58 @@ namespace Nxgs.ControllerIdleHelper
 
     internal static class DualSenseInput
     {
+        public static bool TryReadControllerState(byte[] report, int navigationDeadZone, out ControllerInputState state)
+        {
+            state = null;
+            if (report == null || report.Length < 10) return false;
+            int axes;
+            int buttons0;
+            int buttons2;
+            if (report[0] == 0x31 && report.Length >= 12)
+            {
+                axes = 2;
+                buttons0 = 9;
+                buttons2 = 11;
+            }
+            else if (report[0] == 0x01 && report.Length >= 10)
+            {
+                axes = 1;
+                buttons0 = 5;
+                buttons2 = 7;
+            }
+            else
+            {
+                return false;
+            }
+            if (axes + 1 >= report.Length || buttons2 >= report.Length) return false;
+
+            var direction = "neutral";
+            var dpad = report[buttons0] & 0x0F;
+            if (dpad == 0 || dpad == 1 || dpad == 7) direction = "up";
+            else if (dpad == 2) direction = "right";
+            else if (dpad == 3 || dpad == 4 || dpad == 5) direction = "down";
+            else if (dpad == 6) direction = "left";
+            else
+            {
+                var horizontal = report[axes] - 128;
+                var vertical = report[axes + 1] - 128;
+                if (Math.Abs(horizontal) >= navigationDeadZone || Math.Abs(vertical) >= navigationDeadZone)
+                {
+                    if (Math.Abs(horizontal) >= Math.Abs(vertical)) direction = horizontal > 0 ? "right" : "left";
+                    else direction = vertical > 0 ? "down" : "up";
+                }
+            }
+
+            state = new ControllerInputState
+            {
+                Direction = direction,
+                Accept = (report[buttons0] & 0x20) != 0,
+                Back = (report[buttons0] & 0x40) != 0,
+                Home = (report[buttons2] & 0x01) != 0
+            };
+            return true;
+        }
+
         public static string Describe(byte[] report, int stickDeadZone, int triggerThreshold)
         {
             if (report == null || report.Length < 10) return "short";
@@ -484,6 +568,15 @@ namespace Nxgs.ControllerIdleHelper
             neutral[2] = neutral[3] = neutral[4] = neutral[5] = 128;
             neutral[9] = 8;
             if (IsMeaningful(neutral, 32, 15)) return false;
+            ControllerInputState inputState;
+            if (!TryReadControllerState(neutral, 64, out inputState) || inputState.Direction != "neutral" || inputState.Accept || inputState.Back || inputState.Home) return false;
+            neutral[9] = 0;
+            if (!TryReadControllerState(neutral, 64, out inputState) || inputState.Direction != "up") return false;
+            neutral[9] = 8 | 0x20 | 0x40;
+            neutral[11] = 0x01;
+            if (!TryReadControllerState(neutral, 64, out inputState) || !inputState.Accept || !inputState.Back || !inputState.Home) return false;
+            neutral[9] = 8;
+            neutral[11] = 0;
             neutral[2] = 145; // drift below the configured dead zone
             if (IsMeaningful(neutral, 32, 15)) return false;
             neutral[2] = 180;

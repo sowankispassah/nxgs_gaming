@@ -788,7 +788,8 @@ if (!hasSingleInstanceLock) {
     registerIpc();
     await createWindow();
     controllerIdleService = new ControllerIdleService(store.getSettings().controllerIdle, {
-      onNotification: (notification) => sendToRenderer('controllerIdle:notification', notification)
+      onNotification: (notification) => sendToRenderer('controllerIdle:notification', notification),
+      onInputState: (state) => sendToRenderer('controller:inputState', state)
     });
     controllerIdleService.start();
     warmWindowsControlWorker();

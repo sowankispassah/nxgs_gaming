@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { join } from 'node:path';
-import type { ControllerIdleNotification, ControllerIdleSettings } from '../shared/types';
+import type { ControllerIdleNotification, ControllerIdleSettings, ControllerInputState } from '../shared/types';
 import { ControllerIdlePolicy, type ControllerIdleAction } from './controllerIdlePolicy';
 import { logLine } from './logger';
 
@@ -15,6 +15,7 @@ const CONTROLLER_ID_PATTERN = /^(?:[0-9A-F]{12}|HID-[0-9A-F]{16})$/;
 
 type ControllerIdleEvents = {
   onNotification: (notification: ControllerIdleNotification) => void;
+  onInputState: (state: ControllerInputState) => void;
 };
 
 export class ControllerIdleService {
@@ -178,7 +179,33 @@ export class ControllerIdleService {
       const reconnected = this.knownControllerIds.has(id);
       this.knownControllerIds.add(id);
       this.policy.connect(id, name, Date.now());
+      this.events.onInputState({
+        controllerId: id,
+        connected: true,
+        direction: 'neutral',
+        accept: false,
+        back: false,
+        home: false,
+        receivedAt: Date.now()
+      });
       void logLine('info', `${reconnected ? 'Controller reconnected' : 'Controller connected'}: id=${id} name=${name} connection=bluetooth; idle timer started.`);
+      return;
+    }
+    if (
+      event === 'INPUT_STATE'
+      && parts.length === 6
+      && /^(?:left|right|up|down|neutral)$/.test(parts[2])
+      && parts.slice(3).every((value) => value === '0' || value === '1')
+    ) {
+      this.events.onInputState({
+        controllerId: id,
+        connected: true,
+        direction: parts[2] as ControllerInputState['direction'],
+        accept: parts[3] === '1',
+        back: parts[4] === '1',
+        home: parts[5] === '1',
+        receivedAt: Date.now()
+      });
       return;
     }
     if (event === 'ACTIVITY' && parts.length === 3 && /^\d{1,16}$/.test(parts[2])) {
@@ -195,6 +222,15 @@ export class ControllerIdleService {
       const controller = this.policy.disconnect(id);
       this.lastActivityLog.delete(id);
       this.clearNotification(id);
+      this.events.onInputState({
+        controllerId: id,
+        connected: false,
+        direction: 'neutral',
+        accept: false,
+        back: false,
+        home: false,
+        receivedAt: Date.now()
+      });
       if (controller) void logLine('info', `Controller disconnected: id=${id} connection=bluetooth reason=${decodeField(parts[2], 'unknown')}.`);
       return;
     }

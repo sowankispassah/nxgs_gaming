@@ -123,7 +123,10 @@ assert.doesNotMatch(
   'highlighting Bluetooth must never start device discovery'
 );
 assert.match(switcher, /useControllerNavigation\(/, 'Switcher and quick settings must use the shared controller hub');
-assert.match(switcher, /initialMenuActionRef\.current\?\.focus\(\{ preventScroll: true \}\)/, 'the first quick-overlay action must receive DOM focus on first open');
+assert.match(switcher, /initialNavActionRef\.current\?\.focus\(\{ preventScroll: true \}\)/, 'the active game navbar icon must receive DOM focus on first open');
+assert.match(switcher, /focusArea === 'navbar' && gameSelected[\s\S]{0,120}setFocusArea\('menu'\)/, 'Up from the active game icon must enter the game submenu');
+assert.match(switcher, /SWITCHER_INPUT_DEDUPLICATION_MS/, 'duplicate keyboard and native controller events must be suppressed');
+assert.match(switcher, /moveSwitcherDirection\(event\.direction\)/, 'keyboard and controller directions must share the same switcher focus graph');
 assert.match(launcher, /releaseGameWindowTopMost[\s\S]*focusLauncherAfterGameRelease/, 'quick Home must restore launcher input focus after releasing the game topmost lock');
 assert.match(launcher, /window\.webContents\.focus\(\)/, 'launcher focus must explicitly include its web contents');
 assert.match(windowManager, /activateLauncherWindow[\s\S]*isForeground/, 'native launcher activation must verify that the overlay owns foreground keyboard input');

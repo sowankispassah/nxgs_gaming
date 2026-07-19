@@ -11,6 +11,7 @@ import type {
   BluetoothStatus,
   ControllerStateReport,
   ControllerIdleNotification,
+  ControllerInputState,
   DisplayActionResult,
   DisplayStatus,
   FilePickerResult,
@@ -108,6 +109,13 @@ const api = {
     ipcRenderer.on('controllerIdle:notification', listener);
     return () => {
       ipcRenderer.removeListener('controllerIdle:notification', listener);
+    };
+  },
+  onControllerInputState: (callback: (state: ControllerInputState) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: ControllerInputState) => callback(state);
+    ipcRenderer.on('controller:inputState', listener);
+    return () => {
+      ipcRenderer.removeListener('controller:inputState', listener);
     };
   },
   onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => {

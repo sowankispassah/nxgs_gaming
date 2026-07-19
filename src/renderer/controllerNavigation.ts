@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import type { ControllerInputState } from '../shared/types';
 
 export type ControllerDirection = 'left' | 'right' | 'up' | 'down';
 
@@ -37,6 +38,29 @@ function gamepadHasInput(pad: Gamepad): boolean {
     pad.buttons.some((button) => button.pressed || button.value > 0.2) ||
     pad.axes.some((axis) => Math.abs(axis) > CONTROLLER_AXIS_NEUTRAL_THRESHOLD)
   );
+}
+
+function nativeGamepad(state: ControllerInputState): Gamepad {
+  const pressed = (value: boolean): GamepadButton => ({ pressed: value, touched: value, value: value ? 1 : 0 });
+  const buttons = Array.from({ length: 18 }, () => pressed(false));
+  buttons[0] = pressed(state.accept);
+  buttons[1] = pressed(state.back);
+  buttons[12] = pressed(state.direction === 'up');
+  buttons[13] = pressed(state.direction === 'down');
+  buttons[14] = pressed(state.direction === 'left');
+  buttons[15] = pressed(state.direction === 'right');
+  buttons[16] = pressed(state.home);
+  return {
+    axes: [0, 0, 0, 0],
+    buttons,
+    connected: state.connected,
+    hapticActuators: [],
+    id: `DualSense Raw Input (${state.controllerId})`,
+    index: -1,
+    mapping: 'standard',
+    timestamp: state.receivedAt,
+    vibrationActuator: null
+  } as unknown as Gamepad;
 }
 
 function isPlayStationGamepad(pad: Gamepad): boolean {
@@ -193,6 +217,8 @@ class ControllerInputHub {
   private readonly navigationSubscriptions: NavigationSubscription[] = [];
   private readonly systemSubscriptions: SystemSubscription[] = [];
   private timer: number | null = null;
+  private nativeState: ControllerInputState | null = null;
+  private stopNativeInput: (() => void) | null = null;
 
   subscribeNavigation(subscription: NavigationSubscription): () => void {
     this.navigationSubscriptions.push(subscription);
@@ -215,6 +241,11 @@ class ControllerInputHub {
   }
 
   private ensurePolling(): void {
+    if (!this.stopNativeInput) {
+      this.stopNativeInput = window.nxgs.onControllerInputState((state) => {
+        this.nativeState = state.connected ? state : null;
+      });
+    }
     if (this.timer !== null) return;
     this.timer = window.setInterval(() => this.poll(), 50);
   }
@@ -223,12 +254,17 @@ class ControllerInputHub {
     if (this.navigationSubscriptions.length > 0 || this.systemSubscriptions.length > 0 || this.timer === null) return;
     window.clearInterval(this.timer);
     this.timer = null;
+    this.stopNativeInput?.();
+    this.stopNativeInput = null;
+    this.nativeState = null;
     this.engine.reset();
     this.padSelector.reset();
   }
 
   private poll(): void {
-    const pad = this.padSelector.select(navigator.getGamepads?.() ?? []);
+    const pad = this.nativeState
+      ? nativeGamepad(this.nativeState)
+      : this.padSelector.select(navigator.getGamepads?.() ?? []);
     const result = this.engine.update(pad, performance.now());
     if (result.connectionChanged) {
       for (const subscription of this.systemSubscriptions) subscription.onConnection.current(result.pad);

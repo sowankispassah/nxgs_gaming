@@ -77,6 +77,18 @@ export interface ControllerIdleNotification {
   message?: string;
 }
 
+export type ControllerInputDirection = 'left' | 'right' | 'up' | 'down' | 'neutral';
+
+export interface ControllerInputState {
+  controllerId: string;
+  connected: boolean;
+  direction: ControllerInputDirection;
+  accept: boolean;
+  back: boolean;
+  home: boolean;
+  receivedAt: number;
+}
+
 export interface AppDatabase {
   schemaVersion: number;
   settings: AppSettings;

@@ -137,6 +137,8 @@ assert.match(helperSource, /SonyVendorId = 0x054C/);
 assert.match(helperSource, /IsBluetoothPath/);
 assert.match(helperSource, /IoctlBthDisconnectDevice = 0x0041000C/);
 assert.match(helperSource, /report\[0\] == 0x01 \? 0x03 : 0xF7/, 'compact Bluetooth reports must ignore the rolling sequence counter');
+assert.match(helperSource, /INPUT_STATE/, 'the native helper must forward controller navigation state independently of the compatibility mapper');
+assert.match(helperSource, /TryReadControllerState/, 'the native helper must decode DualSense menu controls');
 assert.doesNotMatch(helperSource, /MarkDisconnected\(controller, "shutdown"\)/, 'shutdown must wait for real HID removal instead of synthesizing a disconnect that final packets can undo');
 assert.doesNotMatch(helperSource, /BluetoothRemoveDevice|UnpairAsync/);
 

@@ -29,6 +29,7 @@ type NavItem = {
 };
 
 const MENU_LABELS = ['Resume Game', 'Go to Launcher Home', 'Close Game'] as const;
+const SWITCHER_INPUT_DEDUPLICATION_MS = 120;
 
 const EMPTY_AUDIO: AudioStatus = {
   supported: true,
@@ -82,11 +83,12 @@ export function QuickHomeOverlay(props: {
     }];
   }, [props.activeGame]);
   const initiallyActiveIndex = Math.max(0, sessions.findIndex((session) => session.isActive));
+  const initialNavKey = sessions.length > 0 ? `game:${sessions[initiallyActiveIndex].game.id}` : 'home';
   const [selectedNavKey, setSelectedNavKey] = useState(
-    sessions.length > 0 ? `game:${sessions[initiallyActiveIndex].game.id}` : 'home'
+    initialNavKey
   );
   const [menuIndex, setMenuIndex] = useState(0);
-  const [focusArea, setFocusArea] = useState<FocusArea>('menu');
+  const [focusArea, setFocusArea] = useState<FocusArea>('navbar');
   const [confirmClose, setConfirmClose] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [message, setMessage] = useState('');
@@ -114,7 +116,8 @@ export function QuickHomeOverlay(props: {
   const brightnessSupportedRef = useRef(quickDisplaySnapshot?.brightness.supported ?? true);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
-  const initialMenuActionRef = useRef<HTMLButtonElement | null>(null);
+  const initialNavActionRef = useRef<HTMLButtonElement | null>(null);
+  const lastSwitcherInput = useRef({ action: '', at: 0 });
 
   const navItems = useMemo<NavItem[]>(
     () => [
@@ -153,7 +156,7 @@ export function QuickHomeOverlay(props: {
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      initialMenuActionRef.current?.focus({ preventScroll: true });
+      initialNavActionRef.current?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -508,6 +511,40 @@ export function QuickHomeOverlay(props: {
     dismissOverlay();
   }, [confirmClose, dismissOverlay, quickSettingsOpen]);
 
+  const claimSwitcherInput = useCallback((action: string): boolean => {
+    const at = performance.now();
+    if (lastSwitcherInput.current.action === action && at - lastSwitcherInput.current.at < SWITCHER_INPUT_DEDUPLICATION_MS) {
+      return false;
+    }
+    lastSwitcherInput.current = { action, at };
+    return true;
+  }, []);
+
+  const moveSwitcherDirection = useCallback((direction: 'left' | 'right' | 'up' | 'down'): void => {
+    if (direction === 'left' || direction === 'right') {
+      const delta = direction === 'right' ? 1 : -1;
+      setSelectedNavKey(navItems[(selectedNavIndex + delta + navItems.length) % navItems.length].key);
+      setFocusArea('navbar');
+      return;
+    }
+    if (direction === 'up') {
+      if (focusArea === 'menu') {
+        setMenuIndex((index) => Math.max(0, index - 1));
+      } else if (focusArea === 'navbar' && gameSelected) {
+        setMenuIndex(0);
+        setFocusArea('menu');
+      }
+      return;
+    }
+    if (focusArea === 'menu') {
+      if (menuIndex >= MENU_LABELS.length - 1) {
+        setFocusArea('navbar');
+      } else {
+        setMenuIndex((index) => index + 1);
+      }
+    }
+  }, [focusArea, gameSelected, menuIndex, navItems, selectedNavIndex]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const backRequested = isBackKeyboardEvent(event);
@@ -520,6 +557,8 @@ export function QuickHomeOverlay(props: {
       if (disabled) {
         return;
       }
+      const inputAction = backRequested ? 'back' : event.key === 'Enter' ? 'accept' : event.key;
+      if (!claimSwitcherInput(inputAction)) return;
       if (quickSettingsOpen && (focusArea === 'quickAudio' || focusArea === 'quickBrightness')) {
         if (backRequested) {
           handleBack();
@@ -552,21 +591,11 @@ export function QuickHomeOverlay(props: {
         return;
       }
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        const delta = event.key === 'ArrowRight' ? 1 : -1;
-        setSelectedNavKey(navItems[(selectedNavIndex + delta + navItems.length) % navItems.length].key);
-        setFocusArea('navbar');
+        moveSwitcherDirection(event.key === 'ArrowRight' ? 'right' : 'left');
         return;
       }
-      if (event.key === 'ArrowUp' && gameSelected) {
-        setFocusArea('menu');
-        return;
-      }
-      if (event.key === 'ArrowDown' && focusArea === 'menu') {
-        setMenuIndex((index) => Math.min(MENU_LABELS.length - 1, index + 1));
-        return;
-      }
-      if (event.key === 'ArrowUp' && focusArea === 'menu') {
-        setMenuIndex((index) => Math.max(0, index - 1));
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        moveSwitcherDirection(event.key === 'ArrowUp' ? 'up' : 'down');
         return;
       }
       if (event.key === 'Enter') {
@@ -579,7 +608,7 @@ export function QuickHomeOverlay(props: {
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [adjustSystemBrightness, adjustSystemVolume, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, navItems.length, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
+  }, [adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, moveSwitcherDirection, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
 
   useEffect(() => {
     if (!quickSettingsOpen) return;
@@ -590,6 +619,8 @@ export function QuickHomeOverlay(props: {
   }, [focusArea, quickSettingsOpen]);
 
   const handleSwitcherControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    const inputAction = event.type === 'direction' ? `Arrow${event.direction[0].toUpperCase()}${event.direction.slice(1)}` : event.type;
+    if (!claimSwitcherInput(inputAction)) return;
     if (event.type === 'back') {
       handleBack();
       void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Switcher: back' });
@@ -625,19 +656,15 @@ export function QuickHomeOverlay(props: {
       return;
     }
 
-    if (event.direction === 'right') {
-      setSelectedNavKey(navItems[(selectedNavIndex + 1) % navItems.length].key);
-      setFocusArea('navbar');
-    } else if (event.direction === 'left') {
-      setSelectedNavKey(navItems[(selectedNavIndex - 1 + navItems.length) % navItems.length].key);
-      setFocusArea('navbar');
-    } else if (event.direction === 'down' && focusArea === 'menu') {
-      setMenuIndex((index) => Math.min(MENU_LABELS.length - 1, index + 1));
-    } else if (event.direction === 'up' && gameSelected) {
-      setFocusArea('menu');
-      setMenuIndex((index) => Math.max(0, index - 1));
+    if (confirmClose) {
+      if (event.direction === 'left' || event.direction === 'right') {
+        setMenuIndex((index) => (index === 0 ? 1 : 0));
+      }
+      return;
     }
-  }, [adjustSystemBrightness, adjustSystemVolume, closeGame, confirmClose, focusArea, gameSelected, handleBack, menuIndex, navItems, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
+
+    moveSwitcherDirection(event.direction);
+  }, [adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, closeGame, confirmClose, focusArea, gameSelected, handleBack, menuIndex, moveSwitcherDirection, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
 
   useControllerNavigation(!disabled, handleSwitcherControllerEvent);
 
@@ -694,7 +721,6 @@ export function QuickHomeOverlay(props: {
               {MENU_LABELS.map((label, index) => (
                 <button
                   key={label}
-                  ref={index === 0 ? initialMenuActionRef : undefined}
                   className={focusArea === 'menu' && menuIndex === index ? 'focused' : ''}
                   type="button"
                   disabled={disabled}
@@ -828,6 +854,7 @@ export function QuickHomeOverlay(props: {
               </section>
             )}
             <button
+              ref={item.key === initialNavKey ? initialNavActionRef : undefined}
               className={`quick-nav-item ${selectedNavIndex === index ? 'selected' : ''} ${item.session ? 'active-game' : ''}`}
               type="button"
               title={item.label}
