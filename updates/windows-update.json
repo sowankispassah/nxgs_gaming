@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.7",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.7/NXGS-Play-Setup.exe",
-    "sha256":  "3f39021acea333164160166dbcb312e28fef561b97ae610ea399c0d903875ff5",
+    "version":  "0.16.8",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.8/NXGS-Play-Setup.exe",
+    "sha256":  "e758ca101c69a9f27c2c32b508d9bcf97fd5ec07a258d7685e597159fde834fb",
     "required":  false,
-    "notes":  "Fixes the DualSense remaining powered but undetected after automatic idle shutdown by cleanly releasing the game mapper before the paired-safe Bluetooth disconnect."
+    "notes":  "Fixes the first controller Home overlay so keyboard and controller navigation work immediately when Resume and Close appear."
 }
