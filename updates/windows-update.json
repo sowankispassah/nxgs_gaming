@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.8",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.8/NXGS-Play-Setup.exe",
-    "sha256":  "e758ca101c69a9f27c2c32b508d9bcf97fd5ec07a258d7685e597159fde834fb",
+    "version":  "0.16.9",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.9/NXGS-Play-Setup.exe",
+    "sha256":  "86878c645842fdb32f60212ef6f14c0022551728d3009f228bc58eff0222f7a8",
     "required":  false,
-    "notes":  "Fixes the first controller Home overlay so keyboard and controller navigation work immediately when Resume and Close appear."
+    "notes":  "Fixes Quick Switcher controller navigation: Up enters the game submenu, one press moves one item, and native DualSense input keeps NXGS responsive through repeated Home and resume flows."
 }
