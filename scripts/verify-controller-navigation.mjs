@@ -96,12 +96,14 @@ engine.update(pad, 1010);
 pad.buttons[0].pressed = true;
 assert.equal(engine.update(pad, 1020).navigation.filter((event) => event.type === 'accept').length, 1);
 
-const [app, home, settings, switcher, styles] = await Promise.all([
+const [app, home, settings, switcher, styles, launcher, windowManager] = await Promise.all([
   readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/ConsoleHome.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/ConsoleSettings.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/QuickHomeOverlay.tsx', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8')
+  readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main/gameLauncher.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main/windowManagerService.ts', import.meta.url), 'utf8')
 ]);
 
 for (const [name, source] of [['App', app], ['ConsoleSettings', settings], ['QuickHomeOverlay', switcher]]) {
@@ -121,6 +123,10 @@ assert.doesNotMatch(
   'highlighting Bluetooth must never start device discovery'
 );
 assert.match(switcher, /useControllerNavigation\(/, 'Switcher and quick settings must use the shared controller hub');
+assert.match(switcher, /initialMenuActionRef\.current\?\.focus\(\{ preventScroll: true \}\)/, 'the first quick-overlay action must receive DOM focus on first open');
+assert.match(launcher, /releaseGameWindowTopMost[\s\S]*focusLauncherAfterGameRelease/, 'quick Home must restore launcher input focus after releasing the game topmost lock');
+assert.match(launcher, /window\.webContents\.focus\(\)/, 'launcher focus must explicitly include its web contents');
+assert.match(windowManager, /activateLauncherWindow[\s\S]*isForeground/, 'native launcher activation must verify that the overlay owns foreground keyboard input');
 assert.match(home, /data-home-utility-index="0"/, 'Search must be controller focusable');
 assert.match(home, /data-home-utility-index="1"/, 'Settings must be controller focusable');
 assert.match(home, /data-home-utility-index="2"/, 'User profile must be controller focusable');

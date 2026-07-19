@@ -114,6 +114,7 @@ export function QuickHomeOverlay(props: {
   const brightnessSupportedRef = useRef(quickDisplaySnapshot?.brightness.supported ?? true);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
+  const initialMenuActionRef = useRef<HTMLButtonElement | null>(null);
 
   const navItems = useMemo<NavItem[]>(
     () => [
@@ -148,6 +149,13 @@ export function QuickHomeOverlay(props: {
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      initialMenuActionRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -686,6 +694,7 @@ export function QuickHomeOverlay(props: {
               {MENU_LABELS.map((label, index) => (
                 <button
                   key={label}
+                  ref={index === 0 ? initialMenuActionRef : undefined}
                   className={focusArea === 'menu' && menuIndex === index ? 'focused' : ''}
                   type="button"
                   disabled={disabled}

@@ -561,6 +561,16 @@ $hasMonitorInfo = [Win32]::GetMonitorInfo($finalMonitor, [ref]$finalMonitorInfo)
   return parseActivationState(await runPowerShell(script));
 }
 
+export async function activateLauncherWindow(handle: number): Promise<boolean> {
+  const state = await runActivationCommand(handle, 'normal', false, {
+    foreground: true,
+    topMost: true,
+    applyBorderless: false,
+    processActivate: true
+  });
+  return Boolean(state?.isForeground);
+}
+
 export async function prepareGameWindowForReveal(
   window: GameWindowInfo,
   launchMode: GameLaunchMode = 'maximized'

@@ -22,6 +22,7 @@ import {
 import { logLine } from './logger';
 import { closeProcessByName, closeProcessByPid, isProcessRunning, isProcessRunningByPid } from './windowsProcess';
 import {
+  activateLauncherWindow,
   closeGameWindow,
   findGameWindow,
   isWindowsTaskbarVisible,
@@ -594,8 +595,7 @@ export class GameLauncher {
         this.activeProcessId = currentWindow.processId;
       }
       if (this.focusGeneration === homeGeneration && this.state.status === 'quickOverlayOpen') {
-        // Raise it again after releasing every game HWND in case Windows reordered the topmost band.
-        this.focusLauncher();
+        await this.focusLauncherAfterGameRelease(game, homeGeneration);
       }
     } catch (error) {
       await logLine('warn', `Return home window lookup failed for ${game.title}: ${String(error)}`);
@@ -640,6 +640,7 @@ export class GameLauncher {
       window.setMenuBarVisibility(false);
       window.show();
       window.focus();
+      window.webContents.focus();
       void logLine('info', 'NXGS Play restored and focused without changing the admin window bounds.');
       return;
     }
@@ -651,7 +652,39 @@ export class GameLauncher {
     window.setAlwaysOnTop(true, 'screen-saver');
     window.moveTop();
     window.focus();
+    window.webContents.focus();
     void logLine('info', 'NXGS Play restored fullscreen and focused for Home.');
+  }
+
+  private async focusLauncherAfterGameRelease(game: GameRecord, homeGeneration: number): Promise<void> {
+    const window = this.windowProvider();
+    if (!window || window.isDestroyed()) return;
+
+    this.focusLauncher();
+    if (process.platform !== 'win32') return;
+
+    try {
+      const nativeHandleBuffer = window.getNativeWindowHandle();
+      const nativeHandle = nativeHandleBuffer.length >= 8
+        ? Number(nativeHandleBuffer.readBigUInt64LE(0))
+        : nativeHandleBuffer.readUInt32LE(0);
+      let focused = await activateLauncherWindow(nativeHandle);
+      if (this.focusGeneration !== homeGeneration || this.state.status !== 'quickOverlayOpen') return;
+      if (!focused && this.focusGeneration === homeGeneration && this.state.status === 'quickOverlayOpen') {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        focused = await activateLauncherWindow(nativeHandle);
+      }
+      if (this.focusGeneration !== homeGeneration || this.state.status !== 'quickOverlayOpen') return;
+      if (!window.isDestroyed()) window.webContents.focus();
+      await logLine(
+        focused ? 'info' : 'warn',
+        focused
+          ? `Quick overlay input focus verified for ${game.title}.`
+          : `Quick overlay remained visible but Windows did not confirm input focus for ${game.title}.`
+      );
+    } catch (error) {
+      await logLine('warn', `Quick overlay native input focus failed for ${game.title}: ${String(error)}`);
+    }
   }
 
   restoreTaskbarForAdmin(): void {
