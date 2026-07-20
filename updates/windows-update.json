@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.9",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.9/NXGS-Play-Setup.exe",
-    "sha256":  "86878c645842fdb32f60212ef6f14c0022551728d3009f228bc58eff0222f7a8",
+    "version":  "0.16.10",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.10/NXGS-Play-Setup.exe",
+    "sha256":  "19f881f9cf2d81a10a2e7785d6e3f1bcfd7d7145bdde3ef9f62a9acd34619ddf",
     "required":  false,
-    "notes":  "Fixes Quick Switcher controller navigation: Up enters the game submenu, one press moves one item, and native DualSense input keeps NXGS responsive through repeated Home and resume flows."
+    "notes":  "Fixes NXGS Play\u0027s Windows app identity so the custom NXGS icon appears in Windows Search and on the taskbar, while Task Manager shows NXGS Play instead of Electron."
 }
