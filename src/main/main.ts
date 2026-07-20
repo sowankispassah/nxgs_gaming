@@ -773,6 +773,8 @@ function registerIpc(): void {
   });
 }
 
+app.setAppUserModelId('com.nxgs.play');
+
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
