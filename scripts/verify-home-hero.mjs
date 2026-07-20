@@ -31,5 +31,10 @@ assert.match(
   /\.console-hero-copy h1\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s,
   'hero title must remain on one line and end with an ellipsis'
 );
+assert.match(
+  styles,
+  /button\.console-game-avatar:not\(:disabled\):hover,[^}]*button\.console-game-avatar:not\(:disabled\):is\(:focus-visible, \.controller-focused, \.focused\),[^}]*button\.console-game-avatar:not\(:disabled\):active\s*\{[^}]*box-shadow:\s*none;[^}]*filter:\s*none;/s,
+  'the game avatar button must suppress the outer rectangular hover and focus ring'
+);
 
-console.log('Console Home source-label removal and one-line hero title verified.');
+console.log('Console Home source-label removal, one-line hero title, and rounded game-tile focus verified.');
