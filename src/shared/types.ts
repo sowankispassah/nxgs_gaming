@@ -104,22 +104,22 @@ export interface InitialData {
   logsPath: string;
   isPackaged: boolean;
   activeGame: ActiveGameState;
+  session: SessionState;
   diagnostics: AppDiagnostics;
 }
 
 export interface SessionState {
   status: 'idle' | 'launching' | 'running' | 'expired' | 'closing' | 'error';
-  gameId?: string;
-  gameTitle?: string;
   durationMinutes?: number;
   remainingSeconds: number;
   warningFiveMinutes: boolean;
+  expiresAt?: string;
+  revision: number;
   message?: string;
 }
 
 export interface LaunchRequest {
   gameId: string;
-  durationMinutes: number;
 }
 
 export interface LaunchResult {
@@ -160,8 +160,6 @@ export interface PaymentCheckout {
 }
 
 export interface CreatePaymentCheckoutRequest {
-  gameId: string;
-  gameTitle: string;
   timePlanId: string;
 }
 
@@ -172,8 +170,8 @@ export interface PaymentCheckoutAccess {
 
 export interface PaymentEntitlement {
   checkoutId: string;
-  gameId: string;
   durationMinutes: number;
+  sessionExpiresAt?: string;
 }
 
 export interface PaymentCheckoutResult {

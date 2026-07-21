@@ -99,7 +99,7 @@ try {
   await waitFor("window.nxgs.getDiagnostics().then((data) => data.controllerCompatibility.driverInstalled && data.controllerCompatibility.status === 'idle' && !data.controllerCompatibility.mapperRunning)", 'Launcher Home did not keep the gameplay controller mapper idle.');
   console.log('PASS: Launcher Home prepared controller compatibility without starting the gameplay mapper.');
   const initialFocusDesign = await evaluate("(() => { const games = [...document.querySelectorAll('.console-tabs button')].find((button) => button.textContent.trim() === 'Games'); games.focus(); const button = getComputedStyle(games); const group = getComputedStyle(games.closest('.console-tabs')); return { outlineStyle: button.outlineStyle, outlineWidth: button.outlineWidth, buttonShadow: button.boxShadow, groupRadius: group.borderRadius, groupShadow: group.boxShadow }; })()");
-  if (initialFocusDesign.outlineStyle !== 'none' || initialFocusDesign.outlineWidth !== '0px' || initialFocusDesign.buttonShadow === 'none' || initialFocusDesign.groupRadius === '0px' || initialFocusDesign.groupShadow === 'none') {
+  if (initialFocusDesign.outlineStyle !== 'none' || initialFocusDesign.outlineWidth !== '0px' || initialFocusDesign.buttonShadow !== 'none' || initialFocusDesign.groupRadius === '0px' || initialFocusDesign.groupShadow === 'none') {
     throw new Error(`Initial fullscreen focus did not use the rounded NXGS style: ${JSON.stringify(initialFocusDesign)}`);
   }
   console.log('PASS: Initial fullscreen focus suppressed the browser outline and kept the rounded NXGS highlight.');

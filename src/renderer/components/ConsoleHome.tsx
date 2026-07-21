@@ -3,6 +3,7 @@ import {
   Gamepad2,
   Layers3,
   Library,
+  LoaderCircle,
   Play,
   Power,
   Search,
@@ -284,6 +285,7 @@ export function GameAvatarRow(props: {
   focusSection: ConsoleFocusSection;
   onHighlight: (index: number) => void;
   onPlay: (game: GameRecord) => void;
+  launchPendingGameId: string;
 }): JSX.Element {
   const rowRef = useRef<HTMLDivElement | null>(null);
   const tileRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -315,12 +317,15 @@ export function GameAvatarRow(props: {
             type="button"
             aria-label={`${game.title}${selected ? ', selected' : ''}`}
             aria-pressed={selected}
+            disabled={Boolean(props.launchPendingGameId)}
             onFocus={() => props.onHighlight(index)}
             onMouseEnter={() => props.onHighlight(index)}
             onClick={() => (selected ? props.onPlay(game) : props.onHighlight(index))}
           >
             <span className="game-avatar-art">
-              <SafeGameImage game={game} kind="avatar" alt={`${game.title} avatar`} />
+              {props.launchPendingGameId === game.id
+                ? <LoaderCircle className="spin" size={34} />
+                : <SafeGameImage game={game} kind="avatar" alt={`${game.title} avatar`} />}
             </span>
             <strong>{game.title}</strong>
           </button>
@@ -400,6 +405,7 @@ export function ConsoleHome(props: {
   onContentFocus: (index: number) => void;
   onOpenAdmin: () => void;
   onSelectGame: (game: GameRecord) => void;
+  launchPendingGameId: string;
 }): JSX.Element {
   const playButtonRef = useRef<HTMLButtonElement | null>(null);
   const showingGames = props.activeTab === 'games';
@@ -438,6 +444,7 @@ export function ConsoleHome(props: {
                   focusSection={props.focusSection}
                   onHighlight={props.onHighlightGame}
                   onPlay={props.onSelectGame}
+                  launchPendingGameId={props.launchPendingGameId}
                 />
                 <section className="console-hero-copy" aria-live="polite">
                   <h1 title={props.selectedGame?.title}>{props.selectedGame?.title}</h1>
@@ -446,10 +453,13 @@ export function ConsoleHome(props: {
                     ref={playButtonRef}
                     className={`console-play-button ${props.focusSection === 'hero' ? 'controller-focused' : ''}`}
                     type="button"
+                    disabled={Boolean(props.launchPendingGameId)}
                     onClick={() => props.selectedGame && props.onSelectGame(props.selectedGame)}
                   >
-                    <Play size={20} fill="currentColor" />
-                    Play
+                    {props.launchPendingGameId === props.selectedGame?.id
+                      ? <LoaderCircle size={20} className="spin" />
+                      : <Play size={20} fill="currentColor" />}
+                    {props.launchPendingGameId === props.selectedGame?.id ? 'Starting...' : 'Play'}
                   </button>
                 </section>
                 <DashboardContentRow

@@ -112,6 +112,7 @@ const api = {
   forceCloseGame: (pin: string, gameId?: string): Promise<VerifyPinResult> =>
     ipcRenderer.invoke('session:forceClose', pin, gameId),
   clearExpiredSession: (): Promise<void> => ipcRenderer.invoke('session:clearExpired'),
+  endPaidSession: (): Promise<GameControlResult> => ipcRenderer.invoke('session:end'),
   onSessionState: (callback: (state: SessionState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: SessionState) => callback(state);
     ipcRenderer.on('session:state', listener);

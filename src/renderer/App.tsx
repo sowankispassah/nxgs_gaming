@@ -67,7 +67,8 @@ type AdminTab = 'games' | 'scan' | 'sessions' | 'kiosk' | 'updates';
 const EMPTY_SESSION: SessionState = {
   status: 'idle',
   remainingSeconds: 0,
-  warningFiveMinutes: false
+  warningFiveMinutes: false,
+  revision: 0
 };
 
 const EMPTY_GAME: GameInput = {
@@ -146,6 +147,10 @@ export function App(): JSX.Element {
   const [homeContentIndex, setHomeContentIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [confirmGame, setConfirmGame] = useState<GameRecord | null>(null);
+  const [extendPaymentOpen, setExtendPaymentOpen] = useState(false);
+  const [sessionWarning, setSessionWarning] = useState<'five' | 'two' | 'final' | null>(null);
+  const [launchPendingGameId, setLaunchPendingGameId] = useState('');
+  const [launchNotice, setLaunchNotice] = useState('');
   const [pinOpen, setPinOpen] = useState(false);
   const [session, setSession] = useState<SessionState>(EMPTY_SESSION);
   const [activeGame, setActiveGame] = useState<ActiveGameState>(EMPTY_ACTIVE_GAME);
@@ -162,6 +167,8 @@ export function App(): JSX.Element {
   const [adminModeError, setAdminModeError] = useState('');
   const [controllerIdleNotification, setControllerIdleNotification] = useState<ControllerIdleNotification | null>(null);
   const adminModeTransitionBusy = useRef(false);
+  const warningRevision = useRef(0);
+  const shownWarnings = useRef(new Set<string>());
 
   const view = viewHistory[viewHistory.length - 1] ?? 'home';
   const navigateToView = useCallback((nextView: View): void => {
@@ -255,14 +262,32 @@ export function App(): JSX.Element {
         setGames(data.games);
         setSettings(data.settings);
         setActiveGame(data.activeGame);
+        setSession(data.session);
       })
       .catch((error) => setBootError(error instanceof Error ? error.message : String(error)));
 
     const unsubscribeSession = window.nxgs.onSessionState((next) => {
       setSession(next);
+      if (warningRevision.current !== next.revision) {
+        warningRevision.current = next.revision;
+        shownWarnings.current.clear();
+        setSessionWarning(null);
+      }
       if (next.status === 'expired') {
         setConfirmGame(null);
+        setExtendPaymentOpen(false);
+        setSessionWarning('final');
         resetToHome();
+      } else if (next.status === 'running') {
+        const warning = next.remainingSeconds <= 120 && next.remainingSeconds > 60
+          ? 'two'
+          : next.remainingSeconds <= 300 && next.remainingSeconds > 120
+            ? 'five'
+            : null;
+        if (warning && !shownWarnings.current.has(warning)) {
+          shownWarnings.current.add(warning);
+          setSessionWarning(warning);
+        }
       }
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
@@ -314,6 +339,25 @@ export function App(): JSX.Element {
       unsubscribeControllerIdle();
     };
   }, [resetToHome]);
+
+  const selectGame = useCallback(async (game: GameRecord): Promise<void> => {
+    if (launchPendingGameId) return;
+    if (session.status !== 'running' || session.remainingSeconds <= 0) {
+      setConfirmGame(game);
+      return;
+    }
+    setLaunchPendingGameId(game.id);
+    setLaunchNotice(`Starting ${game.title}...`);
+    try {
+      const result = await window.nxgs.launchGame({ gameId: game.id });
+      if (!result.ok) throw new Error(result.error ?? 'Game launch failed.');
+      setLaunchNotice('');
+    } catch (error) {
+      setLaunchNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLaunchPendingGameId('');
+    }
+  }, [launchPendingGameId, session.remainingSeconds, session.status]);
 
   useEffect(() => {
     if (selectedIndex >= enabledGames.length) {
@@ -432,9 +476,9 @@ export function App(): JSX.Element {
       (homeFocusSection === 'games' || homeFocusSection === 'hero') &&
       selectedGame
     ) {
-      setConfirmGame(selectedGame);
+      void selectGame(selectedGame);
     }
-  }, [confirmGame, homeFocusSection, homeTab, homeUtilityIndex, pinOpen, selectedGame, view]);
+  }, [confirmGame, homeFocusSection, homeTab, homeUtilityIndex, pinOpen, selectGame, selectedGame, view]);
 
   const back = useCallback(() => {
     if (confirmGame) {
@@ -621,7 +665,8 @@ export function App(): JSX.Element {
             setHomeFocusSection('content');
           }}
           onOpenAdmin={openConsoleSettings}
-          onSelectGame={setConfirmGame}
+          onSelectGame={(game) => void selectGame(game)}
+          launchPendingGameId={launchPendingGameId}
         />
       ) : view === 'settings' ? (
         <ConsoleSettings
@@ -660,11 +705,29 @@ export function App(): JSX.Element {
         </aside>
       )}
 
+      {launchNotice && <aside className="console-toast launch-notice" role="status">{launchNotice}</aside>}
+
       {confirmGame && (
-        <LaunchConfirm
+        <PaymentFlow
+          mode="launch"
           game={confirmGame}
           onClose={() => setConfirmGame(null)}
-          onLaunched={() => setConfirmGame(null)}
+          onCompleted={() => setConfirmGame(null)}
+        />
+      )}
+
+      {extendPaymentOpen && (
+        <PaymentFlow
+          mode="extend"
+          onClose={() => {
+            setExtendPaymentOpen(false);
+            if (session.status === 'expired') setSessionWarning('final');
+          }}
+          onCompleted={() => {
+            setExtendPaymentOpen(false);
+            setSessionWarning(null);
+            if (activeGame.game) void window.nxgs.resumeActiveGame(activeGame.game.id);
+          }}
         />
       )}
 
@@ -745,11 +808,22 @@ export function App(): JSX.Element {
         </div>
       )}
 
-      {session.status === 'expired' && (
-        <ExpiredDialog
-          session={session}
-          onDismiss={async () => {
-            await window.nxgs.clearExpiredSession();
+      {sessionWarning && !extendPaymentOpen && (
+        <SessionWarningDialog
+          stage={sessionWarning}
+          onExtend={() => {
+            setSessionWarning(null);
+            setExtendPaymentOpen(true);
+          }}
+          onSkip={async () => {
+            if (sessionWarning !== 'final') {
+              setSessionWarning(null);
+              return;
+            }
+            const result = await window.nxgs.endPaidSession();
+            if (!result.ok) throw new Error(result.error ?? 'Could not end the paid session.');
+            setSessionWarning(null);
+            resetToHome();
           }}
         />
       )}
@@ -881,10 +955,11 @@ function GameTransitionOverlay(props: { activeGame: ActiveGameState }): JSX.Elem
   );
 }
 
-function LaunchConfirm(props: {
-  game: GameRecord;
+function PaymentFlow(props: {
+  mode: 'launch' | 'extend';
+  game?: GameRecord;
   onClose: () => void;
-  onLaunched: () => void;
+  onCompleted: () => void;
 }): JSX.Element {
   const [stage, setStage] = useState<'plans' | 'payment'>('plans');
   const [plans, setPlans] = useState<PaymentPlan[]>([]);
@@ -900,7 +975,7 @@ function LaunchConfirm(props: {
   const paymentActionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const pollingRef = useRef(false);
   const completionStartedRef = useRef(false);
-  const entitlementDurationRef = useRef<number | null>(null);
+  const entitlementActivatedRef = useRef(false);
 
   const loadCatalog = useCallback(async (): Promise<void> => {
     setCatalogPending(true);
@@ -945,8 +1020,7 @@ function LaunchConfirm(props: {
     setPendingAction('launch');
     setError('');
     try {
-      let durationMinutes = entitlementDurationRef.current;
-      if (!durationMinutes) {
+      if (!entitlementActivatedRef.current) {
         const consumed = await window.nxgs.consumePaymentCheckout({
           checkoutId: paidCheckout.id,
           clientToken: paidCheckout.clientToken
@@ -954,15 +1028,14 @@ function LaunchConfirm(props: {
         if (!consumed.ok || !consumed.entitlement) {
           throw new Error(consumed.error ?? 'The paid session could not be authorized.');
         }
-        if (consumed.entitlement.gameId !== props.game.id) {
-          throw new Error('The paid session does not match this game.');
-        }
-        durationMinutes = consumed.entitlement.durationMinutes;
-        entitlementDurationRef.current = durationMinutes;
+        entitlementActivatedRef.current = true;
       }
-      const launched = await window.nxgs.launchGame({ gameId: props.game.id, durationMinutes });
-      if (!launched.ok) throw new Error(launched.error ?? 'Game launch failed.');
-      props.onLaunched();
+      if (props.mode === 'launch') {
+        if (!props.game) throw new Error('No game was selected.');
+        const launched = await window.nxgs.launchGame({ gameId: props.game.id });
+        if (!launched.ok) throw new Error(launched.error ?? 'Game launch failed.');
+      }
+      props.onCompleted();
     } catch (launchError) {
       setError(launchError instanceof Error ? launchError.message : String(launchError));
     } finally {
@@ -979,8 +1052,6 @@ function LaunchConfirm(props: {
     setError('');
     try {
       const result = await window.nxgs.createPaymentCheckout({
-        gameId: props.game.id,
-        gameTitle: props.game.title,
         timePlanId: plan.id
       });
       if (!result.ok || !result.checkout) throw new Error(result.error ?? 'Could not start Razorpay Checkout.');
@@ -993,7 +1064,7 @@ function LaunchConfirm(props: {
     } finally {
       setPlanPendingIndex(null);
     }
-  }, [completePayment, pendingAction, planPendingIndex, plans, props.game.id, props.game.title]);
+  }, [completePayment, pendingAction, planPendingIndex, plans]);
 
   const retryPayment = useCallback(async (): Promise<void> => {
     if (!checkout || pendingAction) return;
@@ -1069,7 +1140,7 @@ function LaunchConfirm(props: {
   }, [plans.length]);
 
   const activatePaymentAction = useCallback((): void => {
-    if (entitlementDurationRef.current && error) void completePayment(checkout!);
+    if (entitlementActivatedRef.current && error) void completePayment(checkout!);
     else if (paymentActionIndex === 0) void retryPayment();
     else void cancelPayment('close');
   }, [cancelPayment, checkout, completePayment, error, paymentActionIndex, retryPayment]);
@@ -1123,7 +1194,7 @@ function LaunchConfirm(props: {
     creating: 'Creating secure checkout',
     created: 'Waiting for payment',
     verified: 'Payment received',
-    consumed: 'Starting your game',
+    consumed: props.mode === 'extend' ? 'Adding time to your session' : 'Starting your game',
     cancelled: 'Payment cancelled',
     expired: 'Payment window expired',
     failed: 'Payment failed'
@@ -1155,11 +1226,11 @@ function LaunchConfirm(props: {
           <>
             <header className="checkout-heading">
               <span className="checkout-game-icon">
-                {props.game.avatarImagePath ? <img src={coverUrl(props.game.avatarImagePath)} alt="" /> : <Gamepad2 size={25} />}
+                {props.game?.avatarImagePath ? <img src={coverUrl(props.game.avatarImagePath)} alt="" /> : <Timer size={25} />}
               </span>
               <div>
-                <p className="eyebrow">{props.game.title}</p>
-                <h2>Select Play Duration</h2>
+                <p className="eyebrow">{props.mode === 'extend' ? 'Active paid session' : props.game?.title}</p>
+                <h2>{props.mode === 'extend' ? 'Extend Play Time' : 'Select Play Duration'}</h2>
               </div>
             </header>
             {catalogPending && <div className="checkout-loading"><LoaderCircle className="spin" /> Loading prices...</div>}
@@ -1224,7 +1295,7 @@ function LaunchConfirm(props: {
                 </dl>
                 <div className={`payment-status ${status}`} role="status" aria-live="polite">
                   {pendingAction === 'launch' && <LoaderCircle size={19} className="spin" />}
-                  {entitlementDurationRef.current && error ? 'Paid - game launch needs attention' : statusLabel[status]}
+                  {entitlementActivatedRef.current && error ? 'Payment applied - action needs attention' : statusLabel[status]}
                 </div>
                 {error && <div className="checkout-error" role="alert"><AlertTriangle size={18} /><span>{error}</span></div>}
                 <div className="payment-actions">
@@ -1237,13 +1308,13 @@ function LaunchConfirm(props: {
                     onClick={activatePaymentAction}
                   >
                     {pendingAction === 'retry' || pendingAction === 'launch' ? <LoaderCircle size={19} className="spin" /> : <RefreshCw size={19} />}
-                    {entitlementDurationRef.current && error ? 'Retry Launch' : pendingAction === 'retry' ? 'Retrying...' : pendingAction === 'launch' ? 'Starting...' : 'Retry Payment'}
+                    {entitlementActivatedRef.current && error ? (props.mode === 'extend' ? 'Finish Extension' : 'Retry Launch') : pendingAction === 'retry' ? 'Retrying...' : pendingAction === 'launch' ? (props.mode === 'extend' ? 'Extending...' : 'Starting...') : 'Retry Payment'}
                   </button>
                   <button
                     ref={(element) => { paymentActionRefs.current[1] = element; }}
                     type="button"
                     className={`secondary-action ${paymentActionIndex === 1 ? 'controller-focused' : ''}`}
-                    disabled={Boolean(pendingAction) || Boolean(entitlementDurationRef.current)}
+                    disabled={Boolean(pendingAction) || entitlementActivatedRef.current}
                     onFocus={() => setPaymentActionIndex(1)}
                     onClick={() => void cancelPayment('close')}
                   >
@@ -2459,67 +2530,77 @@ function PinDialog(props: {
   );
 }
 
-function ExpiredDialog(props: { session: SessionState; onDismiss: () => Promise<void> }): JSX.Element {
-  const [pin, setPin] = useState('');
-  const [pendingDismiss, setPendingDismiss] = useState(false);
-  const [pendingForce, setPendingForce] = useState(false);
+function SessionWarningDialog(props: {
+  stage: 'five' | 'two' | 'final';
+  onExtend: () => void;
+  onSkip: () => Promise<void>;
+}): JSX.Element {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [pendingSkip, setPendingSkip] = useState(false);
   const [error, setError] = useState('');
-  const dismiss = useCallback(async (): Promise<void> => {
-    if (pendingDismiss) return;
-    setPendingDismiss(true);
+  const actionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const skip = useCallback(async (): Promise<void> => {
+    if (pendingSkip) return;
+    setPendingSkip(true);
+    setError('');
     try {
-      await props.onDismiss();
+      await props.onSkip();
+    } catch (skipError) {
+      setError(skipError instanceof Error ? skipError.message : String(skipError));
     } finally {
-      setPendingDismiss(false);
+      setPendingSkip(false);
     }
-  }, [pendingDismiss, props]);
+  }, [pendingSkip, props]);
 
-  const handleExpiredControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
-    if (event.type === 'accept' || event.type === 'back') void dismiss();
-  }, [dismiss]);
+  useEffect(() => actionRefs.current[selectedIndex]?.focus({ preventScroll: true }), [selectedIndex]);
 
-  useControllerNavigation(!pendingDismiss && !pendingForce, handleExpiredControllerEvent);
+  const handleWarningControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') void skip();
+    else if (event.type === 'accept') {
+      if (selectedIndex === 0) props.onExtend();
+      else void skip();
+    } else if (event.direction === 'left' || event.direction === 'right') {
+      setSelectedIndex((index) => index === 0 ? 1 : 0);
+    }
+  }, [props, selectedIndex, skip]);
+
+  useControllerNavigation(!pendingSkip, handleWarningControllerEvent);
+
+  const minutes = props.stage === 'five' ? 5 : 2;
+  const title = props.stage === 'final' ? 'Your play time has ended.' : `Your play time will end in ${minutes} minutes.`;
+  const message = props.stage === 'final'
+    ? 'Extend now to keep playing. Skip will close every running game and return to NXGS Home.'
+    : 'You can add more time now or continue playing until the next warning.';
 
   return (
     <div className="modal-backdrop urgent">
-      <section className="modal">
+      <section className="modal session-warning-modal" role="alertdialog" aria-live="assertive">
         <AlertTriangle size={42} />
-        <h2>Session expired</h2>
-        <p className="muted">{props.session.gameTitle ? `${props.session.gameTitle} time has ended.` : 'The session time has ended.'}</p>
+        <p className="eyebrow">Paid session warning</p>
+        <h2>{title}</h2>
+        <p className="muted">{message}</p>
         {error && <p className="error-text">{error}</p>}
-        <button
-          className="primary-action wide controller-focused"
-          type="button"
-          disabled={pendingDismiss}
-          onClick={() => void dismiss()}
-        >
-          <Home size={19} />
-          {pendingDismiss ? 'Returning...' : 'Return Home'}
-        </button>
-        <div className="danger-zone compact">
-          <label>
-            <span>Admin PIN for forced close</span>
-            <input type="password" value={pin} onChange={(event) => setPin(event.target.value)} />
-          </label>
+        <div className="dialog-actions session-warning-actions">
           <button
-            className="danger-action"
+            ref={(element) => { actionRefs.current[0] = element; }}
+            className={`primary-action ${selectedIndex === 0 ? 'controller-focused' : ''}`}
             type="button"
-            disabled={pendingForce}
-            onClick={async () => {
-              setPendingForce(true);
-              setError('');
-              try {
-                const result = await window.nxgs.forceCloseGame(pin);
-                if (!result.ok) {
-                  setError('Invalid admin PIN.');
-                }
-              } finally {
-                setPendingForce(false);
-              }
-            }}
+            disabled={pendingSkip}
+            onFocus={() => setSelectedIndex(0)}
+            onClick={props.onExtend}
           >
-            <Power size={18} />
-            {pendingForce ? 'Closing...' : 'Force Close Game'}
+            <Timer size={19} /> Extend
+          </button>
+          <button
+            ref={(element) => { actionRefs.current[1] = element; }}
+            className={`secondary-action ${selectedIndex === 1 ? 'controller-focused' : ''}`}
+            type="button"
+            disabled={pendingSkip}
+            onFocus={() => setSelectedIndex(1)}
+            onClick={() => void skip()}
+          >
+            {pendingSkip ? <LoaderCircle size={19} className="spin" /> : <X size={19} />}
+            {pendingSkip ? 'Ending session...' : 'Skip'}
           </button>
         </div>
       </section>

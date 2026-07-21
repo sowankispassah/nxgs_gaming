@@ -193,13 +193,13 @@ async function createProviderLink(row: Row): Promise<Row> {
       currency: String(row.currency),
       accept_partial: false,
       reference_id: String(row.razorpay_payment_link_reference),
-      description: `NXGS Play - ${row.plan_name} - ${row.game_title}`.slice(0, 255),
+      description: `NXGS Play station session - ${row.plan_name}`.slice(0, 255),
       expire_by: Math.floor(Date.now() / 1000) + PROVIDER_EXPIRY_SECONDS,
       reminder_enable: false,
       notify: { sms: false, email: false },
       notes: {
         pc_checkout_id: String(row.id),
-        game_id: String(row.game_id).slice(0, 255),
+        entitlement_scope: "station",
         time_plan_id: String(row.time_plan_id),
         duration_minutes: String(row.duration_minutes),
       },
@@ -303,10 +303,8 @@ async function refreshStatus(supabase: AdminClient, checkout: Row, force = false
 }
 
 async function createCheckout(supabase: AdminClient, body: Row): Promise<Response> {
-  const gameId = text(body.game_id).slice(0, 255);
-  const gameTitle = text(body.game_title).slice(0, 255);
   const timePlanId = text(body.time_plan_id);
-  if (!gameId || !gameTitle || !timePlanId) throw new Error("invalid_checkout_selection");
+  if (!timePlanId) throw new Error("invalid_checkout_selection");
   const { store, plans } = await catalog(supabase);
   const plan = plans.find((item) => item.id === timePlanId);
   if (!plan) throw new Error("invalid_pricing_selection");
@@ -316,8 +314,9 @@ async function createCheckout(supabase: AdminClient, body: Row): Promise<Respons
   const { data, error } = await supabase.from("pc_checkouts").insert({
     id,
     client_token_hash: await hashToken(clientToken),
-    game_id: gameId,
-    game_title: gameTitle,
+    game_id: null,
+    game_title: null,
+    entitlement_scope: "station",
     store_id: store.id,
     time_plan_id: plan.id,
     plan_name: plan.name,
@@ -403,7 +402,6 @@ async function consumeCheckout(supabase: AdminClient, body: Row): Promise<Respon
     status: "consumed",
     entitlement: {
       checkoutId: String(data.id),
-      gameId: String(data.game_id),
       durationMinutes: Number(data.duration_minutes),
     },
   });

@@ -193,8 +193,6 @@ export class PaymentService {
 
   async create(request: CreatePaymentCheckoutRequest): Promise<PaymentCheckoutResult> {
     return this.run('create', {
-      game_id: request.gameId,
-      game_title: request.gameTitle,
       time_plan_id: request.timePlanId
     });
   }

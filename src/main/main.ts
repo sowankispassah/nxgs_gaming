@@ -13,6 +13,7 @@ import { getDisplayStatus, setColorProfile, setDisplayBrightness, setHdr, setNig
 import { connectWifi, disconnectWifi, forgetWifi, getNetworkStatus } from './networkService';
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
+import { SessionCountdownOverlay } from './sessionCountdownOverlay';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
 import { setWindowsTaskbarVisible } from './windowManagerService';
 import { stopWindowsControlWorker, warmWindowsControlWorker } from './windowsControlWorker';
@@ -48,6 +49,7 @@ let isQuitting = false;
 let taskbarHiddenByKiosk = false;
 let kioskAdminActionGranted = false;
 let secondInstanceFocusPending = false;
+const sessionCountdownOverlay = new SessionCountdownOverlay();
 let controllerDiagnostics: AppDiagnostics['controller'] = {
   detected: false,
   homeSupported: 'unknown'
@@ -139,6 +141,7 @@ function sendToRenderer(channel: string, ...args: unknown[]): void {
 }
 
 function broadcastSession(state: SessionState): void {
+  sessionCountdownOverlay.update(state);
   sendToRenderer('session:state', state);
 }
 
@@ -247,35 +250,24 @@ function handleRestrictedCustomerInput(input: string): void {
 
 const sessionTimer = new SessionTimer({
   onTick: broadcastSession,
-  onExpired: (game) => {
+  onWarning: (minutesRemaining) => {
+    launcher.focusLauncher();
+    applyKioskSettings(store.getSettings());
+    void logLine('warn', `Paid play session has ${minutesRemaining} minutes remaining.`);
+  },
+  onExpired: () => {
     controllerIdleService?.paidSessionEnded();
     launcher.focusLauncher();
-    void launcher.closeActiveGame(false, { gameId: game.id });
-    void logLine('warn', `Session expired for ${game.title}; requested graceful close.`);
+    applyKioskSettings(store.getSettings());
+    sendShellHome({ reason: 'system', openActiveGamePanel: false, emergencyClose: false });
+    void logLine('warn', 'Paid play session expired; awaiting Extend or Skip while games remain open.');
   }
 });
-
-function startSessionWhenGameWindowIsReady(game: GameRecord): void {
-  const current = sessionTimer.current;
-  if (
-    current.status === 'launching'
-    && current.gameId === game.id
-    && current.durationMinutes !== undefined
-  ) {
-    sessionTimer.start(game, current.durationMinutes);
-  }
-}
 
 const launcher = new GameLauncher(
   () => mainWindow,
   {
     onGameExited: (game) => {
-      const endedPaidSession = sessionTimer.current.gameId === game.id
-        && (sessionTimer.current.status === 'running' || sessionTimer.current.status === 'expired');
-      if (sessionTimer.current.gameId === game.id) {
-        sessionTimer.stop('idle');
-      }
-      if (endedPaidSession) controllerIdleService?.paidSessionEnded();
       if (!launcher.hasTrackedGames) {
         controllerIdleService?.setGameplayActive(false);
         controllerCompatibility.stop();
@@ -283,7 +275,6 @@ const launcher = new GameLauncher(
       applyKioskSettings(store.getSettings());
     },
     onError: (message) => {
-      sessionTimer.setError(message);
       if (!launcher.hasTrackedGames) {
         controllerIdleService?.setGameplayActive(false);
         controllerCompatibility.stop();
@@ -291,7 +282,7 @@ const launcher = new GameLauncher(
       launcher.focusLauncher();
       applyKioskSettings(store.getSettings());
     },
-    onGameWindowDetected: startSessionWhenGameWindowIsReady,
+    onGameWindowDetected: () => undefined,
     onActiveGameChanged: () => {
       controllerIdleService?.setGameplayActive(launcher.hasTrackedGames);
       broadcastActiveGame();
@@ -365,6 +356,7 @@ async function performKioskAdminAction(action: KioskAdminAction): Promise<KioskA
   if (action === 'closeApp') {
     isQuitting = true;
     sessionTimer.stop('idle', false);
+    sessionCountdownOverlay.close();
     kioskInput.unregisterAll();
     window.setSkipTaskbar(false);
     try {
@@ -459,6 +451,7 @@ function applyKioskSettings(_settings: AppSettings): void {
 function prepareForQuit(): void {
   isQuitting = true;
   sessionTimer.stop('idle', false);
+  sessionCountdownOverlay.close();
   controllerCompatibility.stop();
   controllerIdleService?.stop();
   controllerIdleService = null;
@@ -535,6 +528,7 @@ function registerIpc(): void {
     logsPath: getLogPath(),
     isPackaged: app.isPackaged,
     activeGame: launcher.activeState,
+    session: sessionTimer.current,
     diagnostics: buildDiagnostics()
   }));
 
@@ -689,8 +683,24 @@ function registerIpc(): void {
     paymentService.retry(access));
   ipcMain.handle('payment:cancel', (_event, access: PaymentCheckoutAccess) =>
     paymentService.cancel(access));
-  ipcMain.handle('payment:consume', (_event, access: PaymentCheckoutAccess) =>
-    paymentService.consume(access));
+  ipcMain.handle('payment:consume', async (_event, access: PaymentCheckoutAccess) => {
+    const result = await paymentService.consume(access);
+    if (!result.ok || !result.entitlement) return result;
+    const state = sessionTimer.active
+      ? sessionTimer.extend(result.entitlement.durationMinutes)
+      : sessionTimer.start(result.entitlement.durationMinutes);
+    await logLine(
+      'info',
+      `${state.revision > 1 ? 'Extended' : 'Started'} station-wide paid session by ${result.entitlement.durationMinutes} minutes.`
+    );
+    return {
+      ...result,
+      entitlement: {
+        ...result.entitlement,
+        sessionExpiresAt: state.expiresAt
+      }
+    };
+  });
 
   ipcMain.handle('game:launch', async (_event, request: LaunchRequest) => {
     try {
@@ -698,19 +708,19 @@ function registerIpc(): void {
       if (!game) {
         throw new Error('Game not found.');
       }
+      if (!sessionTimer.active) {
+        throw new Error('Paid play time is required before launching a game.');
+      }
       controllerIdleService?.setGameplayActive(true);
-      sessionTimer.setLaunching(game, request.durationMinutes);
       const compatibility = await controllerCompatibility.ensureReadyForGame(game);
       if (compatibility.status !== 'ready') {
         await logLine('warn', `Launching ${game.title} without ready controller compatibility: ${compatibility.message ?? compatibility.status}`);
       }
       await launcher.launch(game);
-      startSessionWhenGameWindowIsReady(game);
       return { ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await logLine('error', `Launch request failed: ${message}`);
-      sessionTimer.setError(message);
       if (!launcher.hasTrackedGames) controllerIdleService?.setGameplayActive(false);
       launcher.focusLauncher();
       applyKioskSettings(store.getSettings());
@@ -765,18 +775,31 @@ function registerIpc(): void {
       return { ok: false };
     }
     await launcher.closeActiveGame(true, { gameId });
-    if (!launcher.hasTrackedGames) {
-      sessionTimer.stop('idle');
-    }
     launcher.focusLauncher();
     applyKioskSettings(store.getSettings());
     return { ok: true };
   });
 
+  const endPaidSession = async (): Promise<GameControlResult> => {
+    try {
+      await launcher.closeAllGames();
+      sessionTimer.stop('idle');
+      controllerIdleService?.setGameplayActive(false);
+      controllerCompatibility.stop();
+      launcher.focusLauncher();
+      applyKioskSettings(store.getSettings());
+      sendShellHome({ reason: 'system', openActiveGamePanel: false, emergencyClose: false });
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await logLine('error', `Could not end paid session cleanly: ${message}`);
+      return { ok: false, error: message };
+    }
+  };
+
+  ipcMain.handle('session:end', endPaidSession);
   ipcMain.handle('session:clearExpired', async () => {
-    await launcher.clearActive();
-    sessionTimer.stop('idle');
-    applyKioskSettings(store.getSettings());
+    await endPaidSession();
   });
 
   ipcMain.handle('app:exit', (_event, pin: string) => {

@@ -1,62 +1,77 @@
-import type { GameRecord, SessionState } from '../shared/types';
+import type { SessionState } from '../shared/types';
 
 type SessionEvents = {
   onTick: (state: SessionState) => void;
-  onExpired: (game: GameRecord) => void;
+  onWarning: (minutesRemaining: 5 | 2) => void;
+  onExpired: () => void;
 };
 
 export class SessionTimer {
+  private readonly events: SessionEvents;
   private interval: NodeJS.Timeout | null = null;
   private state: SessionState = {
     status: 'idle',
     remainingSeconds: 0,
-    warningFiveMinutes: false
+    warningFiveMinutes: false,
+    revision: 0
   };
   private expiresAt = 0;
-  private game: GameRecord | null = null;
+  private warned = new Set<number>();
 
-  constructor(private readonly events: SessionEvents) {}
+  constructor(events: SessionEvents) {
+    this.events = events;
+  }
 
   get current(): SessionState {
     return { ...this.state };
   }
 
-  setLaunching(game: GameRecord, durationMinutes: number): SessionState {
-    this.game = game;
+  get active(): boolean {
+    return this.state.status === 'running' && this.state.remainingSeconds > 0;
+  }
+
+  start(durationMinutes: number): SessionState {
+    this.stop('idle', false);
+    this.expiresAt = Date.now() + durationMinutes * 60 * 1000;
+    this.warned.clear();
     this.state = {
-      status: 'launching',
-      gameId: game.id,
-      gameTitle: game.title,
+      status: 'running',
       durationMinutes,
       remainingSeconds: durationMinutes * 60,
-      warningFiveMinutes: durationMinutes <= 5
+      warningFiveMinutes: durationMinutes <= 5,
+      expiresAt: new Date(this.expiresAt).toISOString(),
+      revision: this.state.revision + 1
     };
     this.events.onTick(this.current);
+    this.emitWarnings(this.state.remainingSeconds);
+    this.interval = setInterval(() => this.tick(), 1000);
     return this.current;
   }
 
-  start(game: GameRecord, durationMinutes: number): void {
-    this.stop('idle', false);
-    this.game = game;
-    this.expiresAt = Date.now() + durationMinutes * 60 * 1000;
+  extend(durationMinutes: number): SessionState {
+    const remainingMilliseconds = this.state.status === 'running'
+      ? Math.max(0, this.expiresAt - Date.now())
+      : 0;
+    this.stopInterval();
+    this.expiresAt = Date.now() + remainingMilliseconds + durationMinutes * 60 * 1000;
+    this.warned.clear();
+    const remainingSeconds = Math.max(1, Math.ceil((this.expiresAt - Date.now()) / 1000));
     this.state = {
       status: 'running',
-      gameId: game.id,
-      gameTitle: game.title,
-      durationMinutes,
-      remainingSeconds: durationMinutes * 60,
-      warningFiveMinutes: durationMinutes <= 5
+      durationMinutes: Math.ceil(remainingSeconds / 60),
+      remainingSeconds,
+      warningFiveMinutes: remainingSeconds <= 300,
+      expiresAt: new Date(this.expiresAt).toISOString(),
+      revision: this.state.revision + 1
     };
     this.events.onTick(this.current);
+    this.emitWarnings(remainingSeconds);
     this.interval = setInterval(() => this.tick(), 1000);
+    return this.current;
   }
 
   expire(message = 'Session expired'): void {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-    const game = this.game;
+    this.stopInterval();
     this.state = {
       ...this.state,
       status: 'expired',
@@ -65,37 +80,22 @@ export class SessionTimer {
       message
     };
     this.events.onTick(this.current);
-    if (game) {
-      this.events.onExpired(game);
-    }
+    this.events.onExpired();
   }
 
   stop(status: SessionState['status'] = 'idle', notify = true): void {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
+    this.stopInterval();
     this.state = {
       status,
       remainingSeconds: 0,
-      warningFiveMinutes: false
+      warningFiveMinutes: false,
+      revision: this.state.revision
     };
-    this.game = null;
+    this.warned.clear();
     this.expiresAt = 0;
     if (notify) {
       this.events.onTick(this.current);
     }
-  }
-
-  setError(message: string): void {
-    this.stop('error', false);
-    this.state = {
-      status: 'error',
-      remainingSeconds: 0,
-      warningFiveMinutes: false,
-      message
-    };
-    this.events.onTick(this.current);
   }
 
   private tick(): void {
@@ -106,8 +106,26 @@ export class SessionTimer {
       warningFiveMinutes: remainingSeconds <= 300
     };
     this.events.onTick(this.current);
+    this.emitWarnings(remainingSeconds);
     if (remainingSeconds <= 0) {
       this.expire();
+    }
+  }
+
+  private emitWarnings(remainingSeconds: number): void {
+    for (const minutes of [5, 2] as const) {
+      const threshold = minutes * 60;
+      if (remainingSeconds <= threshold && !this.warned.has(minutes)) {
+        this.warned.add(minutes);
+        this.events.onWarning(minutes);
+      }
+    }
+  }
+
+  private stopInterval(): void {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
     }
   }
 }

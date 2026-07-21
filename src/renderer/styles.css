@@ -878,6 +878,11 @@ button:not(:disabled):active {
   backdrop-filter: blur(18px);
 }
 
+.launch-notice {
+  position: fixed;
+  z-index: 140;
+}
+
 .console-game-row {
   display: flex;
   width: calc(100% + 28px);
@@ -3117,6 +3122,28 @@ select:focus {
 
 .modal-backdrop.urgent {
   background: rgba(88, 8, 16, 0.72);
+}
+
+.session-warning-modal {
+  width: min(620px, calc(100vw - 40px));
+  display: grid;
+  gap: 14px;
+  border-color: rgba(255, 104, 125, 0.72);
+  text-align: center;
+}
+
+.session-warning-modal > svg {
+  margin: 0 auto;
+  color: #ff6f85;
+}
+
+.session-warning-actions {
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.session-warning-actions button {
+  min-width: 180px;
 }
 
 .admin-options-backdrop {

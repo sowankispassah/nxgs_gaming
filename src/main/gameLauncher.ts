@@ -626,6 +626,15 @@ export class GameLauncher {
     });
   }
 
+  async closeAllGames(): Promise<void> {
+    const gameIds = new Set<string>(this.sessions.keys());
+    if (this.activeGame) gameIds.add(this.activeGame.id);
+    for (const gameId of gameIds) {
+      await this.closeActiveGame(true, { gameId, retireActiveSession: true });
+    }
+    await this.clearActive();
+  }
+
   focusLauncher(): void {
     const window = this.windowProvider();
     if (!window || window.isDestroyed()) {
