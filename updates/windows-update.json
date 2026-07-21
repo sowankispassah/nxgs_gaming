@@ -1,7 +1,7 @@
 {
-    "version":  "0.18.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.18.0/NXGS-Play-Setup.exe",
-    "sha256":  "4c2fc1ec64210e0005926e9456be78765dcbb2a3739b94f718b1e8fb28570d1b",
+    "version":  "0.18.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.18.1/NXGS-Play-Setup.exe",
+    "sha256":  "46f12377b16dfe8e6d66d003ea91f90ecc6d3efcff185941b41171d61c79572c",
     "required":  false,
-    "notes":  "Adds station-wide paid play sessions, game switching without repeat payment, session extension, expiry warnings, and a final one-minute countdown."
+    "notes":  "Keeps paid-session warnings over gameplay, removes the 5-minute warning, speeds up Resume Game, and improves active-session game switching."
 }
