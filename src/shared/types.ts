@@ -93,6 +93,7 @@ export interface AppDatabase {
   schemaVersion: number;
   settings: AppSettings;
   games: GameRecord[];
+  plans: PlayPlanRecord[];
 }
 
 export interface InitialData {
@@ -133,6 +134,28 @@ export interface PaymentPlan {
   durationMinutes: number;
   amountPaise: number;
   currency: string;
+}
+
+export interface PlayPlanRecord extends PaymentPlan {
+  enabled: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlayPlanInput {
+  id?: string;
+  name: string;
+  durationMinutes: number;
+  amountPaise: number;
+  currency?: string;
+  enabled?: boolean;
+  displayOrder?: number;
+}
+
+export interface PlayPlanMutationResult {
+  plans: PlayPlanRecord[];
+  plan?: PlayPlanRecord;
 }
 
 export interface PaymentCatalogResult {

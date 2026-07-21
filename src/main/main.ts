@@ -42,6 +42,7 @@ import type {
   KioskMode,
   LaunchRequest,
   PaymentCheckoutAccess,
+  PlayPlanInput,
   ShellHomeEvent,
   ShellHomeReason,
   SessionState,
@@ -67,7 +68,10 @@ let controllerDiagnostics: AppDiagnostics['controller'] = {
 
 const store = new DataStore();
 const controllerCompatibility = new ControllerCompatibilityService();
-const paymentService = new PaymentService();
+const paymentService = new PaymentService({
+  listEnabled: () => store.listPlans(true),
+  getById: (id) => store.getPlan(id)
+});
 let controllerIdleService: ControllerIdleService | null = null;
 
 function getAppIconPath(): string {
@@ -695,6 +699,23 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('games:scanInstalled', async () => scanInstalledGames());
+
+  ipcMain.handle('plans:list', () => store.listPlans());
+  ipcMain.handle('plans:save', async (_event, input: PlayPlanInput) => {
+    const plan = await store.savePlan(input);
+    return { plan, plans: store.listPlans() };
+  });
+  ipcMain.handle('plans:delete', async (_event, id: string) => {
+    await store.deletePlan(id);
+    return { plans: store.listPlans() };
+  });
+  ipcMain.handle('plans:setEnabled', async (_event, id: string, enabled: boolean) => {
+    const plan = await store.setPlanEnabled(id, enabled);
+    return { plan, plans: store.listPlans() };
+  });
+  ipcMain.handle('plans:reorder', async (_event, orderedIds: string[]) => ({
+    plans: await store.reorderPlans(orderedIds)
+  }));
 
   ipcMain.handle('settings:update', async (_event, settings: AppSettings) => {
     const updated = await store.updateSettings(settings);

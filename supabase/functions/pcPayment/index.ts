@@ -124,19 +124,23 @@ async function qrDataUrl(url: string): Promise<string> {
   return `data:image/svg+xml;base64,${toBase64(svg)}`;
 }
 
-async function catalog(supabase: AdminClient): Promise<{ store: Row; plans: Row[] }> {
-  const [{ data: stores, error: storeError }, { data: timePlans, error: planError }, { data: prices, error: priceError }] =
-    await Promise.all([
-      supabase.from("stores").select("id, name, active").eq("active", true).order("name"),
-      supabase.from("time_plans").select("id, name, duration_minutes, active, sort_order").eq("active", true).order("sort_order"),
-      supabase.from("store_time_plan_prices").select("store_id, time_plan_id, amount_paise, currency, active").eq("active", true),
-    ]);
-  if (storeError) throw storeError;
-  if (planError) throw planError;
-  if (priceError) throw priceError;
+async function activeStore(supabase: AdminClient): Promise<Row> {
+  const { data: stores, error } = await supabase.from("stores").select("id, name, active").eq("active", true).order("name");
+  if (error) throw error;
   const requestedStoreId = text(Deno.env.get("NXGS_PC_STORE_ID"));
   const store = (stores ?? []).find((row: Row) => row.id === requestedStoreId) ?? stores?.[0];
   if (!store) throw new Error("payment_store_not_found");
+  return store;
+}
+
+async function catalog(supabase: AdminClient): Promise<{ store: Row; plans: Row[] }> {
+  const [store, { data: timePlans, error: planError }, { data: prices, error: priceError }] = await Promise.all([
+    activeStore(supabase),
+    supabase.from("time_plans").select("id, name, duration_minutes, active, sort_order").eq("active", true).order("sort_order"),
+    supabase.from("store_time_plan_prices").select("store_id, time_plan_id, amount_paise, currency, active").eq("active", true),
+  ]);
+  if (planError) throw planError;
+  if (priceError) throw priceError;
   const plans = (timePlans ?? []).flatMap((plan: Row) => {
     const price = (prices ?? []).find((row: Row) => row.store_id === store.id && row.time_plan_id === plan.id);
     if (!price || Number(price.amount_paise) <= 0) return [];
@@ -150,6 +154,21 @@ async function catalog(supabase: AdminClient): Promise<{ store: Row; plans: Row[
     }];
   });
   return { store, plans };
+}
+
+function localPlan(value: unknown): Row | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Row;
+  const id = text(row.id);
+  const name = text(row.name);
+  const durationMinutes = Number(row.durationMinutes);
+  const amountPaise = Number(row.amountPaise);
+  const currency = text(row.currency).toUpperCase() || "INR";
+  if (!id || id.length > 120 || !name || name.length > 80) throw new Error("invalid_local_plan");
+  if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) throw new Error("invalid_local_plan_duration");
+  if (!Number.isInteger(amountPaise) || amountPaise < 100 || amountPaise > 10_000_000) throw new Error("invalid_local_plan_amount");
+  if (currency !== "INR") throw new Error("invalid_local_plan_currency");
+  return { id, name, durationMinutes, amountPaise, currency };
 }
 
 function publicPlan(row: Row): Row {
@@ -303,11 +322,21 @@ async function refreshStatus(supabase: AdminClient, checkout: Row, force = false
 }
 
 async function createCheckout(supabase: AdminClient, body: Row): Promise<Response> {
-  const timePlanId = text(body.time_plan_id);
-  if (!timePlanId) throw new Error("invalid_checkout_selection");
-  const { store, plans } = await catalog(supabase);
-  const plan = plans.find((item) => item.id === timePlanId);
-  if (!plan) throw new Error("invalid_pricing_selection");
+  const selectedLocalPlan = localPlan(body.plan);
+  let store: Row;
+  let plan: Row;
+  if (selectedLocalPlan) {
+    store = await activeStore(supabase);
+    plan = selectedLocalPlan;
+  } else {
+    const timePlanId = text(body.time_plan_id);
+    if (!timePlanId) throw new Error("invalid_checkout_selection");
+    const legacyCatalog = await catalog(supabase);
+    store = legacyCatalog.store;
+    const legacyPlan = legacyCatalog.plans.find((item) => item.id === timePlanId);
+    if (!legacyPlan) throw new Error("invalid_pricing_selection");
+    plan = legacyPlan;
+  }
   const clientToken = randomToken();
   const id = crypto.randomUUID();
   const reference = `nxgspc_${id.replaceAll("-", "")}`;
@@ -318,7 +347,7 @@ async function createCheckout(supabase: AdminClient, body: Row): Promise<Respons
     game_title: null,
     entitlement_scope: "station",
     store_id: store.id,
-    time_plan_id: plan.id,
+    time_plan_id: String(plan.id),
     plan_name: plan.name,
     duration_minutes: plan.durationMinutes,
     amount_paise: plan.amountPaise,
@@ -363,10 +392,7 @@ async function retryCheckout(supabase: AdminClient, body: Row): Promise<Response
     last_provider_check_at: null,
   }).eq("id", current.id).neq("status", "consumed").select().single();
   if (error || !data) throw error ?? new Error("checkout_retry_failed");
-  const catalogData = await catalog(supabase);
-  const plan = catalogData.plans.find((item) => item.id === String(data.time_plan_id));
-  if (!plan) throw new Error("invalid_pricing_selection");
-  const completed = await saveProviderLink(supabase, { ...data, plan_name: plan.name });
+  const completed = await saveProviderLink(supabase, { ...data, plan_name: data.plan_name });
   return json({ status: completed.status, checkout: await publicCheckout(completed, access.token) });
 }
 

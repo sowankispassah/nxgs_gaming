@@ -1,6 +1,6 @@
 {
   "name": "nxgs-play",
-  "version": "0.18.2",
+  "version": "0.19.0",
   "description": "Windows-only PC gaming launcher and kiosk MVP.",
   "private": true,
   "main": "out/main/main.js",
@@ -29,6 +29,9 @@
     "test:gamebar-guard": "node scripts/verify-gamebar-guard.mjs",
     "test:pin-enter": "node scripts/verify-pin-enter.mjs",
     "test:paid-session": "node --experimental-strip-types scripts/verify-paid-session.mjs",
+    "test:plan-manager": "node scripts/verify-plan-manager.mjs",
+    "test:plan-manager:e2e": "electron-vite build && node scripts/verify-plan-manager-e2e.mjs",
+    "test:plan-manager:live": "node scripts/verify-plan-manager-live.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit"
   },

@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Gamepad2,
   Home,
+  IndianRupee,
   Smartphone,
   Image as ImageIcon,
   Lock,
@@ -30,6 +31,7 @@ import {
 } from './components/ConsoleHome';
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 import { ConsoleSettings } from './components/ConsoleSettings';
+import { PlanManager } from './components/PlanManager';
 import {
   hasConfirmedGameWindow,
   shouldShowBlockingLaunchTransition,
@@ -62,7 +64,7 @@ import type {
 } from '../shared/types';
 
 type View = 'home' | 'settings' | 'admin';
-type AdminTab = 'games' | 'scan' | 'sessions' | 'kiosk' | 'updates';
+type AdminTab = 'games' | 'scan' | 'sessions' | 'kiosk' | 'updates' | 'plans';
 
 const EMPTY_SESSION: SessionState = {
   status: 'idle',
@@ -1120,6 +1122,7 @@ function PaymentFlow(props: {
       }
       setPlans(result.plans);
       setPlanIndex(0);
+      if (result.plans.length === 0) setError(result.error ?? 'No play plans available.');
     } catch (catalogError) {
       setError(catalogError instanceof Error ? catalogError.message : String(catalogError));
     } finally {
@@ -1342,9 +1345,9 @@ function PaymentFlow(props: {
   const formatCountdown = (seconds: number): string =>
     `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const badgeForPlan = (plan: PaymentPlan): string => {
-    if (/quick/i.test(plan.name) || plan.durationMinutes === 5) return 'Quick test';
-    if (/popular/i.test(plan.name) || plan.durationMinutes === 30) return 'Popular';
-    if (/best/i.test(plan.name) || plan.durationMinutes === 180) return 'Best value';
+    if (/quick/i.test(plan.name)) return 'Quick test';
+    if (/popular/i.test(plan.name)) return 'Popular';
+    if (/best/i.test(plan.name)) return 'Best value';
     return '';
   };
 
@@ -1476,7 +1479,7 @@ function AdminScreen(props: {
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<AdminTab>('games');
-  const adminTabs: AdminTab[] = ['games', 'scan', 'sessions', 'kiosk', 'updates'];
+  const adminTabs: AdminTab[] = ['games', 'scan', 'sessions', 'kiosk', 'updates', 'plans'];
   const moveAdminTab = useCallback((delta: number): void => {
     setTab((current) => adminTabs[(adminTabs.indexOf(current) + delta + adminTabs.length) % adminTabs.length]);
   }, []);
@@ -1518,6 +1521,7 @@ function AdminScreen(props: {
           <TabButton active={tab === 'sessions'} icon={<Timer size={19} />} label="Sessions" onClick={() => setTab('sessions')} />
           <TabButton active={tab === 'kiosk'} icon={<Monitor size={19} />} label="Kiosk" onClick={() => setTab('kiosk')} />
           <TabButton active={tab === 'updates'} icon={<RefreshCw size={19} />} label="Updates" onClick={() => setTab('updates')} />
+          <TabButton active={tab === 'plans'} icon={<IndianRupee size={19} />} label="Plan Manager" onClick={() => setTab('plans')} />
         </nav>
         <button className="secondary-action" type="button" onClick={props.onClose}>
           <Home size={18} />
@@ -1539,6 +1543,7 @@ function AdminScreen(props: {
           />
         )}
         {tab === 'updates' && <UpdatePanel initialData={props.initialData} />}
+        {tab === 'plans' && <PlanManager />}
       </div>
     </section>
   );
@@ -2046,23 +2051,19 @@ function SessionSettings(props: {
   onSettingsChanged: (settings: AppSettings) => void;
 }): JSX.Element {
   const [pin, setPin] = useState(props.settings.adminPin);
-  const [durations, setDurations] = useState(props.settings.sessionDurationsMinutes.join(', '));
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
 
   return (
     <section className="panel narrow-panel">
-      <p className="eyebrow">Timer and security</p>
+      <p className="eyebrow">Session security</p>
       <h2>Session settings</h2>
       <div className="form-grid single">
         <label>
           <span>Admin PIN</span>
           <input value={pin} onChange={(event) => setPin(event.target.value)} />
         </label>
-        <label>
-          <span>Durations in minutes</span>
-          <input value={durations} onChange={(event) => setDurations(event.target.value)} />
-        </label>
+        <p className="field-note">Play durations and prices are managed from Plan Manager.</p>
       </div>
       {message && <p className={message.startsWith('Saved') ? 'success-text' : 'error-text'}>{message}</p>}
       <button
@@ -2075,11 +2076,7 @@ function SessionSettings(props: {
           try {
             const next: AppSettings = {
               ...props.settings,
-              adminPin: pin,
-              sessionDurationsMinutes: durations
-                .split(',')
-                .map((value) => Number(value.trim()))
-                .filter((value) => Number.isFinite(value) && value > 0)
+              adminPin: pin
             };
             props.onSettingsChanged(await window.nxgs.updateSettings(next));
             setMessage('Saved settings.');

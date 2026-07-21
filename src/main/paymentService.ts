@@ -8,7 +8,8 @@ import type {
   PaymentCheckout,
   PaymentCheckoutAccess,
   PaymentCheckoutResult,
-  PaymentPlan
+  PaymentPlan,
+  PlayPlanRecord
 } from '../shared/types';
 
 interface PaymentClientConfig {
@@ -18,6 +19,11 @@ interface PaymentClientConfig {
 }
 
 type PaymentFunctionResponse = Record<string, unknown>;
+
+type PaymentPlanSource = {
+  listEnabled: () => PlayPlanRecord[];
+  getById: (id: string) => PlayPlanRecord | undefined;
+};
 
 const transientPaymentStatuses = new Set([429, 500, 502, 503, 504, 520, 522, 524, 540]);
 
@@ -124,6 +130,8 @@ function normalizeCheckout(value: unknown): PaymentCheckout | undefined {
 export class PaymentService {
   private configPromise: Promise<PaymentClientConfig> | null = null;
 
+  constructor(private readonly plans: PaymentPlanSource) {}
+
   private config(): Promise<PaymentClientConfig> {
     this.configPromise ??= readClientConfig();
     return this.configPromise;
@@ -178,22 +186,29 @@ export class PaymentService {
   }
 
   async catalog(): Promise<PaymentCatalogResult> {
-    try {
-      const result = await this.invoke('pricing', {}, true);
-      const plans = Array.isArray(result.plans)
-        ? result.plans.map(normalizePlan).filter((plan): plan is PaymentPlan => Boolean(plan))
-        : [];
-      return plans.length > 0
-        ? { ok: true, plans }
-        : { ok: false, plans: [], error: 'No paid play durations are configured.' };
-    } catch (error) {
-      return { ok: false, plans: [], error: error instanceof Error ? error.message : String(error) };
-    }
+    const plans = this.plans.listEnabled().map(({ id, name, durationMinutes, amountPaise, currency }) => ({
+      id,
+      name,
+      durationMinutes,
+      amountPaise,
+      currency
+    }));
+    return plans.length > 0
+      ? { ok: true, plans }
+      : { ok: true, plans: [], error: 'No play plans available.' };
   }
 
   async create(request: CreatePaymentCheckoutRequest): Promise<PaymentCheckoutResult> {
+    const plan = this.plans.getById(request.timePlanId);
+    if (!plan || !plan.enabled) return { ok: false, error: 'This play plan is no longer available.' };
     return this.run('create', {
-      time_plan_id: request.timePlanId
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        durationMinutes: plan.durationMinutes,
+        amountPaise: plan.amountPaise,
+        currency: plan.currency
+      }
     });
   }
 

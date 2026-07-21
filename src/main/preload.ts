@@ -29,6 +29,9 @@ import type {
   PaymentCatalogResult,
   PaymentCheckoutAccess,
   PaymentCheckoutResult,
+  PlayPlanInput,
+  PlayPlanMutationResult,
+  PlayPlanRecord,
   SessionState,
   ShellHomeEvent,
   ShellHomeReason,
@@ -82,6 +85,13 @@ const api = {
   saveGame: (game: GameInput) => ipcRenderer.invoke('games:save', game),
   deleteGame: (id: string) => ipcRenderer.invoke('games:delete', id),
   scanInstalledGames: () => ipcRenderer.invoke('games:scanInstalled'),
+  listPlayPlans: (): Promise<PlayPlanRecord[]> => ipcRenderer.invoke('plans:list'),
+  savePlayPlan: (plan: PlayPlanInput): Promise<PlayPlanMutationResult> => ipcRenderer.invoke('plans:save', plan),
+  deletePlayPlan: (id: string): Promise<PlayPlanMutationResult> => ipcRenderer.invoke('plans:delete', id),
+  setPlayPlanEnabled: (id: string, enabled: boolean): Promise<PlayPlanMutationResult> =>
+    ipcRenderer.invoke('plans:setEnabled', id, enabled),
+  reorderPlayPlans: (orderedIds: string[]): Promise<PlayPlanMutationResult> =>
+    ipcRenderer.invoke('plans:reorder', orderedIds),
   updateSettings: (settings: AppSettings) => ipcRenderer.invoke('settings:update', settings),
   checkForUpdates: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('updates:check'),
   downloadUpdate: (request: UpdateDownloadRequest): Promise<UpdateDownloadResult> =>
