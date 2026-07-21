@@ -36,5 +36,10 @@ assert.match(
   /button\.console-game-avatar:not\(:disabled\):hover,[^}]*button\.console-game-avatar:not\(:disabled\):is\(:focus-visible, \.controller-focused, \.focused\),[^}]*button\.console-game-avatar:not\(:disabled\):active\s*\{[^}]*box-shadow:\s*none;[^}]*filter:\s*none;/s,
   'the game avatar button must suppress the outer rectangular hover and focus ring'
 );
+assert.match(
+  styles,
+  /\.console-tabs button:not\(:disabled\):hover,[^}]*\.console-tabs button:not\(:disabled\):is\(:focus-visible, \.controller-focused, \.focused\),[^}]*\.console-tabs button:not\(:disabled\):active\s*\{[^}]*box-shadow:\s*none;[^}]*filter:\s*none;/s,
+  'tab buttons must suppress the inner rectangular hover and focus ring'
+);
 
-console.log('Console Home source-label removal, one-line hero title, and rounded game-tile focus verified.');
+console.log('Console Home source-label removal, one-line hero title, and clean rounded focus treatments verified.');

@@ -763,6 +763,20 @@ button:not(:disabled):active {
   transform: scaleX(1);
 }
 
+.console-tabs button:not(:disabled):hover,
+.console-tabs button:not(:disabled):is(:focus-visible, .controller-focused, .focused),
+.console-tabs button:not(:disabled):active {
+  border-color: transparent;
+  box-shadow: none;
+  filter: none;
+  outline: none;
+}
+
+.console-tabs button:not(:disabled):hover,
+.console-tabs button:not(:disabled):focus-visible {
+  color: #fff;
+}
+
 .console-utilities {
   position: relative;
   gap: 12px;
