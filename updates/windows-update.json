@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.11",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.11/NXGS-Play-Setup.exe",
-    "sha256":  "40f16a32b89f647a1d463cf46a0fd89fb9fbed4d498608f5f8ac03ca6fa810c5",
+    "version":  "0.16.12",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.12/NXGS-Play-Setup.exe",
+    "sha256":  "ed6992b4aa81a888a7d1787606f4450dfe1c043d85086c04bb6a2a0bd9c84831",
     "required":  false,
-    "notes":  "Removes the rectangular hover and focus border around game-list tiles in fullscreen while preserving the rounded cover-art highlight and controller navigation feedback."
+    "notes":  "Removes the rectangular hover and focus border from the Games and Media tab buttons while preserving the rounded tab group and active underline."
 }
