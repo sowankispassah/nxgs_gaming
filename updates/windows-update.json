@@ -1,7 +1,7 @@
 {
-    "version":  "0.16.12",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.16.12/NXGS-Play-Setup.exe",
-    "sha256":  "ed6992b4aa81a888a7d1787606f4450dfe1c043d85086c04bb6a2a0bd9c84831",
+    "version":  "0.17.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.17.0/NXGS-Play-Setup.exe",
+    "sha256":  "93c39fed9c3bc7264e5d9346c58957517be9fbfb6c25b84c98f67e12bb37a6f4",
     "required":  false,
-    "notes":  "Removes the rectangular hover and focus border from the Games and Media tab buttons while preserving the rounded tab group and active underline."
+    "notes":  "New direct duration pricing selector and Razorpay phone-payment checkout flow. Selecting a duration now proceeds immediately without a separate submit button."
 }
