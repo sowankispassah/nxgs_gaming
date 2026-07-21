@@ -127,6 +127,63 @@ export interface LaunchResult {
   error?: string;
 }
 
+export interface PaymentPlan {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  amountPaise: number;
+  currency: string;
+}
+
+export interface PaymentCatalogResult {
+  ok: boolean;
+  plans: PaymentPlan[];
+  error?: string;
+}
+
+export type PaymentCheckoutStatus =
+  | 'creating'
+  | 'created'
+  | 'verified'
+  | 'consumed'
+  | 'cancelled'
+  | 'expired'
+  | 'failed';
+
+export interface PaymentCheckout {
+  id: string;
+  clientToken: string;
+  status: PaymentCheckoutStatus;
+  plan: PaymentPlan;
+  qrDataUrl: string;
+  expiresAt: string;
+}
+
+export interface CreatePaymentCheckoutRequest {
+  gameId: string;
+  gameTitle: string;
+  timePlanId: string;
+}
+
+export interface PaymentCheckoutAccess {
+  checkoutId: string;
+  clientToken: string;
+}
+
+export interface PaymentEntitlement {
+  checkoutId: string;
+  gameId: string;
+  durationMinutes: number;
+}
+
+export interface PaymentCheckoutResult {
+  ok: boolean;
+  status?: PaymentCheckoutStatus;
+  checkout?: PaymentCheckout;
+  entitlement?: PaymentEntitlement;
+  error?: string;
+}
+
 export interface GameControlResult {
   ok: boolean;
   error?: string;

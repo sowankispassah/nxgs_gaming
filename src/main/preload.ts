@@ -12,6 +12,7 @@ import type {
   ControllerStateReport,
   ControllerIdleNotification,
   ControllerInputState,
+  CreatePaymentCheckoutRequest,
   DisplayActionResult,
   DisplayStatus,
   FilePickerResult,
@@ -25,6 +26,9 @@ import type {
   NetworkStatus,
   LaunchRequest,
   LaunchResult,
+  PaymentCatalogResult,
+  PaymentCheckoutAccess,
+  PaymentCheckoutResult,
   SessionState,
   ShellHomeEvent,
   ShellHomeReason,
@@ -88,6 +92,17 @@ const api = {
     ipcRenderer.invoke('dialog:selectImageFile', imageKind),
   selectExecutableFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectExecutableFile'),
   selectFolder: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectFolder'),
+  getPaymentCatalog: (): Promise<PaymentCatalogResult> => ipcRenderer.invoke('payment:catalog'),
+  createPaymentCheckout: (request: CreatePaymentCheckoutRequest): Promise<PaymentCheckoutResult> =>
+    ipcRenderer.invoke('payment:create', request),
+  getPaymentStatus: (access: PaymentCheckoutAccess): Promise<PaymentCheckoutResult> =>
+    ipcRenderer.invoke('payment:status', access),
+  retryPaymentCheckout: (access: PaymentCheckoutAccess): Promise<PaymentCheckoutResult> =>
+    ipcRenderer.invoke('payment:retry', access),
+  cancelPaymentCheckout: (access: PaymentCheckoutAccess): Promise<PaymentCheckoutResult> =>
+    ipcRenderer.invoke('payment:cancel', access),
+  consumePaymentCheckout: (access: PaymentCheckoutAccess): Promise<PaymentCheckoutResult> =>
+    ipcRenderer.invoke('payment:consume', access),
   launchGame: (request: LaunchRequest): Promise<LaunchResult> => ipcRenderer.invoke('game:launch', request),
   resumeActiveGame: (gameId?: string): Promise<GameControlResult> => ipcRenderer.invoke('game:resumeActive', gameId),
   minimizeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:minimizeActive'),

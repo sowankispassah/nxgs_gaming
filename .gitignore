@@ -13,3 +13,4 @@ Thumbs.db
 .DS_Store
 vendor/controller-bridge/BezierCurveEditor/
 vendor/controller-bridge/Logs/
+supabase/.temp/

@@ -1,6 +1,6 @@
 {
   "name": "nxgs-play",
-  "version": "0.16.12",
+  "version": "0.17.0",
   "description": "Windows-only PC gaming launcher and kiosk MVP.",
   "private": true,
   "main": "out/main/main.js",
@@ -62,6 +62,10 @@
       {
         "from": "build/icon.ico",
         "to": "icon.ico"
+      },
+      {
+        "from": "build/nxgs-client.ini",
+        "to": "nxgs-client.ini"
       },
       {
         "from": "build/native-kiosk-hook.ps1",

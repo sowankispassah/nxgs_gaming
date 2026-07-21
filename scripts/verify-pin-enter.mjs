@@ -323,23 +323,18 @@ try {
   if (await evaluate("Boolean(document.querySelector('.console-game-avatar.selected'))")) {
     await evaluate("document.querySelector('.console-game-avatar.selected').click()");
     await waitFor("Boolean(document.querySelector('.launch-modal'))", 'Duration modal did not open.');
-    await waitFor("document.activeElement?.closest('.duration-grid') && document.activeElement.getAttribute('aria-pressed') === 'true'", 'Duration modal did not focus the default duration.');
-    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
-    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
-    await delay(200);
-    if (!(await evaluate("Boolean(document.activeElement?.closest('.duration-grid')) && Boolean(document.querySelector('.launch-modal'))"))) {
-      throw new Error('Selecting a duration moved focus or launched the game automatically.');
-    }
+    await waitFor("Boolean(document.activeElement?.closest('.duration-list'))", 'Duration modal did not focus the default duration.');
+    const firstDuration = await evaluate("document.activeElement?.textContent.trim()");
     await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40 });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40 });
-    await waitFor("document.activeElement?.textContent.includes('Launch Game')", 'Duration modal Down navigation did not reach Launch Game.');
+    await waitFor(`Boolean(document.activeElement?.closest('.duration-list')) && document.activeElement?.textContent.trim() !== ${JSON.stringify(firstDuration)}`, 'Duration modal Down navigation did not reach the next duration.');
     await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38, nativeVirtualKeyCode: 38 });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38, nativeVirtualKeyCode: 38 });
-    await waitFor("Boolean(document.activeElement?.closest('.duration-grid'))", 'Duration modal Up navigation did not return to the duration options.');
+    await waitFor(`document.activeElement?.textContent.trim() === ${JSON.stringify(firstDuration)}`, 'Duration modal Up navigation did not return to the first duration.');
     await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
     await waitFor("!document.querySelector('.launch-modal')", 'Duration modal Escape did not close the modal.');
-    console.log('PASS: Duration selection remained separate from Launch Game and supported Down/Up navigation.');
+    console.log('PASS: Direct-checkout duration selection supports Down/Up navigation and has no submit button.');
   } else {
     console.log('INFO: Duration runtime check skipped because the isolated test profile has no saved games.');
   }

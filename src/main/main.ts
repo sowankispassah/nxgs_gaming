@@ -17,11 +17,13 @@ import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateS
 import { setWindowsTaskbarVisible } from './windowManagerService';
 import { stopWindowsControlWorker, warmWindowsControlWorker } from './windowsControlWorker';
 import { disableXboxGameBarControllerShortcut, suppressXboxGameBarSurfaces } from './gameBarGuard';
+import { PaymentService } from './paymentService';
 import type {
   AppDiagnostics,
   AppSettings,
   BluetoothPairRequest,
   ControllerStateReport,
+  CreatePaymentCheckoutRequest,
   DisplayDeviceInfo,
   FilePickerResult,
   GameControlResult,
@@ -32,6 +34,7 @@ import type {
   KioskAdminActionResult,
   KioskMode,
   LaunchRequest,
+  PaymentCheckoutAccess,
   ShellHomeEvent,
   ShellHomeReason,
   SessionState,
@@ -52,6 +55,7 @@ let controllerDiagnostics: AppDiagnostics['controller'] = {
 
 const store = new DataStore();
 const controllerCompatibility = new ControllerCompatibilityService();
+const paymentService = new PaymentService();
 let controllerIdleService: ControllerIdleService | null = null;
 
 function getAppIconPath(): string {
@@ -675,6 +679,18 @@ function registerIpc(): void {
     }
     return validatePickedPath(result.filePaths[0], undefined, true);
   });
+
+  ipcMain.handle('payment:catalog', () => paymentService.catalog());
+  ipcMain.handle('payment:create', (_event, request: CreatePaymentCheckoutRequest) =>
+    paymentService.create(request));
+  ipcMain.handle('payment:status', (_event, access: PaymentCheckoutAccess) =>
+    paymentService.status(access));
+  ipcMain.handle('payment:retry', (_event, access: PaymentCheckoutAccess) =>
+    paymentService.retry(access));
+  ipcMain.handle('payment:cancel', (_event, access: PaymentCheckoutAccess) =>
+    paymentService.cancel(access));
+  ipcMain.handle('payment:consume', (_event, access: PaymentCheckoutAccess) =>
+    paymentService.consume(access));
 
   ipcMain.handle('game:launch', async (_event, request: LaunchRequest) => {
     try {

@@ -134,14 +134,11 @@ assert.match(home, /data-home-utility-index="0"/, 'Search must be controller foc
 assert.match(home, /data-home-utility-index="1"/, 'Settings must be controller focusable');
 assert.match(home, /data-home-utility-index="2"/, 'User profile must be controller focusable');
 assert.match(app, /homeFocusSection === 'utilities'/, 'Home focus graph must include top-right utilities');
-assert.match(app, /focusArea === 'launch'/, 'time selection must include a controller-focused launch action');
-assert.match(app, /useControllerNavigation\(!pending, handleLaunchControllerEvent\)/, 'time selection must own controller input while open');
-assert.doesNotMatch(
-  app,
-  /if \(focusArea === 'launch'\) void launch\(\);\s*else setFocusArea\('launch'\)/,
-  'A/X on a duration must not jump to or activate Launch Game'
-);
-assert.match(app, /event\.direction === 'down'\) setFocusArea\('launch'\)/, 'Down must move from duration to Launch Game');
+assert.match(app, /stage === 'plans'\) void choosePlan\(planIndex\)/, 'A/X on a duration must immediately create its checkout');
+assert.match(app, /useControllerNavigation\(!inputPending, handleLaunchControllerEvent\)/, 'checkout flow must own controller input while open');
+assert.match(app, /event\.direction === 'down'\) movePlan\(1\)/, 'Down must move to the next duration');
+assert.match(app, /event\.direction === 'left' \|\| event\.direction === 'right'/, 'payment actions must support horizontal controller navigation');
+assert.doesNotMatch(app, />Launch Game</, 'the removed duration submit button must not return');
 assert.match(app, /focusArea === 'unlock'/, 'PIN modal must include Unlock in its controller focus map');
 assert.match(app, /unlockButtonRef/, 'PIN Unlock must receive real DOM focus');
 assert.match(
