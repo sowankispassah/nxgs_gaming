@@ -1,7 +1,7 @@
 {
-    "version":  "0.19.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.19.0/NXGS-Play-Setup.exe",
-    "sha256":  "3f08699dae72c771fafc5ceb2044769601d3881f6571e4c4c31963ac2921332b",
+    "version":  "0.20.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.0/NXGS-Play-Setup.exe",
+    "sha256":  "91c626ee3e1c71c9e91438b7d53e7f48e1ada07add78f2b06f567ec334db0b01",
     "required":  false,
-    "notes":  "Adds Admin Plan Manager with persistent local play-time plans, dynamic customer and extension pricing, and Razorpay checkout support."
+    "notes":  "Adds Device Manager, safe legacy migration, device-specific games and plans, and sync-ready local session and revenue tracking."
 }
