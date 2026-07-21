@@ -1,7 +1,7 @@
 {
-    "version":  "0.18.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.18.1/NXGS-Play-Setup.exe",
-    "sha256":  "46f12377b16dfe8e6d66d003ea91f90ecc6d3efcff185941b41171d61c79572c",
+    "version":  "0.18.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.18.2/NXGS-Play-Setup.exe",
+    "sha256":  "fa4ccc85833ef7e9db27b6136698095b29e713570ad568c66d99e947f85ec4d7",
     "required":  false,
-    "notes":  "Keeps paid-session warnings over gameplay, removes the 5-minute warning, speeds up Resume Game, and improves active-session game switching."
+    "notes":  "Fixes Extend Play so every paid-session warning reliably opens time selection, and sends one Escape key press to pause supported games when a warning appears."
 }
