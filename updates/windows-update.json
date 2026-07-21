@@ -1,7 +1,7 @@
 {
-    "version":  "0.17.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.17.2/NXGS-Play-Setup.exe",
-    "sha256":  "a534c5421a85740e2b44515ccac7c299e056e38de623e0e61f99fe6023cf5476",
+    "version":  "0.18.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.18.0/NXGS-Play-Setup.exe",
+    "sha256":  "4c2fc1ec64210e0005926e9456be78765dcbb2a3739b94f718b1e8fb28570d1b",
     "required":  false,
-    "notes":  "Fixes pricing and Razorpay checkout loading when an older Supabase environment configuration is present."
+    "notes":  "Adds station-wide paid play sessions, game switching without repeat payment, session extension, expiry warnings, and a final one-minute countdown."
 }
