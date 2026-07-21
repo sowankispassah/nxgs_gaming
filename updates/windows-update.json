@@ -1,7 +1,7 @@
 {
-    "version":  "0.18.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.18.2/NXGS-Play-Setup.exe",
-    "sha256":  "fa4ccc85833ef7e9db27b6136698095b29e713570ad568c66d99e947f85ec4d7",
+    "version":  "0.19.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.19.0/NXGS-Play-Setup.exe",
+    "sha256":  "3f08699dae72c771fafc5ceb2044769601d3881f6571e4c4c31963ac2921332b",
     "required":  false,
-    "notes":  "Fixes Extend Play so every paid-session warning reliably opens time selection, and sends one Escape key press to pause supported games when a warning appears."
+    "notes":  "Adds Admin Plan Manager with persistent local play-time plans, dynamic customer and extension pricing, and Razorpay checkout support."
 }
