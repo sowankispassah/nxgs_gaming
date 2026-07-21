@@ -19,6 +19,12 @@ interface PaymentClientConfig {
 
 type PaymentFunctionResponse = Record<string, unknown>;
 
+const transientPaymentStatuses = new Set([429, 500, 502, 503, 504, 520, 522, 524, 540]);
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -116,17 +122,27 @@ export class PaymentService {
     return this.configPromise;
   }
 
-  private async invoke(action: string, body: Record<string, unknown> = {}): Promise<PaymentFunctionResponse> {
+  private async invoke(
+    action: string,
+    body: Record<string, unknown> = {},
+    retryTransient = false
+  ): Promise<PaymentFunctionResponse> {
     const config = await this.config();
     if (!config.functionBaseUrl || !config.publishableKey) {
       throw new Error('Payment service is not configured on this PC.');
     }
-    const response = await this.request(config, action, body);
-    const result = await response.json().catch(() => ({})) as PaymentFunctionResponse;
-    if (!response.ok || result.error === true) {
+    const attempts = retryTransient ? 3 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const response = await this.request(config, action, body);
+      const result = await response.json().catch(() => ({})) as PaymentFunctionResponse;
+      if (response.ok && result.error !== true) return result;
+      if (attempt + 1 < attempts && transientPaymentStatuses.has(response.status)) {
+        await delay(600 * (attempt + 1));
+        continue;
+      }
       throw new Error(stringValue(result.message) || `Payment service returned ${response.status}.`);
     }
-    return result;
+    throw new Error('Payment service is temporarily unavailable.');
   }
 
   private request(
@@ -147,7 +163,7 @@ export class PaymentService {
 
   async catalog(): Promise<PaymentCatalogResult> {
     try {
-      const result = await this.invoke('pricing');
+      const result = await this.invoke('pricing', {}, true);
       const plans = Array.isArray(result.plans)
         ? result.plans.map(normalizePlan).filter((plan): plan is PaymentPlan => Boolean(plan))
         : [];
