@@ -129,6 +129,7 @@ function normalizeCheckout(value: unknown): PaymentCheckout | undefined {
 
 export class PaymentService {
   private configPromise: Promise<PaymentClientConfig> | null = null;
+  private readonly checkoutPlans = new Map<string, PaymentPlan>();
 
   constructor(private readonly plans: PaymentPlanSource) {}
 
@@ -201,7 +202,7 @@ export class PaymentService {
   async create(request: CreatePaymentCheckoutRequest): Promise<PaymentCheckoutResult> {
     const plan = this.plans.getById(request.timePlanId);
     if (!plan || !plan.enabled) return { ok: false, error: 'This play plan is no longer available.' };
-    return this.run('create', {
+    const result = await this.run('create', {
       plan: {
         id: plan.id,
         name: plan.name,
@@ -210,6 +211,8 @@ export class PaymentService {
         currency: plan.currency
       }
     });
+    if (result.checkout) this.checkoutPlans.set(result.checkout.id, result.checkout.plan);
+    return result;
   }
 
   status(access: PaymentCheckoutAccess): Promise<PaymentCheckoutResult> {
@@ -224,8 +227,19 @@ export class PaymentService {
     return this.run('cancel', this.accessBody(access));
   }
 
-  consume(access: PaymentCheckoutAccess): Promise<PaymentCheckoutResult> {
-    return this.run('consume', this.accessBody(access));
+  async consume(access: PaymentCheckoutAccess): Promise<PaymentCheckoutResult> {
+    const result = await this.run('consume', this.accessBody(access));
+    const plan = this.checkoutPlans.get(access.checkoutId);
+    if (result.ok && result.entitlement && plan) {
+      result.entitlement = {
+        ...result.entitlement,
+        planId: plan.id,
+        amountPaise: plan.amountPaise,
+        currency: plan.currency
+      };
+      this.checkoutPlans.delete(access.checkoutId);
+    }
+    return result;
   }
 
   private accessBody(access: PaymentCheckoutAccess): Record<string, unknown> {

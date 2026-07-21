@@ -2,11 +2,16 @@ import { app } from 'electron';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
+import { hostname } from 'node:os';
 import type {
   AppDatabase,
   AppSettings,
+  DeviceInput,
+  DeviceManagerSummary,
+  DeviceRecord,
   GameInput,
   GameRecord,
+  LocalSessionRecord,
   PlayPlanInput,
   PlayPlanRecord
 } from '../shared/types';
@@ -27,6 +32,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const CONTROLLER_IDLE_TIMEOUTS = new Set([0, 5, 10, 15, 30]);
+const SCHEMA_VERSION = 5;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -36,7 +42,49 @@ function createId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function createDefaultPlans(): PlayPlanRecord[] {
+function createDefaultDevice(): DeviceRecord {
+  const timestamp = nowIso();
+  return {
+    id: createId('device'),
+    name: hostname().trim() || 'NXGS PC',
+    storeName: '',
+    location: '',
+    status: 'active',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    syncStatus: 'pending'
+  };
+}
+
+function normalizeDevice(
+  input: DeviceInput & Partial<DeviceRecord>,
+  existing?: DeviceRecord,
+  touchUpdatedAt = true
+): DeviceRecord {
+  const timestamp = nowIso();
+  const name = input.name?.trim();
+  const storeName = input.storeName?.trim() ?? existing?.storeName ?? '';
+  const location = input.location?.trim() ?? existing?.location ?? '';
+  if (!name) throw new Error('Device name is required.');
+  if (name.length > 80) throw new Error('Device name must be 80 characters or fewer.');
+  if (storeName.length > 120) throw new Error('Store or branch name must be 120 characters or fewer.');
+  if (location.length > 160) throw new Error('Device location must be 160 characters or fewer.');
+  return {
+    id: input.id ?? existing?.id ?? createId('device'),
+    name,
+    storeName,
+    location,
+    status: (input.status ?? existing?.status) === 'inactive' ? 'inactive' : 'active',
+    createdAt: existing?.createdAt ?? input.createdAt ?? timestamp,
+    updatedAt: touchUpdatedAt ? timestamp : input.updatedAt ?? existing?.updatedAt ?? timestamp,
+    lastSyncedAt: input.lastSyncedAt ?? existing?.lastSyncedAt,
+    syncedAt: input.syncedAt ?? existing?.syncedAt,
+    deletedAt: input.deletedAt ?? existing?.deletedAt,
+    syncStatus: touchUpdatedAt ? 'pending' : input.syncStatus ?? existing?.syncStatus ?? 'pending'
+  };
+}
+
+function createDefaultPlans(deviceId: string): PlayPlanRecord[] {
   const timestamp = nowIso();
   return [
     { name: '30 Minutes', durationMinutes: 30, amountPaise: 5000 },
@@ -44,16 +92,24 @@ function createDefaultPlans(): PlayPlanRecord[] {
     { name: '1 Hour 30 Minutes', durationMinutes: 90, amountPaise: 15000 }
   ].map((plan, index) => ({
     id: createId('plan'),
+    deviceId,
+    scope: 'device',
     ...plan,
     currency: 'INR',
     enabled: true,
     displayOrder: index,
     createdAt: timestamp,
-    updatedAt: timestamp
+    updatedAt: timestamp,
+    syncStatus: 'pending'
   }));
 }
 
-function normalizePlan(input: PlayPlanInput, existing?: PlayPlanRecord, touchUpdatedAt = true): PlayPlanRecord {
+function normalizePlan(
+  input: PlayPlanInput,
+  currentDeviceId: string,
+  existing?: PlayPlanRecord,
+  touchUpdatedAt = true
+): PlayPlanRecord {
   const timestamp = nowIso();
   const currency = (input.currency?.trim() || existing?.currency || 'INR').toUpperCase();
   const name = input.name.trim();
@@ -68,8 +124,11 @@ function normalizePlan(input: PlayPlanInput, existing?: PlayPlanRecord, touchUpd
     throw new Error('Price must be between ₹1 and ₹100,000.');
   }
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Currency must be a three-letter code such as INR.');
+  const scope = input.scope ?? existing?.scope ?? 'device';
   return {
     id: input.id ?? existing?.id ?? createId('plan'),
+    deviceId: scope === 'device' ? currentDeviceId : undefined,
+    scope,
     name,
     durationMinutes,
     amountPaise,
@@ -79,7 +138,10 @@ function normalizePlan(input: PlayPlanInput, existing?: PlayPlanRecord, touchUpd
       ? Number(input.displayOrder)
       : existing?.displayOrder ?? 0,
     createdAt: existing?.createdAt ?? timestamp,
-    updatedAt: touchUpdatedAt ? timestamp : existing?.updatedAt ?? timestamp
+    updatedAt: touchUpdatedAt ? timestamp : existing?.updatedAt ?? timestamp,
+    syncedAt: existing?.syncedAt,
+    deletedAt: existing?.deletedAt,
+    syncStatus: touchUpdatedAt ? 'pending' : existing?.syncStatus ?? 'pending'
   };
 }
 
@@ -127,13 +189,19 @@ function validateGameInput(input: GameInput): void {
   }
 }
 
-function normalizeGame(input: GameInput, existing?: GameRecord): GameRecord {
+function normalizeGame(
+  input: GameInput,
+  currentDeviceId: string,
+  existing?: GameRecord,
+  touchUpdatedAt = true
+): GameRecord {
   const timestamp = nowIso();
   const enabled = input.enabled ?? existing?.enabled ?? true;
   const availabilityStatus = enabled ? input.availabilityStatus ?? existing?.availabilityStatus ?? 'unknown' : 'disabled';
 
   return {
     id: input.id ?? existing?.id ?? createId('game'),
+    deviceId: currentDeviceId,
     title: input.title.trim(),
     avatarImagePath: input.avatarImagePath?.trim() ?? existing?.avatarImagePath ?? '',
     coverImagePath: input.coverImagePath?.trim() ?? existing?.coverImagePath ?? '',
@@ -147,7 +215,10 @@ function normalizeGame(input: GameInput, existing?: GameRecord): GameRecord {
     launchMode: input.launchMode ?? existing?.launchMode ?? 'borderlessPreferred',
     enabled,
     createdAt: existing?.createdAt ?? timestamp,
-    updatedAt: timestamp
+    updatedAt: touchUpdatedAt ? timestamp : existing?.updatedAt ?? timestamp,
+    syncedAt: existing?.syncedAt,
+    deletedAt: existing?.deletedAt,
+    syncStatus: touchUpdatedAt ? 'pending' : existing?.syncStatus ?? 'pending'
   };
 }
 
@@ -163,11 +234,15 @@ export class DataStore {
     await mkdir(dirname(this.databasePath), { recursive: true });
 
     if (!existsSync(this.databasePath)) {
+      const device = createDefaultDevice();
       this.data = {
-        schemaVersion: 4,
+        schemaVersion: SCHEMA_VERSION,
+        currentDeviceId: device.id,
+        devices: [device],
         settings: DEFAULT_SETTINGS,
         games: [],
-        plans: createDefaultPlans()
+        plans: createDefaultPlans(device.id),
+        sessions: []
       };
       await this.persist();
       return;
@@ -175,15 +250,32 @@ export class DataStore {
 
     const raw = await readFile(this.databasePath, 'utf8');
     const parsed = JSON.parse(raw) as Partial<AppDatabase>;
+    const devices = (parsed.devices ?? []).flatMap((device) => {
+      try {
+        return device.deletedAt ? [] : [normalizeDevice(device, device, false)];
+      } catch {
+        return [];
+      }
+    });
+    const fallbackDevice = devices[0] ?? createDefaultDevice();
+    if (devices.length === 0) devices.push(fallbackDevice);
+    const currentDevice = devices.find((device) => device.id === parsed.currentDeviceId) ?? fallbackDevice;
+    const migrationTimestamp = nowIso();
     const plans = (parsed.plans ?? []).flatMap((plan) => {
       try {
-        return [normalizePlan(plan, plan, false)];
+        const migratedPlan = {
+          ...plan,
+          scope: plan.scope ?? 'device'
+        } as PlayPlanInput;
+        return [normalizePlan(migratedPlan, plan.deviceId || currentDevice.id, plan, false)];
       } catch {
         return [];
       }
     });
     this.data = {
-      schemaVersion: 4,
+      schemaVersion: SCHEMA_VERSION,
+      currentDeviceId: currentDevice.id,
+      devices,
       settings: {
         ...DEFAULT_SETTINGS,
         ...(parsed.settings ?? {}),
@@ -199,24 +291,45 @@ export class DataStore {
       games: (parsed.games ?? []).map((game) => {
         const legacyCover = game.coverImagePath ?? '';
         const avatarImagePath = game.avatarImagePath ?? legacyCover;
-        return {
+        return normalizeGame({
           ...game,
           avatarImagePath,
           coverImagePath: legacyCover || avatarImagePath,
           launchMode: game.launchMode ?? 'borderlessPreferred'
-        };
+        }, game.deviceId || currentDevice.id, game, false);
       }),
-      plans: plans.length > 0 || Number(parsed.schemaVersion) >= 4 ? plans : createDefaultPlans()
+      plans: plans.length > 0 || Number(parsed.schemaVersion) >= 4 ? plans : createDefaultPlans(currentDevice.id),
+      sessions: (parsed.sessions ?? []).flatMap((session) => {
+        if (!session.id || !Number.isFinite(Number(session.durationMinutes))) return [];
+        const wasActive = session.status === 'active';
+        return [{
+          ...session,
+          deviceId: session.deviceId || currentDevice.id,
+          status: wasActive ? 'interrupted' : session.status,
+          planIds: Array.isArray(session.planIds) ? session.planIds : [],
+          checkoutIds: Array.isArray(session.checkoutIds) ? session.checkoutIds : [],
+          amountPaise: Number(session.amountPaise) || 0,
+          currency: session.currency || 'INR',
+          endedAt: wasActive ? migrationTimestamp : session.endedAt,
+          updatedAt: wasActive ? migrationTimestamp : session.updatedAt || migrationTimestamp,
+          syncStatus: wasActive ? 'pending' : session.syncStatus || 'pending'
+        } as LocalSessionRecord];
+      })
     };
     await this.persist();
   }
 
   listGames(): GameRecord[] {
-    return [...this.requireData().games].sort((a, b) => a.title.localeCompare(b.title));
+    const data = this.requireData();
+    return structuredClone(data.games)
+      .filter((game) => game.deviceId === data.currentDeviceId && !game.deletedAt)
+      .sort((a, b) => a.title.localeCompare(b.title));
   }
 
   getGame(id: string): GameRecord | undefined {
-    return this.requireData().games.find((game) => game.id === id);
+    const data = this.requireData();
+    const game = data.games.find((item) => item.id === id && item.deviceId === data.currentDeviceId && !item.deletedAt);
+    return game ? structuredClone(game) : undefined;
   }
 
   async saveGame(input: GameInput): Promise<GameRecord> {
@@ -231,7 +344,10 @@ export class DataStore {
     const data = this.requireData();
     const existingIndex = input.id ? data.games.findIndex((game) => game.id === input.id) : -1;
     const existing = existingIndex >= 0 ? data.games[existingIndex] : undefined;
-    const game = normalizeGame(input, existing);
+    if (existing && (existing.deviceId !== data.currentDeviceId || existing.deletedAt)) {
+      throw new Error('Game does not belong to this device.');
+    }
+    const game = normalizeGame(input, data.currentDeviceId, existing);
 
     if (existingIndex >= 0) {
       data.games[existingIndex] = game;
@@ -245,18 +361,125 @@ export class DataStore {
 
   async deleteGame(id: string): Promise<void> {
     const data = this.requireData();
-    data.games = data.games.filter((game) => game.id !== id);
+    const game = data.games.find((item) => item.id === id && item.deviceId === data.currentDeviceId && !item.deletedAt);
+    if (!game) throw new Error('Game not found on this device.');
+    game.deletedAt = nowIso();
+    game.updatedAt = game.deletedAt;
+    game.syncStatus = 'pending';
+    await this.persist();
+  }
+
+  getCurrentDevice(): DeviceRecord {
+    const data = this.requireData();
+    const device = data.devices.find((item) => item.id === data.currentDeviceId && !item.deletedAt);
+    if (!device) throw new Error('Current device is not configured.');
+    return structuredClone(device);
+  }
+
+  getDeviceManagerSummary(): DeviceManagerSummary {
+    const device = this.getCurrentDevice();
+    const plans = this.listPlans();
+    const sessions = this.requireData().sessions.filter((session) =>
+      session.deviceId === device.id && !session.deletedAt
+    );
+    const currentSession = [...sessions].reverse().find((session) => session.status === 'active');
+    return {
+      device,
+      gameCount: this.listGames().length,
+      activePlanCount: plans.filter((plan) => plan.enabled).length,
+      totalPlanCount: plans.length,
+      totalSessions: sessions.length,
+      totalRevenuePaise: sessions.reduce((sum, session) => sum + session.amountPaise, 0),
+      currentSessionStatus: currentSession?.status ?? 'idle'
+    };
+  }
+
+  async updateCurrentDevice(input: DeviceInput): Promise<DeviceManagerSummary> {
+    const data = this.requireData();
+    const index = data.devices.findIndex((item) => item.id === data.currentDeviceId && !item.deletedAt);
+    if (index < 0) throw new Error('Current device is not configured.');
+    data.devices[index] = normalizeDevice(input, data.devices[index]);
+    await this.persist();
+    return this.getDeviceManagerSummary();
+  }
+
+  async recordPaidSession(
+    entitlement: {
+      checkoutId: string;
+      durationMinutes: number;
+      planId?: string;
+      amountPaise?: number;
+      currency?: string;
+    },
+    expiresAt: string,
+    extending: boolean
+  ): Promise<LocalSessionRecord> {
+    const data = this.requireData();
+    const timestamp = nowIso();
+    const active = extending
+      ? [...data.sessions].reverse().find((session) =>
+        session.deviceId === data.currentDeviceId && session.status === 'active' && !session.deletedAt
+      )
+      : undefined;
+    if (active) {
+      active.durationMinutes += entitlement.durationMinutes;
+      active.amountPaise += Number(entitlement.amountPaise) || 0;
+      active.expiresAt = expiresAt;
+      active.updatedAt = timestamp;
+      active.syncStatus = 'pending';
+      if (entitlement.planId && !active.planIds.includes(entitlement.planId)) active.planIds.push(entitlement.planId);
+      if (!active.checkoutIds.includes(entitlement.checkoutId)) active.checkoutIds.push(entitlement.checkoutId);
+      await this.persist();
+      return structuredClone(active);
+    }
+
+    const session: LocalSessionRecord = {
+      id: createId('session'),
+      deviceId: data.currentDeviceId,
+      status: 'active',
+      planIds: entitlement.planId ? [entitlement.planId] : [],
+      checkoutIds: [entitlement.checkoutId],
+      durationMinutes: entitlement.durationMinutes,
+      amountPaise: Number(entitlement.amountPaise) || 0,
+      currency: entitlement.currency || 'INR',
+      startedAt: timestamp,
+      expiresAt,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      syncStatus: 'pending'
+    };
+    data.sessions.push(session);
+    await this.persist();
+    return structuredClone(session);
+  }
+
+  async finishActiveSession(status: 'completed' | 'expired' | 'interrupted'): Promise<void> {
+    const data = this.requireData();
+    const session = [...data.sessions].reverse().find((item) =>
+      item.deviceId === data.currentDeviceId && item.status === 'active' && !item.deletedAt
+    );
+    if (!session) return;
+    const timestamp = nowIso();
+    session.status = status;
+    session.endedAt = timestamp;
+    session.updatedAt = timestamp;
+    session.syncStatus = 'pending';
     await this.persist();
   }
 
   listPlans(enabledOnly = false): PlayPlanRecord[] {
-    return structuredClone(this.requireData().plans)
+    const data = this.requireData();
+    return structuredClone(data.plans)
+      .filter((plan) => !plan.deletedAt && (plan.scope === 'global' || plan.deviceId === data.currentDeviceId))
       .filter((plan) => !enabledOnly || plan.enabled)
       .sort((a, b) => a.displayOrder - b.displayOrder || a.createdAt.localeCompare(b.createdAt));
   }
 
   getPlan(id: string): PlayPlanRecord | undefined {
-    const plan = this.requireData().plans.find((item) => item.id === id);
+    const data = this.requireData();
+    const plan = data.plans.find((item) =>
+      item.id === id && !item.deletedAt && (item.scope === 'global' || item.deviceId === data.currentDeviceId)
+    );
     return plan ? structuredClone(plan) : undefined;
   }
 
@@ -264,9 +487,16 @@ export class DataStore {
     const data = this.requireData();
     const existingIndex = input.id ? data.plans.findIndex((plan) => plan.id === input.id) : -1;
     const existing = existingIndex >= 0 ? data.plans[existingIndex] : undefined;
-    if (input.id && !existing) throw new Error('Plan not found.');
-    const nextOrder = data.plans.reduce((maximum, plan) => Math.max(maximum, plan.displayOrder), -1) + 1;
-    const plan = normalizePlan({ ...input, displayOrder: input.displayOrder ?? existing?.displayOrder ?? nextOrder }, existing);
+    if (input.id && (!existing || existing.deletedAt || (existing.scope !== 'global' && existing.deviceId !== data.currentDeviceId))) {
+      throw new Error('Plan not found for this device.');
+    }
+    const visiblePlans = this.listPlans();
+    const nextOrder = visiblePlans.reduce((maximum, plan) => Math.max(maximum, plan.displayOrder), -1) + 1;
+    const plan = normalizePlan(
+      { ...input, displayOrder: input.displayOrder ?? existing?.displayOrder ?? nextOrder },
+      data.currentDeviceId,
+      existing
+    );
     if (existingIndex >= 0) data.plans[existingIndex] = plan;
     else data.plans.push(plan);
     await this.persist();
@@ -275,9 +505,16 @@ export class DataStore {
 
   async deletePlan(id: string): Promise<void> {
     const data = this.requireData();
-    if (!data.plans.some((plan) => plan.id === id)) throw new Error('Plan not found.');
-    data.plans = data.plans.filter((plan) => plan.id !== id);
-    this.normalizePlanOrder(data.plans);
+    const plan = data.plans.find((item) =>
+      item.id === id && !item.deletedAt && (item.scope === 'global' || item.deviceId === data.currentDeviceId)
+    );
+    if (!plan) throw new Error('Plan not found for this device.');
+    plan.deletedAt = nowIso();
+    plan.updatedAt = plan.deletedAt;
+    plan.syncStatus = 'pending';
+    this.normalizePlanOrder(data.plans.filter((item) =>
+      !item.deletedAt && (item.scope === 'global' || item.deviceId === data.currentDeviceId)
+    ));
     await this.persist();
   }
 
@@ -289,13 +526,15 @@ export class DataStore {
 
   async reorderPlans(orderedIds: string[]): Promise<PlayPlanRecord[]> {
     const data = this.requireData();
-    if (orderedIds.length !== data.plans.length || new Set(orderedIds).size !== data.plans.length) {
+    const visiblePlans = data.plans.filter((plan) =>
+      !plan.deletedAt && (plan.scope === 'global' || plan.deviceId === data.currentDeviceId)
+    );
+    if (orderedIds.length !== visiblePlans.length || new Set(orderedIds).size !== visiblePlans.length) {
       throw new Error('Plan order is incomplete.');
     }
-    const byId = new Map(data.plans.map((plan) => [plan.id, plan]));
+    const byId = new Map(visiblePlans.map((plan) => [plan.id, plan]));
     if (orderedIds.some((id) => !byId.has(id))) throw new Error('Plan order contains an unknown plan.');
-    data.plans = orderedIds.map((id) => byId.get(id)!);
-    this.normalizePlanOrder(data.plans);
+    this.normalizePlanOrder(orderedIds.map((id) => byId.get(id)!));
     await this.persist();
     return this.listPlans();
   }
@@ -345,6 +584,7 @@ export class DataStore {
     plans.forEach((plan, index) => {
       plan.displayOrder = index;
       plan.updatedAt = nowIso();
+      plan.syncStatus = 'pending';
     });
   }
 

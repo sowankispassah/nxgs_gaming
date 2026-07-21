@@ -31,6 +31,7 @@ import type {
   BluetoothPairRequest,
   ControllerStateReport,
   CreatePaymentCheckoutRequest,
+  DeviceInput,
   DisplayDeviceInfo,
   FilePickerResult,
   GameControlResult,
@@ -343,8 +344,10 @@ const kioskInput = new KioskInputService({
 
 async function endPaidSession(): Promise<GameControlResult> {
   try {
+    const endedAfterExpiry = sessionTimer.current.status === 'expired';
     await launcher.closeAllGames();
     sessionTimer.stop('idle');
+    await store.finishActiveSession(endedAfterExpiry ? 'expired' : 'completed');
     clearPendingSessionExtension();
     sessionWarningOverlay?.close();
     controllerIdleService?.setGameplayActive(false);
@@ -607,6 +610,7 @@ async function createWindow(): Promise<void> {
 
 function registerIpc(): void {
   ipcMain.handle('app:getInitialData', () => ({
+    currentDevice: store.getCurrentDevice(),
     games: store.listGames(),
     settings: store.getSettings(),
     appVersion: app.getVersion(),
@@ -687,6 +691,9 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('auth:verifyPin', (_event, pin: string) => ({ ok: store.verifyPin(pin) }));
+
+  ipcMain.handle('device:getCurrent', () => store.getDeviceManagerSummary());
+  ipcMain.handle('device:updateCurrent', async (_event, input: DeviceInput) => store.updateCurrentDevice(input));
 
   ipcMain.handle('games:save', async (_event, input: GameInput) => {
     const saved = await store.saveGame(input);
@@ -790,9 +797,13 @@ function registerIpc(): void {
   ipcMain.handle('payment:consume', async (_event, access: PaymentCheckoutAccess) => {
     const result = await paymentService.consume(access);
     if (!result.ok || !result.entitlement) return result;
-    const state = sessionTimer.active
+    const extending = sessionTimer.active || sessionTimer.current.status === 'expired';
+    const state = extending
       ? sessionTimer.extend(result.entitlement.durationMinutes)
       : sessionTimer.start(result.entitlement.durationMinutes);
+    if (state.expiresAt) {
+      await store.recordPaidSession(result.entitlement, state.expiresAt, extending);
+    }
     await logLine(
       'info',
       `${state.revision > 1 ? 'Extended' : 'Started'} station-wide paid session by ${result.entitlement.durationMinutes} minutes.`

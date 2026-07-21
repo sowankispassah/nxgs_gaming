@@ -131,8 +131,12 @@ try {
 
   const dataPath = await evaluate('window.nxgs.getInitialData().then((data) => data.dataPath)');
   const saved = JSON.parse(await readFile(dataPath, 'utf8'));
-  assert.equal(saved.schemaVersion, 4);
-  assert.equal(saved.plans.length, 3);
+  assert.equal(saved.schemaVersion, 5);
+  assert.equal(saved.devices.length, 1);
+  assert.equal(saved.currentDeviceId, saved.devices[0].id);
+  assert.equal(saved.plans.filter((plan) => !plan.deletedAt).length, 3);
+  assert.equal(saved.plans.filter((plan) => plan.deletedAt).length, 1);
+  assert.ok(saved.plans.every((plan) => plan.scope === 'global' || plan.deviceId === saved.currentDeviceId));
 
   for (const plan of await evaluate('window.nxgs.listPlayPlans()')) {
     await evaluate(`window.nxgs.setPlayPlanEnabled(${JSON.stringify(plan.id)}, false)`);

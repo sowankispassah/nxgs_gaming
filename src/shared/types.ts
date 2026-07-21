@@ -2,8 +2,44 @@ export type LaunchType = 'steam' | 'epic' | 'microsoftStore' | 'localExe' | 'cus
 
 export type AvailabilityStatus = 'available' | 'missing' | 'disabled' | 'unknown';
 
+export type SyncStatus = 'local' | 'pending' | 'synced' | 'error';
+export type DeviceStatus = 'active' | 'inactive';
+export type PlanScope = 'device' | 'global';
+
+export interface DeviceRecord {
+  id: string;
+  name: string;
+  storeName: string;
+  location: string;
+  status: DeviceStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastSyncedAt?: string;
+  syncedAt?: string;
+  deletedAt?: string;
+  syncStatus: SyncStatus;
+}
+
+export interface DeviceInput {
+  name: string;
+  storeName?: string;
+  location?: string;
+  status?: DeviceStatus;
+}
+
+export interface DeviceManagerSummary {
+  device: DeviceRecord;
+  gameCount: number;
+  activePlanCount: number;
+  totalPlanCount: number;
+  totalSessions: number;
+  totalRevenuePaise: number;
+  currentSessionStatus: LocalSessionStatus | 'idle';
+}
+
 export interface GameRecord {
   id: string;
+  deviceId: string;
   title: string;
   avatarImagePath: string;
   coverImagePath: string;
@@ -18,6 +54,9 @@ export interface GameRecord {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+  syncedAt?: string;
+  deletedAt?: string;
+  syncStatus: SyncStatus;
 }
 
 export type GameLaunchMode = 'normal' | 'maximized' | 'fullscreen' | 'borderlessPreferred';
@@ -91,12 +130,37 @@ export interface ControllerInputState {
 
 export interface AppDatabase {
   schemaVersion: number;
+  currentDeviceId: string;
+  devices: DeviceRecord[];
   settings: AppSettings;
   games: GameRecord[];
   plans: PlayPlanRecord[];
+  sessions: LocalSessionRecord[];
+}
+
+export type LocalSessionStatus = 'active' | 'completed' | 'expired' | 'interrupted';
+
+export interface LocalSessionRecord {
+  id: string;
+  deviceId: string;
+  status: LocalSessionStatus;
+  planIds: string[];
+  checkoutIds: string[];
+  durationMinutes: number;
+  amountPaise: number;
+  currency: string;
+  startedAt: string;
+  expiresAt: string;
+  endedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  syncedAt?: string;
+  deletedAt?: string;
+  syncStatus: SyncStatus;
 }
 
 export interface InitialData {
+  currentDevice: DeviceRecord;
   games: GameRecord[];
   settings: AppSettings;
   appVersion: string;
@@ -137,10 +201,15 @@ export interface PaymentPlan {
 }
 
 export interface PlayPlanRecord extends PaymentPlan {
+  deviceId?: string;
+  scope: PlanScope;
   enabled: boolean;
   displayOrder: number;
   createdAt: string;
   updatedAt: string;
+  syncedAt?: string;
+  deletedAt?: string;
+  syncStatus: SyncStatus;
 }
 
 export interface PlayPlanInput {
@@ -149,6 +218,7 @@ export interface PlayPlanInput {
   durationMinutes: number;
   amountPaise: number;
   currency?: string;
+  scope?: PlanScope;
   enabled?: boolean;
   displayOrder?: number;
 }
@@ -194,6 +264,9 @@ export interface PaymentCheckoutAccess {
 export interface PaymentEntitlement {
   checkoutId: string;
   durationMinutes: number;
+  planId?: string;
+  amountPaise?: number;
+  currency?: string;
   sessionExpiresAt?: string;
 }
 

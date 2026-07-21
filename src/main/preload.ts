@@ -13,6 +13,8 @@ import type {
   ControllerIdleNotification,
   ControllerInputState,
   CreatePaymentCheckoutRequest,
+  DeviceInput,
+  DeviceManagerSummary,
   DisplayActionResult,
   DisplayStatus,
   FilePickerResult,
@@ -82,6 +84,9 @@ const api = {
     ipcRenderer.invoke('input:controllerState', report),
   requestShellHome: (reason: ShellHomeReason): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:homeRequest', reason),
   verifyPin: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('auth:verifyPin', pin),
+  getCurrentDevice: (): Promise<DeviceManagerSummary> => ipcRenderer.invoke('device:getCurrent'),
+  updateCurrentDevice: (device: DeviceInput): Promise<DeviceManagerSummary> =>
+    ipcRenderer.invoke('device:updateCurrent', device),
   saveGame: (game: GameInput) => ipcRenderer.invoke('games:save', game),
   deleteGame: (id: string) => ipcRenderer.invoke('games:delete', id),
   scanInstalledGames: () => ipcRenderer.invoke('games:scanInstalled'),

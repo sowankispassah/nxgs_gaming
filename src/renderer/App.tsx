@@ -13,6 +13,7 @@ import {
   Lock,
   LoaderCircle,
   Monitor,
+  MonitorCog,
   Play,
   Plus,
   Power,
@@ -32,6 +33,7 @@ import {
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 import { ConsoleSettings } from './components/ConsoleSettings';
 import { PlanManager } from './components/PlanManager';
+import { DeviceManager } from './components/DeviceManager';
 import {
   hasConfirmedGameWindow,
   shouldShowBlockingLaunchTransition,
@@ -49,6 +51,7 @@ import type {
   AppDiagnostics,
   AppSettings,
   ControllerIdleNotification,
+  DeviceRecord,
   GameInput,
   GameRecord,
   GameSuggestion,
@@ -64,7 +67,7 @@ import type {
 } from '../shared/types';
 
 type View = 'home' | 'settings' | 'admin';
-type AdminTab = 'games' | 'scan' | 'sessions' | 'kiosk' | 'updates' | 'plans';
+type AdminTab = 'games' | 'scan' | 'sessions' | 'kiosk' | 'updates' | 'plans' | 'device';
 
 const EMPTY_SESSION: SessionState = {
   status: 'idle',
@@ -705,6 +708,7 @@ export function App(): JSX.Element {
           games={games}
           settings={settings}
           initialData={initialData}
+          onDeviceChanged={(currentDevice) => setInitialData((current) => current ? { ...current, currentDevice } : current)}
           onGamesChanged={setGames}
           onSettingsChanged={setSettings}
           onClose={returnToCustomerHome}
@@ -1475,11 +1479,12 @@ function AdminScreen(props: {
   settings: AppSettings;
   initialData: InitialData;
   onGamesChanged: (games: GameRecord[]) => void;
+  onDeviceChanged: (device: DeviceRecord) => void;
   onSettingsChanged: (settings: AppSettings) => void;
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<AdminTab>('games');
-  const adminTabs: AdminTab[] = ['games', 'scan', 'sessions', 'kiosk', 'updates', 'plans'];
+  const adminTabs: AdminTab[] = ['games', 'scan', 'sessions', 'kiosk', 'updates', 'plans', 'device'];
   const moveAdminTab = useCallback((delta: number): void => {
     setTab((current) => adminTabs[(adminTabs.indexOf(current) + delta + adminTabs.length) % adminTabs.length]);
   }, []);
@@ -1522,6 +1527,7 @@ function AdminScreen(props: {
           <TabButton active={tab === 'kiosk'} icon={<Monitor size={19} />} label="Kiosk" onClick={() => setTab('kiosk')} />
           <TabButton active={tab === 'updates'} icon={<RefreshCw size={19} />} label="Updates" onClick={() => setTab('updates')} />
           <TabButton active={tab === 'plans'} icon={<IndianRupee size={19} />} label="Plan Manager" onClick={() => setTab('plans')} />
+          <TabButton active={tab === 'device'} icon={<MonitorCog size={19} />} label="Device Manager" onClick={() => setTab('device')} />
         </nav>
         <button className="secondary-action" type="button" onClick={props.onClose}>
           <Home size={18} />
@@ -1530,8 +1536,8 @@ function AdminScreen(props: {
       </aside>
 
       <div className="admin-content">
-        {tab === 'games' && <GameManager games={props.games} onGamesChanged={props.onGamesChanged} />}
-        {tab === 'scan' && <ScanPanel onGamesChanged={props.onGamesChanged} />}
+        {tab === 'games' && <GameManager currentDevice={props.initialData.currentDevice} games={props.games} onGamesChanged={props.onGamesChanged} />}
+        {tab === 'scan' && <ScanPanel currentDevice={props.initialData.currentDevice} onGamesChanged={props.onGamesChanged} />}
         {tab === 'sessions' && (
           <SessionSettings settings={props.settings} onSettingsChanged={props.onSettingsChanged} />
         )}
@@ -1543,7 +1549,8 @@ function AdminScreen(props: {
           />
         )}
         {tab === 'updates' && <UpdatePanel initialData={props.initialData} />}
-        {tab === 'plans' && <PlanManager />}
+        {tab === 'plans' && <PlanManager currentDevice={props.initialData.currentDevice} />}
+        {tab === 'device' && <DeviceManager onDeviceChanged={props.onDeviceChanged} />}
       </div>
     </section>
   );
@@ -1558,7 +1565,7 @@ function TabButton(props: { active: boolean; icon: JSX.Element; label: string; o
   );
 }
 
-function GameManager(props: { games: GameRecord[]; onGamesChanged: (games: GameRecord[]) => void }): JSX.Element {
+function GameManager(props: { currentDevice: DeviceRecord; games: GameRecord[]; onGamesChanged: (games: GameRecord[]) => void }): JSX.Element {
   const [form, setForm] = useState<GameInput>(EMPTY_GAME);
   const [pending, setPending] = useState(false);
   const [deletingId, setDeletingId] = useState('');
@@ -1593,6 +1600,7 @@ function GameManager(props: { games: GameRecord[]; onGamesChanged: (games: GameR
           <div>
             <p className="eyebrow">Game linking</p>
             <h2>{form.id ? 'Edit game' : 'Add game'}</h2>
+            <span className="device-context-label">Device: {props.currentDevice.name}</span>
           </div>
           <button className="icon-button" type="button" title="New game" onClick={() => setForm(EMPTY_GAME)}>
             <Plus size={20} />
@@ -1636,6 +1644,7 @@ function GameManager(props: { games: GameRecord[]; onGamesChanged: (games: GameR
           <div>
             <p className="eyebrow">Library</p>
             <h2>{props.games.length} saved</h2>
+            <span className="device-context-label">Only games linked to {props.currentDevice.name}</span>
           </div>
         </div>
         <div className="admin-list">
@@ -1644,6 +1653,7 @@ function GameManager(props: { games: GameRecord[]; onGamesChanged: (games: GameR
               <button type="button" className="row-main" onClick={() => setForm(normalizeForm(game))}>
                 <strong>{game.title}</strong>
                 <span>{launchTypeLabel(game.launchType)} - {game.enabled ? game.availabilityStatus : 'disabled'}</span>
+                <small>Device: {props.currentDevice.name}</small>
               </button>
               <button
                 className="icon-button danger"
@@ -1977,7 +1987,7 @@ function GameForm(props: {
   );
 }
 
-function ScanPanel(props: { onGamesChanged: (games: GameRecord[]) => void }): JSX.Element {
+function ScanPanel(props: { currentDevice: DeviceRecord; onGamesChanged: (games: GameRecord[]) => void }): JSX.Element {
   const [suggestions, setSuggestions] = useState<GameSuggestion[]>([]);
   const [pendingScan, setPendingScan] = useState(false);
   const [savingId, setSavingId] = useState('');
@@ -1989,6 +1999,7 @@ function ScanPanel(props: { onGamesChanged: (games: GameRecord[]) => void }): JS
         <div>
           <p className="eyebrow">Suggestions only</p>
           <h2>Scan installed games</h2>
+          <span className="device-context-label">Saved results will belong to {props.currentDevice.name}</span>
         </div>
         <button
           className="primary-action"

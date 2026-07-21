@@ -18,12 +18,12 @@ assert.match(types, /displayOrder: number/);
 assert.match(types, /createdAt: string/);
 assert.match(types, /updatedAt: string/);
 
-assert.match(database, /schemaVersion: 4/);
+assert.match(database, /const SCHEMA_VERSION = 5/);
 assert.match(database, /name: '30 Minutes', durationMinutes: 30, amountPaise: 5000/);
 assert.match(database, /name: '1 Hour', durationMinutes: 60, amountPaise: 10000/);
 assert.match(database, /name: '1 Hour 30 Minutes', durationMinutes: 90, amountPaise: 15000/);
-assert.match(database, /Number\(parsed\.schemaVersion\) >= 4 \? plans : createDefaultPlans\(\)/);
-assert.match(database, /normalizePlan\(plan, plan, false\)/);
+assert.match(database, /Number\(parsed\.schemaVersion\) >= 4 \? plans : createDefaultPlans\(currentDevice\.id\)/);
+assert.match(database, /normalizePlan\(migratedPlan, plan\.deviceId \|\| currentDevice\.id, plan, false\)/);
 assert.match(database, /async savePlan/);
 assert.match(database, /async deletePlan/);
 assert.match(database, /async setPlanEnabled/);
@@ -55,6 +55,8 @@ assert.match(manager, /savePlayPlan/);
 assert.match(manager, /deletePlayPlan/);
 assert.match(manager, /setPlayPlanEnabled/);
 assert.match(manager, /reorderPlayPlans/);
+assert.match(manager, /Global plan/);
+assert.match(manager, /This device/);
 assert.match(manager, /Saving\.\.\./);
 assert.match(manager, /Deleting\.\.\./);
 

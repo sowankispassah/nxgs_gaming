@@ -9,7 +9,7 @@ import {
   Save,
   Trash2
 } from 'lucide-react';
-import type { PlayPlanInput, PlayPlanRecord } from '../../shared/types';
+import type { DeviceRecord, PlanScope, PlayPlanInput, PlayPlanRecord } from '../../shared/types';
 
 type PlanForm = {
   id?: string;
@@ -17,6 +17,7 @@ type PlanForm = {
   durationMinutes: string;
   priceRupees: string;
   currency: string;
+  scope: PlanScope;
   enabled: boolean;
 };
 
@@ -25,6 +26,7 @@ const EMPTY_FORM: PlanForm = {
   durationMinutes: '30',
   priceRupees: '50',
   currency: 'INR',
+  scope: 'device',
   enabled: true
 };
 
@@ -35,6 +37,7 @@ function formFromPlan(plan: PlayPlanRecord): PlanForm {
     durationMinutes: String(plan.durationMinutes),
     priceRupees: String(plan.amountPaise / 100),
     currency: plan.currency,
+    scope: plan.scope,
     enabled: plan.enabled
   };
 }
@@ -54,7 +57,7 @@ function priceLabel(plan: PlayPlanRecord): string {
   }).format(plan.amountPaise / 100);
 }
 
-export function PlanManager(): JSX.Element {
+export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element {
   const [plans, setPlans] = useState<PlayPlanRecord[]>([]);
   const [form, setForm] = useState<PlanForm>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
@@ -96,6 +99,7 @@ export function PlanManager(): JSX.Element {
         durationMinutes: Number(form.durationMinutes),
         amountPaise: Math.round(Number(form.priceRupees) * 100),
         currency: form.currency,
+        scope: form.scope,
         enabled: form.enabled
       };
       const result = await window.nxgs.savePlayPlan(input);
@@ -210,6 +214,20 @@ export function PlanManager(): JSX.Element {
               <option value="INR">₹ / INR</option>
             </select>
           </label>
+          <label>
+            Availability
+            <select
+              value={form.scope}
+              onChange={(event) => update('scope', event.target.value as PlanScope)}
+              disabled={saving}
+            >
+              <option value="device">This device ({props.currentDevice.name})</option>
+              <option value="global">Global plan</option>
+            </select>
+            <small className="field-note">
+              Device plans apply only here. Global plans can be shared by future synced devices.
+            </small>
+          </label>
           <label className="checkbox-row">
             <input
               type="checkbox"
@@ -270,7 +288,9 @@ export function PlanManager(): JSX.Element {
                   <button className="plan-admin-summary" type="button" onClick={() => setForm(formFromPlan(plan))}>
                     <strong>{plan.name}</strong>
                     <span>{durationLabel(plan.durationMinutes)} · {priceLabel(plan)}</span>
-                    <small>Updated {new Date(plan.updatedAt).toLocaleDateString()}</small>
+                    <small>
+                      {plan.scope === 'global' ? 'Global' : props.currentDevice.name} · Updated {new Date(plan.updatedAt).toLocaleDateString()}
+                    </small>
                   </button>
                   <span className={`plan-status ${plan.enabled ? 'enabled' : 'disabled'}`}>
                     {plan.enabled ? 'Enabled' : 'Disabled'}
