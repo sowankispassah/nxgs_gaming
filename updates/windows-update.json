@@ -1,7 +1,7 @@
 {
-    "version":  "0.17.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.17.1/NXGS-Play-Setup.exe",
-    "sha256":  "bfa29c2eacc727fca59dae43461807bfa7e4c10ba2146b840c15e12b5320f105",
+    "version":  "0.17.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.17.2/NXGS-Play-Setup.exe",
+    "sha256":  "a534c5421a85740e2b44515ccac7c299e056e38de623e0e61f99fe6023cf5476",
     "required":  false,
-    "notes":  "Automatically retries temporary payment-catalog restart errors so duration pricing loads without exposing transient Supabase 540 failures."
+    "notes":  "Fixes pricing and Razorpay checkout loading when an older Supabase environment configuration is present."
 }
