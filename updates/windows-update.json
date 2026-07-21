@@ -1,7 +1,7 @@
 {
-    "version":  "0.17.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.17.0/NXGS-Play-Setup.exe",
-    "sha256":  "93c39fed9c3bc7264e5d9346c58957517be9fbfb6c25b84c98f67e12bb37a6f4",
+    "version":  "0.17.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.17.1/NXGS-Play-Setup.exe",
+    "sha256":  "bfa29c2eacc727fca59dae43461807bfa7e4c10ba2146b840c15e12b5320f105",
     "required":  false,
-    "notes":  "New direct duration pricing selector and Razorpay phone-payment checkout flow. Selecting a duration now proceeds immediately without a separate submit button."
+    "notes":  "Automatically retries temporary payment-catalog restart errors so duration pricing loads without exposing transient Supabase 540 failures."
 }
