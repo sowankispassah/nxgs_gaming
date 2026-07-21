@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, net } from 'electron';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -54,9 +54,9 @@ function parseIni(source: string): Map<string, string> {
 }
 
 async function readClientConfig(): Promise<PaymentClientConfig> {
-  let supabaseUrl = process.env.NXGS_SUPABASE_URL?.trim() ?? '';
-  let functionBaseUrl = process.env.NXGS_RENTAL_FUNCTION_BASE_URL?.trim() ?? '';
-  let publishableKey = process.env.NXGS_SUPABASE_ANON_KEY?.trim() ?? '';
+  let supabaseUrl = '';
+  let functionBaseUrl = '';
+  let publishableKey = '';
   const candidates = [
     join(process.cwd(), 'nxgs-client.ini'),
     join(app.getAppPath(), 'nxgs-client.ini'),
@@ -74,6 +74,13 @@ async function readClientConfig(): Promise<PaymentClientConfig> {
       functionBaseUrl = `${supabaseUrl.replace(/\/+$/, '')}/functions/v1`;
     }
     if (supabaseUrl && functionBaseUrl && publishableKey) break;
+  }
+
+  supabaseUrl ||= process.env.NXGS_SUPABASE_URL?.trim() ?? '';
+  functionBaseUrl ||= process.env.NXGS_RENTAL_FUNCTION_BASE_URL?.trim() ?? '';
+  publishableKey ||= process.env.NXGS_SUPABASE_ANON_KEY?.trim() ?? '';
+  if (!functionBaseUrl && supabaseUrl) {
+    functionBaseUrl = `${supabaseUrl.replace(/\/+$/, '')}/functions/v1`;
   }
 
   return {
@@ -133,7 +140,16 @@ export class PaymentService {
     }
     const attempts = retryTransient ? 3 : 1;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-      const response = await this.request(config, action, body);
+      let response: Response;
+      try {
+        response = await this.request(config, action, body);
+      } catch (error) {
+        if (attempt + 1 < attempts) {
+          await delay(600 * (attempt + 1));
+          continue;
+        }
+        throw error;
+      }
       const result = await response.json().catch(() => ({})) as PaymentFunctionResponse;
       if (response.ok && result.error !== true) return result;
       if (attempt + 1 < attempts && transientPaymentStatuses.has(response.status)) {
@@ -150,7 +166,7 @@ export class PaymentService {
     action: string,
     body: Record<string, unknown>
   ): Promise<Response> {
-    return fetch(`${config.functionBaseUrl}/pcPayment`, {
+    return net.fetch(`${config.functionBaseUrl}/pcPayment`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
