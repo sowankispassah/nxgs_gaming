@@ -33,6 +33,7 @@ import {
   minimizeGameWindow,
   prepareGameWindowForReveal,
   releaseGameWindowTopMost,
+  resumeGameWindowFast,
   setWindowsTaskbarVisible,
   waitForGameWindow
 } from './windowManagerService';
@@ -340,17 +341,56 @@ export class GameLauncher {
     }
 
     this.operationInFlight = 'resume';
-    await logLine('info', `Resume clicked for ${game.title}. Rediscovering the active game window.`);
     this.setActiveState({
       status: 'resuming',
       game,
-      message: `Resuming ${game.title}...`,
+      message: `Restoring ${game.title}...`,
       windowDetected: Boolean(this.activeWindow),
       windowState: this.activeWindow ? 'background' : 'unknown'
     });
     const focusGeneration = this.beginFocusOperation('resume', game);
 
     try {
+      if (this.activeWindow) {
+        const cachedWindow = this.activeWindow;
+        try {
+          this.releaseLaunchShield();
+          const fastState = await resumeGameWindowFast(cachedWindow, this.launchMode(game));
+          this.assertFocusOperationCurrent(focusGeneration, game);
+          if (fastState?.isForeground) {
+            this.activeProcessId = cachedWindow.processId;
+            this.gameInForeground = true;
+            this.monitorByProcessName(game);
+            this.setActiveState({
+              status: 'running',
+              game,
+              message: `${game.title} is running.`,
+              windowDetected: true,
+              windowState: 'foreground'
+            });
+            this.scheduleGamePresentationReinforcement(game, cachedWindow, this.launchMode(game));
+            this.lastHandoffError = undefined;
+            this.lastResumeResult = `${game.title} restored and focused immediately.`;
+            void this.suppressWindowsTaskbar().catch((error) => {
+              void logLine('warn', `Background taskbar suppression after fast resume failed: ${String(error)}`);
+            });
+            void logLine('info', `Fast resume focused cached ${game.title} window ${cachedWindow.handle}.`);
+            return { ok: true };
+          }
+        } catch (fastResumeError) {
+          await logLine('warn', `Cached fast resume failed for ${game.title}: ${String(fastResumeError)}`);
+        }
+        await logLine('info', `Cached fast resume did not confirm foreground for ${game.title}; falling back to window recovery.`);
+      }
+
+      this.setActiveState({
+        status: 'resuming',
+        game,
+        message: `Finding ${game.title}...`,
+        windowDetected: Boolean(this.activeWindow),
+        windowState: this.activeWindow ? 'background' : 'unknown'
+      });
+      await logLine('info', `Resume fallback started for ${game.title}. Rediscovering the active game window.`);
       let window = this.activeWindow ?? (await this.getActiveWindow(game));
       this.assertFocusOperationCurrent(focusGeneration, game);
       const untrackedStoreApp = game.launchType === 'microsoftStore' && !game.processName?.trim();

@@ -28,12 +28,19 @@ assert.equal(timer.active, false);
 assert.equal(timer.current.status, 'expired');
 assert.equal(expirations, 1);
 timer.stop('idle', false);
+timer.start(2);
+assert.deepEqual(warnings, [2]);
+timer.stop('idle', false);
 
-const [mainSource, paymentSource, functionSource, overlaySource] = await Promise.all([
+const [mainSource, paymentSource, functionSource, overlaySource, warningOverlaySource, launcherSource, timerSource, appSource] = await Promise.all([
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/paymentService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/functions/pcPayment/index.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main/sessionCountdownOverlay.ts', import.meta.url), 'utf8')
+  readFile(new URL('../src/main/sessionCountdownOverlay.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main/sessionWarningOverlay.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main/gameLauncher.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main/sessionTimer.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8')
 ]);
 
 assert.match(mainSource, /if \(!sessionTimer\.active\)/);
@@ -44,5 +51,12 @@ assert.doesNotMatch(functionSource, /gameId: String\(data\.game_id\)/);
 assert.match(functionSource, /entitlement_scope: "station"/);
 assert.match(overlaySource, /state\.remainingSeconds > 60/);
 assert.match(overlaySource, /visibleOnFullScreen: true/);
+assert.match(warningOverlaySource, /visibleOnFullScreen: true/);
+assert.match(warningOverlaySource, /NXGS Home/);
+assert.match(launcherSource, /resumeGameWindowFast/);
+assert.match(mainSource, /const launch = launcher\.launch\(game\)/);
+assert.doesNotMatch(timerSource, /\[5, 2\]/);
+assert.match(appSource, /function GameSwitchDialog/);
+assert.match(appSource, /closeGameForSwitch/);
 
-console.log('Station-wide paid timer, extension, expiry, checkout scope, and countdown overlay verified.');
+console.log('Station-wide payment, 2-minute game overlay, fast resume, async switching, and final countdown verified.');

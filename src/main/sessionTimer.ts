@@ -2,7 +2,7 @@ import type { SessionState } from '../shared/types';
 
 type SessionEvents = {
   onTick: (state: SessionState) => void;
-  onWarning: (minutesRemaining: 5 | 2) => void;
+  onWarning: (minutesRemaining: 2) => void;
   onExpired: () => void;
 };
 
@@ -113,12 +113,10 @@ export class SessionTimer {
   }
 
   private emitWarnings(remainingSeconds: number): void {
-    for (const minutes of [5, 2] as const) {
-      const threshold = minutes * 60;
-      if (remainingSeconds <= threshold && !this.warned.has(minutes)) {
-        this.warned.add(minutes);
-        this.events.onWarning(minutes);
-      }
+    const minutes = 2 as const;
+    if (remainingSeconds <= minutes * 60 && !this.warned.has(minutes)) {
+      this.warned.add(minutes);
+      this.events.onWarning(minutes);
     }
   }
 

@@ -14,6 +14,11 @@ import { connectWifi, disconnectWifi, forgetWifi, getNetworkStatus } from './net
 import { getLogPath, logLine } from './logger';
 import { SessionTimer } from './sessionTimer';
 import { SessionCountdownOverlay } from './sessionCountdownOverlay';
+import {
+  SessionWarningOverlay,
+  type SessionWarningAction,
+  type SessionWarningStage
+} from './sessionWarningOverlay';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
 import { setWindowsTaskbarVisible } from './windowManagerService';
 import { stopWindowsControlWorker, warmWindowsControlWorker } from './windowsControlWorker';
@@ -50,6 +55,7 @@ let taskbarHiddenByKiosk = false;
 let kioskAdminActionGranted = false;
 let secondInstanceFocusPending = false;
 const sessionCountdownOverlay = new SessionCountdownOverlay();
+let sessionWarningOverlay: SessionWarningOverlay | null = null;
 let controllerDiagnostics: AppDiagnostics['controller'] = {
   detected: false,
   homeSupported: 'unknown'
@@ -251,15 +257,12 @@ function handleRestrictedCustomerInput(input: string): void {
 const sessionTimer = new SessionTimer({
   onTick: broadcastSession,
   onWarning: (minutesRemaining) => {
-    launcher.focusLauncher();
-    applyKioskSettings(store.getSettings());
+    sessionWarningOverlay?.show('two');
     void logLine('warn', `Paid play session has ${minutesRemaining} minutes remaining.`);
   },
   onExpired: () => {
     controllerIdleService?.paidSessionEnded();
-    launcher.focusLauncher();
-    applyKioskSettings(store.getSettings());
-    sendShellHome({ reason: 'system', openActiveGamePanel: false, emergencyClose: false });
+    sessionWarningOverlay?.show('final');
     void logLine('warn', 'Paid play session expired; awaiting Extend or Skip while games remain open.');
   }
 });
@@ -296,6 +299,48 @@ const kioskInput = new KioskInputService({
   onRestrictedInput: handleRestrictedCustomerInput,
   onEmergencyClose: requestEmergencyCloseOverlay
 });
+
+async function endPaidSession(): Promise<GameControlResult> {
+  try {
+    await launcher.closeAllGames();
+    sessionTimer.stop('idle');
+    sessionWarningOverlay?.close();
+    controllerIdleService?.setGameplayActive(false);
+    controllerCompatibility.stop();
+    launcher.focusLauncher();
+    applyKioskSettings(store.getSettings());
+    sendShellHome({ reason: 'system', openActiveGamePanel: false, emergencyClose: false });
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await logLine('error', `Could not end paid session cleanly: ${message}`);
+    return { ok: false, error: message };
+  }
+}
+
+async function handleSessionWarningAction(
+  action: SessionWarningAction,
+  stage: SessionWarningStage
+): Promise<GameControlResult> {
+  if (action === 'extend') {
+    sessionWarningOverlay?.close();
+    launcher.focusLauncher();
+    applyKioskSettings(store.getSettings());
+    sendToRenderer('session:extendRequested', { stage });
+    return { ok: true };
+  }
+  if (stage === 'final') return endPaidSession();
+
+  sessionWarningOverlay?.close();
+  const result = await launcher.resumeActiveGame();
+  if (!result.ok && !launcher.hasTrackedGames) {
+    launcher.focusLauncher();
+    applyKioskSettings(store.getSettings());
+  }
+  return result;
+}
+
+sessionWarningOverlay = new SessionWarningOverlay(handleSessionWarningAction);
 
 function handleShellHomeRequest(reason: ShellHomeReason): void {
   if (reason === 'controller-home' || reason === 'controller-combo') {
@@ -357,6 +402,7 @@ async function performKioskAdminAction(action: KioskAdminAction): Promise<KioskA
     isQuitting = true;
     sessionTimer.stop('idle', false);
     sessionCountdownOverlay.close();
+    sessionWarningOverlay?.close();
     kioskInput.unregisterAll();
     window.setSkipTaskbar(false);
     try {
@@ -452,6 +498,7 @@ function prepareForQuit(): void {
   isQuitting = true;
   sessionTimer.stop('idle', false);
   sessionCountdownOverlay.close();
+  sessionWarningOverlay?.close();
   controllerCompatibility.stop();
   controllerIdleService?.stop();
   controllerIdleService = null;
@@ -711,12 +758,25 @@ function registerIpc(): void {
       if (!sessionTimer.active) {
         throw new Error('Paid play time is required before launching a game.');
       }
-      controllerIdleService?.setGameplayActive(true);
-      const compatibility = await controllerCompatibility.ensureReadyForGame(game);
-      if (compatibility.status !== 'ready') {
-        await logLine('warn', `Launching ${game.title} without ready controller compatibility: ${compatibility.message ?? compatibility.status}`);
+      if (launcher.activeState.sessions?.some((session) => session.game.id === game.id)) {
+        return launcher.resumeActiveGame(game.id);
       }
-      await launcher.launch(game);
+      controllerIdleService?.setGameplayActive(true);
+      const launch = launcher.launch(game);
+      void controllerCompatibility.ensureReadyForGame(game).then((compatibility) => {
+        if (compatibility.status !== 'ready') {
+          void logLine('warn', `Launching ${game.title} without ready controller compatibility: ${compatibility.message ?? compatibility.status}`);
+        }
+      }).catch((error) => {
+        void logLine('warn', `Background controller preparation failed for ${game.title}: ${String(error)}`);
+      });
+      void launch.catch(async (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        await logLine('error', `Background launch request failed for ${game.title}: ${message}`);
+        if (!launcher.hasTrackedGames) controllerIdleService?.setGameplayActive(false);
+        launcher.focusLauncher();
+        applyKioskSettings(store.getSettings());
+      });
       return { ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -732,13 +792,18 @@ function registerIpc(): void {
     const game = gameId
       ? launcher.activeState.sessions?.find((session) => session.game.id === gameId)?.game ?? launcher.active
       : launcher.active;
-    const compatibility = game
-      ? await controllerCompatibility.ensureReadyForGame(game)
-      : await controllerCompatibility.ensureReady();
-    if (compatibility.status !== 'ready') {
-      await logLine('warn', `Resuming a game without ready controller compatibility: ${compatibility.message ?? compatibility.status}`);
-    }
-    return launcher.resumeActiveGame(gameId);
+    const resume = launcher.resumeActiveGame(gameId);
+    void (game
+      ? controllerCompatibility.ensureReadyForGame(game)
+      : controllerCompatibility.ensureReady()
+    ).then((compatibility) => {
+      if (compatibility.status !== 'ready') {
+        void logLine('warn', `Resuming a game without ready controller compatibility: ${compatibility.message ?? compatibility.status}`);
+      }
+    }).catch((error) => {
+      void logLine('warn', `Background controller preparation during resume failed: ${String(error)}`);
+    });
+    return resume;
   });
 
   ipcMain.handle('game:minimizeActive', async (): Promise<GameControlResult> => {
@@ -780,24 +845,27 @@ function registerIpc(): void {
     return { ok: true };
   });
 
-  const endPaidSession = async (): Promise<GameControlResult> => {
+  ipcMain.handle('session:end', endPaidSession);
+  ipcMain.handle('session:cancelExtension', async (_event, stage: SessionWarningStage) => {
+    if (stage === 'final' && sessionTimer.current.status === 'expired') {
+      await launcher.resumeActiveGame();
+      sessionWarningOverlay?.show('final');
+      return { ok: true };
+    }
+    const result = await launcher.resumeActiveGame();
+    if (!result.ok && !launcher.hasTrackedGames) launcher.focusLauncher();
+    return result;
+  });
+
+  ipcMain.handle('game:closeForSwitch', async (_event, gameId?: string): Promise<GameControlResult> => {
     try {
-      await launcher.closeAllGames();
-      sessionTimer.stop('idle');
-      controllerIdleService?.setGameplayActive(false);
-      controllerCompatibility.stop();
-      launcher.focusLauncher();
+      await launcher.closeActiveGame(false, { gameId, retireActiveSession: true });
       applyKioskSettings(store.getSettings());
-      sendShellHome({ reason: 'system', openActiveGamePanel: false, emergencyClose: false });
       return { ok: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await logLine('error', `Could not end paid session cleanly: ${message}`);
-      return { ok: false, error: message };
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
-  };
-
-  ipcMain.handle('session:end', endPaidSession);
+  });
   ipcMain.handle('session:clearExpired', async () => {
     await endPaidSession();
   });

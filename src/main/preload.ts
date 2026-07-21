@@ -108,16 +108,26 @@ const api = {
   minimizeActiveGame: (): Promise<GameControlResult> => ipcRenderer.invoke('game:minimizeActive'),
   goToLauncherHome: (): Promise<GameControlResult> => ipcRenderer.invoke('game:goToLauncherHome'),
   closeActiveGame: (gameId?: string): Promise<GameControlResult> => ipcRenderer.invoke('game:closeActive', gameId),
+  closeGameForSwitch: (gameId?: string): Promise<GameControlResult> => ipcRenderer.invoke('game:closeForSwitch', gameId),
   exitApp: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('app:exit', pin),
   forceCloseGame: (pin: string, gameId?: string): Promise<VerifyPinResult> =>
     ipcRenderer.invoke('session:forceClose', pin, gameId),
   clearExpiredSession: (): Promise<void> => ipcRenderer.invoke('session:clearExpired'),
   endPaidSession: (): Promise<GameControlResult> => ipcRenderer.invoke('session:end'),
+  cancelSessionExtension: (stage: 'two' | 'final'): Promise<GameControlResult> =>
+    ipcRenderer.invoke('session:cancelExtension', stage),
   onSessionState: (callback: (state: SessionState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: SessionState) => callback(state);
     ipcRenderer.on('session:state', listener);
     return () => {
       ipcRenderer.removeListener('session:state', listener);
+    };
+  },
+  onSessionExtendRequested: (callback: (request: { stage: 'two' | 'final' }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: { stage: 'two' | 'final' }) => callback(request);
+    ipcRenderer.on('session:extendRequested', listener);
+    return () => {
+      ipcRenderer.removeListener('session:extendRequested', listener);
     };
   },
   onControllerIdleNotification: (callback: (notification: ControllerIdleNotification) => void) => {

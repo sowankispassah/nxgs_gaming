@@ -147,8 +147,9 @@ export function App(): JSX.Element {
   const [homeContentIndex, setHomeContentIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [confirmGame, setConfirmGame] = useState<GameRecord | null>(null);
+  const [switchTargetGame, setSwitchTargetGame] = useState<GameRecord | null>(null);
   const [extendPaymentOpen, setExtendPaymentOpen] = useState(false);
-  const [sessionWarning, setSessionWarning] = useState<'five' | 'two' | 'final' | null>(null);
+  const [extensionStage, setExtensionStage] = useState<'two' | 'final'>('two');
   const [launchPendingGameId, setLaunchPendingGameId] = useState('');
   const [launchNotice, setLaunchNotice] = useState('');
   const [pinOpen, setPinOpen] = useState(false);
@@ -167,8 +168,6 @@ export function App(): JSX.Element {
   const [adminModeError, setAdminModeError] = useState('');
   const [controllerIdleNotification, setControllerIdleNotification] = useState<ControllerIdleNotification | null>(null);
   const adminModeTransitionBusy = useRef(false);
-  const warningRevision = useRef(0);
-  const shownWarnings = useRef(new Set<string>());
 
   const view = viewHistory[viewHistory.length - 1] ?? 'home';
   const navigateToView = useCallback((nextView: View): void => {
@@ -268,30 +267,21 @@ export function App(): JSX.Element {
 
     const unsubscribeSession = window.nxgs.onSessionState((next) => {
       setSession(next);
-      if (warningRevision.current !== next.revision) {
-        warningRevision.current = next.revision;
-        shownWarnings.current.clear();
-        setSessionWarning(null);
-      }
-      if (next.status === 'expired') {
-        setConfirmGame(null);
-        setExtendPaymentOpen(false);
-        setSessionWarning('final');
-        resetToHome();
-      } else if (next.status === 'running') {
-        const warning = next.remainingSeconds <= 120 && next.remainingSeconds > 60
-          ? 'two'
-          : next.remainingSeconds <= 300 && next.remainingSeconds > 120
-            ? 'five'
-            : null;
-        if (warning && !shownWarnings.current.has(warning)) {
-          shownWarnings.current.add(warning);
-          setSessionWarning(warning);
-        }
-      }
+    });
+    const unsubscribeExtendRequested = window.nxgs.onSessionExtendRequested((request) => {
+      setConfirmGame(null);
+      setExtensionStage(request.stage);
+      setExtendPaymentOpen(true);
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
       setActiveGame(next);
+      if (next.status === 'error') {
+        setLaunchPendingGameId('');
+        setLaunchNotice(next.message ?? 'The game could not be started.');
+      } else if (next.status === 'running') {
+        setLaunchPendingGameId('');
+        setLaunchNotice('');
+      }
       setConfirmGame((game) => game && hasConfirmedGameWindow(game.id, next) ? null : game);
       if (next.status === 'closing') {
         setHomeOverlayRequestId(0);
@@ -334,11 +324,29 @@ export function App(): JSX.Element {
     return () => {
       mounted = false;
       unsubscribeSession();
+      unsubscribeExtendRequested();
       unsubscribeActiveGame();
       unsubscribeShellHome();
       unsubscribeControllerIdle();
     };
   }, [resetToHome]);
+
+  const launchPaidGame = useCallback(async (game: GameRecord): Promise<boolean> => {
+    if (launchPendingGameId) return false;
+    setLaunchPendingGameId(game.id);
+    setLaunchNotice(`Starting ${game.title}...`);
+    try {
+      const result = await window.nxgs.launchGame({ gameId: game.id });
+      if (!result.ok) throw new Error(result.error ?? 'Game launch failed.');
+      setLaunchNotice('');
+      return true;
+    } catch (error) {
+      setLaunchNotice(error instanceof Error ? error.message : String(error));
+      return false;
+    } finally {
+      setLaunchPendingGameId('');
+    }
+  }, [launchPendingGameId]);
 
   const selectGame = useCallback(async (game: GameRecord): Promise<void> => {
     if (launchPendingGameId) return;
@@ -346,18 +354,13 @@ export function App(): JSX.Element {
       setConfirmGame(game);
       return;
     }
-    setLaunchPendingGameId(game.id);
-    setLaunchNotice(`Starting ${game.title}...`);
-    try {
-      const result = await window.nxgs.launchGame({ gameId: game.id });
-      if (!result.ok) throw new Error(result.error ?? 'Game launch failed.');
-      setLaunchNotice('');
-    } catch (error) {
-      setLaunchNotice(error instanceof Error ? error.message : String(error));
-    } finally {
-      setLaunchPendingGameId('');
+    const tracked = activeGame.sessions?.some((trackedSession) => trackedSession.game.id === game.id);
+    if (!tracked && activeGame.sessions?.length) {
+      setSwitchTargetGame(game);
+      return;
     }
-  }, [launchPendingGameId, session.remainingSeconds, session.status]);
+    await launchPaidGame(game);
+  }, [activeGame.sessions, launchPaidGame, launchPendingGameId, session.remainingSeconds, session.status]);
 
   useEffect(() => {
     if (selectedIndex >= enabledGames.length) {
@@ -397,7 +400,7 @@ export function App(): JSX.Element {
 
   const moveHorizontal = useCallback(
     (delta: number) => {
-      if (view !== 'home' || confirmGame || pinOpen) {
+      if (view !== 'home' || confirmGame || switchTargetGame || pinOpen) {
         return;
       }
       if (homeFocusSection === 'tabs') {
@@ -439,12 +442,12 @@ export function App(): JSX.Element {
         setHomeContentIndex((index) => Math.max(0, Math.min(3, index + delta)));
       }
     },
-    [confirmGame, enabledGames.length, homeFocusSection, homeTab, pinOpen, view]
+    [confirmGame, enabledGames.length, homeFocusSection, homeTab, pinOpen, switchTargetGame, view]
   );
 
   const moveVertical = useCallback(
     (delta: number) => {
-      if (view !== 'home' || confirmGame || pinOpen) {
+      if (view !== 'home' || confirmGame || switchTargetGame || pinOpen) {
         return;
       }
       setHomeFocusSection((current) => {
@@ -462,11 +465,11 @@ export function App(): JSX.Element {
         return current;
       });
     },
-    [confirmGame, enabledGames.length, homeTab, pinOpen, view]
+    [confirmGame, enabledGames.length, homeTab, pinOpen, switchTargetGame, view]
   );
 
   const acceptSelection = useCallback(() => {
-    if (view !== 'home' || confirmGame || pinOpen) return;
+    if (view !== 'home' || confirmGame || switchTargetGame || pinOpen) return;
     if (homeFocusSection === 'utilities') {
       document.querySelector<HTMLButtonElement>(`[data-home-utility-index="${homeUtilityIndex}"]`)?.click();
       return;
@@ -478,11 +481,15 @@ export function App(): JSX.Element {
     ) {
       void selectGame(selectedGame);
     }
-  }, [confirmGame, homeFocusSection, homeTab, homeUtilityIndex, pinOpen, selectGame, selectedGame, view]);
+  }, [confirmGame, homeFocusSection, homeTab, homeUtilityIndex, pinOpen, selectGame, selectedGame, switchTargetGame, view]);
 
   const back = useCallback(() => {
     if (confirmGame) {
       setConfirmGame(null);
+      return;
+    }
+    if (switchTargetGame) {
+      setSwitchTargetGame(null);
       return;
     }
     if (pinOpen) {
@@ -505,7 +512,7 @@ export function App(): JSX.Element {
     if (homeFocusSection !== 'games' && enabledGames.length > 0) {
       setHomeFocusSection('games');
     }
-  }, [closeAdminPin, confirmGame, enabledGames.length, homeFocusSection, homeTab, navigateBack, pinOpen, returnToCustomerHome, view]);
+  }, [closeAdminPin, confirmGame, enabledGames.length, homeFocusSection, homeTab, navigateBack, pinOpen, returnToCustomerHome, switchTargetGame, view]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -596,6 +603,7 @@ export function App(): JSX.Element {
   useControllerNavigation(
     view === 'home' &&
       !confirmGame &&
+      !switchTargetGame &&
       !pinOpen &&
       !adminOptionsOpen &&
       !quickNavOpen &&
@@ -666,7 +674,7 @@ export function App(): JSX.Element {
           }}
           onOpenAdmin={openConsoleSettings}
           onSelectGame={(game) => void selectGame(game)}
-          launchPendingGameId={launchPendingGameId}
+          launchPendingGameId={launchPendingGameId || (activeGame.status === 'launching' ? activeGame.game?.id ?? '' : '')}
         />
       ) : view === 'settings' ? (
         <ConsoleSettings
@@ -716,16 +724,36 @@ export function App(): JSX.Element {
         />
       )}
 
+      {switchTargetGame && (
+        <GameSwitchDialog
+          currentGame={activeGame.game}
+          targetGame={switchTargetGame}
+          onClose={() => setSwitchTargetGame(null)}
+          onChoose={async (choice) => {
+            const preparation = choice === 'keep'
+              ? activeGame.windowState === 'minimized' || activeGame.windowState === 'background'
+                ? { ok: true }
+                : await window.nxgs.minimizeActiveGame()
+              : await window.nxgs.closeGameForSwitch(activeGame.game?.id);
+            if (!preparation.ok) {
+              throw new Error(preparation.error ?? 'Could not prepare the current game for switching.');
+            }
+            const accepted = await launchPaidGame(switchTargetGame);
+            if (!accepted) throw new Error('The new game could not be started.');
+            setSwitchTargetGame(null);
+          }}
+        />
+      )}
+
       {extendPaymentOpen && (
         <PaymentFlow
           mode="extend"
           onClose={() => {
             setExtendPaymentOpen(false);
-            if (session.status === 'expired') setSessionWarning('final');
+            void window.nxgs.cancelSessionExtension(extensionStage);
           }}
           onCompleted={() => {
             setExtendPaymentOpen(false);
-            setSessionWarning(null);
             if (activeGame.game) void window.nxgs.resumeActiveGame(activeGame.game.id);
           }}
         />
@@ -808,29 +836,116 @@ export function App(): JSX.Element {
         </div>
       )}
 
-      {sessionWarning && !extendPaymentOpen && (
-        <SessionWarningDialog
-          stage={sessionWarning}
-          onExtend={() => {
-            setSessionWarning(null);
-            setExtendPaymentOpen(true);
-          }}
-          onSkip={async () => {
-            if (sessionWarning !== 'final') {
-              setSessionWarning(null);
-              return;
-            }
-            const result = await window.nxgs.endPaidSession();
-            if (!result.ok) throw new Error(result.error ?? 'Could not end the paid session.');
-            setSessionWarning(null);
-            resetToHome();
-          }}
-        />
-      )}
       {shouldShowBlockingLaunchTransition(activeGame) && (
         <GameTransitionOverlay activeGame={activeGame} />
       )}
     </main>
+  );
+}
+function GameSwitchDialog(props: {
+  currentGame?: GameRecord;
+  targetGame: GameRecord;
+  onClose: () => void;
+  onChoose: (choice: 'keep' | 'close') => Promise<void>;
+}): JSX.Element {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [pendingChoice, setPendingChoice] = useState<'keep' | 'close' | null>(null);
+  const [error, setError] = useState('');
+  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const choose = useCallback(async (choice: 'keep' | 'close'): Promise<void> => {
+    if (pendingChoice) return;
+    setPendingChoice(choice);
+    setError('');
+    try {
+      await props.onChoose(choice);
+    } catch (choiceError) {
+      setError(choiceError instanceof Error ? choiceError.message : String(choiceError));
+    } finally {
+      setPendingChoice(null);
+    }
+  }, [pendingChoice, props]);
+
+  useEffect(() => buttonRefs.current[selectedIndex]?.focus({ preventScroll: true }), [selectedIndex]);
+
+  const activate = useCallback((): void => {
+    if (selectedIndex === 0) void choose('keep');
+    else if (selectedIndex === 1) void choose('close');
+    else props.onClose();
+  }, [choose, props, selectedIndex]);
+
+  const handleControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    if (event.type === 'back') props.onClose();
+    else if (event.type === 'accept') activate();
+    else if (event.direction === 'left' || event.direction === 'up') {
+      setSelectedIndex((index) => Math.max(0, index - 1));
+    } else {
+      setSelectedIndex((index) => Math.min(2, index + 1));
+    }
+  }, [activate, props]);
+
+  useControllerNavigation(!pendingChoice, handleControllerEvent);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(event.key)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (pendingChoice) return;
+      if (event.key === 'Escape') props.onClose();
+      else if (event.key === 'Enter') activate();
+      else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') setSelectedIndex((index) => Math.max(0, index - 1));
+      else setSelectedIndex((index) => Math.min(2, index + 1));
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [activate, pendingChoice, props]);
+
+  return (
+    <div className="modal-backdrop game-switch-backdrop">
+      <section className="modal game-switch-modal">
+        <p className="eyebrow">Switch game</p>
+        <h2>Start {props.targetGame.title}?</h2>
+        <p className="muted">
+          {props.currentGame?.title ?? 'The current game'} is still running. Your paid time remains active whichever option you choose.
+        </p>
+        {error && <p className="error-text" role="alert">{error}</p>}
+        <div className="game-switch-actions">
+          <button
+            ref={(element) => { buttonRefs.current[0] = element; }}
+            className={`primary-action ${selectedIndex === 0 ? 'controller-focused' : ''}`}
+            type="button"
+            disabled={Boolean(pendingChoice)}
+            onFocus={() => setSelectedIndex(0)}
+            onClick={() => void choose('keep')}
+          >
+            {pendingChoice === 'keep' ? <LoaderCircle className="spin" size={19} /> : <Play size={19} />}
+            {pendingChoice === 'keep' ? 'Switching...' : 'Keep Running & Switch'}
+          </button>
+          <button
+            ref={(element) => { buttonRefs.current[1] = element; }}
+            className={`danger-action ${selectedIndex === 1 ? 'controller-focused' : ''}`}
+            type="button"
+            disabled={Boolean(pendingChoice)}
+            onFocus={() => setSelectedIndex(1)}
+            onClick={() => void choose('close')}
+          >
+            {pendingChoice === 'close' ? <LoaderCircle className="spin" size={19} /> : <Power size={19} />}
+            {pendingChoice === 'close' ? 'Closing & switching...' : 'Close Current & Switch'}
+          </button>
+          <button
+            ref={(element) => { buttonRefs.current[2] = element; }}
+            className={`secondary-action ${selectedIndex === 2 ? 'controller-focused' : ''}`}
+            type="button"
+            disabled={Boolean(pendingChoice)}
+            onFocus={() => setSelectedIndex(2)}
+            onClick={props.onClose}
+          >
+            <X size={19} /> Cancel
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -2526,84 +2641,6 @@ function PinDialog(props: {
           {pending ? props.pendingLabel : props.actionLabel}
         </button>
       </form>
-    </div>
-  );
-}
-
-function SessionWarningDialog(props: {
-  stage: 'five' | 'two' | 'final';
-  onExtend: () => void;
-  onSkip: () => Promise<void>;
-}): JSX.Element {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [pendingSkip, setPendingSkip] = useState(false);
-  const [error, setError] = useState('');
-  const actionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const skip = useCallback(async (): Promise<void> => {
-    if (pendingSkip) return;
-    setPendingSkip(true);
-    setError('');
-    try {
-      await props.onSkip();
-    } catch (skipError) {
-      setError(skipError instanceof Error ? skipError.message : String(skipError));
-    } finally {
-      setPendingSkip(false);
-    }
-  }, [pendingSkip, props]);
-
-  useEffect(() => actionRefs.current[selectedIndex]?.focus({ preventScroll: true }), [selectedIndex]);
-
-  const handleWarningControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
-    if (event.type === 'back') void skip();
-    else if (event.type === 'accept') {
-      if (selectedIndex === 0) props.onExtend();
-      else void skip();
-    } else if (event.direction === 'left' || event.direction === 'right') {
-      setSelectedIndex((index) => index === 0 ? 1 : 0);
-    }
-  }, [props, selectedIndex, skip]);
-
-  useControllerNavigation(!pendingSkip, handleWarningControllerEvent);
-
-  const minutes = props.stage === 'five' ? 5 : 2;
-  const title = props.stage === 'final' ? 'Your play time has ended.' : `Your play time will end in ${minutes} minutes.`;
-  const message = props.stage === 'final'
-    ? 'Extend now to keep playing. Skip will close every running game and return to NXGS Home.'
-    : 'You can add more time now or continue playing until the next warning.';
-
-  return (
-    <div className="modal-backdrop urgent">
-      <section className="modal session-warning-modal" role="alertdialog" aria-live="assertive">
-        <AlertTriangle size={42} />
-        <p className="eyebrow">Paid session warning</p>
-        <h2>{title}</h2>
-        <p className="muted">{message}</p>
-        {error && <p className="error-text">{error}</p>}
-        <div className="dialog-actions session-warning-actions">
-          <button
-            ref={(element) => { actionRefs.current[0] = element; }}
-            className={`primary-action ${selectedIndex === 0 ? 'controller-focused' : ''}`}
-            type="button"
-            disabled={pendingSkip}
-            onFocus={() => setSelectedIndex(0)}
-            onClick={props.onExtend}
-          >
-            <Timer size={19} /> Extend
-          </button>
-          <button
-            ref={(element) => { actionRefs.current[1] = element; }}
-            className={`secondary-action ${selectedIndex === 1 ? 'controller-focused' : ''}`}
-            type="button"
-            disabled={pendingSkip}
-            onFocus={() => setSelectedIndex(1)}
-            onClick={() => void skip()}
-          >
-            {pendingSkip ? <LoaderCircle size={19} className="spin" /> : <X size={19} />}
-            {pendingSkip ? 'Ending session...' : 'Skip'}
-          </button>
-        </div>
-      </section>
     </div>
   );
 }

@@ -3124,27 +3124,29 @@ select:focus {
   background: rgba(88, 8, 16, 0.72);
 }
 
-.session-warning-modal {
-  width: min(620px, calc(100vw - 40px));
+.game-switch-backdrop {
+  background: rgba(3, 9, 20, 0.82);
+}
+
+.game-switch-modal {
+  width: min(720px, calc(100vw - 40px));
   display: grid;
   gap: 14px;
-  border-color: rgba(255, 104, 125, 0.72);
-  text-align: center;
 }
 
-.session-warning-modal > svg {
-  margin: 0 auto;
-  color: #ff6f85;
-}
-
-.session-warning-actions {
-  justify-content: center;
+.game-switch-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
   margin-top: 8px;
 }
 
-.session-warning-actions button {
-  min-width: 180px;
+.game-switch-actions .secondary-action {
+  grid-column: 1 / -1;
+  justify-self: center;
+  min-width: 190px;
 }
+
 
 .admin-options-backdrop {
   background: rgba(3, 8, 18, 0.82);
