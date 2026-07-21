@@ -114,6 +114,10 @@ const api = {
     ipcRenderer.invoke('session:forceClose', pin, gameId),
   clearExpiredSession: (): Promise<void> => ipcRenderer.invoke('session:clearExpired'),
   endPaidSession: (): Promise<GameControlResult> => ipcRenderer.invoke('session:end'),
+  getPendingSessionExtension: (): Promise<{ id: string; stage: 'two' | 'final' } | null> =>
+    ipcRenderer.invoke('session:getPendingExtension'),
+  acknowledgeSessionExtensionOpened: (requestId: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('session:extensionOpened', requestId),
   cancelSessionExtension: (stage: 'two' | 'final'): Promise<GameControlResult> =>
     ipcRenderer.invoke('session:cancelExtension', stage),
   onSessionState: (callback: (state: SessionState) => void) => {
@@ -123,8 +127,8 @@ const api = {
       ipcRenderer.removeListener('session:state', listener);
     };
   },
-  onSessionExtendRequested: (callback: (request: { stage: 'two' | 'final' }) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, request: { stage: 'two' | 'final' }) => callback(request);
+  onSessionExtendRequested: (callback: (request: { id: string; stage: 'two' | 'final' }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: { id: string; stage: 'two' | 'final' }) => callback(request);
     ipcRenderer.on('session:extendRequested', listener);
     return () => {
       ipcRenderer.removeListener('session:extendRequested', listener);

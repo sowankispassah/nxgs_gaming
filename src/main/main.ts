@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { DataStore } from './database';
@@ -56,6 +57,9 @@ let kioskAdminActionGranted = false;
 let secondInstanceFocusPending = false;
 const sessionCountdownOverlay = new SessionCountdownOverlay();
 let sessionWarningOverlay: SessionWarningOverlay | null = null;
+type SessionExtensionRequest = { id: string; stage: SessionWarningStage };
+let pendingSessionExtension: SessionExtensionRequest | null = null;
+let sessionExtensionDeliveryTimers: NodeJS.Timeout[] = [];
 let controllerDiagnostics: AppDiagnostics['controller'] = {
   detected: false,
   homeSupported: 'unknown'
@@ -153,6 +157,39 @@ function broadcastSession(state: SessionState): void {
 
 function broadcastActiveGame(): void {
   sendToRenderer('activeGame:state', launcher.activeState);
+}
+
+function clearPendingSessionExtension(): void {
+  for (const timer of sessionExtensionDeliveryTimers) clearTimeout(timer);
+  sessionExtensionDeliveryTimers = [];
+  pendingSessionExtension = null;
+}
+
+function deliverPendingSessionExtension(request: SessionExtensionRequest): void {
+  if (pendingSessionExtension?.id !== request.id) return;
+  sendToRenderer('session:extendRequested', request);
+}
+
+function requestSessionExtension(stage: SessionWarningStage): void {
+  clearPendingSessionExtension();
+  const request = { id: randomUUID(), stage } satisfies SessionExtensionRequest;
+  pendingSessionExtension = request;
+  sessionWarningOverlay?.close();
+  launcher.focusLauncher();
+  applyKioskSettings(store.getSettings());
+
+  for (const delay of [0, 100, 350, 900, 1800]) {
+    const timer = setTimeout(() => deliverPendingSessionExtension(request), delay);
+    sessionExtensionDeliveryTimers.push(timer);
+  }
+  void logLine('info', `Requested ${stage} paid-session extension flow (${request.id}); awaiting renderer acknowledgement.`);
+}
+
+function showSessionWarning(stage: SessionWarningStage): void {
+  void launcher.pauseActiveGameForWarning().catch((error) => {
+    void logLine('warn', `Could not send Escape for the ${stage} paid-session warning: ${String(error)}`);
+  });
+  sessionWarningOverlay?.show(stage);
 }
 
 function buildDiagnostics(): AppDiagnostics {
@@ -257,12 +294,12 @@ function handleRestrictedCustomerInput(input: string): void {
 const sessionTimer = new SessionTimer({
   onTick: broadcastSession,
   onWarning: (minutesRemaining) => {
-    sessionWarningOverlay?.show('two');
+    showSessionWarning('two');
     void logLine('warn', `Paid play session has ${minutesRemaining} minutes remaining.`);
   },
   onExpired: () => {
     controllerIdleService?.paidSessionEnded();
-    sessionWarningOverlay?.show('final');
+    showSessionWarning('final');
     void logLine('warn', 'Paid play session expired; awaiting Extend or Skip while games remain open.');
   }
 });
@@ -304,6 +341,7 @@ async function endPaidSession(): Promise<GameControlResult> {
   try {
     await launcher.closeAllGames();
     sessionTimer.stop('idle');
+    clearPendingSessionExtension();
     sessionWarningOverlay?.close();
     controllerIdleService?.setGameplayActive(false);
     controllerCompatibility.stop();
@@ -323,10 +361,7 @@ async function handleSessionWarningAction(
   stage: SessionWarningStage
 ): Promise<GameControlResult> {
   if (action === 'extend') {
-    sessionWarningOverlay?.close();
-    launcher.focusLauncher();
-    applyKioskSettings(store.getSettings());
-    sendToRenderer('session:extendRequested', { stage });
+    requestSessionExtension(stage);
     return { ok: true };
   }
   if (stage === 'final') return endPaidSession();
@@ -496,6 +531,7 @@ function applyKioskSettings(_settings: AppSettings): void {
 
 function prepareForQuit(): void {
   isQuitting = true;
+  clearPendingSessionExtension();
   sessionTimer.stop('idle', false);
   sessionCountdownOverlay.close();
   sessionWarningOverlay?.close();
@@ -846,7 +882,18 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('session:end', endPaidSession);
+  ipcMain.handle('session:getPendingExtension', () => pendingSessionExtension);
+  ipcMain.handle('session:extensionOpened', async (_event, requestId: string) => {
+    if (!pendingSessionExtension || pendingSessionExtension.id !== requestId) {
+      return { ok: false };
+    }
+    const acknowledged = pendingSessionExtension;
+    clearPendingSessionExtension();
+    await logLine('info', `Renderer opened the ${acknowledged.stage} paid-session extension flow (${acknowledged.id}).`);
+    return { ok: true };
+  });
   ipcMain.handle('session:cancelExtension', async (_event, stage: SessionWarningStage) => {
+    clearPendingSessionExtension();
     if (stage === 'final' && sessionTimer.current.status === 'expired') {
       await launcher.resumeActiveGame();
       sessionWarningOverlay?.show('final');

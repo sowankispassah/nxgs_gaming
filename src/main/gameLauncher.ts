@@ -34,6 +34,7 @@ import {
   prepareGameWindowForReveal,
   releaseGameWindowTopMost,
   resumeGameWindowFast,
+  sendEscapeKeyToGameWindow,
   setWindowsTaskbarVisible,
   waitForGameWindow
 } from './windowManagerService';
@@ -673,6 +674,19 @@ export class GameLauncher {
       await this.closeActiveGame(true, { gameId, retireActiveSession: true });
     }
     await this.clearActive();
+  }
+
+  async pauseActiveGameForWarning(): Promise<boolean> {
+    const game = this.activeGame;
+    const window = this.activeWindow;
+    if (!game || !window) {
+      await logLine('info', 'Paid-session warning has no cached game window to receive Escape.');
+      return false;
+    }
+
+    await sendEscapeKeyToGameWindow(window);
+    await logLine('info', `Sent one Escape key press to ${game.title} for the paid-session warning.`);
+    return true;
   }
 
   focusLauncher(): void {

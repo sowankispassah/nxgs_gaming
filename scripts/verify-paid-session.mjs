@@ -32,7 +32,7 @@ timer.start(2);
 assert.deepEqual(warnings, [2]);
 timer.stop('idle', false);
 
-const [mainSource, paymentSource, functionSource, overlaySource, warningOverlaySource, launcherSource, timerSource, appSource] = await Promise.all([
+const [mainSource, paymentSource, functionSource, overlaySource, warningOverlaySource, launcherSource, timerSource, appSource, preloadSource, windowManagerSource] = await Promise.all([
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/paymentService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/functions/pcPayment/index.ts', import.meta.url), 'utf8'),
@@ -40,7 +40,9 @@ const [mainSource, paymentSource, functionSource, overlaySource, warningOverlayS
   readFile(new URL('../src/main/sessionWarningOverlay.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/gameLauncher.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/sessionTimer.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8')
+  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main/preload.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main/windowManagerService.ts', import.meta.url), 'utf8')
 ]);
 
 assert.match(mainSource, /if \(!sessionTimer\.active\)/);
@@ -58,5 +60,13 @@ assert.match(mainSource, /const launch = launcher\.launch\(game\)/);
 assert.doesNotMatch(timerSource, /\[5, 2\]/);
 assert.match(appSource, /function GameSwitchDialog/);
 assert.match(appSource, /closeGameForSwitch/);
+assert.match(mainSource, /session:extensionOpened/);
+assert.match(mainSource, /\[0, 100, 350, 900, 1800\]/);
+assert.match(preloadSource, /getPendingSessionExtension/);
+assert.match(appSource, /acknowledgeSessionExtensionOpened/);
+assert.match(launcherSource, /pauseActiveGameForWarning/);
+assert.match(windowManagerSource, /WarningInputWin32/);
+assert.match(windowManagerSource, /0x0100/);
+assert.match(windowManagerSource, /0x0101/);
 
-console.log('Station-wide payment, 2-minute game overlay, fast resume, async switching, and final countdown verified.');
+console.log('Station-wide payment, reliable warning extension, one-shot Escape pause, fast resume, switching, and final countdown verified.');

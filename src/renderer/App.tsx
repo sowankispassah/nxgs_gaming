@@ -150,6 +150,7 @@ export function App(): JSX.Element {
   const [switchTargetGame, setSwitchTargetGame] = useState<GameRecord | null>(null);
   const [extendPaymentOpen, setExtendPaymentOpen] = useState(false);
   const [extensionStage, setExtensionStage] = useState<'two' | 'final'>('two');
+  const [extensionRequestId, setExtensionRequestId] = useState('');
   const [launchPendingGameId, setLaunchPendingGameId] = useState('');
   const [launchNotice, setLaunchNotice] = useState('');
   const [pinOpen, setPinOpen] = useState(false);
@@ -268,10 +269,15 @@ export function App(): JSX.Element {
     const unsubscribeSession = window.nxgs.onSessionState((next) => {
       setSession(next);
     });
-    const unsubscribeExtendRequested = window.nxgs.onSessionExtendRequested((request) => {
+    const openExtensionRequest = (request: { id: string; stage: 'two' | 'final' }): void => {
       setConfirmGame(null);
       setExtensionStage(request.stage);
+      setExtensionRequestId(request.id);
       setExtendPaymentOpen(true);
+    };
+    const unsubscribeExtendRequested = window.nxgs.onSessionExtendRequested(openExtensionRequest);
+    void window.nxgs.getPendingSessionExtension().then((request) => {
+      if (request) openExtensionRequest(request);
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState((next) => {
       setActiveGame(next);
@@ -330,6 +336,14 @@ export function App(): JSX.Element {
       unsubscribeControllerIdle();
     };
   }, [resetToHome]);
+
+  useEffect(() => {
+    if (!extendPaymentOpen || !extensionRequestId) return;
+    const frame = window.requestAnimationFrame(() => {
+      void window.nxgs.acknowledgeSessionExtensionOpened(extensionRequestId);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [extendPaymentOpen, extensionRequestId]);
 
   const launchPaidGame = useCallback(async (game: GameRecord): Promise<boolean> => {
     if (launchPendingGameId) return false;
@@ -748,12 +762,15 @@ export function App(): JSX.Element {
       {extendPaymentOpen && (
         <PaymentFlow
           mode="extend"
+          key={extensionRequestId}
           onClose={() => {
             setExtendPaymentOpen(false);
+            setExtensionRequestId('');
             void window.nxgs.cancelSessionExtension(extensionStage);
           }}
           onCompleted={() => {
             setExtendPaymentOpen(false);
+            setExtensionRequestId('');
             if (activeGame.game) void window.nxgs.resumeActiveGame(activeGame.game.id);
           }}
         />

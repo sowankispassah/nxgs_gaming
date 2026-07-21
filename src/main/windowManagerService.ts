@@ -114,6 +114,29 @@ if ($visible) { "true" } else { "false" }
   return (await runPowerShell(script)).trim().toLowerCase() === 'true';
 }
 
+export async function sendEscapeKeyToGameWindow(window: GameWindowInfo): Promise<void> {
+  if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
+    return;
+  }
+
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class WarningInputWin32 {
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+}
+"@
+$hwnd = [IntPtr]${Math.trunc(window.handle)}
+$escape = [IntPtr]0x1B
+[WarningInputWin32]::PostMessage($hwnd, 0x0100, $escape, [IntPtr]0x00010001) | Out-Null
+Start-Sleep -Milliseconds 30
+[WarningInputWin32]::PostMessage($hwnd, 0x0101, $escape, [IntPtr][long]0xC0010001) | Out-Null
+`;
+
+  await runPowerShell(script);
+}
+
 function powershellQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }

@@ -50,7 +50,11 @@ assert.match(service, /install-driver\.ps1/, 'packaged builds must support the s
 assert.match(service, /async prepare\(\)/, 'launcher startup must prepare bridge files without starting the mapper');
 assert.match(service, /\['-command', 'Stop'\][\s\S]*\['-command', 'Shutdown'\]/, 'mapper shutdown must release controller output through supported IPC before closing');
 assert.match(service, /graceful stop timeout[\s\S]*mapper\.kill\(\)|mapper\.kill\(\)[\s\S]*graceful stop timeout/, 'mapper shutdown must retain a bounded forced-termination fallback');
-assert.match(main, /await controllerCompatibility\.ensureReadyForGame\(game\);[\s\S]*await launcher\.launch\(game\)/, 'launch must activate the correct controller profile before the game handoff');
+assert.match(
+  main,
+  /const launch = launcher\.launch\(game\);[\s\S]*void controllerCompatibility\.ensureReadyForGame\(game\)/,
+  'launch must start immediately while the correct controller profile is prepared in the background'
+);
 assert.match(main, /game:resumeActive[\s\S]*controllerCompatibility\.ensureReadyForGame\(game\)/, 'resume must reactivate the correct game profile');
 assert.doesNotMatch(main, /controllerCompatibility\.start\(\{ allowDriverInstall: app\.isPackaged \}\)/, 'launcher Home must not start the gameplay mapper');
 assert.match(main, /controllerCompatibility\.prepare\(\)/, 'launcher Home may validate bridge assets without claiming the controller');
