@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.0/NXGS-Play-Setup.exe",
-    "sha256":  "91c626ee3e1c71c9e91438b7d53e7f48e1ada07add78f2b06f567ec334db0b01",
+    "version":  "0.20.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.1/NXGS-Play-Setup.exe",
+    "sha256":  "bfa76fcd1ad53f3aad48e989de353a8f503f29d0a8acb68522b5fd859e36f015",
     "required":  false,
-    "notes":  "Adds Device Manager, safe legacy migration, device-specific games and plans, and sync-ready local session and revenue tracking."
+    "notes":  "Sorts customer and Extend Play price options from the shortest duration to the longest."
 }
