@@ -224,7 +224,7 @@ export class GameLauncher {
 
   async closeActiveGame(
     force: boolean,
-    options: { retireActiveSession?: boolean; gameId?: string } = {}
+    options: { retireActiveSession?: boolean; gameId?: string; focusLauncher?: boolean } = {}
   ): Promise<void> {
     if (this.operationInFlight === 'close') {
       await logLine('info', 'Ignoring duplicate close request while a close command is already in progress.');
@@ -249,6 +249,7 @@ export class GameLauncher {
 
     this.operationInFlight = 'close';
     const retireActiveSession = options.retireActiveSession ?? force;
+    const focusLauncher = options.focusLauncher ?? true;
     await logLine('info', `${force ? 'Force closing' : 'Closing'} ${game.title}`);
     try {
       this.cancelFocusOperations(`Close requested for ${game.title}`);
@@ -265,7 +266,7 @@ export class GameLauncher {
         windowDetected: Boolean(this.activeWindow),
         windowState: this.activeWindow ? 'background' : 'unknown'
       });
-      this.focusLauncher();
+      if (focusLauncher) this.focusLauncher();
       const errors: string[] = [];
 
       if (!force && this.activeWindow) {
@@ -554,15 +555,16 @@ export class GameLauncher {
     }
   }
 
-  async openQuickOverlay(): Promise<GameControlResult> {
+  async openQuickOverlay(options: { focusLauncher?: boolean } = {}): Promise<GameControlResult> {
+    const focusLauncher = options.focusLauncher ?? true;
     if (this.operationInFlight === 'home') {
-      this.focusLauncher();
+      if (focusLauncher) this.focusLauncher();
       return { ok: true };
     }
 
     if (this.state.status === 'quickOverlayOpen') {
       this.lastHomeResult = 'NXGS quick overlay was already open and was refocused.';
-      this.focusLauncher();
+      if (focusLauncher) this.focusLauncher();
       return { ok: true };
     }
 
@@ -589,11 +591,17 @@ export class GameLauncher {
           windowState: this.activeWindow ? 'background' : 'unknown'
         });
       }
-      // Raise NXGS before any native window lookup so Home always gives immediate visible feedback.
-      this.focusLauncher();
+      // The normal launcher uses its own full-screen shell. During gameplay the
+      // dedicated transparent overlay owns focus instead, leaving the live game
+      // visible behind it.
+      if (focusLauncher) {
+        this.focusLauncher();
+      } else {
+        this.releaseLaunchShield();
+      }
       if (game) {
         const homeGeneration = this.focusGeneration;
-        void this.releaseGameWindowsForQuickOverlay(game, homeGeneration);
+        void this.releaseGameWindowsForQuickOverlay(game, homeGeneration, focusLauncher);
       }
       this.lastHomeResult = game
         ? `${game.title} remains running; NXGS quick overlay restored and focused.`
@@ -607,7 +615,11 @@ export class GameLauncher {
     }
   }
 
-  private async releaseGameWindowsForQuickOverlay(game: GameRecord, homeGeneration: number): Promise<void> {
+  private async releaseGameWindowsForQuickOverlay(
+    game: GameRecord,
+    homeGeneration: number,
+    focusLauncher: boolean
+  ): Promise<void> {
     try {
       const trackedWindow = this.activeWindow ?? (await this.getActiveWindow(game));
       if (this.focusGeneration !== homeGeneration || this.state.status !== 'quickOverlayOpen') {
@@ -635,7 +647,7 @@ export class GameLauncher {
         this.activeWindow = currentWindow;
         this.activeProcessId = currentWindow.processId;
       }
-      if (this.focusGeneration === homeGeneration && this.state.status === 'quickOverlayOpen') {
+      if (focusLauncher && this.focusGeneration === homeGeneration && this.state.status === 'quickOverlayOpen') {
         await this.focusLauncherAfterGameRelease(game, homeGeneration);
       }
     } catch (error) {

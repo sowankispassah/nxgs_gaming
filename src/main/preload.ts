@@ -83,6 +83,7 @@ const api = {
   reportControllerState: (report: ControllerStateReport): Promise<AppDiagnostics> =>
     ipcRenderer.invoke('input:controllerState', report),
   requestShellHome: (reason: ShellHomeReason): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:homeRequest', reason),
+  dismissQuickOverlay: (): Promise<GameControlResult> => ipcRenderer.invoke('shell:dismissQuickOverlay'),
   verifyPin: (pin: string): Promise<VerifyPinResult> => ipcRenderer.invoke('auth:verifyPin', pin),
   getCurrentDevice: (): Promise<DeviceManagerSummary> => ipcRenderer.invoke('device:getCurrent'),
   updateCurrentDevice: (device: DeviceInput): Promise<DeviceManagerSummary> =>

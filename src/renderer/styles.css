@@ -1299,6 +1299,11 @@ button.console-game-avatar:not(:disabled):active {
   animation: quick-overlay-fade 180ms ease both;
 }
 
+.quick-overlay-shell .quick-overlay-shade {
+  background: rgba(2, 7, 13, 0.34);
+  backdrop-filter: blur(2px) saturate(0.78);
+}
+
 @keyframes quick-overlay-fade {
   from { opacity: 0; }
   to { opacity: 1; }

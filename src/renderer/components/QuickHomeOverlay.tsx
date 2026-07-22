@@ -63,6 +63,8 @@ function quickOverlayImageUrl(path: string): string {
 export function QuickHomeOverlay(props: {
   activeGame: ActiveGameState;
   emergencyCloseRequestId: number;
+  liveGameBackdrop?: boolean;
+  dismissResumesGame?: boolean;
   onDismiss: () => void;
 }): JSX.Element {
   const sessions = useMemo<TrackedGameSessionState[]>(() => {
@@ -491,7 +493,7 @@ export function QuickHomeOverlay(props: {
 
   const dismissOverlay = useCallback((): void => {
     if (disabled) return;
-    if (resumeTargetSession) {
+    if (resumeTargetSession && props.dismissResumesGame !== false) {
       void resumeGame();
     } else {
       props.onDismiss();
@@ -681,7 +683,7 @@ export function QuickHomeOverlay(props: {
         dismissOverlay();
       }}
     >
-      {backgroundImage && (
+      {!props.liveGameBackdrop && backgroundImage && (
         <div
           className="quick-overlay-game-backdrop"
           style={{ backgroundImage: `url("${backgroundImage.replace(/"/g, '%22')}")` }}

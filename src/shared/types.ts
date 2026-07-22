@@ -583,6 +583,7 @@ export interface ShellHomeEvent {
   emergencyClose: boolean;
   preserveAdminWindow?: boolean;
   openQuickNav?: boolean;
+  resetToHome?: boolean;
 }
 
 export interface AdminUnlockRequest {

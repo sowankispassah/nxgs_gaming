@@ -309,7 +309,9 @@ export function App(): JSX.Element {
       setPinOpen(false);
       setAdminUnlockRequest(null);
       setAdminOptionsOpen(false);
-      resetToHome();
+      if (event.resetToHome) {
+        resetToHome();
+      }
       if (event.preserveAdminWindow) {
         setAdminControlsActive(true);
         setWindowedAdminMode(true);
@@ -319,7 +321,7 @@ export function App(): JSX.Element {
         setWindowedAdminMode(false);
         setAdminModeError('');
       }
-      setQuickNavOpen(event.openQuickNav ?? !event.preserveAdminWindow);
+      setQuickNavOpen(event.openQuickNav ?? false);
       if (event.openActiveGamePanel) {
         setHomeOverlayRequestId((value) => value + 1);
       }
@@ -651,7 +653,7 @@ export function App(): JSX.Element {
     );
   }
 
-  const activeGameOverlayVisible = shouldShowQuickGameOverlay(activeGame);
+  const activeGameOverlayVisible = quickNavOpen && shouldShowQuickGameOverlay(activeGame);
   const homeQuickNavVisible = quickNavOpen && !activeGameOverlayVisible;
 
   return (
@@ -660,7 +662,11 @@ export function App(): JSX.Element {
         <QuickHomeOverlay
           activeGame={activeGame}
           emergencyCloseRequestId={emergencyCloseRequestId}
-          onDismiss={() => setQuickNavOpen(false)}
+          dismissResumesGame={false}
+          onDismiss={() => {
+            setQuickNavOpen(false);
+            void window.nxgs.dismissQuickOverlay();
+          }}
         />
       ) : view === 'home' ? (
         <ConsoleHome
@@ -719,7 +725,11 @@ export function App(): JSX.Element {
         <QuickHomeOverlay
           activeGame={activeGame}
           emergencyCloseRequestId={emergencyCloseRequestId}
-          onDismiss={() => setQuickNavOpen(false)}
+          dismissResumesGame={false}
+          onDismiss={() => {
+            setQuickNavOpen(false);
+            void window.nxgs.dismissQuickOverlay();
+          }}
         />
       )}
 
