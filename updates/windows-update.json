@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.7",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.7/NXGS-Play-Setup.exe",
-    "sha256":  "643c6167b760e6fe3d8e82a85fe1258951046a2f2ab1aca2e95a8577a28e3cd4",
+    "version":  "0.20.8",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.8/NXGS-Play-Setup.exe",
+    "sha256":  "69aa9a60b86881bc3d004c87e34e3ba77bf36abbf30ac79d8ea570a045e85ba3",
     "required":  false,
-    "notes":  "Makes Home and the quick switcher smooth and instant over the real running game, without black flashes, snapshot seams, screen flips, or position jumps."
+    "notes":  "Fixes Ctrl+Shift+H and controller Home so an active game always opens the quick switcher, including from Admin mode."
 }
