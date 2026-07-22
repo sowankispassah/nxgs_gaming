@@ -10,6 +10,15 @@ const [mainSource, launcherSource, appSource, overlayRootSource, overlaySource] 
 ]);
 
 assert.match(mainSource, /title: 'NXGS Play Quick Switcher'[\s\S]*transparent: true/);
+assert.match(mainSource, /fullscreenable: false/);
+assert.match(mainSource, /setVisibleOnAllWorkspaces\(true, \{ visibleOnFullScreen: true \}\)/);
+assert.doesNotMatch(
+  mainSource.slice(
+    mainSource.indexOf('async function createGameplayQuickOverlayWindow'),
+    mainSource.indexOf('function broadcastActiveGame')
+  ),
+  /fullscreen: true|setFullScreen\(true\)/
+);
 assert.match(mainSource, /launcher\.openQuickOverlay\(\{ focusLauncher: false \}\)/);
 assert.match(mainSource, /gameplayQuickOverlayWindow[\s\S]*setAlwaysOnTop\(true, 'screen-saver'\)/);
 assert.match(mainSource, /\['launching', 'running', 'quickOverlayOpen', 'resuming'\]/);

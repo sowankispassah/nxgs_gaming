@@ -180,8 +180,13 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
   const existing = getLiveGameplayQuickOverlayWindow();
   if (existing) return existing;
 
+  const display = screen.getPrimaryDisplay();
   const overlay = new BrowserWindow({
     title: 'NXGS Play Quick Switcher',
+    x: display.bounds.x,
+    y: display.bounds.y,
+    width: display.bounds.width,
+    height: display.bounds.height,
     show: false,
     frame: false,
     transparent: true,
@@ -191,7 +196,7 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
     movable: false,
     minimizable: false,
     maximizable: false,
-    fullscreen: true,
+    fullscreenable: false,
     backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/preload.mjs'),
@@ -201,6 +206,8 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
     }
   });
   gameplayQuickOverlayWindow = overlay;
+  overlay.setAlwaysOnTop(true, 'screen-saver');
+  overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlay.on('closed', () => {
     if (gameplayQuickOverlayWindow === overlay) gameplayQuickOverlayWindow = null;
   });
@@ -227,7 +234,6 @@ async function showGameplayQuickOverlay(): Promise<void> {
   const owner = getLiveMainWindow();
   const display = screen.getDisplayMatching(owner?.getBounds() ?? screen.getPrimaryDisplay().bounds);
   overlay.setBounds(display.bounds);
-  overlay.setFullScreen(true);
   overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.show();
   overlay.moveTop();
