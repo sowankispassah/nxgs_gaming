@@ -30,6 +30,8 @@ assert.match(database, /async setPlanEnabled/);
 assert.match(database, /async reorderPlans/);
 
 assert.match(payment, /this\.plans\.listEnabled\(\)/);
+assert.match(payment, /left\.durationMinutes - right\.durationMinutes/);
+assert.match(payment, /left\.amountPaise - right\.amountPaise/);
 assert.match(payment, /this\.plans\.getById\(request\.timePlanId\)/);
 assert.match(payment, /plan: \{/);
 assert.doesNotMatch(payment, /this\.invoke\('pricing'/);

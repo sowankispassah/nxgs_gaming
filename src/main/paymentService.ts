@@ -187,13 +187,19 @@ export class PaymentService {
   }
 
   async catalog(): Promise<PaymentCatalogResult> {
-    const plans = this.plans.listEnabled().map(({ id, name, durationMinutes, amountPaise, currency }) => ({
-      id,
-      name,
-      durationMinutes,
-      amountPaise,
-      currency
-    }));
+    const plans = this.plans.listEnabled()
+      .sort((left, right) =>
+        left.durationMinutes - right.durationMinutes
+        || left.amountPaise - right.amountPaise
+        || left.name.localeCompare(right.name)
+      )
+      .map(({ id, name, durationMinutes, amountPaise, currency }) => ({
+        id,
+        name,
+        durationMinutes,
+        amountPaise,
+        currency
+      }));
     return plans.length > 0
       ? { ok: true, plans }
       : { ok: true, plans: [], error: 'No play plans available.' };
