@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.6",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.6/NXGS-Play-Setup.exe",
-    "sha256":  "fc8fe3adff66f0d258244355289df04a44d041e54b452a5ff11a80175a90bbc8",
+    "version":  "0.20.7",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.7/NXGS-Play-Setup.exe",
+    "sha256":  "643c6167b760e6fe3d8e82a85fe1258951046a2f2ab1aca2e95a8577a28e3cd4",
     "required":  false,
-    "notes":  "Fixes the Home/quick switcher overlay so the entire game remains live behind the navbar, with no halfway static snapshot seam."
+    "notes":  "Makes Home and the quick switcher smooth and instant over the real running game, without black flashes, snapshot seams, screen flips, or position jumps."
 }
