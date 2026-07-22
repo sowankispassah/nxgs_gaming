@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.1/NXGS-Play-Setup.exe",
-    "sha256":  "bfa76fcd1ad53f3aad48e989de353a8f503f29d0a8acb68522b5fd859e36f015",
+    "version":  "0.20.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.2/NXGS-Play-Setup.exe",
+    "sha256":  "f9eff9f2bcc8448b044865f0b58c4e3d0c041e3a54043dcefa92391f195d6fbd",
     "required":  false,
-    "notes":  "Sorts customer and Extend Play price options from the shortest duration to the longest."
+    "notes":  "Fixes session warnings by delivering one native foreground Escape key press before showing the overlay, allowing supported games to pause correctly."
 }
