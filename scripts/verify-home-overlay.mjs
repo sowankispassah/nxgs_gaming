@@ -34,6 +34,9 @@ assert.doesNotMatch(
   /fullscreen: true|setFullScreen\(true\)/
 );
 assert.match(mainSource, /launcher\.openQuickOverlay\(\{ focusLauncher: false \}\)/);
+assert.match(mainSource, /activeGameplayShouldOwnHome = launcher\.hasTrackedGames/);
+assert.match(mainSource, /kioskInput\.currentMode === 'admin' && !activeGameplayShouldOwnHome/);
+assert.match(mainSource, /active game takes priority over Admin mode/);
 assert.match(mainSource, /gameplayQuickOverlayWindow[\s\S]*setAlwaysOnTop\(true, 'screen-saver'\)/);
 assert.match(mainSource, /\['launching', 'running', 'quickOverlayOpen', 'resuming'\]/);
 assert.match(mainSource, /if \(!hasActiveGame \|\| !gameplayContext\)/);

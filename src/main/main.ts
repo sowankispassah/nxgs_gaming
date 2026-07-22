@@ -688,7 +688,9 @@ function handleShellHomeRequest(reason: ShellHomeReason): void {
   if (reason === 'controller-home' || reason === 'controller-combo') {
     void suppressXboxGameBarSurfaces();
   }
-  if (kioskInput.currentMode === 'admin') {
+  const activeGameplayShouldOwnHome = launcher.hasTrackedGames &&
+    ['launching', 'running', 'quickOverlayOpen', 'resuming'].includes(launcher.activeState.status);
+  if (kioskInput.currentMode === 'admin' && !activeGameplayShouldOwnHome) {
     launcherQuickNavOpen = reason === 'second-instance' ? false : !launcherQuickNavOpen;
     applyKioskSettings(store.getSettings());
     sendShellHome({
@@ -701,6 +703,10 @@ function handleShellHomeRequest(reason: ShellHomeReason): void {
     });
     void logLine('info', `Handled ${reason} inside windowed Admin mode without changing presentation mode.`);
     return;
+  }
+
+  if (kioskInput.currentMode === 'admin') {
+    void logLine('info', `Routing ${reason} to the gameplay quick overlay because an active game takes priority over Admin mode.`);
   }
 
   kioskAdminActionGranted = false;
