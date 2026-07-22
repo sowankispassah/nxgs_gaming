@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.5",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.5/NXGS-Play-Setup.exe",
-    "sha256":  "2513f6790f9844fdd5c40b064cf6355434dc5d819c39d1b52a56cbe40856bf15",
+    "version":  "0.20.6",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.6/NXGS-Play-Setup.exe",
+    "sha256":  "fc8fe3adff66f0d258244355289df04a44d041e54b452a5ff11a80175a90bbc8",
     "required":  false,
-    "notes":  "Adds an Admin toggle for free play or paid access, and fixes the gameplay Home switcher so the running game stays visible behind the navbar and resumes immediately on Back/Esc."
+    "notes":  "Fixes the Home/quick switcher overlay so the entire game remains live behind the navbar, with no halfway static snapshot seam."
 }
