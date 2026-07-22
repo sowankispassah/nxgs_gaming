@@ -113,28 +113,7 @@ button:not(:disabled):active {
 
 .app-shell.quick-overlay-shell {
   background: transparent;
-}
-
-.quick-overlay-captured-backdrop {
-  position: absolute;
-  inset: 0;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: var(--quick-overlay-display-width, 100vw) var(--quick-overlay-display-height, 100vh);
-}
-
-.quick-overlay-live-backdrop {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0;
-  transition: opacity 80ms linear;
-}
-
-.quick-overlay-live-backdrop.is-ready {
-  opacity: 1;
+  isolation: isolate;
 }
 
 .cursor-hidden {
@@ -1334,6 +1313,21 @@ button.console-game-avatar:not(:disabled):active {
 
 .live-gameplay-overlay .quick-overlay-header {
   display: none;
+}
+
+/*
+ * This renderer is prewarmed while its BrowserWindow is hidden. Chromium can
+ * leave entrance animations mounted in their zero-opacity first frame until
+ * the window is shown, which makes Home flash the game before the controls
+ * appear (or leaves the controls invisible). Render the dedicated gameplay
+ * overlay directly in its final geometry instead: the already-live game is
+ * the transition, so moving the navbar adds visual instability without value.
+ */
+.live-gameplay-overlay .quick-overlay-shade,
+.live-gameplay-overlay .quick-game-menu,
+.live-gameplay-overlay .quick-navbar {
+  opacity: 1;
+  animation: none;
 }
 
 .play-access-options {

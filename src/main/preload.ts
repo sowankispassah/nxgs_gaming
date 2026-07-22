@@ -178,20 +178,18 @@ const api = {
       ipcRenderer.removeListener('activeGame:state', listener);
     };
   },
-  onQuickOverlayBackdrop: (callback: (backdrop: {
-    sourceId: string;
-    dataUrl: string;
-    displayWidth: number;
-    displayHeight: number;
-  }) => void) => {
+  onQuickOverlayBackdrop: (callback: (backdrop: { requestId: number }) => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,
-      backdrop: { sourceId: string; dataUrl: string; displayWidth: number; displayHeight: number }
+      backdrop: { requestId: number }
     ) => callback(backdrop);
     ipcRenderer.on('quickOverlay:backdrop', listener);
     return () => {
       ipcRenderer.removeListener('quickOverlay:backdrop', listener);
     };
+  },
+  notifyQuickOverlayBackdropReady: (requestId: number) => {
+    ipcRenderer.send('quickOverlay:backdropReady', requestId);
   },
   onShellHome: (callback: (event: ShellHomeEvent) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: ShellHomeEvent) => callback(event);

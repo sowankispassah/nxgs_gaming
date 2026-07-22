@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
@@ -55,6 +55,18 @@ import { requiresPaymentForLaunch } from '../shared/playAccess';
 
 let mainWindow: BrowserWindow | null = null;
 let gameplayQuickOverlayWindow: BrowserWindow | null = null;
+let gameplayQuickOverlayWindowReady: Promise<void> | null = null;
+let gameplayQuickOverlayShowPromise: Promise<void> | null = null;
+let gameplayQuickOverlayPreparePromise: Promise<void> | null = null;
+let gameplayQuickOverlayVisibilityGeneration = 0;
+let gameplayQuickOverlayRequestId = 0;
+let gameplayQuickOverlayPreparedGameId: string | null = null;
+let gameplayQuickOverlayRendererReady = false;
+let pendingQuickOverlayPaint: {
+  requestId: number;
+  resolve: (painted: boolean) => void;
+  timeout: NodeJS.Timeout;
+} | null = null;
 let isQuitting = false;
 let taskbarHiddenByKiosk = false;
 let kioskAdminActionGranted = false;
@@ -170,62 +182,50 @@ function getLiveGameplayQuickOverlayWindow(): BrowserWindow | null {
   return gameplayQuickOverlayWindow;
 }
 
-function hideGameplayQuickOverlay(): void {
-  const overlay = getLiveGameplayQuickOverlayWindow();
-  if (!overlay) return;
-  if (!overlay.webContents.isDestroyed()) {
-    overlay.webContents.send('quickOverlay:backdrop', {
-      sourceId: '',
-      dataUrl: '',
-      displayWidth: 0,
-      displayHeight: 0
-    });
-  }
-  overlay.setAlwaysOnTop(false);
-  overlay.hide();
+function finishPendingQuickOverlayPaint(requestId: number, painted: boolean): void {
+  if (pendingQuickOverlayPaint?.requestId !== requestId) return;
+  const pending = pendingQuickOverlayPaint;
+  pendingQuickOverlayPaint = null;
+  clearTimeout(pending.timeout);
+  pending.resolve(painted);
 }
 
-async function captureGameplayQuickOverlayBackdrop(
-  displayId: number,
-  width: number,
-  height: number,
-  gameTitle?: string
-): Promise<{ sourceId: string; dataUrl: string; displayWidth: number; displayHeight: number }> {
-  const emptyBackdrop = { sourceId: '', dataUrl: '', displayWidth: width, displayHeight: height };
-  try {
-    const sources = await desktopCapturer.getSources({
-      types: ['window', 'screen'],
-      thumbnailSize: { width, height },
-      fetchWindowIcons: false
-    });
-    const normalizedGameTitle = gameTitle?.trim().toLocaleLowerCase();
-    const gameWindowSource = normalizedGameTitle
-      ? sources.find((candidate) => {
-        const sourceName = candidate.name.trim().toLocaleLowerCase();
-        return sourceName === normalizedGameTitle || sourceName.includes(normalizedGameTitle);
-      })
-      : undefined;
-    const source = gameWindowSource
-      ?? sources.find((candidate) => candidate.display_id === String(displayId))
-      ?? sources[0];
-    if (!source) return emptyBackdrop;
-    return {
-      sourceId: source.id,
-      dataUrl: source.thumbnail.isEmpty()
-        ? ''
-        : `data:image/jpeg;base64,${source.thumbnail.toJPEG(78).toString('base64')}`,
-      displayWidth: width,
-      displayHeight: height
-    };
-  } catch (error) {
-    void logLine('warn', `Could not capture the game backdrop for the quick overlay: ${error instanceof Error ? error.message : String(error)}`);
-    return emptyBackdrop;
+function waitForQuickOverlayPaint(requestId: number): Promise<boolean> {
+  if (pendingQuickOverlayPaint) {
+    finishPendingQuickOverlayPaint(pendingQuickOverlayPaint.requestId, false);
   }
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => finishPendingQuickOverlayPaint(requestId, false), 1500);
+    pendingQuickOverlayPaint = { requestId, resolve, timeout };
+  });
+}
+
+function clearGameplayQuickOverlayPreparation(overlay: BrowserWindow): void {
+  gameplayQuickOverlayPreparedGameId = null;
+  gameplayQuickOverlayRendererReady = false;
+  if (!overlay.webContents.isDestroyed()) {
+    overlay.webContents.send('quickOverlay:backdrop', { requestId: 0 });
+  }
+}
+
+function hideGameplayQuickOverlay(resetPreparation = false): void {
+  gameplayQuickOverlayVisibilityGeneration += 1;
+  if (pendingQuickOverlayPaint) {
+    finishPendingQuickOverlayPaint(pendingQuickOverlayPaint.requestId, false);
+  }
+  const overlay = getLiveGameplayQuickOverlayWindow();
+  if (!overlay) return;
+  overlay.hide();
+  overlay.setAlwaysOnTop(false);
+  if (resetPreparation) clearGameplayQuickOverlayPreparation(overlay);
 }
 
 async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
   const existing = getLiveGameplayQuickOverlayWindow();
-  if (existing) return existing;
+  if (existing) {
+    await gameplayQuickOverlayWindowReady;
+    return existing;
+  }
 
   const display = screen.getPrimaryDisplay();
   const overlay = new BrowserWindow({
@@ -246,14 +246,18 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
       preload: join(__dirname, '../preload/preload.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      backgroundThrottling: false
     }
   });
   gameplayQuickOverlayWindow = overlay;
   overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlay.on('closed', () => {
-    if (gameplayQuickOverlayWindow === overlay) gameplayQuickOverlayWindow = null;
+    if (gameplayQuickOverlayWindow === overlay) {
+      gameplayQuickOverlayWindow = null;
+      gameplayQuickOverlayWindowReady = null;
+    }
   });
   overlay.on('close', (event) => {
     if (!isQuitting) {
@@ -261,36 +265,119 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
       overlay.hide();
     }
   });
-  if (process.env.VITE_DEV_SERVER_URL) {
-    const url = new URL(process.env.VITE_DEV_SERVER_URL);
-    url.searchParams.set('view', 'quick-overlay');
-    await overlay.loadURL(url.toString());
-  } else {
-    await overlay.loadFile(join(__dirname, '../renderer/index.html'), {
-      query: { view: 'quick-overlay' }
-    });
-  }
+  gameplayQuickOverlayWindowReady = (async () => {
+    if (process.env.VITE_DEV_SERVER_URL) {
+      const url = new URL(process.env.VITE_DEV_SERVER_URL);
+      url.searchParams.set('view', 'quick-overlay');
+      await overlay.loadURL(url.toString());
+    } else {
+      await overlay.loadFile(join(__dirname, '../renderer/index.html'), {
+        query: { view: 'quick-overlay' }
+      });
+    }
+
+    await logLine('info', 'Preloaded the transparent quick-overlay renderer.');
+  })();
+  await gameplayQuickOverlayWindowReady;
   return overlay;
 }
 
-async function showGameplayQuickOverlay(): Promise<void> {
+async function performGameplayQuickOverlayPreparation(gameId: string): Promise<void> {
   const overlay = await createGameplayQuickOverlayWindow();
+  const preparationStartedAt = Date.now();
   const owner = getLiveMainWindow();
   const display = screen.getDisplayMatching(owner?.getBounds() ?? screen.getPrimaryDisplay().bounds);
-  overlay.setBounds(display.bounds);
-  const backdrop = await captureGameplayQuickOverlayBackdrop(
-    display.id,
-    display.bounds.width,
-    display.bounds.height,
-    launcher.activeState.game?.title
+  const currentBounds = overlay.getBounds();
+  if (
+    currentBounds.x !== display.bounds.x ||
+    currentBounds.y !== display.bounds.y ||
+    currentBounds.width !== display.bounds.width ||
+    currentBounds.height !== display.bounds.height
+  ) {
+    overlay.setBounds(display.bounds);
+  }
+  if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
+
+  const requestId = ++gameplayQuickOverlayRequestId;
+  const paintReady = waitForQuickOverlayPaint(requestId);
+  overlay.webContents.send('activeGame:state', launcher.activeState);
+  overlay.webContents.send('quickOverlay:backdrop', { requestId });
+  const painted = await paintReady;
+  if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
+
+  gameplayQuickOverlayPreparedGameId = gameId;
+  gameplayQuickOverlayRendererReady = painted;
+  if (launcher.activeState.status !== 'quickOverlayOpen') {
+    overlay.hide();
+  }
+  await logLine(
+    gameplayQuickOverlayRendererReady ? 'info' : 'warn',
+    `Quick overlay renderer prepared in ${Date.now() - preparationStartedAt}ms ` +
+      `(renderer ready: ${gameplayQuickOverlayRendererReady}).`
   );
-  overlay.webContents.send('quickOverlay:backdrop', backdrop);
-  overlay.setAlwaysOnTop(true, 'screen-saver');
+}
+
+async function prepareGameplayQuickOverlayRenderer(): Promise<void> {
+  const gameId = launcher.activeState.game?.id;
+  if (!gameId) return;
+  if (gameplayQuickOverlayPreparedGameId === gameId && gameplayQuickOverlayRendererReady) return;
+  if (gameplayQuickOverlayPreparePromise) {
+    await gameplayQuickOverlayPreparePromise;
+    return;
+  }
+
+  const operation = performGameplayQuickOverlayPreparation(gameId);
+  gameplayQuickOverlayPreparePromise = operation;
+  try {
+    await operation;
+  } finally {
+    if (gameplayQuickOverlayPreparePromise === operation) {
+      gameplayQuickOverlayPreparePromise = null;
+    }
+  }
+}
+
+async function performGameplayQuickOverlayShow(): Promise<void> {
+  const transitionStartedAt = Date.now();
+  const overlay = await createGameplayQuickOverlayWindow();
+  const gameId = launcher.activeState.game?.id ?? null;
+  if (overlay.isVisible() && gameplayQuickOverlayPreparedGameId === gameId) {
+    overlay.webContents.send('activeGame:state', launcher.activeState);
+    overlay.focus();
+    overlay.webContents.focus();
+    return;
+  }
+
+  const visibilityGeneration = ++gameplayQuickOverlayVisibilityGeneration;
+  await prepareGameplayQuickOverlayRenderer();
+  if (visibilityGeneration !== gameplayQuickOverlayVisibilityGeneration || overlay.isDestroyed()) return;
+
   overlay.show();
   overlay.moveTop();
   overlay.focus();
   overlay.webContents.focus();
-  overlay.webContents.send('activeGame:state', launcher.activeState);
+  await logLine(
+    gameplayQuickOverlayRendererReady ? 'info' : 'warn',
+    `Quick overlay transition completed in ${Date.now() - transitionStartedAt}ms ` +
+      `(reused prewarmed renderer: ${gameplayQuickOverlayRendererReady}).`
+  );
+}
+
+async function showGameplayQuickOverlay(): Promise<void> {
+  if (gameplayQuickOverlayShowPromise) {
+    await gameplayQuickOverlayShowPromise;
+    return;
+  }
+
+  const operation = performGameplayQuickOverlayShow();
+  gameplayQuickOverlayShowPromise = operation;
+  try {
+    await operation;
+  } finally {
+    if (gameplayQuickOverlayShowPromise === operation) {
+      gameplayQuickOverlayShowPromise = null;
+    }
+  }
 }
 
 function broadcastActiveGame(): void {
@@ -528,8 +615,13 @@ const launcher = new GameLauncher(
       const status = launcher.activeState.status;
       if (status === 'quickOverlayOpen') {
         void showGameplayQuickOverlay();
-      } else if (['running', 'minimizedToHome', 'idle', 'closed', 'error'].includes(status)) {
+      } else if (status === 'running') {
         hideGameplayQuickOverlay();
+        void prepareGameplayQuickOverlayRenderer();
+      } else if (status === 'minimizedToHome') {
+        hideGameplayQuickOverlay();
+      } else if (['idle', 'closed', 'error'].includes(status)) {
+        hideGameplayQuickOverlay(true);
       }
     }
   },
@@ -545,7 +637,7 @@ const kioskInput = new KioskInputService({
 async function endPaidSession(): Promise<GameControlResult> {
   try {
     const endedAfterExpiry = sessionTimer.current.status === 'expired';
-    hideGameplayQuickOverlay();
+    hideGameplayQuickOverlay(true);
     launcherQuickNavOpen = false;
     await launcher.closeAllGames();
     sessionTimer.stop('idle');
@@ -900,6 +992,12 @@ function registerIpc(): void {
   ipcMain.handle('shell:homeRequest', (_event, reason: ShellHomeReason = 'renderer-request') => {
     kioskInput.requestHome(reason);
     return { ok: true };
+  });
+
+  ipcMain.on('quickOverlay:backdropReady', (event, requestId: number) => {
+    const overlay = getLiveGameplayQuickOverlayWindow();
+    if (!overlay || event.sender !== overlay.webContents || !Number.isInteger(requestId)) return;
+    finishPendingQuickOverlayPaint(requestId, true);
   });
 
   ipcMain.handle('shell:dismissQuickOverlay', async (): Promise<GameControlResult> => {

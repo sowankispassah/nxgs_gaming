@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ActiveGameState } from '../shared/types';
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 
@@ -10,14 +10,8 @@ const IDLE_GAME_STATE: ActiveGameState = {
 export function QuickOverlayRoot(): JSX.Element {
   const [activeGame, setActiveGame] = useState<ActiveGameState>(IDLE_GAME_STATE);
   const [emergencyCloseRequestId, setEmergencyCloseRequestId] = useState(0);
-  const [backdrop, setBackdrop] = useState({
-    sourceId: '',
-    dataUrl: '',
-    displayWidth: 0,
-    displayHeight: 0
-  });
-  const [liveBackdropReady, setLiveBackdropReady] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [renderRequestId, setRenderRequestId] = useState(0);
+  const readyRequestRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
@@ -25,7 +19,9 @@ export function QuickOverlayRoot(): JSX.Element {
       if (mounted) setActiveGame(data.activeGame);
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState(setActiveGame);
-    const unsubscribeBackdrop = window.nxgs.onQuickOverlayBackdrop(setBackdrop);
+    const unsubscribeBackdrop = window.nxgs.onQuickOverlayBackdrop((request) => {
+      setRenderRequestId(request.requestId);
+    });
     const unsubscribeShellHome = window.nxgs.onShellHome((event) => {
       if (event.emergencyClose) {
         setEmergencyCloseRequestId((value) => value + 1);
@@ -40,70 +36,42 @@ export function QuickOverlayRoot(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    setLiveBackdropReady(false);
-    const video = videoRef.current;
-    if (!backdrop.sourceId || !video) return undefined;
-
-    let disposed = false;
-    let stream: MediaStream | null = null;
-    const width = Math.max(1, backdrop.displayWidth);
-    const height = Math.max(1, backdrop.displayHeight);
-    const videoConstraints = {
-      mandatory: {
-        chromeMediaSource: 'desktop',
-        chromeMediaSourceId: backdrop.sourceId,
-        maxWidth: width,
-        maxHeight: height,
-        maxFrameRate: 60
+    if (renderRequestId <= 0 || readyRequestRef.current === renderRequestId) return undefined;
+    let cancelled = false;
+    let timer = 0;
+    let attempts = 0;
+    const confirmControlsArePaintable = () => {
+      if (cancelled || readyRequestRef.current === renderRequestId) return;
+      const navbar = document.querySelector<HTMLElement>('.quick-navbar');
+      const style = navbar ? window.getComputedStyle(navbar) : null;
+      const bounds = navbar?.getBoundingClientRect();
+      const paintable = Boolean(
+        navbar &&
+        style &&
+        bounds &&
+        bounds.width > 0 &&
+        bounds.height > 0 &&
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        Number(style.opacity) > 0
+      );
+      if (paintable) {
+        readyRequestRef.current = renderRequestId;
+        window.nxgs.notifyQuickOverlayBackdropReady(renderRequestId);
+        return;
       }
-    } as unknown as MediaTrackConstraints;
-
-    void navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints })
-      .then(async (nextStream) => {
-        if (disposed) {
-          nextStream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        stream = nextStream;
-        video.srcObject = nextStream;
-        await video.play();
-      })
-      .catch(() => {
-        if (!disposed) setLiveBackdropReady(false);
-      });
-
-    return () => {
-      disposed = true;
-      setLiveBackdropReady(false);
-      if (video.srcObject === stream) video.srcObject = null;
-      stream?.getTracks().forEach((track) => track.stop());
+      attempts += 1;
+      if (attempts < 30) timer = window.setTimeout(confirmControlsArePaintable, 16);
     };
-  }, [backdrop.displayHeight, backdrop.displayWidth, backdrop.sourceId]);
+    timer = window.setTimeout(confirmControlsArePaintable, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeGame, renderRequestId]);
 
   return (
     <main className="app-shell quick-overlay-shell live-gameplay-overlay">
-      {backdrop.dataUrl && (
-        <div
-          className="quick-overlay-captured-backdrop"
-          aria-hidden="true"
-          style={{
-            backgroundImage: `url("${backdrop.dataUrl}")`,
-            '--quick-overlay-display-width': `${backdrop.displayWidth}px`,
-            '--quick-overlay-display-height': `${backdrop.displayHeight}px`
-          } as CSSProperties}
-        />
-      )}
-      {backdrop.sourceId && (
-        <video
-          ref={videoRef}
-          className={`quick-overlay-live-backdrop ${liveBackdropReady ? 'is-ready' : ''}`}
-          muted
-          autoPlay
-          playsInline
-          aria-hidden="true"
-          onPlaying={() => setLiveBackdropReady(true)}
-        />
-      )}
       <QuickHomeOverlay
         activeGame={activeGame}
         emergencyCloseRequestId={emergencyCloseRequestId}
