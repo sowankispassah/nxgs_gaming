@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
-export type WindowsControlCommand = 'volume' | 'mute' | 'brightness';
+export type WindowsControlCommand = 'volume' | 'mute' | 'brightness' | 'escape';
 
 export interface WindowsControlResult {
   ok: boolean;
@@ -117,6 +117,67 @@ public static class NxgsLiveAudio {
         }
     }
 }
+
+public static class NxgsWarningInput {
+    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(int processId);
+    [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint attach, uint attachTo, bool attachState);
+    [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+    [DllImport("user32.dll")] private static extern IntPtr SetActiveWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern IntPtr SetFocus(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
+    [DllImport("user32.dll")] private static extern void SwitchToThisWindow(IntPtr window, bool altTab);
+
+    private const uint KeyUp = 0x0002;
+
+    public static string SendEscape(long handle) {
+        var window = new IntPtr(handle);
+        if (window == IntPtr.Zero || !IsWindow(window)) return "invalid_window";
+        uint targetProcess;
+        var targetThread = GetWindowThreadProcessId(window, out targetProcess);
+        var currentThread = GetCurrentThreadId();
+        var foreground = GetForegroundWindow();
+        uint foregroundProcess = 0;
+        var foregroundThread = foreground == IntPtr.Zero ? 0 : GetWindowThreadProcessId(foreground, out foregroundProcess);
+        var attachedCurrent = false;
+        var attachedForeground = false;
+        try {
+            if (currentThread != targetThread) attachedCurrent = AttachThreadInput(currentThread, targetThread, true);
+            if (foregroundThread != 0 && foregroundThread != targetThread) {
+                attachedForeground = AttachThreadInput(foregroundThread, targetThread, true);
+            }
+            AllowSetForegroundWindow(-1);
+            ShowWindowAsync(window, 9);
+            keybd_event(0x12, 0, 0, UIntPtr.Zero);
+            SwitchToThisWindow(window, true);
+            BringWindowToTop(window);
+            SetActiveWindow(window);
+            SetForegroundWindow(window);
+            SetFocus(window);
+            keybd_event(0x12, 0, KeyUp, UIntPtr.Zero);
+            System.Threading.Thread.Sleep(45);
+            if (GetForegroundWindow() != window) {
+                SetForegroundWindow(window);
+                SetFocus(window);
+                System.Threading.Thread.Sleep(45);
+            }
+            if (GetForegroundWindow() != window) return "focus_failed:" + GetForegroundWindow().ToInt64();
+            keybd_event(0x1B, 0x01, 0, UIntPtr.Zero);
+            System.Threading.Thread.Sleep(55);
+            keybd_event(0x1B, 0x01, KeyUp, UIntPtr.Zero);
+            return "ok";
+        } finally {
+            keybd_event(0x12, 0, KeyUp, UIntPtr.Zero);
+            if (attachedForeground) AttachThreadInput(foregroundThread, targetThread, false);
+            if (attachedCurrent) AttachThreadInput(currentThread, targetThread, false);
+        }
+    }
+}
 '@ | Out-Null
 
 while (($line = [Console]::In.ReadLine()) -ne $null) {
@@ -140,6 +201,11 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
                 Invoke-CimMethod -InputObject $method -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$value } -ErrorAction Stop | Out-Null
             }
             $response = @{ id = $request.id; ok = $true; value = $value; message = "Brightness changed to $value%." }
+        } elseif ($request.command -eq 'escape') {
+            $value = [long]$request.value
+            $delivery = [NxgsWarningInput]::SendEscape($value)
+            if ($delivery -ne 'ok') { throw "Could not deliver native Escape input ($delivery)." }
+            $response = @{ id = $request.id; ok = $true; value = $value; message = 'Native Escape input delivered to the foreground game window.' }
         } else {
             throw "Unknown NXGS control command: $($request.command)"
         }
@@ -167,11 +233,22 @@ function rejectPending(message: string): void {
 function ensureWorker(): ChildProcessWithoutNullStreams {
   if (worker && !worker.killed && worker.exitCode === null) return worker;
 
-  const encoded = Buffer.from(WORKER_SCRIPT, 'utf16le').toString('base64');
   worker = spawn(
     'powershell.exe',
-    ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
-    { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      '[ScriptBlock]::Create($env:NXGS_WINDOWS_CONTROL_WORKER).Invoke()'
+    ],
+    {
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, NXGS_WINDOWS_CONTROL_WORKER: WORKER_SCRIPT }
+    }
   );
   stdoutBuffer = '';
   worker.stdout.setEncoding('utf8');

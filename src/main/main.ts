@@ -190,11 +190,14 @@ function requestSessionExtension(stage: SessionWarningStage): void {
   void logLine('info', `Requested ${stage} paid-session extension flow (${request.id}); awaiting renderer acknowledgement.`);
 }
 
-function showSessionWarning(stage: SessionWarningStage): void {
-  void launcher.pauseActiveGameForWarning().catch((error) => {
+async function showSessionWarning(stage: SessionWarningStage): Promise<void> {
+  try {
+    await launcher.pauseActiveGameForWarning();
+  } catch (error) {
     void logLine('warn', `Could not send Escape for the ${stage} paid-session warning: ${String(error)}`);
-  });
-  sessionWarningOverlay?.show(stage);
+  } finally {
+    sessionWarningOverlay?.show(stage);
+  }
 }
 
 function buildDiagnostics(): AppDiagnostics {
@@ -299,12 +302,12 @@ function handleRestrictedCustomerInput(input: string): void {
 const sessionTimer = new SessionTimer({
   onTick: broadcastSession,
   onWarning: (minutesRemaining) => {
-    showSessionWarning('two');
+    void showSessionWarning('two');
     void logLine('warn', `Paid play session has ${minutesRemaining} minutes remaining.`);
   },
   onExpired: () => {
     controllerIdleService?.paidSessionEnded();
-    showSessionWarning('final');
+    void showSessionWarning('final');
     void logLine('warn', 'Paid play session expired; awaiting Extend or Skip while games remain open.');
   }
 });

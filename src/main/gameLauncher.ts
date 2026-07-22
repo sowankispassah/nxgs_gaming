@@ -685,7 +685,7 @@ export class GameLauncher {
     }
 
     await sendEscapeKeyToGameWindow(window);
-    await logLine('info', `Sent one Escape key press to ${game.title} for the paid-session warning.`);
+    await logLine('info', `Delivered one native foreground Escape key press to ${game.title} before showing the paid-session warning.`);
     return true;
   }
 

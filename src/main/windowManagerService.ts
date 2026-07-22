@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import type { GameLaunchMode } from '../shared/types';
 import { describeGamePresentation, isFullscreenGamePresentation } from './gamePresentation';
 import { normalizeProcessName } from './windowsProcess';
+import { runWindowsControl } from './windowsControlWorker';
 
 const execFileAsync = promisify(execFile);
 
@@ -118,23 +119,8 @@ export async function sendEscapeKeyToGameWindow(window: GameWindowInfo): Promise
   if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
     return;
   }
-
-  const script = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class WarningInputWin32 {
-  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-}
-"@
-$hwnd = [IntPtr]${Math.trunc(window.handle)}
-$escape = [IntPtr]0x1B
-[WarningInputWin32]::PostMessage($hwnd, 0x0100, $escape, [IntPtr]0x00010001) | Out-Null
-Start-Sleep -Milliseconds 30
-[WarningInputWin32]::PostMessage($hwnd, 0x0101, $escape, [IntPtr][long]0xC0010001) | Out-Null
-`;
-
-  await runPowerShell(script);
+  const result = await runWindowsControl('escape', Math.trunc(window.handle));
+  if (!result.ok) throw new Error(result.message);
 }
 
 function powershellQuote(value: string): string {
