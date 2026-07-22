@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.8",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.8/NXGS-Play-Setup.exe",
-    "sha256":  "69aa9a60b86881bc3d004c87e34e3ba77bf36abbf30ac79d8ea570a045e85ba3",
+    "version":  "0.20.9",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.9/NXGS-Play-Setup.exe",
+    "sha256":  "7126838e0c9bbfb35e4070870aa0a84fdb9f765f9699b32153bd1df2ec9ce1b3",
     "required":  false,
-    "notes":  "Fixes Ctrl+Shift+H and controller Home so an active game always opens the quick switcher, including from Admin mode."
+    "notes":  "Fixes Ctrl+Shift+H and controller Home so the bottom quick switcher reliably appears over the full live game, with no black overlay surface, and Esc returns directly to gameplay."
 }
