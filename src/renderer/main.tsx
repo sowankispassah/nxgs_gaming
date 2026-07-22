@@ -6,6 +6,11 @@ import './styles.css';
 
 const isQuickOverlayWindow = new URLSearchParams(window.location.search).get('view') === 'quick-overlay';
 
+if (isQuickOverlayWindow) {
+  document.documentElement.classList.add('quick-overlay-document');
+  document.body.classList.add('quick-overlay-document');
+}
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     {isQuickOverlayWindow ? <QuickOverlayRoot /> : <App />}

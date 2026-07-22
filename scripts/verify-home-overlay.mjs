@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [mainSource, preloadSource, launcherSource, appSource, overlayRootSource, overlaySource, stylesSource] = await Promise.all([
+const [mainSource, preloadSource, launcherSource, appSource, rendererMainSource, overlayRootSource, overlaySource, stylesSource] = await Promise.all([
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/preload.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/gameLauncher.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/renderer/main.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/QuickOverlayRoot.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/QuickHomeOverlay.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8')
@@ -22,6 +23,8 @@ assert.match(mainSource, /Preloaded the transparent quick-overlay renderer/);
 assert.match(mainSource, /gameplayQuickOverlayShowPromise/);
 assert.match(mainSource, /gameplayQuickOverlayPreparePromise/);
 assert.match(mainSource, /reused prewarmed renderer/);
+assert.match(mainSource, /performGameplayQuickOverlayShow[\s\S]*overlay\.setAlwaysOnTop\(true, 'screen-saver'\)[\s\S]*overlay\.show\(\)/);
+assert.match(mainSource, /topmost restored: \$\{overlay\.isAlwaysOnTop\(\)\}/);
 assert.match(mainSource, /status === 'running'[\s\S]*prepareGameplayQuickOverlayRenderer/);
 assert.doesNotMatch(mainSource, /overlay\.setOpacity\(/);
 assert.match(mainSource, /fullscreenable: false/);
@@ -46,6 +49,8 @@ assert.match(mainSource, /endPaidSession[\s\S]*openQuickNav: false,[\s\S]*resetT
 assert.match(launcherSource, /if \(focusLauncher\) \{[\s\S]*this\.focusLauncher\(\);[\s\S]*\} else \{[\s\S]*this\.releaseLaunchShield\(\)/);
 assert.match(appSource, /if \(event\.resetToHome\) \{[\s\S]*resetToHome\(\)/);
 assert.match(appSource, /setQuickNavOpen\(event\.openQuickNav \?\? false\)/);
+assert.match(rendererMainSource, /isQuickOverlayWindow[\s\S]*document\.documentElement\.classList\.add\('quick-overlay-document'\)/);
+assert.match(stylesSource, /html\.quick-overlay-document,[\s\S]*background: transparent/);
 assert.match(overlayRootSource, /liveGameBackdrop/);
 assert.match(overlayRootSource, /live-gameplay-overlay/);
 assert.match(overlayRootSource, /notifyQuickOverlayBackdropReady/);
@@ -55,6 +60,7 @@ assert.match(overlayRootSource, /Number\(style\.opacity\) > 0/);
 assert.doesNotMatch(overlayRootSource, /navigator\.mediaDevices\.getUserMedia/);
 assert.doesNotMatch(overlayRootSource, /<canvas|<video/);
 assert.match(stylesSource, /\.live-gameplay-overlay \.quick-overlay-shade,[\s\S]*animation: none/);
+assert.match(stylesSource, /\.live-gameplay-overlay \.quick-navbar,[\s\S]*backdrop-filter: none/);
 assert.match(preloadSource, /onQuickOverlayBackdrop/);
 assert.match(overlayRootSource, /dismissQuickOverlay/);
 assert.match(overlaySource, /props\.dismissResumesGame !== false/);

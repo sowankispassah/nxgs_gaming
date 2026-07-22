@@ -50,6 +50,18 @@ body,
   background: transparent;
 }
 
+/*
+ * :root has greater selector specificity than the generic html rule above, so
+ * its launcher background otherwise wins inside the transparent quick-overlay
+ * BrowserWindow and paints the live game black. Scope an explicit transparent
+ * document surface to that renderer while leaving the main launcher unchanged.
+ */
+html.quick-overlay-document,
+html.quick-overlay-document body,
+html.quick-overlay-document #root {
+  background: transparent;
+}
+
 button,
 input,
 select {
@@ -1328,6 +1340,27 @@ button.console-game-avatar:not(:disabled):active {
 .live-gameplay-overlay .quick-navbar {
   opacity: 1;
   animation: none;
+}
+
+/*
+ * Windows DirectComposition can drop transparent Chromium layers that use
+ * backdrop-filter above a hardware-accelerated game. The DOM still reports
+ * normal bounds and opacity, which made the old readiness check a false
+ * positive even though the switcher was completely invisible on screen.
+ * Keep the live-game overlay on ordinary alpha-composited surfaces instead.
+ */
+.live-gameplay-overlay .quick-game-menu,
+.live-gameplay-overlay .quick-navbar,
+.live-gameplay-overlay .quick-settings-panel {
+  backdrop-filter: none;
+}
+
+.live-gameplay-overlay .quick-game-menu {
+  background: rgba(7, 13, 23, 0.96);
+}
+
+.live-gameplay-overlay .quick-navbar {
+  background: rgba(7, 12, 20, 0.96);
 }
 
 .play-access-options {

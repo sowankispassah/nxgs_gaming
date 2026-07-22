@@ -343,6 +343,8 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   const gameId = launcher.activeState.game?.id ?? null;
   if (overlay.isVisible() && gameplayQuickOverlayPreparedGameId === gameId) {
     overlay.webContents.send('activeGame:state', launcher.activeState);
+    overlay.setAlwaysOnTop(true, 'screen-saver');
+    overlay.moveTop();
     overlay.focus();
     overlay.webContents.focus();
     return;
@@ -352,6 +354,10 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   await prepareGameplayQuickOverlayRenderer();
   if (visibilityGeneration !== gameplayQuickOverlayVisibilityGeneration || overlay.isDestroyed()) return;
 
+  // The prewarm/hide path deliberately releases topmost. Reapply it on every
+  // show before asking Windows for focus, otherwise the transparent renderer
+  // is fully painted but remains hidden behind the topmost game window.
+  overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.show();
   overlay.moveTop();
   overlay.focus();
@@ -359,7 +365,7 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   await logLine(
     gameplayQuickOverlayRendererReady ? 'info' : 'warn',
     `Quick overlay transition completed in ${Date.now() - transitionStartedAt}ms ` +
-      `(reused prewarmed renderer: ${gameplayQuickOverlayRendererReady}).`
+      `(reused prewarmed renderer: ${gameplayQuickOverlayRendererReady}; topmost restored: ${overlay.isAlwaysOnTop()}).`
   );
 }
 
