@@ -55,7 +55,6 @@ import { requiresPaymentForLaunch } from '../shared/playAccess';
 
 let mainWindow: BrowserWindow | null = null;
 let gameplayQuickOverlayWindow: BrowserWindow | null = null;
-const GAMEPLAY_QUICK_OVERLAY_HEIGHT = 600;
 let isQuitting = false;
 let taskbarHiddenByKiosk = false;
 let kioskAdminActionGranted = false;
@@ -174,18 +173,16 @@ function getLiveGameplayQuickOverlayWindow(): BrowserWindow | null {
 function hideGameplayQuickOverlay(): void {
   const overlay = getLiveGameplayQuickOverlayWindow();
   if (!overlay) return;
+  if (!overlay.webContents.isDestroyed()) {
+    overlay.webContents.send('quickOverlay:backdrop', {
+      sourceId: '',
+      dataUrl: '',
+      displayWidth: 0,
+      displayHeight: 0
+    });
+  }
   overlay.setAlwaysOnTop(false);
   overlay.hide();
-}
-
-function getGameplayQuickOverlayBounds(bounds: { x: number; y: number; width: number; height: number }) {
-  const height = Math.min(GAMEPLAY_QUICK_OVERLAY_HEIGHT, bounds.height);
-  return {
-    x: bounds.x,
-    y: bounds.y + bounds.height - height,
-    width: bounds.width,
-    height
-  };
 }
 
 async function captureGameplayQuickOverlayBackdrop(
@@ -193,7 +190,8 @@ async function captureGameplayQuickOverlayBackdrop(
   width: number,
   height: number,
   gameTitle?: string
-): Promise<string> {
+): Promise<{ sourceId: string; dataUrl: string; displayWidth: number; displayHeight: number }> {
+  const emptyBackdrop = { sourceId: '', dataUrl: '', displayWidth: width, displayHeight: height };
   try {
     const sources = await desktopCapturer.getSources({
       types: ['window', 'screen'],
@@ -210,11 +208,18 @@ async function captureGameplayQuickOverlayBackdrop(
     const source = gameWindowSource
       ?? sources.find((candidate) => candidate.display_id === String(displayId))
       ?? sources[0];
-    if (!source || source.thumbnail.isEmpty()) return '';
-    return `data:image/jpeg;base64,${source.thumbnail.toJPEG(78).toString('base64')}`;
+    if (!source) return emptyBackdrop;
+    return {
+      sourceId: source.id,
+      dataUrl: source.thumbnail.isEmpty()
+        ? ''
+        : `data:image/jpeg;base64,${source.thumbnail.toJPEG(78).toString('base64')}`,
+      displayWidth: width,
+      displayHeight: height
+    };
   } catch (error) {
     void logLine('warn', `Could not capture the game backdrop for the quick overlay: ${error instanceof Error ? error.message : String(error)}`);
-    return '';
+    return emptyBackdrop;
   }
 }
 
@@ -223,10 +228,9 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
   if (existing) return existing;
 
   const display = screen.getPrimaryDisplay();
-  const overlayBounds = getGameplayQuickOverlayBounds(display.bounds);
   const overlay = new BrowserWindow({
     title: 'NXGS Play Quick Switcher',
-    ...overlayBounds,
+    ...display.bounds,
     show: false,
     frame: false,
     transparent: true,
@@ -273,17 +277,14 @@ async function showGameplayQuickOverlay(): Promise<void> {
   const overlay = await createGameplayQuickOverlayWindow();
   const owner = getLiveMainWindow();
   const display = screen.getDisplayMatching(owner?.getBounds() ?? screen.getPrimaryDisplay().bounds);
-  overlay.setBounds(getGameplayQuickOverlayBounds(display.bounds));
-  const backdropDataUrl = await captureGameplayQuickOverlayBackdrop(
+  overlay.setBounds(display.bounds);
+  const backdrop = await captureGameplayQuickOverlayBackdrop(
     display.id,
     display.bounds.width,
     display.bounds.height,
     launcher.activeState.game?.title
   );
-  overlay.webContents.send('quickOverlay:backdrop', {
-    dataUrl: backdropDataUrl,
-    displayHeight: display.bounds.height
-  });
+  overlay.webContents.send('quickOverlay:backdrop', backdrop);
   overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.show();
   overlay.moveTop();

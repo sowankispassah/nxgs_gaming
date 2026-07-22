@@ -118,9 +118,23 @@ button:not(:disabled):active {
 .quick-overlay-captured-backdrop {
   position: absolute;
   inset: 0;
-  background-position: center bottom;
+  background-position: center;
   background-repeat: no-repeat;
-  background-size: 100vw var(--quick-overlay-display-height, 100vh);
+  background-size: var(--quick-overlay-display-width, 100vw) var(--quick-overlay-display-height, 100vh);
+}
+
+.quick-overlay-live-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 80ms linear;
+}
+
+.quick-overlay-live-backdrop.is-ready {
+  opacity: 1;
 }
 
 .cursor-hidden {
@@ -1318,7 +1332,7 @@ button.console-game-avatar:not(:disabled):active {
   backdrop-filter: none;
 }
 
-.compact-gameplay-overlay .quick-overlay-header {
+.live-gameplay-overlay .quick-overlay-header {
   display: none;
 }
 

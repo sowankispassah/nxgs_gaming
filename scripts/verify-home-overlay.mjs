@@ -11,12 +11,13 @@ const [mainSource, preloadSource, launcherSource, appSource, overlayRootSource, 
 ]);
 
 assert.match(mainSource, /title: 'NXGS Play Quick Switcher'[\s\S]*transparent: true/);
-assert.match(mainSource, /const GAMEPLAY_QUICK_OVERLAY_HEIGHT = 600/);
-assert.match(mainSource, /getGameplayQuickOverlayBounds\(display\.bounds\)/);
+assert.doesNotMatch(mainSource, /GAMEPLAY_QUICK_OVERLAY_HEIGHT/);
+assert.match(mainSource, /overlay\.setBounds\(display\.bounds\)/);
 assert.match(mainSource, /desktopCapturer\.getSources/);
 assert.match(mainSource, /types: \['window', 'screen'\]/);
 assert.match(mainSource, /launcher\.activeState\.game\?\.title/);
 assert.match(mainSource, /quickOverlay:backdrop/);
+assert.match(mainSource, /sourceId: source\.id/);
 assert.match(mainSource, /fullscreenable: false/);
 assert.match(mainSource, /setVisibleOnAllWorkspaces\(true, \{ visibleOnFullScreen: true \}\)/);
 assert.doesNotMatch(
@@ -37,8 +38,11 @@ assert.match(launcherSource, /if \(focusLauncher\) \{[\s\S]*this\.focusLauncher\
 assert.match(appSource, /if \(event\.resetToHome\) \{[\s\S]*resetToHome\(\)/);
 assert.match(appSource, /setQuickNavOpen\(event\.openQuickNav \?\? false\)/);
 assert.match(overlayRootSource, /liveGameBackdrop/);
-assert.match(overlayRootSource, /compact-gameplay-overlay/);
+assert.match(overlayRootSource, /live-gameplay-overlay/);
 assert.match(overlayRootSource, /quick-overlay-captured-backdrop/);
+assert.match(overlayRootSource, /navigator\.mediaDevices\.getUserMedia/);
+assert.match(overlayRootSource, /chromeMediaSourceId: backdrop\.sourceId/);
+assert.match(overlayRootSource, /quick-overlay-live-backdrop/);
 assert.match(preloadSource, /onQuickOverlayBackdrop/);
 assert.match(overlayRootSource, /dismissQuickOverlay/);
 assert.match(overlaySource, /props\.dismissResumesGame !== false/);
