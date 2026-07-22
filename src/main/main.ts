@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
@@ -51,9 +51,11 @@ import type {
   UpdateInstallRequest,
   WifiConnectRequest
 } from '../shared/types';
+import { requiresPaymentForLaunch } from '../shared/playAccess';
 
 let mainWindow: BrowserWindow | null = null;
 let gameplayQuickOverlayWindow: BrowserWindow | null = null;
+const GAMEPLAY_QUICK_OVERLAY_HEIGHT = 600;
 let isQuitting = false;
 let taskbarHiddenByKiosk = false;
 let kioskAdminActionGranted = false;
@@ -176,17 +178,55 @@ function hideGameplayQuickOverlay(): void {
   overlay.hide();
 }
 
+function getGameplayQuickOverlayBounds(bounds: { x: number; y: number; width: number; height: number }) {
+  const height = Math.min(GAMEPLAY_QUICK_OVERLAY_HEIGHT, bounds.height);
+  return {
+    x: bounds.x,
+    y: bounds.y + bounds.height - height,
+    width: bounds.width,
+    height
+  };
+}
+
+async function captureGameplayQuickOverlayBackdrop(
+  displayId: number,
+  width: number,
+  height: number,
+  gameTitle?: string
+): Promise<string> {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['window', 'screen'],
+      thumbnailSize: { width, height },
+      fetchWindowIcons: false
+    });
+    const normalizedGameTitle = gameTitle?.trim().toLocaleLowerCase();
+    const gameWindowSource = normalizedGameTitle
+      ? sources.find((candidate) => {
+        const sourceName = candidate.name.trim().toLocaleLowerCase();
+        return sourceName === normalizedGameTitle || sourceName.includes(normalizedGameTitle);
+      })
+      : undefined;
+    const source = gameWindowSource
+      ?? sources.find((candidate) => candidate.display_id === String(displayId))
+      ?? sources[0];
+    if (!source || source.thumbnail.isEmpty()) return '';
+    return `data:image/jpeg;base64,${source.thumbnail.toJPEG(78).toString('base64')}`;
+  } catch (error) {
+    void logLine('warn', `Could not capture the game backdrop for the quick overlay: ${error instanceof Error ? error.message : String(error)}`);
+    return '';
+  }
+}
+
 async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
   const existing = getLiveGameplayQuickOverlayWindow();
   if (existing) return existing;
 
   const display = screen.getPrimaryDisplay();
+  const overlayBounds = getGameplayQuickOverlayBounds(display.bounds);
   const overlay = new BrowserWindow({
     title: 'NXGS Play Quick Switcher',
-    x: display.bounds.x,
-    y: display.bounds.y,
-    width: display.bounds.width,
-    height: display.bounds.height,
+    ...overlayBounds,
     show: false,
     frame: false,
     transparent: true,
@@ -233,7 +273,17 @@ async function showGameplayQuickOverlay(): Promise<void> {
   const overlay = await createGameplayQuickOverlayWindow();
   const owner = getLiveMainWindow();
   const display = screen.getDisplayMatching(owner?.getBounds() ?? screen.getPrimaryDisplay().bounds);
-  overlay.setBounds(display.bounds);
+  overlay.setBounds(getGameplayQuickOverlayBounds(display.bounds));
+  const backdropDataUrl = await captureGameplayQuickOverlayBackdrop(
+    display.id,
+    display.bounds.width,
+    display.bounds.height,
+    launcher.activeState.game?.title
+  );
+  overlay.webContents.send('quickOverlay:backdrop', {
+    dataUrl: backdropDataUrl,
+    displayHeight: display.bounds.height
+  });
   overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.show();
   overlay.moveTop();
@@ -1004,7 +1054,7 @@ function registerIpc(): void {
       if (!game) {
         throw new Error('Game not found.');
       }
-      if (!sessionTimer.active) {
+      if (requiresPaymentForLaunch(store.getSettings(), sessionTimer.current)) {
         throw new Error('Paid play time is required before launching a game.');
       }
       if (launcher.activeState.sessions?.some((session) => session.game.id === game.id)) {

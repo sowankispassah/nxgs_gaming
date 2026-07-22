@@ -46,7 +46,7 @@ const [mainSource, paymentSource, functionSource, overlaySource, warningOverlayS
   readFile(new URL('../src/main/windowsControlWorker.ts', import.meta.url), 'utf8')
 ]);
 
-assert.match(mainSource, /if \(!sessionTimer\.active\)/);
+assert.match(mainSource, /requiresPaymentForLaunch\(store\.getSettings\(\), sessionTimer\.current\)/);
 assert.match(mainSource, /sessionTimer\.extend\(result\.entitlement\.durationMinutes\)/);
 assert.match(mainSource, /launcher\.closeAllGames\(\)/);
 assert.doesNotMatch(paymentSource, /game_id: request\./);

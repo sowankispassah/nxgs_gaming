@@ -65,6 +65,7 @@ import type {
   UpdateCheckResult,
   UpdateDownloadProgress
 } from '../shared/types';
+import { requiresPaymentForLaunch } from '../shared/playAccess';
 
 type View = 'home' | 'settings' | 'admin';
 type AdminTab = 'games' | 'scan' | 'sessions' | 'kiosk' | 'updates' | 'plans' | 'device';
@@ -371,7 +372,7 @@ export function App(): JSX.Element {
 
   const selectGame = useCallback(async (game: GameRecord): Promise<void> => {
     if (launchPendingGameId) return;
-    if (session.status !== 'running' || session.remainingSeconds <= 0) {
+    if (!settings || requiresPaymentForLaunch(settings, session)) {
       setConfirmGame(game);
       return;
     }
@@ -381,7 +382,7 @@ export function App(): JSX.Element {
       return;
     }
     await launchPaidGame(game);
-  }, [activeGame.sessions, launchPaidGame, launchPendingGameId, session.remainingSeconds, session.status]);
+  }, [activeGame.sessions, launchPaidGame, launchPendingGameId, session, settings]);
 
   useEffect(() => {
     if (selectedIndex >= enabledGames.length) {
@@ -2072,6 +2073,7 @@ function SessionSettings(props: {
   onSettingsChanged: (settings: AppSettings) => void;
 }): JSX.Element {
   const [pin, setPin] = useState(props.settings.adminPin);
+  const [playAccessMode, setPlayAccessMode] = useState(props.settings.playAccessMode);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -2080,6 +2082,29 @@ function SessionSettings(props: {
       <p className="eyebrow">Session security</p>
       <h2>Session settings</h2>
       <div className="form-grid single">
+        <fieldset className="play-access-options">
+          <legend>Customer play access</legend>
+          <label className={`play-access-option ${playAccessMode === 'paid' ? 'selected' : ''}`}>
+            <input
+              type="radio"
+              name="play-access-mode"
+              value="paid"
+              checked={playAccessMode === 'paid'}
+              onChange={() => setPlayAccessMode('paid')}
+            />
+            <span><strong>Require payment</strong><small>Customers select a plan and complete checkout before launching games.</small></span>
+          </label>
+          <label className={`play-access-option ${playAccessMode === 'free' ? 'selected' : ''}`}>
+            <input
+              type="radio"
+              name="play-access-mode"
+              value="free"
+              checked={playAccessMode === 'free'}
+              onChange={() => setPlayAccessMode('free')}
+            />
+            <span><strong>Allow free play</strong><small>Games launch immediately without opening the plan or payment pages.</small></span>
+          </label>
+        </fieldset>
         <label>
           <span>Admin PIN</span>
           <input value={pin} onChange={(event) => setPin(event.target.value)} />
@@ -2097,7 +2122,8 @@ function SessionSettings(props: {
           try {
             const next: AppSettings = {
               ...props.settings,
-              adminPin: pin
+              adminPin: pin,
+              playAccessMode
             };
             props.onSettingsChanged(await window.nxgs.updateSettings(next));
             setMessage('Saved settings.');

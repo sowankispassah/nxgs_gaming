@@ -103,6 +103,7 @@ export interface ControllerIdleSettings {
 
 export interface AppSettings {
   adminPin: string;
+  playAccessMode: 'paid' | 'free';
   sessionDurationsMinutes: number[];
   kiosk: KioskSettings;
   controllerIdle: ControllerIdleSettings;

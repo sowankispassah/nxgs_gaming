@@ -115,6 +115,14 @@ button:not(:disabled):active {
   background: transparent;
 }
 
+.quick-overlay-captured-backdrop {
+  position: absolute;
+  inset: 0;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  background-size: 100vw var(--quick-overlay-display-height, 100vh);
+}
+
 .cursor-hidden {
   cursor: none;
 }
@@ -1300,9 +1308,63 @@ button.console-game-avatar:not(:disabled):active {
 }
 
 .quick-overlay-shell .quick-overlay-shade {
-  background: rgba(2, 7, 13, 0.34);
-  backdrop-filter: blur(2px) saturate(0.78);
+  background: linear-gradient(
+    180deg,
+    rgba(2, 7, 13, 0) 0%,
+    rgba(2, 7, 13, 0.06) 24%,
+    rgba(2, 7, 13, 0.22) 64%,
+    rgba(2, 7, 13, 0.34) 100%
+  );
+  backdrop-filter: none;
 }
+
+.compact-gameplay-overlay .quick-overlay-header {
+  display: none;
+}
+
+.play-access-options {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.play-access-options legend {
+  margin-bottom: 9px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.play-access-option {
+  display: grid;
+  min-height: 78px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+  border: 1px solid rgba(231, 236, 242, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 13px 15px;
+  cursor: pointer;
+}
+
+.play-access-option.selected {
+  border-color: var(--focus-accent);
+  background: var(--focus-accent-soft);
+  box-shadow: 0 0 0 1px rgba(139, 220, 255, 0.2) inset;
+}
+
+.play-access-option > span {
+  display: grid;
+  gap: 4px;
+}
+
+.play-access-option strong { color: var(--text-primary); }
+.play-access-option small { color: var(--text-secondary); line-height: 1.4; }
 
 @keyframes quick-overlay-fade {
   from { opacity: 0; }

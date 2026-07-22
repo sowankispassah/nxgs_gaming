@@ -178,6 +178,16 @@ const api = {
       ipcRenderer.removeListener('activeGame:state', listener);
     };
   },
+  onQuickOverlayBackdrop: (callback: (backdrop: { dataUrl: string; displayHeight: number }) => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      backdrop: { dataUrl: string; displayHeight: number }
+    ) => callback(backdrop);
+    ipcRenderer.on('quickOverlay:backdrop', listener);
+    return () => {
+      ipcRenderer.removeListener('quickOverlay:backdrop', listener);
+    };
+  },
   onShellHome: (callback: (event: ShellHomeEvent) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: ShellHomeEvent) => callback(event);
     ipcRenderer.on('shell:home', listener);

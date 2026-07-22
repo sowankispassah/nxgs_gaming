@@ -18,6 +18,7 @@ import type {
 
 const DEFAULT_SETTINGS: AppSettings = {
   adminPin: '1234',
+  playAccessMode: 'paid',
   sessionDurationsMinutes: [30, 60, 90],
   kiosk: {
     alwaysOnTop: false,
@@ -551,6 +552,7 @@ export class DataStore {
 
     data.settings = {
       adminPin: settings.adminPin?.trim() || data.settings.adminPin,
+      playAccessMode: settings.playAccessMode === 'free' ? 'free' : 'paid',
       sessionDurationsMinutes: durations.length > 0 ? durations : DEFAULT_SETTINGS.sessionDurationsMinutes,
       kiosk: {
         alwaysOnTop: Boolean(settings.kiosk.alwaysOnTop),
