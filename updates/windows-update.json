@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.3/NXGS-Play-Setup.exe",
-    "sha256":  "8a8a24b48193900d4f48aa5620919f36166acbf885b9790affe877331a905e5e",
+    "version":  "0.20.4",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.4/NXGS-Play-Setup.exe",
+    "sha256":  "d4751b013da689485949121caad39a2180726bc8c5d6ca09bb33338157c76c4d",
     "required":  false,
-    "notes":  "Fixes Home and bottom-navbar behavior with a true live-game overlay, reliable toggle/dismiss/resume actions, and a clean launcher home after End Session."
+    "notes":  "Keeps the live game visible behind the Home quick switcher by using the same transparent native overlay presentation as session warnings, with only a slight dark fade."
 }
