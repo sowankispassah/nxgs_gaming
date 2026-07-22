@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.2/NXGS-Play-Setup.exe",
-    "sha256":  "f9eff9f2bcc8448b044865f0b58c4e3d0c041e3a54043dcefa92391f195d6fbd",
+    "version":  "0.20.3",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.3/NXGS-Play-Setup.exe",
+    "sha256":  "8a8a24b48193900d4f48aa5620919f36166acbf885b9790affe877331a905e5e",
     "required":  false,
-    "notes":  "Fixes session warnings by delivering one native foreground Escape key press before showing the overlay, allowing supported games to pause correctly."
+    "notes":  "Fixes Home and bottom-navbar behavior with a true live-game overlay, reliable toggle/dismiss/resume actions, and a clean launcher home after End Session."
 }
