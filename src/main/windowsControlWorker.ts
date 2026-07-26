@@ -7,7 +7,8 @@ export type WindowsControlCommand =
   | 'escape'
   | 'focus-window'
   | 'release-window'
-  | 'close-window';
+  | 'close-window'
+  | 'taskbar-visible';
 
 export interface WindowsControlResult {
   ok: boolean;
@@ -129,6 +130,8 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(int processId);
     [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint attach, uint attachTo, bool attachState);
     [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
+    [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr FindWindow(string className, string windowName);
+    [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string className, string windowName);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
@@ -140,6 +143,7 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
 
     private const uint KeyUp = 0x0002;
     private const uint NoSize = 0x0001;
@@ -168,6 +172,28 @@ public static class NxgsWarningInput {
         var window = new IntPtr(handle);
         return window != IntPtr.Zero && IsWindow(window) &&
             PostMessage(window, WindowClose, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    public static bool SetTaskbarVisible(bool visible) {
+        var command = visible ? 5 : 0;
+        var found = false;
+        foreach (var className in new[] { "Shell_TrayWnd", "Shell_SecondaryTrayWnd" }) {
+            var main = FindWindow(className, null);
+            if (main != IntPtr.Zero) {
+                ShowWindow(main, command);
+                found = true;
+            }
+
+            var after = IntPtr.Zero;
+            while (true) {
+                var window = FindWindowEx(IntPtr.Zero, after, className, null);
+                if (window == IntPtr.Zero) break;
+                ShowWindow(window, command);
+                found = true;
+                after = window;
+            }
+        }
+        return found;
     }
 
     public static string SendEscape(long handle) {
@@ -252,6 +278,10 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             $handle = [long]$request.value
             $closed = [NxgsWarningInput]::CloseWindow($handle)
             $response = @{ id = $request.id; ok = $closed; value = $closed; message = $(if ($closed) { 'Game close request posted.' } else { 'Game close request was not accepted.' }) }
+        } elseif ($request.command -eq 'taskbar-visible') {
+            $value = [bool]$request.value
+            $updated = [NxgsWarningInput]::SetTaskbarVisible($value)
+            $response = @{ id = $request.id; ok = $updated; value = $value; message = $(if ($updated) { $(if ($value) { 'Windows taskbar restored.' } else { 'Windows taskbar hidden.' }) } else { 'Windows taskbar window was not found.' }) }
         } else {
             throw "Unknown NXGS control command: $($request.command)"
         }

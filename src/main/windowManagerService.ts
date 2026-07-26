@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { GameLaunchMode } from '../shared/types';
 import { describeGamePresentation, isFullscreenGamePresentation } from './gamePresentation';
@@ -6,6 +6,8 @@ import { normalizeProcessName } from './windowsProcess';
 import { runWindowsControl } from './windowsControlWorker';
 
 const execFileAsync = promisify(execFile);
+let desiredTaskbarVisible = true;
+let taskbarVisibilityReconcile: Promise<void> | null = null;
 
 export interface GameWindowInfo {
   handle: number;
@@ -46,13 +48,9 @@ export interface GameWindowActivationState {
   y: number;
 }
 
-export async function setWindowsTaskbarVisible(visible: boolean): Promise<void> {
-  if (process.platform !== 'win32') {
-    return;
-  }
-
+function taskbarVisibilityScript(visible: boolean): string {
   const command = visible ? 5 : 0;
-  const script = `
+  return `
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -79,8 +77,56 @@ foreach ($class in $classes) {
   }
 }
 `;
+}
 
-  await runPowerShell(script);
+async function applyWindowsTaskbarVisibility(visible: boolean): Promise<void> {
+  try {
+    const result = await runWindowsControl('taskbar-visible', visible);
+    if (result.ok) return;
+  } catch {
+    // Fall back to a standalone command if the warm native worker restarted.
+  }
+  await runPowerShell(taskbarVisibilityScript(visible));
+}
+
+export async function setWindowsTaskbarVisible(visible: boolean): Promise<void> {
+  if (process.platform !== 'win32') return;
+
+  desiredTaskbarVisible = visible;
+  if (!taskbarVisibilityReconcile) {
+    const operation = (async () => {
+      while (true) {
+        const target = desiredTaskbarVisible;
+        await applyWindowsTaskbarVisibility(target);
+        if (target === desiredTaskbarVisible) return;
+      }
+    })();
+    taskbarVisibilityReconcile = operation;
+    try {
+      await operation;
+    } finally {
+      if (taskbarVisibilityReconcile === operation) {
+        taskbarVisibilityReconcile = null;
+      }
+    }
+    return;
+  }
+
+  await taskbarVisibilityReconcile;
+}
+
+export function restoreWindowsTaskbarSync(): void {
+  if (process.platform !== 'win32') return;
+  desiredTaskbarVisible = true;
+  try {
+    execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', taskbarVisibilityScript(true)],
+      { windowsHide: true, timeout: 5000, stdio: 'ignore' }
+    );
+  } catch {
+    // Best-effort last line of defense during process shutdown.
+  }
 }
 
 export async function isWindowsTaskbarVisible(): Promise<boolean> {

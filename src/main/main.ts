@@ -21,7 +21,7 @@ import {
   type SessionWarningStage
 } from './sessionWarningOverlay';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
-import { setWindowsTaskbarVisible } from './windowManagerService';
+import { restoreWindowsTaskbarSync, setWindowsTaskbarVisible } from './windowManagerService';
 import { stopWindowsControlWorker, warmWindowsControlWorker } from './windowsControlWorker';
 import { disableXboxGameBarControllerShortcut, suppressXboxGameBarSurfaces } from './gameBarGuard';
 import { PaymentService } from './paymentService';
@@ -915,6 +915,18 @@ function setKioskTaskbarHidden(hidden: boolean, reason: string): void {
   });
 }
 
+function syncTaskbarForWindowPresentation(reason: string): void {
+  const window = getLiveMainWindow();
+  const shouldHide = Boolean(
+    kioskInput.currentMode === 'customer' &&
+    window &&
+    window.isVisible() &&
+    !window.isMinimized() &&
+    window.isFullScreen()
+  );
+  setKioskTaskbarHidden(shouldHide, reason);
+}
+
 function applyKioskSettings(_settings: AppSettings): void {
   const window = getLiveMainWindow();
   if (!window) {
@@ -936,7 +948,6 @@ function applyKioskSettings(_settings: AppSettings): void {
     return;
   }
 
-  setKioskTaskbarHidden(true, 'customer mode');
   window.setSkipTaskbar(true);
   // Customer fullscreen is the console shell. Keep it in the highest supported
   // Electron layer so shell popups cannot be inserted above it between native
@@ -950,6 +961,7 @@ function applyKioskSettings(_settings: AppSettings): void {
   window.setBounds(display.bounds);
   window.setMenuBarVisibility(false);
   window.setFullScreen(true);
+  syncTaskbarForWindowPresentation('customer fullscreen');
 }
 
 function prepareForQuit(): void {
@@ -963,9 +975,10 @@ function prepareForQuit(): void {
   controllerCompatibility.stop();
   controllerIdleService?.stop();
   controllerIdleService = null;
-  void setWindowsTaskbarVisible(true);
   kioskInput.unregisterAll();
   stopWindowsControlWorker();
+  taskbarHiddenByKiosk = false;
+  restoreWindowsTaskbarSync();
 }
 
 async function createWindow(): Promise<void> {
@@ -993,6 +1006,25 @@ async function createWindow(): Promise<void> {
       event.preventDefault();
       handleRestrictedCustomerInput('Close request: Alt+F4 / window close');
     }
+  });
+
+  mainWindow.on('minimize', () => {
+    setKioskTaskbarHidden(false, 'launcher minimized');
+  });
+  mainWindow.on('hide', () => {
+    setKioskTaskbarHidden(false, 'launcher hidden');
+  });
+  mainWindow.on('restore', () => {
+    syncTaskbarForWindowPresentation('launcher restored');
+  });
+  mainWindow.on('show', () => {
+    syncTaskbarForWindowPresentation('launcher shown');
+  });
+  mainWindow.on('enter-full-screen', () => {
+    syncTaskbarForWindowPresentation('launcher entered fullscreen');
+  });
+  mainWindow.on('leave-full-screen', () => {
+    setKioskTaskbarHidden(false, 'launcher left fullscreen');
   });
 
   mainWindow.on('blur', () => {

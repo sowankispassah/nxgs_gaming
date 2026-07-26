@@ -1193,6 +1193,11 @@ export class GameLauncher {
   }
 
   private async suppressWindowsTaskbar(): Promise<void> {
+    if (!this.shouldSuppressTaskbarNow()) {
+      this.taskbarSuppressed = false;
+      await setWindowsTaskbarVisible(true);
+      return;
+    }
     if (this.taskbarSuppressionInFlight) {
       return this.taskbarSuppressionInFlight;
     }
@@ -1212,8 +1217,18 @@ export class GameLauncher {
     let lastError: unknown;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
+        if (!this.shouldSuppressTaskbarNow()) {
+          this.taskbarSuppressed = false;
+          await setWindowsTaskbarVisible(true);
+          return;
+        }
         if (!this.taskbarSuppressed || (await isWindowsTaskbarVisible())) {
           await setWindowsTaskbarVisible(false);
+        }
+        if (!this.shouldSuppressTaskbarNow()) {
+          this.taskbarSuppressed = false;
+          await setWindowsTaskbarVisible(true);
+          return;
         }
         if (!(await isWindowsTaskbarVisible())) {
           this.taskbarSuppressed = true;
@@ -1235,16 +1250,24 @@ export class GameLauncher {
   }
 
   private restoreWindowsTaskbar(): void {
-    if (!this.taskbarSuppressed) {
-      return;
-    }
-
     this.taskbarSuppressed = false;
     void setWindowsTaskbarVisible(true)
       .then(() => logLine('info', 'Windows taskbar restored for admin or application exit.'))
       .catch((error) => {
         void logLine('warn', `Could not restore Windows taskbar after game session: ${String(error)}`);
       });
+  }
+
+  private shouldSuppressTaskbarNow(): boolean {
+    const window = this.windowProvider();
+    return Boolean(
+      this.shouldUseFullscreenPresentation() &&
+      window &&
+      !window.isDestroyed() &&
+      window.isVisible() &&
+      !window.isMinimized() &&
+      window.isFullScreen()
+    );
   }
 
   private showLaunchShield(): void {
