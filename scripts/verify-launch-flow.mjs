@@ -18,7 +18,7 @@ assert.equal(hasConfirmedGameWindow(game.id, state('launching', true, { id: 'oth
 assert.equal(hasConfirmedGameWindow(game.id, state('error', true)), false);
 
 assert.equal(shouldShowBlockingLaunchTransition(state('launching', false)), true);
-assert.equal(shouldShowBlockingLaunchTransition(state('launching', true)), false);
+assert.equal(shouldShowBlockingLaunchTransition(state('launching', true)), true);
 assert.equal(shouldShowBlockingLaunchTransition(state('running', true)), false);
 
-console.log('Launch confirmation dismissal and blocking transition boundary verified.');
+console.log('Launch confirmation and full handoff transition boundary verified.');

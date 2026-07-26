@@ -7,7 +7,7 @@ export function hasConfirmedGameWindow(gameId: string, state: ActiveGameState): 
 }
 
 export function shouldShowBlockingLaunchTransition(state: ActiveGameState): boolean {
-  return state.status === 'launching' && state.windowDetected !== true;
+  return state.status === 'launching';
 }
 
 export function shouldShowQuickGameOverlay(state: ActiveGameState): boolean {

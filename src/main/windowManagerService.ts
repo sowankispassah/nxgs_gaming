@@ -629,6 +629,12 @@ export async function releaseGameWindowTopMost(window: GameWindowInfo): Promise<
   if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
     return;
   }
+  try {
+    const result = await runWindowsControl('release-window', Math.trunc(window.handle));
+    if (result.ok) return;
+  } catch {
+    // Fall back to the standalone native command below if the warm worker restarted.
+  }
   const script = `
 Add-Type @"
 using System;
@@ -738,6 +744,28 @@ export async function resumeGameWindowFast(
   window: GameWindowInfo,
   launchMode: GameLaunchMode = 'maximized'
 ): Promise<GameWindowActivationState | null> {
+  try {
+    const result = await runWindowsControl('focus-window', Math.trunc(window.handle));
+    if (result.ok && result.value === true) {
+      return {
+        foregroundHandle: window.handle,
+        hasWindowChrome: false,
+        isForeground: true,
+        isMinimized: false,
+        isVisible: true,
+        height: 0,
+        monitorHeight: 0,
+        monitorWidth: 0,
+        monitorX: 0,
+        monitorY: 0,
+        width: 0,
+        x: 0,
+        y: 0
+      };
+    }
+  } catch {
+    // Use the full presentation command when the persistent worker is unavailable.
+  }
   const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
   return runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
     foreground: true,
@@ -756,6 +784,12 @@ export async function minimizeGameWindow(window: GameWindowInfo): Promise<void> 
 }
 
 export async function closeGameWindow(window: GameWindowInfo): Promise<void> {
+  try {
+    const result = await runWindowsControl('close-window', Math.trunc(window.handle));
+    if (result.ok) return;
+  } catch {
+    // Fall back to the legacy close command if the persistent worker restarted.
+  }
   await runWindowCommand(window.handle, 'close');
 }
 

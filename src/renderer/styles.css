@@ -1342,6 +1342,11 @@ button.console-game-avatar:not(:disabled):active {
   animation: none;
 }
 
+.live-gameplay-overlay .quick-overlay-shade {
+  background: rgba(2, 7, 13, 0.16);
+  backdrop-filter: none;
+}
+
 /*
  * Windows DirectComposition can drop transparent Chromium layers that use
  * backdrop-filter above a hardware-accelerated game. The DOM still reports
@@ -1361,6 +1366,44 @@ button.console-game-avatar:not(:disabled):active {
 
 .live-gameplay-overlay .quick-navbar {
   background: rgba(7, 12, 20, 0.96);
+}
+
+.quick-game-closing-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(26, 65, 101, 0.26), transparent 34%),
+    #050912;
+  color: #f7fbff;
+  text-align: center;
+  pointer-events: all;
+}
+
+.quick-game-closing-transition svg {
+  color: var(--focus-accent);
+}
+
+.quick-game-closing-transition small {
+  color: #8fa4bc;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.quick-game-closing-transition strong {
+  max-width: min(620px, 82vw);
+  font-size: clamp(24px, 3vw, 42px);
+}
+
+.quick-game-closing-transition span {
+  color: #afbdd0;
+  font-size: 14px;
 }
 
 .play-access-options {

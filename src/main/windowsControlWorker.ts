@@ -1,6 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
-export type WindowsControlCommand = 'volume' | 'mute' | 'brightness' | 'escape';
+export type WindowsControlCommand =
+  | 'volume'
+  | 'mute'
+  | 'brightness'
+  | 'escape'
+  | 'focus-window'
+  | 'release-window'
+  | 'close-window';
 
 export interface WindowsControlResult {
   ok: boolean;
@@ -127,13 +134,41 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern IntPtr SetActiveWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr SetFocus(IntPtr window);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
-    [DllImport("user32.dll")] private static extern void SwitchToThisWindow(IntPtr window, bool altTab);
 
     private const uint KeyUp = 0x0002;
+    private const uint NoSize = 0x0001;
+    private const uint NoMove = 0x0002;
+    private const uint NoActivate = 0x0010;
+    private const uint ShowWindowFlag = 0x0040;
+    private const uint WindowClose = 0x0010;
+
+    public static bool FocusWindow(long handle) {
+        var window = new IntPtr(handle);
+        if (window == IntPtr.Zero || !IsWindow(window)) return false;
+        AllowSetForegroundWindow(-1);
+        ShowWindowAsync(window, 9);
+        SetWindowPos(window, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | ShowWindowFlag);
+        SetForegroundWindow(window);
+        return GetForegroundWindow() == window;
+    }
+
+    public static bool ReleaseWindow(long handle) {
+        var window = new IntPtr(handle);
+        return window != IntPtr.Zero && IsWindow(window) &&
+            SetWindowPos(window, new IntPtr(-2), 0, 0, 0, 0, NoSize | NoMove | NoActivate);
+    }
+
+    public static bool CloseWindow(long handle) {
+        var window = new IntPtr(handle);
+        return window != IntPtr.Zero && IsWindow(window) &&
+            PostMessage(window, WindowClose, IntPtr.Zero, IntPtr.Zero);
+    }
 
     public static string SendEscape(long handle) {
         var window = new IntPtr(handle);
@@ -154,7 +189,6 @@ public static class NxgsWarningInput {
             AllowSetForegroundWindow(-1);
             ShowWindowAsync(window, 9);
             keybd_event(0x12, 0, 0, UIntPtr.Zero);
-            SwitchToThisWindow(window, true);
             BringWindowToTop(window);
             SetActiveWindow(window);
             SetForegroundWindow(window);
@@ -206,6 +240,18 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             $delivery = [NxgsWarningInput]::SendEscape($value)
             if ($delivery -ne 'ok') { throw "Could not deliver native Escape input ($delivery)." }
             $response = @{ id = $request.id; ok = $true; value = $value; message = 'Native Escape input delivered to the foreground game window.' }
+        } elseif ($request.command -eq 'focus-window') {
+            $handle = [long]$request.value
+            $focused = [NxgsWarningInput]::FocusWindow($handle)
+            $response = @{ id = $request.id; ok = $focused; value = $focused; message = $(if ($focused) { 'Game window focused.' } else { 'Game window focus was not confirmed.' }) }
+        } elseif ($request.command -eq 'release-window') {
+            $handle = [long]$request.value
+            $released = [NxgsWarningInput]::ReleaseWindow($handle)
+            $response = @{ id = $request.id; ok = $released; value = $released; message = $(if ($released) { 'Game window topmost state released.' } else { 'Game window could not be released.' }) }
+        } elseif ($request.command -eq 'close-window') {
+            $handle = [long]$request.value
+            $closed = [NxgsWarningInput]::CloseWindow($handle)
+            $response = @{ id = $request.id; ok = $closed; value = $closed; message = $(if ($closed) { 'Game close request posted.' } else { 'Game close request was not accepted.' }) }
         } else {
             throw "Unknown NXGS control command: $($request.command)"
         }

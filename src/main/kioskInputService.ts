@@ -252,7 +252,7 @@ export class KioskInputService {
 
   private triggerHome(reason: ShellHomeReason): void {
     const now = Date.now();
-    if (now - this.lastHomeAt < 600) {
+    if (now - this.lastHomeAt < 180) {
       return;
     }
     this.lastHomeAt = now;

@@ -58,6 +58,8 @@ let gameplayQuickOverlayWindow: BrowserWindow | null = null;
 let gameplayQuickOverlayWindowReady: Promise<void> | null = null;
 let gameplayQuickOverlayShowPromise: Promise<void> | null = null;
 let gameplayQuickOverlayPreparePromise: Promise<void> | null = null;
+let gameplayQuickOverlayDesiredOpen = false;
+let gameplayQuickOverlayTransitionGeneration = 0;
 let gameplayQuickOverlayVisibilityGeneration = 0;
 let gameplayQuickOverlayRequestId = 0;
 let gameplayQuickOverlayPreparedGameId: string | null = null;
@@ -216,8 +218,24 @@ function hideGameplayQuickOverlay(resetPreparation = false): void {
   const overlay = getLiveGameplayQuickOverlayWindow();
   if (!overlay) return;
   overlay.hide();
+  overlay.setIgnoreMouseEvents(false);
   overlay.setAlwaysOnTop(false);
   if (resetPreparation) clearGameplayQuickOverlayPreparation(overlay);
+}
+
+function lowerGameplayQuickOverlayForResume(): void {
+  gameplayQuickOverlayVisibilityGeneration += 1;
+  if (pendingQuickOverlayPaint) {
+    finishPendingQuickOverlayPaint(pendingQuickOverlayPaint.requestId, false);
+  }
+  const overlay = getLiveGameplayQuickOverlayWindow();
+  if (!overlay) return;
+  // Keep the already-painted transparent surface alive while Windows moves
+  // foreground ownership back to the game. Hiding it first caused a black or
+  // desktop flash whenever native focus took more than a frame.
+  overlay.setIgnoreMouseEvents(true);
+  overlay.setAlwaysOnTop(false);
+  overlay.blur();
 }
 
 async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
@@ -341,8 +359,10 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   const transitionStartedAt = Date.now();
   const overlay = await createGameplayQuickOverlayWindow();
   const gameId = launcher.activeState.game?.id ?? null;
+  if (!gameplayQuickOverlayDesiredOpen) return;
   if (overlay.isVisible() && gameplayQuickOverlayPreparedGameId === gameId) {
     overlay.webContents.send('activeGame:state', launcher.activeState);
+    overlay.setIgnoreMouseEvents(false);
     overlay.setAlwaysOnTop(true, 'screen-saver');
     overlay.moveTop();
     overlay.focus();
@@ -352,12 +372,17 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
 
   const visibilityGeneration = ++gameplayQuickOverlayVisibilityGeneration;
   await prepareGameplayQuickOverlayRenderer();
-  if (visibilityGeneration !== gameplayQuickOverlayVisibilityGeneration || overlay.isDestroyed()) return;
+  if (
+    !gameplayQuickOverlayDesiredOpen ||
+    visibilityGeneration !== gameplayQuickOverlayVisibilityGeneration ||
+    overlay.isDestroyed()
+  ) return;
 
   // The prewarm/hide path deliberately releases topmost. Reapply it on every
   // show before asking Windows for focus, otherwise the transparent renderer
   // is fully painted but remains hidden behind the topmost game window.
   overlay.setAlwaysOnTop(true, 'screen-saver');
+  overlay.setIgnoreMouseEvents(false);
   overlay.show();
   overlay.moveTop();
   overlay.focus();
@@ -370,19 +395,26 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
 }
 
 async function showGameplayQuickOverlay(): Promise<void> {
-  if (gameplayQuickOverlayShowPromise) {
-    await gameplayQuickOverlayShowPromise;
-    return;
-  }
-
-  const operation = performGameplayQuickOverlayShow();
-  gameplayQuickOverlayShowPromise = operation;
-  try {
-    await operation;
-  } finally {
-    if (gameplayQuickOverlayShowPromise === operation) {
-      gameplayQuickOverlayShowPromise = null;
+  // A hide can cancel an in-flight paint. If Home is pressed again before
+  // that promise settles, immediately reconcile the newest intent instead of
+  // losing the second show behind the stale promise.
+  for (let attempt = 0; attempt < 2 && gameplayQuickOverlayDesiredOpen; attempt += 1) {
+    if (gameplayQuickOverlayShowPromise) {
+      await gameplayQuickOverlayShowPromise;
+    } else {
+      const operation = performGameplayQuickOverlayShow();
+      gameplayQuickOverlayShowPromise = operation;
+      try {
+        await operation;
+      } finally {
+        if (gameplayQuickOverlayShowPromise === operation) {
+          gameplayQuickOverlayShowPromise = null;
+        }
+      }
     }
+
+    const overlay = getLiveGameplayQuickOverlayWindow();
+    if (!gameplayQuickOverlayDesiredOpen || (overlay?.isVisible() && overlay.isAlwaysOnTop())) return;
   }
 }
 
@@ -468,25 +500,123 @@ function sendShellHome(event: ShellHomeEvent): void {
   }
 }
 
-let homeActionInFlight: Promise<void> | null = null;
+async function transitionGameplayQuickOverlay(
+  shouldOpen: boolean,
+  reason: ShellHomeReason,
+  gameId?: string
+): Promise<GameControlResult> {
+  const transitionGeneration = ++gameplayQuickOverlayTransitionGeneration;
+  gameplayQuickOverlayDesiredOpen = shouldOpen;
+  launcherQuickNavOpen = false;
+  await logLine(
+    'info',
+    `Gameplay Home transition ${transitionGeneration} requested by ${reason}: ${shouldOpen ? 'show' : 'hide'}.`
+  );
 
-function openHomeFromGame(reason: ShellHomeReason = 'system'): void {
-  if (homeActionInFlight) {
-    void logLine('info', `Ignored overlapping Home request from ${reason}; current Home action is still running.`);
-    const overlay = getLiveGameplayQuickOverlayWindow();
-    if (overlay?.isVisible()) overlay.focus();
-    return;
+  if (shouldOpen) {
+    const showOperation = showGameplayQuickOverlay();
+    try {
+      const result = await launcher.openQuickOverlay({ focusLauncher: false });
+      await showOperation;
+      if (
+        transitionGeneration !== gameplayQuickOverlayTransitionGeneration ||
+        !gameplayQuickOverlayDesiredOpen
+      ) {
+        return result;
+      }
+      for (const delayMs of [80, 240, 500]) {
+        setTimeout(() => {
+          if (
+            transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
+            gameplayQuickOverlayDesiredOpen
+          ) void showGameplayQuickOverlay();
+        }, delayMs);
+      }
+      sendShellHome({
+        reason,
+        openActiveGamePanel: false,
+        emergencyClose: reason === 'emergency-close',
+        openQuickNav: false,
+        resetToHome: false
+      });
+      if (!result.ok) {
+        await logLine('warn', `Home overlay opened with a warning: ${result.error ?? 'unknown error'}`);
+      }
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await showOperation.catch(() => undefined);
+      if (
+        transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
+        gameplayQuickOverlayDesiredOpen
+      ) {
+        await showGameplayQuickOverlay();
+      }
+      await logLine('error', `Home overlay show failed: ${message}`);
+      return { ok: false, error: message };
+    }
   }
 
+  lowerGameplayQuickOverlayForResume();
+  try {
+    const result = await launcher.resumeActiveGame(gameId);
+    if (
+      transitionGeneration !== gameplayQuickOverlayTransitionGeneration ||
+      gameplayQuickOverlayDesiredOpen
+    ) {
+      // A native focus request cannot be interrupted once Windows is handling
+      // it. If Home was pressed again while that request completed, reclaim
+      // foreground for the already-painted overlay now so the game cannot
+      // cover the navbar after the newer show transition.
+      if (gameplayQuickOverlayDesiredOpen) {
+        await showGameplayQuickOverlay();
+      }
+      return result;
+    }
+
+    sendShellHome({
+      reason,
+      openActiveGamePanel: false,
+      emergencyClose: false,
+      openQuickNav: false,
+      resetToHome: false
+    });
+    if (result.ok) {
+      hideGameplayQuickOverlay();
+      return result;
+    }
+
+    gameplayQuickOverlayDesiredOpen = true;
+    gameplayQuickOverlayTransitionGeneration += 1;
+    await showGameplayQuickOverlay();
+    await logLine('warn', `Home toggle could not return to the game: ${result.error ?? 'unknown error'}`);
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
+      !gameplayQuickOverlayDesiredOpen
+    ) {
+      gameplayQuickOverlayDesiredOpen = true;
+      gameplayQuickOverlayTransitionGeneration += 1;
+      await showGameplayQuickOverlay();
+    }
+    await logLine('error', `Home toggle resume failed: ${message}`);
+    return { ok: false, error: message };
+  }
+}
+
+function openHomeFromGame(reason: ShellHomeReason = 'system'): void {
   void logLine('info', `Shell home requested by ${reason}.`);
   const hasActiveGame = launcher.hasTrackedGames;
   const gameplayContext = ['launching', 'running', 'quickOverlayOpen', 'resuming'].includes(
     launcher.activeState.status
   );
-  const gameplayOverlayOpen = Boolean(getLiveGameplayQuickOverlayWindow()?.isVisible()) ||
-    launcher.activeState.status === 'quickOverlayOpen';
 
   if (!hasActiveGame || !gameplayContext) {
+    gameplayQuickOverlayDesiredOpen = false;
+    gameplayQuickOverlayTransitionGeneration += 1;
+    hideGameplayQuickOverlay();
     launcherQuickNavOpen = reason === 'emergency-close' ? true : !launcherQuickNavOpen;
     launcher.focusLauncher();
     applyKioskSettings(store.getSettings());
@@ -500,55 +630,10 @@ function openHomeFromGame(reason: ShellHomeReason = 'system'): void {
     return;
   }
 
-  if (gameplayOverlayOpen && reason !== 'emergency-close') {
-    hideGameplayQuickOverlay();
-    homeActionInFlight = launcher.resumeActiveGame()
-      .then((result) => {
-        sendShellHome({
-          reason,
-          openActiveGamePanel: false,
-          emergencyClose: false,
-          openQuickNav: false,
-          resetToHome: false
-        });
-        if (!result.ok) {
-          void showGameplayQuickOverlay();
-          void logLine('warn', `Home toggle could not return to the game: ${result.error ?? 'unknown error'}`);
-        }
-      })
-      .catch((error) => {
-        void showGameplayQuickOverlay();
-        void logLine('error', `Home toggle resume failed: ${error instanceof Error ? error.message : String(error)}`);
-      })
-      .finally(() => {
-        homeActionInFlight = null;
-      });
-    return;
-  }
-
-  launcherQuickNavOpen = false;
-  homeActionInFlight = launcher.openQuickOverlay({ focusLauncher: false })
-    .then(async (result) => {
-      if (result.ok) await showGameplayQuickOverlay();
-      sendShellHome({
-        reason,
-        openActiveGamePanel: false,
-        emergencyClose: reason === 'emergency-close',
-        openQuickNav: false,
-        resetToHome: false
-      });
-      if (!result.ok) {
-        void logLine('warn', `Home action completed with a warning: ${result.error ?? 'unknown error'}`);
-      }
-    })
-    .catch((error) => {
-      launcher.focusLauncher();
-      applyKioskSettings(store.getSettings());
-      void logLine('error', `Home action failed: ${error instanceof Error ? error.message : String(error)}`);
-    })
-    .finally(() => {
-      homeActionInFlight = null;
-    });
+  const shouldOpen = reason === 'emergency-close' ? true : !gameplayQuickOverlayDesiredOpen;
+  void transitionGameplayQuickOverlay(shouldOpen, reason).catch((error) => {
+    void logLine('error', `Unhandled gameplay Home transition failure: ${String(error)}`);
+  });
 }
 
 function focusExistingInstance(): void {
@@ -620,13 +705,30 @@ const launcher = new GameLauncher(
       broadcastActiveGame();
       const status = launcher.activeState.status;
       if (status === 'quickOverlayOpen') {
+        gameplayQuickOverlayDesiredOpen = true;
         void showGameplayQuickOverlay();
+      } else if (status === 'closing') {
+        if (gameplayQuickOverlayDesiredOpen) void showGameplayQuickOverlay();
       } else if (status === 'running') {
-        hideGameplayQuickOverlay();
+        if (gameplayQuickOverlayDesiredOpen) {
+          void showGameplayQuickOverlay();
+        } else {
+          hideGameplayQuickOverlay();
+        }
         void prepareGameplayQuickOverlayRenderer();
       } else if (status === 'minimizedToHome') {
-        hideGameplayQuickOverlay();
+        if (gameplayQuickOverlayDesiredOpen) {
+          void showGameplayQuickOverlay();
+        } else {
+          hideGameplayQuickOverlay();
+        }
       } else if (['idle', 'closed', 'error'].includes(status)) {
+        gameplayQuickOverlayDesiredOpen = false;
+        gameplayQuickOverlayTransitionGeneration += 1;
+        if (status === 'closed') {
+          launcher.focusLauncher();
+          applyKioskSettings(store.getSettings());
+        }
         hideGameplayQuickOverlay(true);
       }
     }
@@ -1014,13 +1116,11 @@ function registerIpc(): void {
 
   ipcMain.handle('shell:dismissQuickOverlay', async (): Promise<GameControlResult> => {
     launcherQuickNavOpen = false;
-    const wasGameplayOverlay = Boolean(getLiveGameplayQuickOverlayWindow()?.isVisible()) ||
-      launcher.activeState.status === 'quickOverlayOpen';
-    hideGameplayQuickOverlay();
-    if (wasGameplayOverlay && launcher.hasTrackedGames) {
-      const result = await launcher.resumeActiveGame();
-      if (!result.ok) void showGameplayQuickOverlay();
-      return result;
+    if (
+      Boolean(getLiveGameplayQuickOverlayWindow()?.isVisible()) ||
+      launcher.activeState.status === 'quickOverlayOpen'
+    ) {
+      return transitionGameplayQuickOverlay(false, 'renderer-request');
     }
     sendShellHome({
       reason: 'renderer-request',
@@ -1199,11 +1299,10 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('game:resumeActive', async (_event, gameId?: string): Promise<GameControlResult> => {
-    hideGameplayQuickOverlay();
     const game = gameId
       ? launcher.activeState.sessions?.find((session) => session.game.id === gameId)?.game ?? launcher.active
       : launcher.active;
-    const resume = launcher.resumeActiveGame(gameId);
+    const resume = transitionGameplayQuickOverlay(false, 'renderer-request', gameId);
     void (game
       ? controllerCompatibility.ensureReadyForGame(game)
       : controllerCompatibility.ensureReady()
@@ -1218,6 +1317,8 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('game:minimizeActive', async (): Promise<GameControlResult> => {
+    gameplayQuickOverlayDesiredOpen = false;
+    gameplayQuickOverlayTransitionGeneration += 1;
     hideGameplayQuickOverlay();
     const result = await launcher.minimizeActiveGame();
     if (result.ok) {
@@ -1228,6 +1329,8 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('game:goToLauncherHome', async (): Promise<GameControlResult> => {
+    gameplayQuickOverlayDesiredOpen = false;
+    gameplayQuickOverlayTransitionGeneration += 1;
     hideGameplayQuickOverlay();
     launcherQuickNavOpen = false;
     const result = await launcher.returnToHome();
@@ -1240,6 +1343,7 @@ function registerIpc(): void {
 
   ipcMain.handle('game:closeActive', async (_event, gameId?: string): Promise<GameControlResult> => {
     const keepQuickOverlayVisible = Boolean(getLiveGameplayQuickOverlayWindow()?.isVisible());
+    if (keepQuickOverlayVisible) gameplayQuickOverlayDesiredOpen = true;
     try {
       await launcher.closeActiveGame(false, { gameId, focusLauncher: !keepQuickOverlayVisible });
       if (keepQuickOverlayVisible) {

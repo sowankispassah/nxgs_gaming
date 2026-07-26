@@ -31,7 +31,6 @@ import {
   type GameWindowActivationState,
   type GameWindowInfo,
   minimizeGameWindow,
-  prepareGameWindowForReveal,
   releaseGameWindowTopMost,
   resumeGameWindowFast,
   sendEscapeKeyToGameWindow,
@@ -91,6 +90,7 @@ export class GameLauncher {
   private activeProcessId: number | null = null;
   private gameInForeground = false;
   private taskbarSuppressed = false;
+  private taskbarSuppressionInFlight: Promise<void> | null = null;
   private presentationReinforcementInFlight = false;
   private lastHandoffError: string | undefined;
   private lastHomeResult: string | undefined;
@@ -174,9 +174,10 @@ export class GameLauncher {
         windowState: 'unknown'
       });
       focusGeneration = this.beginFocusOperation('launch', game);
-      await this.suppressWindowsTaskbar();
-      this.assertFocusOperationCurrent(focusGeneration, game);
       this.showLaunchShield();
+      void this.suppressWindowsTaskbar().catch((error) => {
+        void logLine('warn', `Background taskbar preparation for ${game.title} failed: ${String(error)}`);
+      });
       await logLine('info', `Launch clicked for ${game.title}. Launching ${game.launchType}: ${game.launchCommand}`);
 
       if (game.launchType === 'localExe') {
@@ -329,8 +330,13 @@ export class GameLauncher {
 
   async resumeActiveGame(gameId?: string): Promise<GameControlResult> {
     if (this.operationInFlight) {
-      await logLine('info', `Ignoring resume request while ${this.operationInFlight} is in progress.`);
-      return { ok: false, error: `Another game action is already in progress: ${this.operationInFlight}.` };
+      if (this.operationInFlight === 'home') {
+        this.operationInFlight = null;
+        await logLine('info', 'Resume superseded an in-flight Home show operation.');
+      } else {
+        await logLine('info', `Ignoring resume request while ${this.operationInFlight} is in progress.`);
+        return { ok: false, error: `Another game action is already in progress: ${this.operationInFlight}.` };
+      }
     }
 
     if (gameId && !this.selectTrackedSession(gameId)) {
@@ -380,11 +386,19 @@ export class GameLauncher {
             return { ok: true };
           }
         } catch (fastResumeError) {
+          if (
+            fastResumeError instanceof FocusOperationCanceledError ||
+            !this.isFocusOperationCurrent(focusGeneration, game)
+          ) {
+            throw new FocusOperationCanceledError();
+          }
           await logLine('warn', `Cached fast resume failed for ${game.title}: ${String(fastResumeError)}`);
         }
+        this.assertFocusOperationCurrent(focusGeneration, game);
         await logLine('info', `Cached fast resume did not confirm foreground for ${game.title}; falling back to window recovery.`);
       }
 
+      this.assertFocusOperationCurrent(focusGeneration, game);
       this.setActiveState({
         status: 'resuming',
         game,
@@ -572,11 +586,15 @@ export class GameLauncher {
     const stateBeforeHome = this.state.status;
     this.cancelFocusOperations(`Home requested from ${stateBeforeHome}`);
     this.operationInFlight = 'home';
+    const homeGeneration = this.focusGeneration;
     const game = this.activeGame;
     this.lastHomeResult = `Quick overlay started from ${stateBeforeHome}.`;
     await logLine('info', `Quick Home pressed. State before overlay: ${stateBeforeHome}.`);
     if (canceledOperation === 'launch' || canceledOperation === 'resume') {
       await logLine('info', `Canceled pending ${canceledOperation} focus loop before opening Home.`);
+    }
+    if (this.operationInFlight !== 'home' || this.focusGeneration !== homeGeneration) {
+      return { ok: false, error: 'Home show was superseded by a newer navigation request.' };
     }
 
     try {
@@ -599,7 +617,7 @@ export class GameLauncher {
       } else {
         this.releaseLaunchShield();
       }
-      if (game) {
+      if (game && focusLauncher) {
         const homeGeneration = this.focusGeneration;
         void this.releaseGameWindowsForQuickOverlay(game, homeGeneration, focusLauncher);
       }
@@ -1044,13 +1062,19 @@ export class GameLauncher {
         windowState: nextSession.windowState === 'foreground' ? 'background' : nextSession.windowState
       });
     } else {
+      if (focusLauncher) {
+        // Publish the closed state only after NXGS owns the foreground. The
+        // main process retires the transparent gameplay overlay in response
+        // to this state, so the reverse order briefly exposed the desktop.
+        this.focusLauncher();
+      }
       this.setActiveState({
         status: 'closed',
         message
       });
     }
     void logLine('info', `${message} ${nextSession ? 'Another game remains available in the switcher.' : 'Returning to launcher.'}`);
-    if (focusLauncher) {
+    if (focusLauncher && nextSession) {
       this.focusLauncher();
     }
     this.events.onGameExited(game);
@@ -1169,6 +1193,22 @@ export class GameLauncher {
   }
 
   private async suppressWindowsTaskbar(): Promise<void> {
+    if (this.taskbarSuppressionInFlight) {
+      return this.taskbarSuppressionInFlight;
+    }
+
+    const operation = this.performWindowsTaskbarSuppression();
+    this.taskbarSuppressionInFlight = operation;
+    try {
+      await operation;
+    } finally {
+      if (this.taskbarSuppressionInFlight === operation) {
+        this.taskbarSuppressionInFlight = null;
+      }
+    }
+  }
+
+  private async performWindowsTaskbarSuppression(): Promise<void> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
@@ -1244,37 +1284,33 @@ export class GameLauncher {
     reason: 'launch' | 'resume',
     focusGeneration: number
   ): Promise<GameWindowInfo> {
-    let targetWindow = window;
+    const targetWindow = window;
     try {
       this.assertFocusOperationCurrent(focusGeneration, game);
       this.showLaunchShield();
-      await this.suppressWindowsTaskbar();
-      this.assertFocusOperationCurrent(focusGeneration, game);
+      void this.suppressWindowsTaskbar().catch((error) => {
+        void logLine('warn', `Background taskbar preparation during ${reason} failed: ${String(error)}`);
+      });
       await logLine(
         'info',
         `${reason} handoff for ${game.title}: enforcing protected fullscreen on window ${window.handle}.`
       );
-      targetWindow = await this.reactivateShellHostedStoreWindow(game, targetWindow, focusGeneration);
-      await prepareGameWindowForReveal(targetWindow, launchMode);
-      this.assertFocusOperationCurrent(focusGeneration, game);
-
-      // NXGS stays fullscreen behind the game while Windows grants foreground focus.
-      this.releaseLaunchShield();
       let lastState: GameWindowActivationState | null = null;
       for (let attempt = 1; attempt <= 8; attempt += 1) {
         this.assertFocusOperationCurrent(focusGeneration, game);
         lastState = await keepGameWindowOnTop(targetWindow, launchMode);
         this.assertFocusOperationCurrent(focusGeneration, game);
-        let taskbarVisible = await isWindowsTaskbarVisible();
-        if (taskbarVisible) {
-          await this.suppressWindowsTaskbar();
-          taskbarVisible = await isWindowsTaskbarVisible();
-        }
-        if (isFullscreenGamePresentation(lastState, taskbarVisible)) {
+        // The same native operation applies borderless fullscreen and focuses the
+        // game. Drop the NXGS shield as soon as that visible window is ready;
+        // taskbar cleanup continues in the background and must not hold gameplay
+        // behind a loading screen for several extra PowerShell round trips.
+        this.releaseLaunchShield();
+        const windowReady = isFullscreenGamePresentation(lastState, false);
+        if (windowReady) {
           await logLine(
             'info',
             `${reason} handoff for ${game.title}: protected fullscreen confirmed on attempt ${attempt}; ` +
-              describeGamePresentation(lastState, taskbarVisible)
+              describeGamePresentation(lastState, false)
           );
           await logLine('info', `NXGS Play remains fullscreen behind ${game.title} as the protected console shell cover.`);
           return targetWindow;
@@ -1282,7 +1318,7 @@ export class GameLauncher {
         await logLine(
           'warn',
           `${reason} fullscreen attempt ${attempt}/8 failed for ${game.title}: ` +
-            describeGamePresentation(lastState, taskbarVisible)
+            describeGamePresentation(lastState, false)
         );
         if (attempt < 8) await new Promise((resolve) => setTimeout(resolve, 180));
       }
@@ -1318,12 +1354,19 @@ export class GameLauncher {
           return;
         }
         this.presentationReinforcementInFlight = true;
+        const reinforcementGeneration = this.focusGeneration;
         void (async () => {
           let lastState: GameWindowActivationState | null = null;
           let taskbarVisible = false;
           for (let attempt = 1; attempt <= 3; attempt += 1) {
+            if (!this.isPresentationReinforcementCurrent(reinforcementGeneration, game)) return;
             lastState = await keepGameWindowOnTop(window, launchMode);
+            if (!this.isPresentationReinforcementCurrent(reinforcementGeneration, game)) {
+              await releaseGameWindowTopMost(window).catch(() => undefined);
+              return;
+            }
             await this.suppressWindowsTaskbar();
+            if (!this.isPresentationReinforcementCurrent(reinforcementGeneration, game)) return;
             taskbarVisible = await isWindowsTaskbarVisible();
             if (isFullscreenGamePresentation(lastState, taskbarVisible)) return;
             await logLine(
@@ -1334,7 +1377,7 @@ export class GameLauncher {
             if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 140));
           }
 
-          if (this.activeGame?.id !== game.id || this.state.status !== 'running') return;
+          if (!this.isPresentationReinforcementCurrent(reinforcementGeneration, game)) return;
           const failures = gamePresentationFailures(lastState, taskbarVisible).join('; ');
           this.lastHandoffError = `Protected fullscreen was lost: ${failures}.`;
           this.gameInForeground = false;
@@ -1354,7 +1397,7 @@ export class GameLauncher {
           );
         })()
           .catch((error) => {
-            if (this.activeGame?.id === game.id && this.state.status === 'running') {
+            if (this.isPresentationReinforcementCurrent(reinforcementGeneration, game)) {
               const message = `Protected fullscreen enforcement failed: ${String(error)}`;
               this.lastHandoffError = message;
               this.gameInForeground = false;
@@ -1378,38 +1421,11 @@ export class GameLauncher {
     }
   }
 
-  private async reactivateShellHostedStoreWindow(
-    game: GameRecord,
-    currentWindow: GameWindowInfo,
-    focusGeneration: number
-  ): Promise<GameWindowInfo> {
-    if (game.launchType !== 'microsoftStore' || game.processName?.trim()) {
-      return currentWindow;
-    }
-
-    const explorer = spawn('explorer.exe', [`shell:AppsFolder\\${game.launchCommand.trim()}`], {
-      detached: true,
-      windowsHide: false,
-      stdio: 'ignore'
-    });
-    explorer.unref();
-    await new Promise((resolve) => setTimeout(resolve, 650));
-    this.assertFocusOperationCurrent(focusGeneration, game);
-
-    const refreshedWindow = await findGameWindow({
-      titleHint: game.title,
-      allowUntitledStoreFrame: true
-    });
-    if (!refreshedWindow) {
-      return currentWindow;
-    }
-    if (refreshedWindow.handle !== currentWindow.handle) {
-      await logLine(
-        'info',
-        `Store activation refreshed ${game.title} window ${currentWindow.handle} -> ${refreshedWindow.handle}.`
-      );
-    }
-    return refreshedWindow;
+  private isPresentationReinforcementCurrent(generation: number, game: GameRecord): boolean {
+    return this.focusGeneration === generation &&
+      this.activeGame?.id === game.id &&
+      this.state.status === 'running' &&
+      this.gameInForeground;
   }
 
   private beginFocusOperation(reason: 'launch' | 'resume', game: GameRecord): number {

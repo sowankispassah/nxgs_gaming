@@ -147,6 +147,8 @@ export function QuickHomeOverlay(props: {
   const game = selectedSession?.game;
   const gameSelected = Boolean(selectedSession);
   const closeFailed = /did not close|force close/i.test(selectedSession?.message ?? '');
+  const closingSession = sessions.find((session) => session.status === 'closing');
+  const isClosingGame = Boolean(closingSession);
   const disabled = pendingAction !== null || selectedSession?.status === 'closing';
   const backgroundGame = activeSession?.game;
   const backgroundImage = quickOverlayImageUrl(backgroundGame?.coverImagePath || backgroundGame?.avatarImagePath || '');
@@ -672,7 +674,7 @@ export function QuickHomeOverlay(props: {
 
   return (
     <section
-      className="quick-home-overlay"
+      className={`quick-home-overlay ${isClosingGame ? 'closing-game' : ''}`}
       aria-label="NXGS quick home overlay"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
@@ -691,6 +693,14 @@ export function QuickHomeOverlay(props: {
         />
       )}
       <div className="quick-overlay-shade" />
+      {closingSession && (
+        <section className="quick-game-closing-transition" role="status" aria-live="polite">
+          <LoaderCircle size={34} className="spin" />
+          <small>NXGS Play</small>
+          <strong>Closing {closingSession.game.title}</strong>
+          <span>Returning to your game library...</span>
+        </section>
+      )}
       <header className="quick-overlay-header">
         <div className="quick-overlay-brand"><Gamepad2 size={18} /> NXGS Switcher</div>
         <time dateTime={now.toISOString()}>
@@ -713,7 +723,9 @@ export function QuickHomeOverlay(props: {
               <span>The game will receive a normal close request.</span>
               <div>
                 <button className={menuIndex === 0 ? 'focused' : ''} type="button" disabled={disabled} onClick={() => void closeGame()}>
-                  {pendingAction === 'close' ? 'Closing...' : 'Confirm Close'}
+                  {pendingAction === 'close'
+                    ? <><LoaderCircle size={16} className="spin" /> Closing...</>
+                    : 'Confirm Close'}
                 </button>
                 <button className={menuIndex === 1 ? 'focused' : ''} type="button" disabled={disabled} onClick={() => setConfirmClose(false)}>Cancel</button>
               </div>
