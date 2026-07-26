@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.9",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.9/NXGS-Play-Setup.exe",
-    "sha256":  "7126838e0c9bbfb35e4070870aa0a84fdb9f765f9699b32153bd1df2ec9ce1b3",
+    "version":  "0.20.10",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.10/NXGS-Play-Setup.exe",
+    "sha256":  "bd25a04c7a07d3e01c0a7c95694377bb1485fdf0774e5646505c6b3247283ba1",
     "required":  false,
-    "notes":  "Fixes Ctrl+Shift+H and controller Home so the bottom quick switcher reliably appears over the full live game, with no black overlay surface, and Esc returns directly to gameplay."
+    "notes":  "Stabilizes Home overlay toggling without black flashes, keeps NXGS visible during game close, and speeds up reliable game launch and resume."
 }
