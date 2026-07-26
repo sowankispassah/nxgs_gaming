@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.10",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.10/NXGS-Play-Setup.exe",
-    "sha256":  "bd25a04c7a07d3e01c0a7c95694377bb1485fdf0774e5646505c6b3247283ba1",
+    "version":  "0.20.11",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.11/NXGS-Play-Setup.exe",
+    "sha256":  "0617975d509effc1084ffafa6161bd148bbb957e403c133ea90a473944b8d2cc",
     "required":  false,
-    "notes":  "Stabilizes Home overlay toggling without black flashes, keeps NXGS visible during game close, and speeds up reliable game launch and resume."
+    "notes":  "Restores the Windows taskbar whenever NXGS is minimized, hidden, windowed, in Admin mode, or exiting; it stays hidden only during fullscreen NXGS presentation."
 }
