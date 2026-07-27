@@ -51,6 +51,16 @@ export interface GameWindowActivationState {
   y: number;
 }
 
+export interface QuickOverlayZOrderState {
+  foregroundHandle: number;
+  gameTopMost: boolean;
+  gameVisible: boolean;
+  overlayAboveGame: boolean;
+  overlayForeground: boolean;
+  overlayTopMost: boolean;
+  overlayVisible: boolean;
+}
+
 function taskbarVisibilityScript(visible: boolean): string {
   const command = visible ? 5 : 0;
   return `
@@ -213,6 +223,52 @@ function parseWindowInfo(raw: string): GameWindowInfo | null {
   }
 }
 
+export function isProvisionalShellHostedStoreWindow(window: GameWindowInfo): boolean {
+  return (
+    normalizeProcessName(window.hostProcessName ?? '') === 'explorer.exe' &&
+    window.className === 'ApplicationFrameWindow' &&
+    !window.title.trim()
+  );
+}
+
+export async function getForegroundWindowInfo(): Promise<GameWindowInfo | null> {
+  if (process.platform !== 'win32') return null;
+  const script = `
+$ErrorActionPreference = "SilentlyContinue"
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class ForegroundWindowInfoWin32 {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, StringBuilder text, int maxCount);
+}
+"@
+$hwnd = [ForegroundWindowInfoWin32]::GetForegroundWindow()
+if ($hwnd -eq [IntPtr]::Zero) { exit }
+[uint32]$windowProcessId = 0
+[ForegroundWindowInfoWin32]::GetWindowThreadProcessId($hwnd, [ref]$windowProcessId) | Out-Null
+$process = Get-Process -Id $windowProcessId
+if (-not $process) { exit }
+$title = New-Object System.Text.StringBuilder 1024
+$className = New-Object System.Text.StringBuilder 256
+[ForegroundWindowInfoWin32]::GetWindowText($hwnd, $title, $title.Capacity) | Out-Null
+[ForegroundWindowInfoWin32]::GetClassName($hwnd, $className, $className.Capacity) | Out-Null
+[pscustomobject]@{
+  handle = [int64]$hwnd
+  processId = [int]$windowProcessId
+  processName = [string]$process.ProcessName
+  hostProcessId = [int]$windowProcessId
+  hostProcessName = [string]$process.ProcessName
+  className = [string]$className.ToString()
+  title = [string]$title.ToString()
+} | ConvertTo-Json -Compress
+`;
+  return parseWindowInfo(await runPowerShell(script));
+}
+
 export async function findGameWindow(search: GameWindowSearch): Promise<GameWindowInfo | null> {
   if (process.platform !== 'win32') {
     return null;
@@ -249,6 +305,7 @@ $hint = ${powershellQuote(titleHint)}
 $hintIdentity = $hint -replace '[^a-z0-9]', ''
 $allowVerifiedShellHostedStoreFrame = ${allowVerifiedShellHostedStoreFrame ? '$true' : '$false'}
 $targetProcess = if ($targetPid -gt 0) { Get-Process -Id $targetPid } else { $null }
+$foregroundWindow = [GameWindowSearchWin32]::GetForegroundWindow()
 $windows = New-Object System.Collections.Generic.List[object]
 $callback = [GameWindowSearchWin32+EnumWindowsProc]{
   param([IntPtr]$hwnd, [IntPtr]$lParam)
@@ -304,12 +361,21 @@ $callback = [GameWindowSearchWin32+EnumWindowsProc]{
   $processName = $matchedProcessName.ToLower()
   $processIdentity = $processName -replace '[^a-z0-9]', ''
   $titleLower = $title.ToLower()
+  $titleMatchesHint = (
+    $hint -ne "" -and
+    ($titleLower -eq $hint -or $titleLower.Contains($hint))
+  )
   $score = 99
-  if ($targetPid -gt 0 -and $matchedProcessId -eq $targetPid) { $score = 0 }
+  if ($targetPid -gt 0 -and $matchedProcessId -eq $targetPid) {
+    # A Store process can briefly appear below multiple shell-host frames.
+    # Prefer its titled/foreground frame over an older blank frame that happens
+    # to contain another descendant from the same package process.
+    if ($windowPid -eq $targetPid -or $titleMatchesHint) { $score = 0 }
+    else { $score = 1 }
+  }
   elseif ($targetName -ne "" -and $processName -eq $targetName) { $score = 1 }
   elseif (
-    $hint -ne "" -and
-    ($titleLower -eq $hint -or $titleLower.Contains($hint)) -and
+    $titleMatchesHint -and
     (
       $processName -eq 'applicationframehost' -or
       ($processIdentity.Length -ge 4 -and ($processIdentity.Contains($hintIdentity) -or $hintIdentity.Contains($processIdentity)))
@@ -341,6 +407,7 @@ $callback = [GameWindowSearchWin32+EnumWindowsProc]{
       className = [string]$className
       title = [string]$title
       score = $score
+      foreground = [bool]($hwnd -eq $foregroundWindow)
       started = $process.StartTime
       order = $windows.Count
     })
@@ -355,7 +422,7 @@ if ($shellHostedCandidates.Count -gt 1) {
   $windows = @($windows | Where-Object { $_.score -ne 3 })
 }
 $selected = $windows |
-  Sort-Object score, order, @{ Expression = { $_.started }; Descending = $true } |
+  Sort-Object score, @{ Expression = { $_.foreground }; Descending = $true }, order, @{ Expression = { $_.started }; Descending = $true } |
   Select-Object -First 1
 if ($selected) {
   [pscustomobject]@{
@@ -381,19 +448,32 @@ export async function waitForGameWindow(
   shouldContinue: () => boolean = () => true
 ): Promise<GameWindowInfo | null> {
   const startedAt = Date.now();
+  let provisionalWindow: GameWindowInfo | null = null;
+  let provisionalDetectedAt = 0;
   while (Date.now() - startedAt < timeoutMs && shouldContinue()) {
     const window = await findGameWindow(search);
     if (!shouldContinue()) {
       return null;
     }
     if (window) {
-      return window;
+      if (!isProvisionalShellHostedStoreWindow(window)) {
+        return window;
+      }
+      provisionalWindow = window;
+      provisionalDetectedAt ||= Date.now();
+      // Explorer can publish a blank package frame several frames before
+      // ApplicationFrameHost publishes the titled, capturable game frame.
+      // Keep the verified package fallback, but give the real visual window a
+      // bounded opportunity to appear instead of caching the blank shell.
+      if (Date.now() - provisionalDetectedAt >= 2500) {
+        return provisionalWindow;
+      }
     }
     const elapsedMs = Date.now() - startedAt;
     const intervalMs = elapsedMs < 5000 ? fastIntervalMs : settledIntervalMs;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-  return null;
+  return provisionalWindow;
 }
 
 async function runWindowCommand(handle: number, command: WindowCommand): Promise<void> {
@@ -738,6 +818,218 @@ export async function keepGameWindowOnTop(
     applyBorderless: launchMode !== 'normal',
     processActivate: !isShellHostedStoreFrame(window)
   });
+}
+
+export async function getRootWindowHandle(handle: number): Promise<number> {
+  if (process.platform !== 'win32' || !Number.isFinite(handle) || handle <= 0) {
+    return 0;
+  }
+  const safeHandle = Math.trunc(handle);
+  const script = `
+$ErrorActionPreference = "Stop"
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class RootWindowWin32 {
+  [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
+}
+"@
+$window = [IntPtr]${safeHandle}
+if (-not [RootWindowWin32]::IsWindow($window)) { "0"; exit }
+$root = [RootWindowWin32]::GetAncestor($window, 2)
+if ($root -eq [IntPtr]::Zero) { $root = $window }
+[int64]$root
+`;
+  try {
+    const root = Number(await runPowerShell(script));
+    return Number.isFinite(root) && root > 0 ? Math.trunc(root) : safeHandle;
+  } catch {
+    return safeHandle;
+  }
+}
+
+export async function enforceQuickOverlayZOrder(
+  overlayHandle: number,
+  gameHandle?: number
+): Promise<QuickOverlayZOrderState | null> {
+  if (process.platform !== 'win32' || !Number.isFinite(overlayHandle) || overlayHandle <= 0) {
+    return null;
+  }
+
+  const safeOverlayHandle = Math.trunc(overlayHandle);
+  const safeGameHandle = Number.isFinite(gameHandle) && Number(gameHandle) > 0
+    ? Math.trunc(Number(gameHandle))
+    : 0;
+  let lastState: QuickOverlayZOrderState | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const script = `
+$ErrorActionPreference = "Stop"
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class QuickOverlayZOrderWin32 {
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(uint processId);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr SetActiveWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint action, uint param, ref uint value, uint flags);
+  [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool altTab);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+  [DllImport("user32.dll", EntryPoint="GetWindowLong")] public static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+  [DllImport("user32.dll", EntryPoint="GetWindowLongPtr")] public static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+  public static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex) {
+    if (IntPtr.Size == 8) return GetWindowLongPtr64(hWnd, nIndex);
+    return new IntPtr(GetWindowLong32(hWnd, nIndex));
+  }
+}
+"@
+$overlay = [IntPtr]${safeOverlayHandle}
+$game = [IntPtr]${safeGameHandle}
+$topMost = [IntPtr](-1)
+$notTopMost = [IntPtr](-2)
+$noMoveNoSizeShowNoActivate = 0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040
+$noMoveNoSizeShow = 0x0001 -bor 0x0002 -bor 0x0040
+$gwlExStyle = -20
+$wsExTopMost = 0x00000008L
+$gwHwndPrev = 3
+
+if (-not [QuickOverlayZOrderWin32]::IsWindow($overlay)) { throw "Overlay HWND is invalid." }
+if ($game -ne [IntPtr]::Zero -and [QuickOverlayZOrderWin32]::IsWindow($game)) {
+  [QuickOverlayZOrderWin32]::ShowWindow($game, 9) | Out-Null
+  # Fullscreen Store games commonly retain WS_EX_TOPMOST after launch. Two
+  # independent topmost windows do not give Electron a stable ordering, and
+  # ApplicationFrameHost can immediately reclaim the front slot. Keep the
+  # game visible and running, but release only its topmost bit before placing
+  # the NXGS overlay in the topmost band.
+  [QuickOverlayZOrderWin32]::SetWindowPos($game, $notTopMost, 0, 0, 0, 0, $noMoveNoSizeShowNoActivate) | Out-Null
+}
+[QuickOverlayZOrderWin32]::ShowWindow($overlay, 5) | Out-Null
+[QuickOverlayZOrderWin32]::SetWindowPos($overlay, $topMost, 0, 0, 0, 0, $noMoveNoSizeShow) | Out-Null
+
+# SetForegroundWindow alone is allowed to fail when a game or unrelated app
+# owns the foreground lock. Join the relevant input queues for this short,
+# bounded transaction so the NXGS overlay—not Chrome or the launcher—becomes
+# the real keyboard/controller target.
+$callerThread = [QuickOverlayZOrderWin32]::GetCurrentThreadId()
+$foregroundBefore = [QuickOverlayZOrderWin32]::GetForegroundWindow()
+$foregroundProcess = [uint32]0
+$overlayProcess = [uint32]0
+$foregroundThread = if ($foregroundBefore -ne [IntPtr]::Zero) {
+  [QuickOverlayZOrderWin32]::GetWindowThreadProcessId($foregroundBefore, [ref]$foregroundProcess)
+} else { 0 }
+$overlayThread = [QuickOverlayZOrderWin32]::GetWindowThreadProcessId($overlay, [ref]$overlayProcess)
+$attachedForeground = $false
+$attachedOverlay = $false
+$attachedOverlayToForeground = $false
+$foregroundLockTimeout = [uint32]0
+$foregroundLockTimeoutRead = [QuickOverlayZOrderWin32]::SystemParametersInfo(0x2000, 0, [ref]$foregroundLockTimeout, 0)
+try {
+  if ($foregroundThread -ne 0 -and $foregroundThread -ne $callerThread) {
+    $attachedForeground = [QuickOverlayZOrderWin32]::AttachThreadInput($callerThread, $foregroundThread, $true)
+  }
+  if ($overlayThread -ne 0 -and $overlayThread -ne $callerThread) {
+    $attachedOverlay = [QuickOverlayZOrderWin32]::AttachThreadInput($callerThread, $overlayThread, $true)
+  }
+  if ($overlayThread -ne 0 -and $foregroundThread -ne 0 -and $overlayThread -ne $foregroundThread) {
+    $attachedOverlayToForeground = [QuickOverlayZOrderWin32]::AttachThreadInput($overlayThread, $foregroundThread, $true)
+  }
+  $unlockedTimeout = [uint32]0
+  [QuickOverlayZOrderWin32]::SystemParametersInfo(0x2001, 0, [ref]$unlockedTimeout, 0) | Out-Null
+  [QuickOverlayZOrderWin32]::AllowSetForegroundWindow([uint32]::MaxValue) | Out-Null
+  # A synthetic, modifier-only Alt transition marks this foreground handoff as
+  # user-authorized without producing text or changing the game state.
+  [QuickOverlayZOrderWin32]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+  [QuickOverlayZOrderWin32]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+  [QuickOverlayZOrderWin32]::BringWindowToTop($overlay) | Out-Null
+  [QuickOverlayZOrderWin32]::SetForegroundWindow($overlay) | Out-Null
+  [QuickOverlayZOrderWin32]::SetActiveWindow($overlay) | Out-Null
+  [QuickOverlayZOrderWin32]::SetFocus($overlay) | Out-Null
+  if ([QuickOverlayZOrderWin32]::GetForegroundWindow() -ne $overlay) {
+    [QuickOverlayZOrderWin32]::SwitchToThisWindow($overlay, $true)
+  }
+} finally {
+  if ($foregroundLockTimeoutRead) {
+    [QuickOverlayZOrderWin32]::SystemParametersInfo(0x2001, 0, [ref]$foregroundLockTimeout, 0) | Out-Null
+  }
+  if ($attachedOverlayToForeground) {
+    [QuickOverlayZOrderWin32]::AttachThreadInput($overlayThread, $foregroundThread, $false) | Out-Null
+  }
+  if ($attachedOverlay) {
+    [QuickOverlayZOrderWin32]::AttachThreadInput($callerThread, $overlayThread, $false) | Out-Null
+  }
+  if ($attachedForeground) {
+    [QuickOverlayZOrderWin32]::AttachThreadInput($callerThread, $foregroundThread, $false) | Out-Null
+  }
+}
+
+$overlayAboveGame = $true
+if ($game -ne [IntPtr]::Zero -and [QuickOverlayZOrderWin32]::IsWindow($game)) {
+  $overlayAboveGame = $false
+  $cursor = [QuickOverlayZOrderWin32]::GetWindow($game, $gwHwndPrev)
+  $guard = 0
+  while ($cursor -ne [IntPtr]::Zero -and $guard -lt 4096) {
+    if ($cursor -eq $overlay) {
+      $overlayAboveGame = $true
+      break
+    }
+    $cursor = [QuickOverlayZOrderWin32]::GetWindow($cursor, $gwHwndPrev)
+    $guard += 1
+  }
+}
+
+$overlayExStyle = [QuickOverlayZOrderWin32]::GetWindowLongPtr($overlay, $gwlExStyle).ToInt64()
+$gameExStyle = if ($game -ne [IntPtr]::Zero -and [QuickOverlayZOrderWin32]::IsWindow($game)) {
+  [QuickOverlayZOrderWin32]::GetWindowLongPtr($game, $gwlExStyle).ToInt64()
+} else { 0 }
+$foregroundAfter = [QuickOverlayZOrderWin32]::GetForegroundWindow()
+[pscustomobject]@{
+  foregroundHandle = [int64]$foregroundAfter
+  gameTopMost = [bool](($gameExStyle -band $wsExTopMost) -ne 0)
+  gameVisible = [bool]($game -ne [IntPtr]::Zero -and [QuickOverlayZOrderWin32]::IsWindowVisible($game))
+  overlayAboveGame = [bool]$overlayAboveGame
+  overlayForeground = [bool]($foregroundAfter -eq $overlay)
+  overlayTopMost = [bool](($overlayExStyle -band $wsExTopMost) -ne 0)
+  overlayVisible = [bool][QuickOverlayZOrderWin32]::IsWindowVisible($overlay)
+} | ConvertTo-Json -Compress
+`;
+    try {
+      const parsed = JSON.parse(await runPowerShell(script)) as QuickOverlayZOrderState;
+      lastState = {
+        foregroundHandle: Number(parsed.foregroundHandle) || 0,
+        gameTopMost: Boolean(parsed.gameTopMost),
+        gameVisible: Boolean(parsed.gameVisible),
+        overlayAboveGame: Boolean(parsed.overlayAboveGame),
+        overlayForeground: Boolean(parsed.overlayForeground),
+        overlayTopMost: Boolean(parsed.overlayTopMost),
+        overlayVisible: Boolean(parsed.overlayVisible)
+      };
+      if (
+        lastState.overlayVisible &&
+        lastState.overlayTopMost &&
+        lastState.overlayAboveGame &&
+        lastState.overlayForeground
+      ) {
+        return lastState;
+      }
+    } catch {
+      lastState = null;
+    }
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 60));
+  }
+
+  return lastState;
 }
 
 export async function releaseGameWindowTopMost(window: GameWindowInfo): Promise<void> {

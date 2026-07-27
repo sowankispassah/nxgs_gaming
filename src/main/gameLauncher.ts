@@ -32,6 +32,8 @@ import {
   activateLauncherWindow,
   closeGameWindow,
   findGameWindow,
+  getForegroundWindowInfo,
+  isProvisionalShellHostedStoreWindow,
   isWindowsTaskbarVisible,
   isGameWindowVisible,
   keepGameWindowOnTop,
@@ -157,7 +159,47 @@ export class GameLauncher {
   async getQuickOverlayBackdropWindow(): Promise<GameWindowInfo | null> {
     const game = this.activeGame;
     if (!game) return null;
-    const window = this.activeWindow ?? await this.getActiveWindow(game);
+    let window = this.activeWindow ?? await this.getActiveWindow(game);
+    if (window && isProvisionalShellHostedStoreWindow(window)) {
+      const [upgradedWindow, foregroundWindow] = await Promise.all([
+        findGameWindow({
+          pid: this.activeProcessId ?? this.child?.pid,
+          processName: game.processName,
+          titleHint: game.title,
+          allowVerifiedShellHostedStoreFrame:
+            game.launchType === 'microsoftStore' && Boolean(this.activeProcessId)
+        }),
+        getForegroundWindowInfo()
+      ]);
+      const candidates = [upgradedWindow, foregroundWindow].filter(
+        (candidate): candidate is GameWindowInfo => Boolean(candidate)
+      );
+      let verifiedVisualWindow: GameWindowInfo | null = null;
+      for (const candidate of candidates) {
+        if (
+          !isProvisionalShellHostedStoreWindow(candidate) &&
+          gameWindowMatchesGame(game, candidate, this.activeProcessId) &&
+          await isGameWindowVisible(candidate)
+        ) {
+          verifiedVisualWindow = candidate;
+          break;
+        }
+      }
+      if (verifiedVisualWindow) {
+        await logLine(
+          'info',
+          `Upgraded ${game.title} from provisional shell frame ${window.handle} ` +
+            `to verified visual window ${verifiedVisualWindow.handle}.`
+        );
+        window = verifiedVisualWindow;
+      } else {
+        await logLine(
+          'warn',
+          `No verified visual window replaced provisional ${game.title} shell frame ${window.handle}; ` +
+            `foreground ${foregroundWindow?.handle ?? 0} was rejected by game identity checks.`
+        );
+      }
+    }
     if (
       !window ||
       !gameWindowMatchesGame(game, window, this.activeProcessId) ||
@@ -661,15 +703,15 @@ export class GameLauncher {
           windowState: this.activeWindow ? 'background' : 'unknown'
         });
       }
-      // The full launcher needs the game's topmost lock released. The dedicated
-      // gameplay overlay does not: its exact live window stream is rendered
-      // inside NXGS, so the tracked game remains untouched and running.
+      // The overlay must own the topmost band. Store games frequently leave
+      // their ApplicationFrameHost frame topmost, which can cover Electron
+      // even after the exact game snapshot is ready.
       if (focusLauncher) {
         this.focusLauncher();
       } else {
         this.releaseLaunchShield();
       }
-      if (game && focusLauncher) {
+      if (game) {
         const homeGeneration = this.focusGeneration;
         void this.releaseGameWindowsForQuickOverlay(game, homeGeneration, focusLauncher);
       }

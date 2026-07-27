@@ -36,13 +36,22 @@ export function gameWindowMatchesGame(
   const configuredProcess = game.processName ||
     (game.launchType === 'localExe' ? basename(game.launchCommand, extname(game.launchCommand)) : '');
   const expectedProcess = normalizeWindowIdentity(configuredProcess);
-  if (expectedProcess) return actualProcess === expectedProcess;
-  if (game.launchType !== 'microsoftStore') return false;
-
   const expectedTitle = normalizeWindowIdentity(game.title);
   const actualTitle = normalizeWindowIdentity(window.title);
   const titleMatches = actualTitle.length >= 4 &&
     (actualTitle.includes(expectedTitle) || expectedTitle.includes(actualTitle));
+  if (expectedProcess) {
+    if (actualProcess === expectedProcess) return true;
+    // Packaged games run their visual frame in ApplicationFrameHost even when
+    // NXGS correctly tracks a different package executable PID. Accept only
+    // that Windows host and only when its title identifies the selected Store
+    // game; browsers, Explorer, Codex, and untitled frames remain rejected.
+    return game.launchType === 'microsoftStore' &&
+      actualProcess === 'applicationframehost' &&
+      titleMatches;
+  }
+  if (game.launchType !== 'microsoftStore') return false;
+
   const processMatchesTitle = actualProcess.length >= 4 &&
     (actualProcess.includes(expectedTitle) || expectedTitle.includes(actualProcess));
   return processMatchesTitle || titleMatches;

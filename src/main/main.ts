@@ -32,7 +32,12 @@ import {
   type SessionWarningStage
 } from './sessionWarningOverlay';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
-import { restoreWindowsTaskbarSync, setWindowsTaskbarVisible } from './windowManagerService';
+import {
+  enforceQuickOverlayZOrder,
+  getRootWindowHandle,
+  restoreWindowsTaskbarSync,
+  setWindowsTaskbarVisible
+} from './windowManagerService';
 import { gameWindowMatchesGame } from './gameWindowIdentity';
 import { stopWindowsControlWorker, warmWindowsControlWorker } from './windowsControlWorker';
 import { disableXboxGameBarControllerShortcut, suppressXboxGameBarSurfaces } from './gameBarGuard';
@@ -77,6 +82,7 @@ let gameplayQuickOverlayVisibilityGeneration = 0;
 let gameplayQuickOverlayRequestId = 0;
 let gameplayQuickOverlayPreparedGameId: string | null = null;
 let gameplayQuickOverlayRendererReady = false;
+let gameplayQuickOverlayNativeZOrderVerified = false;
 let pendingQuickOverlayPaint: {
   requestId: number;
   resolve: (painted: boolean) => void;
@@ -259,29 +265,34 @@ async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise
           },
           fetchWindowIcons: false
         });
+        // Microsoft Store/UWP games expose their render CoreWindow as a child
+        // of an ApplicationFrameWindow. NXGS deliberately tracks the child PID
+        // for identity safety, while desktopCapturer publishes only the root
+        // frame HWND. Accept that root only when it is the native ancestor of
+        // the already-verified tracked game window; never select by foreground
+        // app, title, or an unrelated open window.
+        const rootWindowHandle = await getRootWindowHandle(gameWindow.handle);
+        const safeCaptureHandles = new Set([
+          Math.trunc(gameWindow.handle),
+          Math.trunc(rootWindowHandle)
+        ]);
         const exactWindowSource = sources.find((source) => {
           const [kind, handle] = source.id.split(':');
-          return kind === 'window' && Number(handle) === Math.trunc(gameWindow.handle);
+          return kind === 'window' && safeCaptureHandles.has(Number(handle));
         });
         if (exactWindowSource && quickOverlaySnapshotIsUsable(exactWindowSource.thumbnail)) {
-          await logLine('info', `Prepared exact live game-window source for ${game.title} from window ${gameWindow.handle}.`);
+          const capturedHandle = Number(exactWindowSource.id.split(':')[1]);
+          await logLine(
+            'info',
+            `Prepared exact live game-window source for ${game.title} from tracked window ` +
+              `${gameWindow.handle} (capture root ${capturedHandle}).`
+          );
           return {
             kind: 'live',
             gameId: game.id,
             imageUrl: exactWindowSource.thumbnail.toDataURL(),
             sourceId: exactWindowSource.id,
-            capturedWindowHandle: gameWindow.handle
-          };
-        }
-        if (await launcher.stageQuickOverlayBackdropWindow(gameWindow)) {
-          await logLine(
-            'info',
-            `Staged verified ${game.title} window ${gameWindow.handle} directly below the Home overlay after capture was unavailable.`
-          );
-          return {
-            kind: 'direct',
-            gameId: game.id,
-            capturedWindowHandle: gameWindow.handle
+            capturedWindowHandle: capturedHandle
           };
         }
         await logLine(
@@ -316,6 +327,7 @@ function clearGameplayQuickOverlayPreparation(overlay: BrowserWindow): void {
 
 function hideGameplayQuickOverlay(resetPreparation = false): void {
   gameplayQuickOverlayVisibilityGeneration += 1;
+  gameplayQuickOverlayNativeZOrderVerified = false;
   if (pendingQuickOverlayPaint) {
     finishPendingQuickOverlayPaint(pendingQuickOverlayPaint.requestId, false);
   }
@@ -329,6 +341,7 @@ function hideGameplayQuickOverlay(resetPreparation = false): void {
 
 function lowerGameplayQuickOverlayForResume(): void {
   gameplayQuickOverlayVisibilityGeneration += 1;
+  gameplayQuickOverlayNativeZOrderVerified = false;
   if (pendingQuickOverlayPaint) {
     finishPendingQuickOverlayPaint(pendingQuickOverlayPaint.requestId, false);
   }
@@ -340,6 +353,34 @@ function lowerGameplayQuickOverlayForResume(): void {
   overlay.setIgnoreMouseEvents(true);
   overlay.setAlwaysOnTop(false);
   overlay.blur();
+}
+
+function browserWindowNativeHandle(window: BrowserWindow): number {
+  const handle = window.getNativeWindowHandle();
+  return handle.length >= 8 ? Number(handle.readBigUInt64LE(0)) : handle.readUInt32LE(0);
+}
+
+async function enforceGameplayQuickOverlayZOrder(overlay: BrowserWindow): Promise<boolean> {
+  const gameWindow = await launcher.getQuickOverlayBackdropWindow();
+  const overlayHandle = browserWindowNativeHandle(overlay);
+  const state = await enforceQuickOverlayZOrder(overlayHandle, gameWindow?.handle);
+  const verified = Boolean(
+    state?.overlayVisible &&
+    state.overlayTopMost &&
+    state.overlayAboveGame &&
+    state.overlayForeground
+  );
+  gameplayQuickOverlayNativeZOrderVerified = verified;
+  await logLine(
+    verified ? 'info' : 'warn',
+    `Quick overlay native z-order ${verified ? 'verified' : 'failed'}: ` +
+      `overlay=${overlayHandle}, game=${gameWindow?.handle ?? 0}, ` +
+      `foreground=${state?.foregroundHandle ?? 0}, overlayVisible=${state?.overlayVisible ?? false}, ` +
+      `overlayForeground=${state?.overlayForeground ?? false}, overlayTopMost=${state?.overlayTopMost ?? false}, ` +
+      `overlayAboveGame=${state?.overlayAboveGame ?? false}, ` +
+      `gameVisible=${state?.gameVisible ?? false}, gameTopMost=${state?.gameTopMost ?? false}.`
+  );
+  return verified;
 }
 
 async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
@@ -358,6 +399,7 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
     transparent: true,
     hasShadow: false,
     skipTaskbar: true,
+    focusable: true,
     resizable: false,
     movable: false,
     minimizable: false,
@@ -373,6 +415,7 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
     }
   });
   gameplayQuickOverlayWindow = overlay;
+  overlay.setFocusable(true);
   overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlay.on('closed', () => {
@@ -481,6 +524,9 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     overlay.moveTop();
     overlay.focus();
     overlay.webContents.focus();
+    await enforceGameplayQuickOverlayZOrder(overlay);
+    if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
+    overlay.webContents.focus();
     return;
   }
 
@@ -512,6 +558,9 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     overlay.focus();
     overlay.webContents.focus();
   }
+  await enforceGameplayQuickOverlayZOrder(overlay);
+  if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
+  overlay.webContents.focus();
   await logLine(
     gameplayQuickOverlayRendererReady ? 'info' : 'warn',
     `Quick overlay transition completed in ${Date.now() - transitionStartedAt}ms ` +
@@ -539,7 +588,10 @@ async function showGameplayQuickOverlay(): Promise<void> {
     }
 
     const overlay = getLiveGameplayQuickOverlayWindow();
-    if (!gameplayQuickOverlayDesiredOpen || (overlay?.isVisible() && overlay.isAlwaysOnTop())) return;
+    if (
+      !gameplayQuickOverlayDesiredOpen ||
+      (overlay?.isVisible() && overlay.isAlwaysOnTop() && gameplayQuickOverlayNativeZOrderVerified)
+    ) return;
   }
 }
 
@@ -755,8 +807,11 @@ function openHomeFromGame(reason: ShellHomeReason = 'system'): void {
     return;
   }
 
-  const shouldOpen = reason === 'emergency-close' ? true : !gameplayQuickOverlayDesiredOpen;
-  void transitionGameplayQuickOverlay(shouldOpen, reason).catch((error) => {
+  // Home is a one-way request to reveal the gameplay overlay. Toggling from
+  // an internal boolean allowed a stale "open" flag to route a real Home press
+  // into resume/hide while Chrome or another app remained foreground. Esc,
+  // Back, Resume Game, and renderer-request remain the only hide paths.
+  void transitionGameplayQuickOverlay(true, reason).catch((error) => {
     void logLine('error', `Unhandled gameplay Home transition failure: ${String(error)}`);
   });
 }
