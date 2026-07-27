@@ -34,6 +34,7 @@ import type {
   PlayPlanInput,
   PlayPlanMutationResult,
   PlayPlanRecord,
+  QuickOverlayBackdrop,
   SessionState,
   ShellHomeEvent,
   ShellHomeReason,
@@ -179,10 +180,10 @@ const api = {
       ipcRenderer.removeListener('activeGame:state', listener);
     };
   },
-  onQuickOverlayBackdrop: (callback: (backdrop: { requestId: number }) => void) => {
+  onQuickOverlayBackdrop: (callback: (backdrop: QuickOverlayBackdrop) => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,
-      backdrop: { requestId: number }
+      backdrop: QuickOverlayBackdrop
     ) => callback(backdrop);
     ipcRenderer.on('quickOverlay:backdrop', listener);
     return () => {

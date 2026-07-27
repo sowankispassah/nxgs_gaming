@@ -138,6 +138,16 @@ export class GameLauncher {
     };
   }
 
+  async getQuickOverlayBackdropWindow(): Promise<GameWindowInfo | null> {
+    const game = this.activeGame;
+    if (!game) return null;
+    const window = this.activeWindow ?? await this.getActiveWindow(game);
+    if (!window || !await isGameWindowVisible(window)) return null;
+    this.activeWindow = window;
+    this.activeProcessId = window.processId;
+    return { ...window };
+  }
+
   async launch(game: GameRecord): Promise<void> {
     if (process.platform !== 'win32') {
       throw new Error('Game launching is unavailable on this device.');
@@ -610,14 +620,16 @@ export class GameLauncher {
         });
       }
       // The normal launcher uses its own full-screen shell. During gameplay the
-      // dedicated transparent overlay owns focus instead, leaving the live game
-      // visible behind it.
+      // dedicated overlay owns focus instead, leaving the game running behind it.
+      // Release the game's topmost lock in both modes: otherwise UWP and some
+      // fullscreen EXE windows can remain above the dedicated overlay even after
+      // Electron reports that the overlay itself is topmost.
       if (focusLauncher) {
         this.focusLauncher();
       } else {
         this.releaseLaunchShield();
       }
-      if (game && focusLauncher) {
+      if (game) {
         const homeGeneration = this.focusGeneration;
         void this.releaseGameWindowsForQuickOverlay(game, homeGeneration, focusLauncher);
       }

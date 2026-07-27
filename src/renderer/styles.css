@@ -1299,10 +1299,23 @@ button.console-game-avatar:not(:disabled):active {
 .quick-overlay-game-backdrop {
   position: absolute;
   inset: -18px;
+  background-color: #050912;
   background-position: center;
   background-size: cover;
   filter: saturate(0.86) brightness(0.62);
   transform: scale(1.025);
+}
+
+.quick-overlay-backdrop-snapshot {
+  filter: saturate(0.94) brightness(0.82);
+}
+
+.quick-overlay-backdrop-generated {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(48, 118, 183, 0.34), transparent 38%),
+    radial-gradient(circle at 18% 78%, rgba(20, 211, 168, 0.14), transparent 30%),
+    linear-gradient(145deg, #0b1726, #04070d 68%);
+  filter: none;
 }
 
 .quick-overlay-shade {
@@ -1328,6 +1341,11 @@ button.console-game-avatar:not(:disabled):active {
 
 .live-gameplay-overlay .quick-overlay-header {
   display: none;
+}
+
+.live-gameplay-overlay .quick-home-overlay {
+  isolation: isolate;
+  background: #050912;
 }
 
 /*

@@ -1,4 +1,14 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  dialog,
+  ipcMain,
+  screen,
+  type NativeImage,
+  type OpenDialogOptions,
+  type OpenDialogReturnValue
+} from 'electron';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
@@ -22,7 +32,11 @@ import {
   type SessionWarningStage
 } from './sessionWarningOverlay';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
-import { restoreWindowsTaskbarSync, setWindowsTaskbarVisible } from './windowManagerService';
+import {
+  restoreWindowsTaskbarSync,
+  setWindowsTaskbarVisible,
+  type GameWindowInfo
+} from './windowManagerService';
 import { stopWindowsControlWorker, warmWindowsControlWorker } from './windowsControlWorker';
 import { disableXboxGameBarControllerShortcut, suppressXboxGameBarSurfaces } from './gameBarGuard';
 import { PaymentService } from './paymentService';
@@ -45,6 +59,7 @@ import type {
   LaunchRequest,
   PaymentCheckoutAccess,
   PlayPlanInput,
+  QuickOverlayBackdrop,
   ShellHomeEvent,
   ShellHomeReason,
   SessionState,
@@ -203,11 +218,119 @@ function waitForQuickOverlayPaint(requestId: number): Promise<boolean> {
   });
 }
 
+function quickOverlaySnapshotIsUsable(image: NativeImage): boolean {
+  if (image.isEmpty()) return false;
+  const sample = image.resize({ width: 64, height: 36, quality: 'good' }).toBitmap();
+  if (sample.length < 4) return false;
+
+  let visiblePixels = 0;
+  let minimumLuma = 255;
+  let maximumLuma = 0;
+  let totalLuma = 0;
+  for (let index = 0; index + 3 < sample.length; index += 4) {
+    const blue = sample[index];
+    const green = sample[index + 1];
+    const red = sample[index + 2];
+    const alpha = sample[index + 3];
+    if (alpha < 16) continue;
+    const luma = Math.round(red * 0.2126 + green * 0.7152 + blue * 0.0722);
+    visiblePixels += 1;
+    minimumLuma = Math.min(minimumLuma, luma);
+    maximumLuma = Math.max(maximumLuma, luma);
+    totalLuma += luma;
+  }
+  if (visiblePixels < 64) return false;
+  const averageLuma = totalLuma / visiblePixels;
+  return averageLuma > 8 && maximumLuma - minimumLuma > 8;
+}
+
+function quickOverlayWindowMatchesGame(game: GameRecord, window: GameWindowInfo): boolean {
+  const normalizeIdentity = (value: string): string =>
+    value.replace(/\.exe$/i, '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const actualProcess = normalizeIdentity(window.processName);
+  const configuredProcess = game.processName ||
+    (game.launchType === 'localExe' ? basename(game.launchCommand, extname(game.launchCommand)) : '');
+  const expectedProcess = normalizeIdentity(configuredProcess);
+  const expectedTitle = normalizeIdentity(game.title);
+  const actualTitle = normalizeIdentity(window.title);
+  const unsafeShellProcesses = new Set([
+    'chrome',
+    'msedge',
+    'firefox',
+    'brave',
+    'opera',
+    'explorer',
+    'electron',
+    'nxgsplay'
+  ]);
+  if (!actualProcess || unsafeShellProcesses.has(actualProcess)) return false;
+  const titleMatches = actualTitle.length >= 4 &&
+    (actualTitle.includes(expectedTitle) || expectedTitle.includes(actualTitle));
+  const processMatchesTitle = actualProcess.length >= 4 &&
+    (actualProcess.includes(expectedTitle) || expectedTitle.includes(actualProcess));
+  if (expectedProcess) return actualProcess === expectedProcess;
+  if (game.launchType !== 'microsoftStore') return false;
+  return processMatchesTitle || titleMatches;
+}
+
+async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise<Omit<QuickOverlayBackdrop, 'requestId'>> {
+  const game = launcher.activeState.game;
+  const coverImage = game?.coverImagePath || game?.avatarImagePath || '';
+  if (!game) return { kind: 'generated' };
+
+  if (captureSnapshot) {
+    try {
+      const gameWindow = await launcher.getQuickOverlayBackdropWindow();
+      if (gameWindow && quickOverlayWindowMatchesGame(game, gameWindow)) {
+        const display = screen.getDisplayMatching(getLiveMainWindow()?.getBounds() ?? screen.getPrimaryDisplay().bounds);
+        const sources = await desktopCapturer.getSources({
+          types: ['window'],
+          thumbnailSize: {
+            width: Math.min(1920, Math.max(1, display.size.width)),
+            height: Math.min(1080, Math.max(1, display.size.height))
+          },
+          fetchWindowIcons: false
+        });
+        const exactWindowSource = sources.find((source) => {
+          const [kind, handle] = source.id.split(':');
+          return kind === 'window' && Number(handle) === Math.trunc(gameWindow.handle);
+        });
+        if (exactWindowSource && quickOverlaySnapshotIsUsable(exactWindowSource.thumbnail)) {
+          await logLine('info', `Captured exact game-window snapshot for ${game.title} from window ${gameWindow.handle}.`);
+          return {
+            kind: 'snapshot',
+            gameId: game.id,
+            imageUrl: exactWindowSource.thumbnail.toDataURL(),
+            capturedWindowHandle: gameWindow.handle
+          };
+        }
+        await logLine(
+          'warn',
+          `Exact game-window snapshot was unavailable or blank for ${game.title} (window ${gameWindow.handle}); using safe artwork fallback.`
+        );
+      } else if (!gameWindow) {
+        await logLine('warn', `No visible tracked window was available to snapshot for ${game.title}; using safe artwork fallback.`);
+      } else {
+        await logLine(
+          'warn',
+          `Refused to snapshot mismatched or unsafe window ${gameWindow.handle} (${gameWindow.processName}) for ${game.title}; using safe artwork fallback.`
+        );
+      }
+    } catch (error) {
+      await logLine('warn', `Game-window snapshot failed for ${game.title}: ${String(error)}. Using safe artwork fallback.`);
+    }
+  }
+
+  return coverImage
+    ? { kind: 'cover', gameId: game.id, imageUrl: coverImage }
+    : { kind: 'generated', gameId: game.id };
+}
+
 function clearGameplayQuickOverlayPreparation(overlay: BrowserWindow): void {
   gameplayQuickOverlayPreparedGameId = null;
   gameplayQuickOverlayRendererReady = false;
   if (!overlay.webContents.isDestroyed()) {
-    overlay.webContents.send('quickOverlay:backdrop', { requestId: 0 });
+    overlay.webContents.send('quickOverlay:backdrop', { requestId: 0, kind: 'generated' } satisfies QuickOverlayBackdrop);
   }
 }
 
@@ -301,7 +424,7 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
   return overlay;
 }
 
-async function performGameplayQuickOverlayPreparation(gameId: string): Promise<void> {
+async function performGameplayQuickOverlayPreparation(gameId: string, captureSnapshot: boolean): Promise<void> {
   const overlay = await createGameplayQuickOverlayWindow();
   const preparationStartedAt = Date.now();
   const owner = getLiveMainWindow();
@@ -317,10 +440,15 @@ async function performGameplayQuickOverlayPreparation(gameId: string): Promise<v
   }
   if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
 
+  const backdrop = await createSafeQuickOverlayBackdrop(captureSnapshot);
+  if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
   const requestId = ++gameplayQuickOverlayRequestId;
   const paintReady = waitForQuickOverlayPaint(requestId);
   overlay.webContents.send('activeGame:state', launcher.activeState);
-  overlay.webContents.send('quickOverlay:backdrop', { requestId });
+  overlay.webContents.send('quickOverlay:backdrop', {
+    ...backdrop,
+    requestId
+  } satisfies QuickOverlayBackdrop);
   const painted = await paintReady;
   if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
 
@@ -332,20 +460,20 @@ async function performGameplayQuickOverlayPreparation(gameId: string): Promise<v
   await logLine(
     gameplayQuickOverlayRendererReady ? 'info' : 'warn',
     `Quick overlay renderer prepared in ${Date.now() - preparationStartedAt}ms ` +
-      `(renderer ready: ${gameplayQuickOverlayRendererReady}).`
+      `(renderer ready: ${gameplayQuickOverlayRendererReady}; backdrop: ${backdrop.kind}).`
   );
 }
 
-async function prepareGameplayQuickOverlayRenderer(): Promise<void> {
+async function prepareGameplayQuickOverlayRenderer(captureSnapshot = false): Promise<void> {
   const gameId = launcher.activeState.game?.id;
   if (!gameId) return;
-  if (gameplayQuickOverlayPreparedGameId === gameId && gameplayQuickOverlayRendererReady) return;
+  if (!captureSnapshot && gameplayQuickOverlayPreparedGameId === gameId && gameplayQuickOverlayRendererReady) return;
   if (gameplayQuickOverlayPreparePromise) {
     await gameplayQuickOverlayPreparePromise;
-    return;
+    if (!captureSnapshot) return;
   }
 
-  const operation = performGameplayQuickOverlayPreparation(gameId);
+  const operation = performGameplayQuickOverlayPreparation(gameId, captureSnapshot);
   gameplayQuickOverlayPreparePromise = operation;
   try {
     await operation;
@@ -372,7 +500,7 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   }
 
   const visibilityGeneration = ++gameplayQuickOverlayVisibilityGeneration;
-  await prepareGameplayQuickOverlayRenderer();
+  await prepareGameplayQuickOverlayRenderer(true);
   if (
     !gameplayQuickOverlayDesiredOpen ||
     visibilityGeneration !== gameplayQuickOverlayVisibilityGeneration ||

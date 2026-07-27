@@ -592,6 +592,16 @@ export interface ShellHomeEvent {
   resetToHome?: boolean;
 }
 
+export type QuickOverlayBackdropKind = 'snapshot' | 'cover' | 'generated';
+
+export interface QuickOverlayBackdrop {
+  requestId: number;
+  gameId?: string;
+  kind: QuickOverlayBackdropKind;
+  imageUrl?: string;
+  capturedWindowHandle?: number;
+}
+
 export interface AdminUnlockRequest {
   source: string;
   key?: string;

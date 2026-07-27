@@ -14,7 +14,13 @@ import {
   VolumeX,
   X
 } from 'lucide-react';
-import type { ActiveGameState, AudioStatus, DisplayStatus, TrackedGameSessionState } from '../../shared/types';
+import type {
+  ActiveGameState,
+  AudioStatus,
+  DisplayStatus,
+  QuickOverlayBackdrop,
+  TrackedGameSessionState
+} from '../../shared/types';
 import { SafeGameImage } from './ConsoleHome';
 import { isBackKeyboardEvent, shouldKeepEditing } from '../navigation';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../controllerNavigation';
@@ -63,7 +69,7 @@ function quickOverlayImageUrl(path: string): string {
 export function QuickHomeOverlay(props: {
   activeGame: ActiveGameState;
   emergencyCloseRequestId: number;
-  liveGameBackdrop?: boolean;
+  backdrop?: QuickOverlayBackdrop;
   dismissResumesGame?: boolean;
   onDismiss: () => void;
 }): JSX.Element {
@@ -152,6 +158,9 @@ export function QuickHomeOverlay(props: {
   const disabled = pendingAction !== null || selectedSession?.status === 'closing';
   const backgroundGame = activeSession?.game;
   const backgroundImage = quickOverlayImageUrl(backgroundGame?.coverImagePath || backgroundGame?.avatarImagePath || '');
+  const safeBackdropImage = props.backdrop?.imageUrl
+    ? quickOverlayImageUrl(props.backdrop.imageUrl)
+    : backgroundImage;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
@@ -685,10 +694,12 @@ export function QuickHomeOverlay(props: {
         dismissOverlay();
       }}
     >
-      {!props.liveGameBackdrop && backgroundImage && (
+      {(props.backdrop || safeBackdropImage) && (
         <div
-          className="quick-overlay-game-backdrop"
-          style={{ backgroundImage: `url("${backgroundImage.replace(/"/g, '%22')}")` }}
+          className={`quick-overlay-game-backdrop quick-overlay-backdrop-${props.backdrop?.kind ?? 'cover'}`}
+          style={safeBackdropImage
+            ? { backgroundImage: `url("${safeBackdropImage.replace(/"/g, '%22')}")` }
+            : undefined}
           aria-hidden="true"
         />
       )}
