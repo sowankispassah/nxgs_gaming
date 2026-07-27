@@ -23,6 +23,7 @@ export function QuickOverlayRoot(): JSX.Element {
   const [renderRequestId, setRenderRequestId] = useState(0);
   const [backdrop, setBackdrop] = useState<QuickOverlayBackdrop>(EMPTY_BACKDROP);
   const [backdropReadyRequestId, setBackdropReadyRequestId] = useState(0);
+  const [liveBackdropStream, setLiveBackdropStream] = useState<MediaStream | null>(null);
   const readyRequestRef = useRef(0);
 
   useEffect(() => {
@@ -52,28 +53,71 @@ export function QuickOverlayRoot(): JSX.Element {
   useEffect(() => {
     if (backdrop.requestId <= 0) return undefined;
     let cancelled = false;
-    let firstFrame = 0;
-    let secondFrame = 0;
+    const animationFrames = new Set<number>();
+    let captureStream: MediaStream | null = null;
+    setLiveBackdropStream(null);
     const markPaintable = () => {
-      firstFrame = window.requestAnimationFrame(() => {
-        secondFrame = window.requestAnimationFrame(() => {
+      const firstFrame = window.requestAnimationFrame(() => {
+        animationFrames.delete(firstFrame);
+        const secondFrame = window.requestAnimationFrame(() => {
+          animationFrames.delete(secondFrame);
           if (!cancelled) setBackdropReadyRequestId(backdrop.requestId);
         });
+        animationFrames.add(secondFrame);
       });
+      animationFrames.add(firstFrame);
     };
 
-    if (!backdrop.imageUrl) {
-      markPaintable();
-    } else {
+    if (backdrop.imageUrl) {
       const image = new Image();
       image.onload = markPaintable;
       image.onerror = markPaintable;
       image.src = backdropImageUrl(backdrop.imageUrl);
+    } else {
+      markPaintable();
     }
+
+    if (backdrop.kind === 'live' && backdrop.sourceId && navigator.mediaDevices?.getUserMedia) {
+      const constraints = {
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: backdrop.sourceId
+          }
+        }
+      } as unknown as MediaStreamConstraints;
+      void navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+        if (cancelled) {
+          for (const track of stream.getTracks()) track.stop();
+          return;
+        }
+        captureStream = stream;
+        const probe = document.createElement('video');
+        probe.muted = true;
+        probe.playsInline = true;
+        probe.srcObject = stream;
+        probe.onloadeddata = () => {
+          if (cancelled) return;
+          setLiveBackdropStream(stream);
+          markPaintable();
+        };
+        probe.onerror = () => {
+          for (const track of stream.getTracks()) track.stop();
+          captureStream = null;
+        };
+        void probe.play().catch(() => {
+          // The already-loaded exact snapshot remains the safe fallback.
+        });
+      }).catch(() => {
+        // The exact snapshot supplied with the source remains visible.
+      });
+    }
+
     return () => {
       cancelled = true;
-      window.cancelAnimationFrame(firstFrame);
-      window.cancelAnimationFrame(secondFrame);
+      for (const frame of animationFrames) window.cancelAnimationFrame(frame);
+      for (const track of captureStream?.getTracks() ?? []) track.stop();
     };
   }, [backdrop]);
 
@@ -122,6 +166,7 @@ export function QuickOverlayRoot(): JSX.Element {
         activeGame={activeGame}
         emergencyCloseRequestId={emergencyCloseRequestId}
         backdrop={backdrop}
+        liveBackdropStream={liveBackdropStream}
         onDismiss={() => {
           void window.nxgs.dismissQuickOverlay();
         }}

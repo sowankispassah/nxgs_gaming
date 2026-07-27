@@ -14,13 +14,16 @@ export interface GameWindowInfo {
   processId: number;
   processName: string;
   title: string;
+  hostProcessId?: number;
+  hostProcessName?: string;
+  className?: string;
 }
 
 export interface GameWindowSearch {
   pid?: number;
   processName?: string;
   titleHint?: string;
-  allowUntitledStoreFrame?: boolean;
+  allowVerifiedShellHostedStoreFrame?: boolean;
 }
 
 type WindowCommand = 'foreground' | 'maximize' | 'restore' | 'minimize' | 'close';
@@ -200,7 +203,10 @@ function parseWindowInfo(raw: string): GameWindowInfo | null {
       handle: Number(parsed.handle),
       processId: Number(parsed.processId),
       processName: String(parsed.processName ?? ''),
-      title: String(parsed.title ?? '')
+      title: String(parsed.title ?? ''),
+      hostProcessId: parsed.hostProcessId ? Number(parsed.hostProcessId) : undefined,
+      hostProcessName: parsed.hostProcessName ? String(parsed.hostProcessName) : undefined,
+      className: parsed.className ? String(parsed.className) : undefined
     };
   } catch {
     return null;
@@ -215,7 +221,7 @@ export async function findGameWindow(search: GameWindowSearch): Promise<GameWind
   const normalizedName = search.processName ? normalizeProcessName(search.processName).replace(/\.exe$/i, '') : '';
   const pid = Number.isFinite(search.pid) ? Number(search.pid) : 0;
   const titleHint = search.titleHint?.trim().toLowerCase() ?? '';
-  const allowUntitledStoreFrame = Boolean(search.allowUntitledStoreFrame);
+  const allowVerifiedShellHostedStoreFrame = Boolean(search.allowVerifiedShellHostedStoreFrame && pid > 0);
   const script = `
 $ErrorActionPreference = "SilentlyContinue"
 Add-Type @"
@@ -226,6 +232,7 @@ using System.Text;
 public static class GameWindowSearchWin32 {
   public delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc callback, IntPtr lParam);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
@@ -239,7 +246,9 @@ public struct WindowRect { public int Left; public int Top; public int Right; pu
 $targetPid = ${pid}
 $targetName = ${powershellQuote(normalizedName)}
 $hint = ${powershellQuote(titleHint)}
-$allowUntitledStoreFrame = ${allowUntitledStoreFrame ? '$true' : '$false'}
+$hintIdentity = $hint -replace '[^a-z0-9]', ''
+$allowVerifiedShellHostedStoreFrame = ${allowVerifiedShellHostedStoreFrame ? '$true' : '$false'}
+$targetProcess = if ($targetPid -gt 0) { Get-Process -Id $targetPid } else { $null }
 $windows = New-Object System.Collections.Generic.List[object]
 $callback = [GameWindowSearchWin32+EnumWindowsProc]{
   param([IntPtr]$hwnd, [IntPtr]$lParam)
@@ -261,23 +270,75 @@ $callback = [GameWindowSearchWin32+EnumWindowsProc]{
   [GameWindowSearchWin32]::GetWindowThreadProcessId($hwnd, [ref]$windowPid) | Out-Null
   $process = Get-Process -Id $windowPid
   if (-not $process) { return $true }
-  $processName = $process.ProcessName.ToLower()
+  $hostProcessName = $process.ProcessName
+  $matchedProcessId = [int]$windowPid
+  $matchedProcessName = [string]$process.ProcessName
+  $descendantMatches = New-Object System.Collections.Generic.List[object]
+  if (($targetPid -gt 0 -and $windowPid -ne $targetPid) -or $targetName -ne '') {
+    $childCallback = [GameWindowSearchWin32+EnumWindowsProc]{
+      param([IntPtr]$child, [IntPtr]$childParam)
+      [uint32]$childPid = 0
+      [GameWindowSearchWin32]::GetWindowThreadProcessId($child, [ref]$childPid) | Out-Null
+      if ($childPid -eq 0 -or $childPid -eq $windowPid) { return $true }
+      $childProcess = Get-Process -Id $childPid
+      if (-not $childProcess) { return $true }
+      $childName = $childProcess.ProcessName.ToLower()
+      if (
+        ($targetPid -gt 0 -and $childPid -eq $targetPid) -or
+        ($targetName -ne '' -and $childName -eq $targetName)
+      ) {
+        $descendantMatches.Add([pscustomobject]@{
+          processId = [int]$childPid
+          processName = [string]$childProcess.ProcessName
+        })
+      }
+      return $true
+    }
+    [GameWindowSearchWin32]::EnumChildWindows($hwnd, $childCallback, [IntPtr]::Zero) | Out-Null
+  }
+  $descendantMatch = $descendantMatches | Select-Object -First 1
+  if ($descendantMatch) {
+    $matchedProcessId = [int]$descendantMatch.processId
+    $matchedProcessName = [string]$descendantMatch.processName
+  }
+  $processName = $matchedProcessName.ToLower()
+  $processIdentity = $processName -replace '[^a-z0-9]', ''
   $titleLower = $title.ToLower()
   $score = 99
-  if ($targetPid -gt 0 -and $windowPid -eq $targetPid) { $score = 0 }
+  if ($targetPid -gt 0 -and $matchedProcessId -eq $targetPid) { $score = 0 }
   elseif ($targetName -ne "" -and $processName -eq $targetName) { $score = 1 }
-  elseif ($hint -ne "" -and ($titleLower -eq $hint -or $titleLower.Contains($hint))) { $score = 2 }
   elseif (
-    $allowUntitledStoreFrame -and
-    $className -eq "ApplicationFrameWindow" -and
-    $width -gt 300 -and
-    $height -gt 200
-  ) { $score = 3 }
-  if ($score -lt 99) {
+    $hint -ne "" -and
+    ($titleLower -eq $hint -or $titleLower.Contains($hint)) -and
+    (
+      $processName -eq 'applicationframehost' -or
+      ($processIdentity.Length -ge 4 -and ($processIdentity.Contains($hintIdentity) -or $hintIdentity.Contains($processIdentity)))
+    )
+  ) { $score = 2 }
+  elseif (
+    $allowVerifiedShellHostedStoreFrame -and
+    $targetProcess -and
+    $hostProcessName.ToLower() -eq 'explorer' -and
+    $className -eq 'ApplicationFrameWindow' -and
+    [string]::IsNullOrWhiteSpace($title)
+  ) {
+    # Current Windows builds can host a packaged game's composition surface in
+    # an Explorer-owned ApplicationFrameWindow without exposing a child HWND.
+    # Retain the exact package process identity and treat the shell only as host.
+    $matchedProcessId = $targetPid
+    $matchedProcessName = [string]$targetProcess.ProcessName
+    $processName = $matchedProcessName.ToLower()
+    $score = 3
+  }
+  $unsafeProcess = $processName -in @('brave', 'chatgpt', 'chrome', 'code', 'electron', 'explorer', 'firefox', 'msedge', 'nxgs play', 'opera')
+  if ($score -lt 99 -and -not $unsafeProcess -and $width -gt 64 -and $height -gt 64) {
     $windows.Add([pscustomobject]@{
       handle = [int64]$hwnd
-      processId = [int]$windowPid
-      processName = [string]$process.ProcessName
+      processId = [int]$matchedProcessId
+      processName = [string]$matchedProcessName
+      hostProcessId = [int]$windowPid
+      hostProcessName = [string]$hostProcessName
+      className = [string]$className
       title = [string]$title
       score = $score
       started = $process.StartTime
@@ -287,8 +348,13 @@ $callback = [GameWindowSearchWin32+EnumWindowsProc]{
   return $true
 }
 [GameWindowSearchWin32]::EnumWindows($callback, [IntPtr]::Zero) | Out-Null
+$shellHostedCandidates = @($windows | Where-Object { $_.score -eq 3 })
+if ($shellHostedCandidates.Count -gt 1) {
+  # Ambiguous shell-hosted windows are deliberately rejected so NXGS never
+  # guesses which Store app should be used as the live gameplay background.
+  $windows = @($windows | Where-Object { $_.score -ne 3 })
+}
 $selected = $windows |
-  Where-Object { $_.processName -notin @('electron', 'chrome', 'msedge') -or $_.score -lt 2 } |
   Sort-Object score, order, @{ Expression = { $_.started }; Descending = $true } |
   Select-Object -First 1
 if ($selected) {
@@ -296,6 +362,9 @@ if ($selected) {
     handle = [int64]$selected.handle
     processId = [int]$selected.processId
     processName = [string]$selected.processName
+    hostProcessId = [int]$selected.hostProcessId
+    hostProcessName = [string]$selected.hostProcessName
+    className = [string]$selected.className
     title = [string]$selected.title
   } | ConvertTo-Json -Compress
 }
@@ -630,7 +699,7 @@ export async function prepareGameWindowForReveal(
   window: GameWindowInfo,
   launchMode: GameLaunchMode = 'maximized'
 ): Promise<void> {
-  const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
+  const compensateFrameChrome = isApplicationFrameHostWindow(window);
   await runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
     foreground: false,
     topMost: false,
@@ -640,7 +709,7 @@ export async function prepareGameWindowForReveal(
 }
 
 export async function activateGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode = 'maximized'): Promise<void> {
-  const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
+  const compensateFrameChrome = isApplicationFrameHostWindow(window);
   let lastAttempt: GameWindowActivationState | null = null;
   for (let attempt = 0; attempt < 6; attempt += 1) {
     lastAttempt = await runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
@@ -662,7 +731,7 @@ export async function keepGameWindowOnTop(
   window: GameWindowInfo,
   launchMode: GameLaunchMode = 'maximized'
 ): Promise<GameWindowActivationState | null> {
-  const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
+  const compensateFrameChrome = isApplicationFrameHostWindow(window);
   return runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
     foreground: true,
     topMost: true,
@@ -812,7 +881,7 @@ export async function resumeGameWindowFast(
   } catch {
     // Use the full presentation command when the persistent worker is unavailable.
   }
-  const compensateFrameChrome = /^applicationframehost$/i.test(window.processName);
+  const compensateFrameChrome = isApplicationFrameHostWindow(window);
   return runActivationCommand(window.handle, launchMode, compensateFrameChrome, {
     foreground: true,
     topMost: true,
@@ -840,5 +909,11 @@ export async function closeGameWindow(window: GameWindowInfo): Promise<void> {
 }
 
 function isShellHostedStoreFrame(window: GameWindowInfo): boolean {
-  return /^applicationframehost$/i.test(window.processName) || (/^explorer$/i.test(window.processName) && !window.title.trim());
+  const hostProcessName = window.hostProcessName || window.processName;
+  return /^applicationframehost$/i.test(hostProcessName) ||
+    (/^explorer$/i.test(hostProcessName) && !window.title.trim());
+}
+
+function isApplicationFrameHostWindow(window: GameWindowInfo): boolean {
+  return /^applicationframehost$/i.test(window.hostProcessName || window.processName);
 }

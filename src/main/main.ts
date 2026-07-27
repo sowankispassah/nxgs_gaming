@@ -32,11 +32,8 @@ import {
   type SessionWarningStage
 } from './sessionWarningOverlay';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
-import {
-  restoreWindowsTaskbarSync,
-  setWindowsTaskbarVisible,
-  type GameWindowInfo
-} from './windowManagerService';
+import { restoreWindowsTaskbarSync, setWindowsTaskbarVisible } from './windowManagerService';
+import { gameWindowMatchesGame } from './gameWindowIdentity';
 import { stopWindowsControlWorker, warmWindowsControlWorker } from './windowsControlWorker';
 import { disableXboxGameBarControllerShortcut, suppressXboxGameBarSurfaces } from './gameBarGuard';
 import { PaymentService } from './paymentService';
@@ -244,35 +241,6 @@ function quickOverlaySnapshotIsUsable(image: NativeImage): boolean {
   return averageLuma > 8 && maximumLuma - minimumLuma > 8;
 }
 
-function quickOverlayWindowMatchesGame(game: GameRecord, window: GameWindowInfo): boolean {
-  const normalizeIdentity = (value: string): string =>
-    value.replace(/\.exe$/i, '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const actualProcess = normalizeIdentity(window.processName);
-  const configuredProcess = game.processName ||
-    (game.launchType === 'localExe' ? basename(game.launchCommand, extname(game.launchCommand)) : '');
-  const expectedProcess = normalizeIdentity(configuredProcess);
-  const expectedTitle = normalizeIdentity(game.title);
-  const actualTitle = normalizeIdentity(window.title);
-  const unsafeShellProcesses = new Set([
-    'chrome',
-    'msedge',
-    'firefox',
-    'brave',
-    'opera',
-    'explorer',
-    'electron',
-    'nxgsplay'
-  ]);
-  if (!actualProcess || unsafeShellProcesses.has(actualProcess)) return false;
-  const titleMatches = actualTitle.length >= 4 &&
-    (actualTitle.includes(expectedTitle) || expectedTitle.includes(actualTitle));
-  const processMatchesTitle = actualProcess.length >= 4 &&
-    (actualProcess.includes(expectedTitle) || expectedTitle.includes(actualProcess));
-  if (expectedProcess) return actualProcess === expectedProcess;
-  if (game.launchType !== 'microsoftStore') return false;
-  return processMatchesTitle || titleMatches;
-}
-
 async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise<Omit<QuickOverlayBackdrop, 'requestId'>> {
   const game = launcher.activeState.game;
   const coverImage = game?.coverImagePath || game?.avatarImagePath || '';
@@ -281,7 +249,7 @@ async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise
   if (captureSnapshot) {
     try {
       const gameWindow = await launcher.getQuickOverlayBackdropWindow();
-      if (gameWindow && quickOverlayWindowMatchesGame(game, gameWindow)) {
+      if (gameWindow && gameWindowMatchesGame(game, gameWindow, launcher.diagnosticState.processId)) {
         const display = screen.getDisplayMatching(getLiveMainWindow()?.getBounds() ?? screen.getPrimaryDisplay().bounds);
         const sources = await desktopCapturer.getSources({
           types: ['window'],
@@ -296,11 +264,23 @@ async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise
           return kind === 'window' && Number(handle) === Math.trunc(gameWindow.handle);
         });
         if (exactWindowSource && quickOverlaySnapshotIsUsable(exactWindowSource.thumbnail)) {
-          await logLine('info', `Captured exact game-window snapshot for ${game.title} from window ${gameWindow.handle}.`);
+          await logLine('info', `Prepared exact live game-window source for ${game.title} from window ${gameWindow.handle}.`);
           return {
-            kind: 'snapshot',
+            kind: 'live',
             gameId: game.id,
             imageUrl: exactWindowSource.thumbnail.toDataURL(),
+            sourceId: exactWindowSource.id,
+            capturedWindowHandle: gameWindow.handle
+          };
+        }
+        if (await launcher.stageQuickOverlayBackdropWindow(gameWindow)) {
+          await logLine(
+            'info',
+            `Staged verified ${game.title} window ${gameWindow.handle} directly below the Home overlay after capture was unavailable.`
+          );
+          return {
+            kind: 'direct',
+            gameId: game.id,
             capturedWindowHandle: gameWindow.handle
           };
         }
@@ -490,6 +470,11 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   const gameId = launcher.activeState.game?.id ?? null;
   if (!gameplayQuickOverlayDesiredOpen) return;
   if (overlay.isVisible() && gameplayQuickOverlayPreparedGameId === gameId) {
+    // A Store game can publish its real HWND shortly after Home was pressed.
+    // Re-probe on the scheduled show reconciliations so a temporary cover
+    // automatically upgrades to the exact live game source.
+    await prepareGameplayQuickOverlayRenderer(true);
+    if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
     overlay.webContents.send('activeGame:state', launcher.activeState);
     overlay.setIgnoreMouseEvents(false);
     overlay.setAlwaysOnTop(true, 'screen-saver');
@@ -516,6 +501,17 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   overlay.moveTop();
   overlay.focus();
   overlay.webContents.focus();
+  if (!gameplayQuickOverlayRendererReady) {
+    // A transparent Chromium window may not paint while prewarmed and hidden.
+    // Retry once after showing it so the navbar is guaranteed to receive a
+    // visible compositor frame above the already-staged game window.
+    await prepareGameplayQuickOverlayRenderer(true);
+    if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
+    overlay.setAlwaysOnTop(true, 'screen-saver');
+    overlay.moveTop();
+    overlay.focus();
+    overlay.webContents.focus();
+  }
   await logLine(
     gameplayQuickOverlayRendererReady ? 'info' : 'warn',
     `Quick overlay transition completed in ${Date.now() - transitionStartedAt}ms ` +
@@ -711,7 +707,7 @@ async function transitionGameplayQuickOverlay(
       resetToHome: false
     });
     if (result.ok) {
-      hideGameplayQuickOverlay();
+      hideGameplayQuickOverlay(true);
       return result;
     }
 

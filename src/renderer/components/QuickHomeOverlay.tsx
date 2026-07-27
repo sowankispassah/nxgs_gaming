@@ -66,10 +66,37 @@ function quickOverlayImageUrl(path: string): string {
   return `file:///${path.replace(/\\/g, '/')}`;
 }
 
+function LiveGameBackdrop(props: { stream: MediaStream; poster: string }): JSX.Element {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return undefined;
+    video.srcObject = props.stream;
+    void video.play().catch(() => undefined);
+    return () => {
+      video.srcObject = null;
+    };
+  }, [props.stream]);
+
+  return (
+    <video
+      ref={videoRef}
+      className="quick-overlay-game-video"
+      poster={props.poster || undefined}
+      autoPlay
+      muted
+      playsInline
+      aria-hidden="true"
+    />
+  );
+}
+
 export function QuickHomeOverlay(props: {
   activeGame: ActiveGameState;
   emergencyCloseRequestId: number;
   backdrop?: QuickOverlayBackdrop;
+  liveBackdropStream?: MediaStream | null;
   dismissResumesGame?: boolean;
   onDismiss: () => void;
 }): JSX.Element {
@@ -683,7 +710,7 @@ export function QuickHomeOverlay(props: {
 
   return (
     <section
-      className={`quick-home-overlay ${isClosingGame ? 'closing-game' : ''}`}
+      className={`quick-home-overlay ${props.backdrop?.kind === 'direct' ? 'direct-game-backdrop' : ''} ${isClosingGame ? 'closing-game' : ''}`}
       aria-label="NXGS quick home overlay"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
@@ -694,7 +721,9 @@ export function QuickHomeOverlay(props: {
         dismissOverlay();
       }}
     >
-      {(props.backdrop || safeBackdropImage) && (
+      {props.liveBackdropStream ? (
+        <LiveGameBackdrop stream={props.liveBackdropStream} poster={safeBackdropImage} />
+      ) : (props.backdrop || safeBackdropImage) && (
         <div
           className={`quick-overlay-game-backdrop quick-overlay-backdrop-${props.backdrop?.kind ?? 'cover'}`}
           style={safeBackdropImage
