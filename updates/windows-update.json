@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.15",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.15/NXGS-Play-Setup.exe",
-    "sha256":  "4d75ef6b5a87ccfc288658bc1fa41cb4c0035da0dac3c3c39a261cf0471a9f70",
+    "version":  "0.20.16",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.16/NXGS-Play-Setup.exe",
+    "sha256":  "d57d8acd60c9f1542eb1d8df59538c6a0e4bf146a436a6b0266d8f95c78bbae4",
     "required":  false,
-    "notes":  "Urgent Home overlay reliability fix: Home always reveals the overlay, Store/UWP sessions upgrade to the real titled game frame, exact capture rejects Chrome and unrelated windows, and failed live capture uses safe game artwork instead of the desktop."
+    "notes":  "Live Home overlay now stays tied to the NXGS-launched game, accepts verified UWP sources even when thumbnails are blank, waits for a real game frame, reuses prewarmed capture instantly, rejects unrelated apps, and falls back to an exact game snapshot before artwork."
 }
