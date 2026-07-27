@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.17",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.17/NXGS-Play-Setup.exe",
-    "sha256":  "e12db2d0c8336bfe674bb57c2ef1ea166a9f7615c39804b3ae0948d48c55a187",
+    "version":  "0.20.18",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.18/NXGS-Play-Setup.exe",
+    "sha256":  "8049e286ee6ae767a952ab5a4d16b8d092a513eb89ae00c05311405bf1a7173d",
     "required":  false,
-    "notes":  "Home overlay is now a reliable one-press toggle, stays tied to the NXGS-tracked game, removes captured title-bar borders, uses exact Store-game snapshots when live composition is blocked, and allows multiple games without a switch confirmation."
+    "notes":  "Ctrl+Shift+H now toggles through one serialized transition, keeps the game or captured game frame covered throughout, never invokes Windows app switching, rejects stale focus operations, and removes fullscreen capture strips."
 }
