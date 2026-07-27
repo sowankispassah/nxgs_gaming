@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.13",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.13/NXGS-Play-Setup.exe",
-    "sha256":  "e07083f8a39b5d0070c3d1cd5dd7a31031ad9611fe26f1369bff5b5dd1b73d11",
+    "version":  "0.20.14",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.14/NXGS-Play-Setup.exe",
+    "sha256":  "c8f9476823a49d62c0955a7c7c7c011b8d0cb16054d777e07d6770d8525316fc",
     "required":  false,
-    "notes":  "Fixes Ctrl+Shift+H and controller Home overlays across Store and local games with exact game-window snapshots, safe game artwork fallbacks, reliable topmost behavior, and no desktop or unrelated app exposure."
+    "notes":  "Home overlay now follows the exact game NXGS launched, keeps the live game visible behind the navbar when possible, rejects unrelated apps and desktop surfaces, and uses safe snapshot or game artwork fallbacks."
 }
