@@ -869,11 +869,20 @@ using System;
 using System.Runtime.InteropServices;
 public struct CaptureInsetPoint { public int X; public int Y; }
 public struct CaptureInsetRect { public int Left; public int Top; public int Right; public int Bottom; }
+[StructLayout(LayoutKind.Sequential)]
+public struct CaptureInsetMonitorInfo {
+  public uint cbSize;
+  public CaptureInsetRect rcMonitor;
+  public CaptureInsetRect rcWork;
+  public uint dwFlags;
+}
 public static class CaptureInsetWin32 {
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref CaptureInsetPoint point);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hwnd, out CaptureInsetRect rect);
+  [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr monitor, ref CaptureInsetMonitorInfo info);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out CaptureInsetRect rect);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
 }
 "@
 $window = [IntPtr]${safeHandle}
@@ -886,7 +895,15 @@ if (
   -not [CaptureInsetWin32]::GetClientRect($window, [ref]$clientRect) -or
   -not [CaptureInsetWin32]::ClientToScreen($window, [ref]$clientOrigin)
 ) { "0"; exit }
-$topInset = [Math]::Max(0, $clientOrigin.Y - $windowRect.Top)
+$clientInset = [Math]::Max(0, $clientOrigin.Y - $windowRect.Top)
+$monitor = [CaptureInsetWin32]::MonitorFromWindow($window, 2)
+$monitorInfo = New-Object CaptureInsetMonitorInfo
+$monitorInfo.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type][CaptureInsetMonitorInfo])
+$offscreenInset = 0
+if ($monitor -ne [IntPtr]::Zero -and [CaptureInsetWin32]::GetMonitorInfo($monitor, [ref]$monitorInfo)) {
+  $offscreenInset = [Math]::Max(0, $monitorInfo.rcMonitor.Top - $windowRect.Top)
+}
+$topInset = [Math]::Max($clientInset, $offscreenInset)
 [Math]::Min(160, $topInset)
 `;
   try {

@@ -154,7 +154,6 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
-    [DllImport("user32.dll")] private static extern void SwitchToThisWindow(IntPtr window, bool altTab);
     [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint parameter, ref uint value, uint flags);
 
     private const uint KeyUp = 0x0002;
@@ -213,30 +212,30 @@ public static class NxgsWarningInput {
             uint unlockedTimeout = 0;
             SystemParametersInfo(0x2001, 0, ref unlockedTimeout, 0);
             if (game != IntPtr.Zero && IsWindow(game)) {
-                if (hideGame) {
-                    // Direct composition frames can refuse every foreground
-                    // handoff. Once the exact game capture is painted, hide
-                    // only that verified HWND so the frozen last frame—not
-                    // the desktop or another app—remains under the navbar.
-                    ShowWindow(game, 0);
-                } else {
+                EnableWindow(game, true);
+                if (!hideGame) {
                     ShowWindowAsync(game, 9);
                     SetWindowPos(game, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate | ShowWindowFlag);
-                    // The tracked game keeps rendering, but cannot immediately
-                    // steal activation back while NXGS owns the Home overlay.
-                    EnableWindow(game, false);
+                    // Keep the live game enabled; NXGS takes the higher
+                    // topmost slot without forcing Windows to pick a new app.
                 }
             }
 
-            ShowWindowAsync(overlay, 5);
+            // Cover the display before changing the tracked game's visibility
+            // so no desktop or unrelated app can appear between the two.
+            ShowWindow(overlay, 5);
             SetWindowPos(overlay, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | ShowWindowFlag);
             keybd_event(0x12, 0, 0, UIntPtr.Zero);
             BringWindowToTop(overlay);
+            if (!IsWindowVisible(overlay)) return "overlay_not_visible";
+            if (hideGame && game != IntPtr.Zero && IsWindow(game)) {
+                ShowWindow(game, 0);
+            }
             SetActiveWindow(overlay);
             SetForegroundWindow(overlay);
             SetFocus(overlay);
             if (GetForegroundWindow() != overlay) {
-                SwitchToThisWindow(overlay, true);
+                BringWindowToTop(overlay);
                 SetForegroundWindow(overlay);
                 SetFocus(overlay);
             }

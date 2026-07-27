@@ -73,6 +73,11 @@ assert.equal(
 assert.match(mainSource, /kind: 'direct'[\s\S]*kind: 'live'[\s\S]*kind: 'cover'[\s\S]*kind: 'generated'/, 'the tracked live game must precede capture, artwork, and generated fallbacks');
 assert.match(mainSource, /Prepared direct live game backdrop[\s\S]*capturedWindowHandle: gameWindow\.handle/, 'direct mode must be tied to the tracked game HWND');
 assert.match(mainSource, /shellHostedStoreFrame[\s\S]*Prewarming exact capture for shell-hosted Store frame/, 'shell-hosted Store frames must prewarm exact capture instead of relying on unsafe direct composition');
+assert.match(
+  mainSource,
+  /shellHostedStoreFrame[\s\S]*hostProcessName[\s\S]*windowProcessName/,
+  'Store capture fallback must depend on the actual Windows host process, not the ApplicationFrameWindow class alone'
+);
 assert.match(mainSource, /if \(exactWindowSource\)[\s\S]*thumbnail usable[\s\S]*kind: 'live'/, 'an exact UWP source must be tried as a live stream even when its thumbnail is blank');
 assert.match(mainSource, /snapshotIsUsable \? exactWindowSource\.thumbnail\.toDataURL\(\) : coverImage/, 'blank thumbnails may be posters but must not reject exact live capture');
 assert.match(mainSource, /posterKind === 'snapshot'[\s\S]*kind: 'snapshot'/, 'a real game-window snapshot must be preserved ahead of cover art when live decoding fails');
@@ -108,10 +113,12 @@ assert.match(
 );
 assert.match(
   windowsControlSource,
-  /exact game capture is painted[\s\S]*ShowWindow\(game, 0\)/,
-  'a composition-locked Store frame must be hidden only after its exact capture is painted'
+  /ShowWindow\(overlay, 5\)[\s\S]*IsWindowVisible\(overlay\)[\s\S]*ShowWindow\(game, 0\)/,
+  'a composition-locked Store frame must stay visible until the painted overlay covers the display'
 );
-assert.match(windowsControlSource, /FocusWindow[\s\S]*EnableWindow\(window, true\)/, 'resume must re-enable a game disabled during overlay ownership');
+assert.match(windowsControlSource, /FocusWindow[\s\S]*EnableWindow\(window, true\)/, 'resume must ensure the tracked game accepts foreground input');
+assert.doesNotMatch(windowsControlSource, /EnableWindow\(game, false\)/, 'opening Home must never disable the game and expose another desktop window');
+assert.doesNotMatch(windowsControlSource, /SwitchToThisWindow/, 'overlay focus must not invoke Windows app switching');
 assert.match(
   mainSource,
   /getRootWindowHandle\(gameWindow\.handle\)[\s\S]*safeCaptureHandles[\s\S]*exactWindowSource/,
@@ -144,9 +151,23 @@ assert.match(mainSource, /\['launching', 'running', 'quickOverlayOpen', 'resumin
 assert.match(mainSource, /if \(!hasActiveGame \|\| !gameplayContext\)/);
 assert.match(mainSource, /gameplayQuickOverlayDesiredOpen = shouldOpen/);
 assert.match(mainSource, /transitionGeneration !== gameplayQuickOverlayTransitionGeneration/);
-assert.match(mainSource, /lowerGameplayQuickOverlayForResume[\s\S]*overlay\.setAlwaysOnTop\(false\)/);
+assert.match(
+  mainSource,
+  /gameplayQuickOverlayTransitionQueue[\s\S]*was superseded before touching native focus/,
+  'rapid Home requests must be serialized and stale requests must not touch foreground ownership'
+);
+assert.match(
+  mainSource,
+  /protectGameplayQuickOverlayDuringResume[\s\S]*overlay\.setAlwaysOnTop\(true, 'screen-saver'\)/,
+  'the painted overlay must remain topmost until the tracked game is confirmed foreground'
+);
+assert.doesNotMatch(
+  mainSource,
+  /status === 'running'[\s\S]{0,260}(?:showGameplayQuickOverlay|hideGameplayQuickOverlay)/,
+  'launcher state broadcasts must not start competing overlay focus transitions'
+);
 assert.match(mainSource, /if \(result\.ok\)[\s\S]*hideGameplayQuickOverlay\(\)/, 'hiding must retain the prewarmed backdrop for the next deterministic toggle');
-assert.match(mainSource, /transitionGameplayQuickOverlay[\s\S]*launcher\.resumeActiveGame\(gameId\)/);
+assert.match(mainSource, /performGameplayQuickOverlayTransition[\s\S]*launcher\.resumeActiveGame\(gameId\)/);
 assert.match(mainSource, /shell:dismissQuickOverlay[\s\S]*transitionGameplayQuickOverlay\(false, 'renderer-request'\)/);
 assert.doesNotMatch(mainSource, /Ignored overlapping Home request/);
 assert.match(mainSource, /endPaidSession[\s\S]*openQuickNav: false,[\s\S]*resetToHome: true/);
@@ -182,6 +203,11 @@ assert.match(stylesSource, /\.live-gameplay-overlay \.quick-overlay-shade,[\s\S]
 assert.match(stylesSource, /\.live-gameplay-overlay \.quick-home-overlay\.direct-game-backdrop\s*\{[^}]*background:\s*transparent/s, 'verified direct gameplay must remain visible through the overlay');
 assert.match(stylesSource, /\.quick-overlay-game-video\s*\{[^}]*background:\s*#050912/s, 'live capture must remain opaque if a frame is unavailable');
 assert.match(mainSource, /getWindowCaptureTopInset\(capturedHandle\)[\s\S]*cropTopPx/, 'captured window chrome must be cropped from the fallback frame');
+assert.match(
+  windowManagerSource,
+  /MonitorFromWindow[\s\S]*rcMonitor\.Top - \$windowRect\.Top[\s\S]*Math\]::Max\(\$clientInset, \$offscreenInset\)/,
+  'captured fullscreen windows must crop both native chrome and their hidden off-screen top margin'
+);
 assert.match(overlaySource, /captureCropStyle[\s\S]*cropTopPx/, 'renderer must apply the native capture crop');
 assert.doesNotMatch(appSource, /requestShellHome\('renderer-request'\)/, 'renderer key handling must not duplicate the global Home shortcut');
 assert.match(stylesSource, /\.quick-overlay-backdrop-generated\s*\{[^}]*linear-gradient/s);
