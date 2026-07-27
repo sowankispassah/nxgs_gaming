@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.16",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.16/NXGS-Play-Setup.exe",
-    "sha256":  "d57d8acd60c9f1542eb1d8df59538c6a0e4bf146a436a6b0266d8f95c78bbae4",
+    "version":  "0.20.17",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.17/NXGS-Play-Setup.exe",
+    "sha256":  "e12db2d0c8336bfe674bb57c2ef1ea166a9f7615c39804b3ae0948d48c55a187",
     "required":  false,
-    "notes":  "Live Home overlay now stays tied to the NXGS-launched game, accepts verified UWP sources even when thumbnails are blank, waits for a real game frame, reuses prewarmed capture instantly, rejects unrelated apps, and falls back to an exact game snapshot before artwork."
+    "notes":  "Home overlay is now a reliable one-press toggle, stays tied to the NXGS-tracked game, removes captured title-bar borders, uses exact Store-game snapshots when live composition is blocked, and allows multiple games without a switch confirmation."
 }
