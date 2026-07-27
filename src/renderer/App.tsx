@@ -153,7 +153,6 @@ export function App(): JSX.Element {
   const [homeContentIndex, setHomeContentIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [confirmGame, setConfirmGame] = useState<GameRecord | null>(null);
-  const [switchTargetGame, setSwitchTargetGame] = useState<GameRecord | null>(null);
   const [extendPaymentOpen, setExtendPaymentOpen] = useState(false);
   const [extensionStage, setExtensionStage] = useState<'two' | 'final'>('two');
   const [extensionRequestId, setExtensionRequestId] = useState('');
@@ -382,13 +381,8 @@ export function App(): JSX.Element {
       setConfirmGame(game);
       return;
     }
-    const tracked = activeGame.sessions?.some((trackedSession) => trackedSession.game.id === game.id);
-    if (!tracked && activeGame.sessions?.length) {
-      setSwitchTargetGame(game);
-      return;
-    }
     await launchPaidGame(game);
-  }, [activeGame.sessions, launchPaidGame, launchPendingGameId, session, settings]);
+  }, [launchPaidGame, launchPendingGameId, session, settings]);
 
   useEffect(() => {
     if (selectedIndex >= enabledGames.length) {
@@ -425,7 +419,7 @@ export function App(): JSX.Element {
 
   const moveHorizontal = useCallback(
     (delta: number) => {
-      if (view !== 'home' || confirmGame || switchTargetGame || pinOpen) {
+      if (view !== 'home' || confirmGame || pinOpen) {
         return;
       }
       if (homeFocusSection === 'tabs') {
@@ -467,12 +461,12 @@ export function App(): JSX.Element {
         setHomeContentIndex((index) => Math.max(0, Math.min(3, index + delta)));
       }
     },
-    [confirmGame, enabledGames.length, homeFocusSection, homeTab, pinOpen, switchTargetGame, view]
+    [confirmGame, enabledGames.length, homeFocusSection, homeTab, pinOpen, view]
   );
 
   const moveVertical = useCallback(
     (delta: number) => {
-      if (view !== 'home' || confirmGame || switchTargetGame || pinOpen) {
+      if (view !== 'home' || confirmGame || pinOpen) {
         return;
       }
       setHomeFocusSection((current) => {
@@ -490,11 +484,11 @@ export function App(): JSX.Element {
         return current;
       });
     },
-    [confirmGame, enabledGames.length, homeTab, pinOpen, switchTargetGame, view]
+    [confirmGame, enabledGames.length, homeTab, pinOpen, view]
   );
 
   const acceptSelection = useCallback(() => {
-    if (view !== 'home' || confirmGame || switchTargetGame || pinOpen) return;
+    if (view !== 'home' || confirmGame || pinOpen) return;
     if (homeFocusSection === 'utilities') {
       document.querySelector<HTMLButtonElement>(`[data-home-utility-index="${homeUtilityIndex}"]`)?.click();
       return;
@@ -513,15 +507,11 @@ export function App(): JSX.Element {
         openConsoleSettings();
       }
     }
-  }, [confirmGame, enabledGames.length, homeFocusSection, homeTab, homeUtilityIndex, openConsoleSettings, pinOpen, selectGame, selectedGame, selectedIndex, switchTargetGame, view]);
+  }, [confirmGame, enabledGames.length, homeFocusSection, homeTab, homeUtilityIndex, openConsoleSettings, pinOpen, selectGame, selectedGame, selectedIndex, view]);
 
   const back = useCallback(() => {
     if (confirmGame) {
       setConfirmGame(null);
-      return;
-    }
-    if (switchTargetGame) {
-      setSwitchTargetGame(null);
       return;
     }
     if (pinOpen) {
@@ -546,15 +536,10 @@ export function App(): JSX.Element {
       setSelectedIndex(-1);
       setHomeFocusSection('games');
     }
-  }, [closeAdminPin, confirmGame, homeFocusSection, homeTab, navigateBack, pinOpen, returnToCustomerHome, selectedIndex, switchTargetGame, view]);
+  }, [closeAdminPin, confirmGame, homeFocusSection, homeTab, navigateBack, pinOpen, returnToCustomerHome, selectedIndex, view]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'h') {
-        event.preventDefault();
-        void window.nxgs.requestShellHome('renderer-request');
-        return;
-      }
       if (pinOpen || adminOptionsOpen) return;
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault();
@@ -637,7 +622,6 @@ export function App(): JSX.Element {
   useControllerNavigation(
     view === 'home' &&
       !confirmGame &&
-      !switchTargetGame &&
       !pinOpen &&
       !adminOptionsOpen &&
       !quickNavOpen &&
@@ -784,27 +768,6 @@ export function App(): JSX.Element {
         />
       )}
 
-      {switchTargetGame && (
-        <GameSwitchDialog
-          currentGame={activeGame.game}
-          targetGame={switchTargetGame}
-          onClose={() => setSwitchTargetGame(null)}
-          onChoose={async (choice) => {
-            const preparation = choice === 'keep'
-              ? activeGame.windowState === 'minimized' || activeGame.windowState === 'background'
-                ? { ok: true }
-                : await window.nxgs.minimizeActiveGame()
-              : await window.nxgs.closeGameForSwitch(activeGame.game?.id);
-            if (!preparation.ok) {
-              throw new Error(preparation.error ?? 'Could not prepare the current game for switching.');
-            }
-            const accepted = await launchPaidGame(switchTargetGame);
-            if (!accepted) throw new Error('The new game could not be started.');
-            setSwitchTargetGame(null);
-          }}
-        />
-      )}
-
       {extendPaymentOpen && (
         <PaymentFlow
           mode="extend"
@@ -905,113 +868,6 @@ export function App(): JSX.Element {
     </main>
   );
 }
-function GameSwitchDialog(props: {
-  currentGame?: GameRecord;
-  targetGame: GameRecord;
-  onClose: () => void;
-  onChoose: (choice: 'keep' | 'close') => Promise<void>;
-}): JSX.Element {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [pendingChoice, setPendingChoice] = useState<'keep' | 'close' | null>(null);
-  const [error, setError] = useState('');
-  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  const choose = useCallback(async (choice: 'keep' | 'close'): Promise<void> => {
-    if (pendingChoice) return;
-    setPendingChoice(choice);
-    setError('');
-    try {
-      await props.onChoose(choice);
-    } catch (choiceError) {
-      setError(choiceError instanceof Error ? choiceError.message : String(choiceError));
-    } finally {
-      setPendingChoice(null);
-    }
-  }, [pendingChoice, props]);
-
-  useEffect(() => buttonRefs.current[selectedIndex]?.focus({ preventScroll: true }), [selectedIndex]);
-
-  const activate = useCallback((): void => {
-    if (selectedIndex === 0) void choose('keep');
-    else if (selectedIndex === 1) void choose('close');
-    else props.onClose();
-  }, [choose, props, selectedIndex]);
-
-  const handleControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
-    if (event.type === 'back') props.onClose();
-    else if (event.type === 'accept') activate();
-    else if (event.direction === 'left' || event.direction === 'up') {
-      setSelectedIndex((index) => Math.max(0, index - 1));
-    } else {
-      setSelectedIndex((index) => Math.min(2, index + 1));
-    }
-  }, [activate, props]);
-
-  useControllerNavigation(!pendingChoice, handleControllerEvent);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(event.key)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (pendingChoice) return;
-      if (event.key === 'Escape') props.onClose();
-      else if (event.key === 'Enter') activate();
-      else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') setSelectedIndex((index) => Math.max(0, index - 1));
-      else setSelectedIndex((index) => Math.min(2, index + 1));
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activate, pendingChoice, props]);
-
-  return (
-    <div className="modal-backdrop game-switch-backdrop">
-      <section className="modal game-switch-modal">
-        <p className="eyebrow">Switch game</p>
-        <h2>Start {props.targetGame.title}?</h2>
-        <p className="muted">
-          {props.currentGame?.title ?? 'The current game'} is still running. Your paid time remains active whichever option you choose.
-        </p>
-        {error && <p className="error-text" role="alert">{error}</p>}
-        <div className="game-switch-actions">
-          <button
-            ref={(element) => { buttonRefs.current[0] = element; }}
-            className={`primary-action ${selectedIndex === 0 ? 'controller-focused' : ''}`}
-            type="button"
-            disabled={Boolean(pendingChoice)}
-            onFocus={() => setSelectedIndex(0)}
-            onClick={() => void choose('keep')}
-          >
-            {pendingChoice === 'keep' ? <LoaderCircle className="spin" size={19} /> : <Play size={19} />}
-            {pendingChoice === 'keep' ? 'Switching...' : 'Keep Running & Switch'}
-          </button>
-          <button
-            ref={(element) => { buttonRefs.current[1] = element; }}
-            className={`danger-action ${selectedIndex === 1 ? 'controller-focused' : ''}`}
-            type="button"
-            disabled={Boolean(pendingChoice)}
-            onFocus={() => setSelectedIndex(1)}
-            onClick={() => void choose('close')}
-          >
-            {pendingChoice === 'close' ? <LoaderCircle className="spin" size={19} /> : <Power size={19} />}
-            {pendingChoice === 'close' ? 'Closing & switching...' : 'Close Current & Switch'}
-          </button>
-          <button
-            ref={(element) => { buttonRefs.current[2] = element; }}
-            className={`secondary-action ${selectedIndex === 2 ? 'controller-focused' : ''}`}
-            type="button"
-            disabled={Boolean(pendingChoice)}
-            onFocus={() => setSelectedIndex(2)}
-            onClick={props.onClose}
-          >
-            <X size={19} /> Cancel
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function AdminOptionsDialog(props: { onAction: (action: KioskAdminAction) => Promise<void> }): JSX.Element {
   const [pendingAction, setPendingAction] = useState<KioskAdminAction | null>(null);
   const [error, setError] = useState('');

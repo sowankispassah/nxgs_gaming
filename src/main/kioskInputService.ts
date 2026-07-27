@@ -111,12 +111,19 @@ export class KioskInputService {
       const key = input.key.toLowerCase();
       if (input.control && input.shift && key === 'h') {
         event.preventDefault();
-        this.requestHome('global-home');
+        // The registered global shortcut receives this same physical press
+        // even while an NXGS BrowserWindow owns focus. Use the renderer hook
+        // only as a recovery fallback so one press never toggles twice.
+        if (!globalShortcut.isRegistered('CommandOrControl+Shift+H')) {
+          this.requestHome('global-home');
+        }
         return;
       }
       if (key === 'f10') {
         event.preventDefault();
-        this.requestHome('global-f10');
+        if (!globalShortcut.isRegistered('F10')) {
+          this.requestHome('global-f10');
+        }
         return;
       }
 

@@ -602,6 +602,7 @@ export interface QuickOverlayBackdrop {
   posterKind?: 'snapshot' | 'cover';
   sourceId?: string;
   capturedWindowHandle?: number;
+  cropTopPx?: number;
 }
 
 export interface AdminUnlockRequest {

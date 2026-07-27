@@ -35,6 +35,8 @@ import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateS
 import {
   enforceQuickOverlayZOrder,
   getRootWindowHandle,
+  getWindowCaptureTopInset,
+  releaseGameWindowTopMost,
   restoreWindowsTaskbarSync,
   setWindowsTaskbarVisible
 } from './windowManagerService';
@@ -85,6 +87,7 @@ let gameplayQuickOverlayPreparedGameId: string | null = null;
 let gameplayQuickOverlayPreparedBackdropKind: QuickOverlayBackdropKind | null = null;
 let gameplayQuickOverlayRendererReady = false;
 let gameplayQuickOverlayNativeZOrderVerified = false;
+let lastShellHomeRequestAt = 0;
 let pendingQuickOverlayPaint: {
   requestId: number;
   resolve: (painted: boolean) => void;
@@ -249,7 +252,10 @@ function quickOverlaySnapshotIsUsable(image: NativeImage): boolean {
   return averageLuma > 8 && maximumLuma - minimumLuma > 8;
 }
 
-async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise<Omit<QuickOverlayBackdrop, 'requestId'>> {
+async function createSafeQuickOverlayBackdrop(
+  captureSnapshot: boolean,
+  preferDirectGameplay = true
+): Promise<Omit<QuickOverlayBackdrop, 'requestId'>> {
   const game = launcher.activeState.game;
   const coverImage = game?.coverImagePath || game?.avatarImagePath || '';
   if (!game) return { kind: 'generated' };
@@ -258,6 +264,27 @@ async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise
     try {
       const gameWindow = await launcher.getQuickOverlayBackdropWindow();
       if (gameWindow && gameWindowMatchesGame(game, gameWindow, launcher.diagnosticState.processId)) {
+        const shellHostedStoreFrame = game.launchType === 'microsoftStore' && (
+          gameWindow.hostProcessName?.toLowerCase() === 'explorer' ||
+          gameWindow.className === 'ApplicationFrameWindow'
+        );
+        if (preferDirectGameplay && !shellHostedStoreFrame) {
+          await logLine(
+            'info',
+            `Prepared direct live game backdrop for ${game.title} from tracked window ${gameWindow.handle}.`
+          );
+          return {
+            kind: 'direct',
+            gameId: game.id,
+            capturedWindowHandle: gameWindow.handle
+          };
+        }
+        if (preferDirectGameplay && shellHostedStoreFrame) {
+          await logLine(
+            'info',
+            `Prewarming exact capture for shell-hosted Store frame ${gameWindow.handle} (${game.title}).`
+          );
+        }
         const display = screen.getDisplayMatching(getLiveMainWindow()?.getBounds() ?? screen.getPrimaryDisplay().bounds);
         const sources = await desktopCapturer.getSources({
           types: ['window'],
@@ -284,6 +311,7 @@ async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise
         });
         if (exactWindowSource) {
           const capturedHandle = Number(exactWindowSource.id.split(':')[1]);
+          const cropTopPx = await getWindowCaptureTopInset(capturedHandle);
           const snapshotIsUsable = quickOverlaySnapshotIsUsable(exactWindowSource.thumbnail);
           await logLine(
             'info',
@@ -296,7 +324,8 @@ async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise
             imageUrl: snapshotIsUsable ? exactWindowSource.thumbnail.toDataURL() : coverImage || undefined,
             posterKind: snapshotIsUsable ? 'snapshot' : coverImage ? 'cover' : undefined,
             sourceId: exactWindowSource.id,
-            capturedWindowHandle: capturedHandle
+            capturedWindowHandle: capturedHandle,
+            cropTopPx
           };
         }
         await logLine(
@@ -368,7 +397,32 @@ function browserWindowNativeHandle(window: BrowserWindow): number {
 async function enforceGameplayQuickOverlayZOrder(overlay: BrowserWindow): Promise<boolean> {
   const gameWindow = await launcher.getQuickOverlayBackdropWindow();
   const overlayHandle = browserWindowNativeHandle(overlay);
-  const state = await enforceQuickOverlayZOrder(overlayHandle, gameWindow?.handle);
+  const directBackdrop = gameplayQuickOverlayPreparedBackdropKind === 'direct';
+  let state = await enforceQuickOverlayZOrder(
+    overlayHandle,
+    gameWindow?.handle,
+    !directBackdrop
+  );
+  if (
+    directBackdrop &&
+    gameWindow &&
+    !(
+      state?.overlayVisible &&
+      state.overlayTopMost &&
+      state.overlayAboveGame &&
+      state.overlayForeground
+    )
+  ) {
+    // Some shell-hosted Store frames re-promote themselves while processing
+    // activation. Keep the exact live game in place, release only its topmost
+    // bit, then stage the transparent NXGS surface above it.
+    await releaseGameWindowTopMost(gameWindow);
+    state = await enforceQuickOverlayZOrder(overlayHandle);
+    await logLine(
+      state?.overlayForeground ? 'info' : 'warn',
+      `Quick overlay retried above released Store frame ${gameWindow.handle}.`
+    );
+  }
   const verified = Boolean(
     state?.overlayVisible &&
     state.overlayTopMost &&
@@ -384,8 +438,31 @@ async function enforceGameplayQuickOverlayZOrder(overlay: BrowserWindow): Promis
       `overlayForeground=${state?.overlayForeground ?? false}, overlayTopMost=${state?.overlayTopMost ?? false}, ` +
       `overlayAboveGame=${state?.overlayAboveGame ?? false}, ` +
       `gameVisible=${state?.gameVisible ?? false}, gameTopMost=${state?.gameTopMost ?? false}.`
+      + (state?.error ? ` Native worker: ${state.error}` : '')
   );
   return verified;
+}
+
+async function replaceUnsafeDirectBackdrop(overlay: BrowserWindow, gameId: string | null): Promise<void> {
+  if (
+    gameplayQuickOverlayPreparedBackdropKind !== 'direct' ||
+    !gameId ||
+    overlay.isDestroyed()
+  ) return;
+
+  const requestId = ++gameplayQuickOverlayRequestId;
+  overlay.webContents.send('quickOverlay:backdrop', {
+    requestId,
+    gameId,
+    kind: 'generated'
+  } satisfies QuickOverlayBackdrop);
+  gameplayQuickOverlayPreparedBackdropKind = 'generated';
+  gameplayQuickOverlayRendererReady = false;
+  await logLine(
+    'warn',
+    'Direct game staging was not verified; hiding transparent pixels while NXGS captures the exact tracked window.'
+  );
+  await prepareGameplayQuickOverlayRenderer(true, false, true);
 }
 
 async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
@@ -401,6 +478,7 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
     ...display.bounds,
     show: false,
     frame: false,
+    thickFrame: false,
     transparent: true,
     hasShadow: false,
     skipTaskbar: true,
@@ -452,7 +530,11 @@ async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
   return overlay;
 }
 
-async function performGameplayQuickOverlayPreparation(gameId: string, captureSnapshot: boolean): Promise<void> {
+async function performGameplayQuickOverlayPreparation(
+  gameId: string,
+  captureSnapshot: boolean,
+  preferDirectGameplay = true
+): Promise<void> {
   const overlay = await createGameplayQuickOverlayWindow();
   const preparationStartedAt = Date.now();
   const owner = getLiveMainWindow();
@@ -481,7 +563,7 @@ async function performGameplayQuickOverlayPreparation(gameId: string, captureSna
     overlay.showInactive();
   }
 
-  const backdrop = await createSafeQuickOverlayBackdrop(captureSnapshot);
+  const backdrop = await createSafeQuickOverlayBackdrop(captureSnapshot, preferDirectGameplay);
   if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
   let preparedKind = backdrop.kind;
   let requestId = ++gameplayQuickOverlayRequestId;
@@ -505,7 +587,8 @@ async function performGameplayQuickOverlayPreparation(gameId: string, captureSna
       gameId,
       kind: 'snapshot',
       imageUrl: backdrop.imageUrl,
-      capturedWindowHandle: backdrop.capturedWindowHandle
+      capturedWindowHandle: backdrop.capturedWindowHandle,
+      cropTopPx: backdrop.cropTopPx
     } satisfies QuickOverlayBackdrop);
     painted = await paintReady;
     if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
@@ -524,24 +607,34 @@ async function performGameplayQuickOverlayPreparation(gameId: string, captureSna
   );
 }
 
-async function prepareGameplayQuickOverlayRenderer(captureSnapshot = false): Promise<void> {
+async function prepareGameplayQuickOverlayRenderer(
+  captureSnapshot = false,
+  preferDirectGameplay = true,
+  force = false
+): Promise<void> {
   const gameId = launcher.activeState.game?.id;
   if (!gameId) return;
+  const preparedBackdropIsAcceptable = (): boolean =>
+    !captureSnapshot ||
+    gameplayQuickOverlayPreparedBackdropKind === 'live' ||
+    (preferDirectGameplay && gameplayQuickOverlayPreparedBackdropKind === 'direct');
   if (
+    !force &&
     gameplayQuickOverlayPreparedGameId === gameId &&
     gameplayQuickOverlayRendererReady &&
-    (!captureSnapshot || gameplayQuickOverlayPreparedBackdropKind === 'live')
+    preparedBackdropIsAcceptable()
   ) return;
   if (gameplayQuickOverlayPreparePromise) {
     await gameplayQuickOverlayPreparePromise;
     if (
+      !force &&
       gameplayQuickOverlayPreparedGameId === gameId &&
       gameplayQuickOverlayRendererReady &&
-      (!captureSnapshot || gameplayQuickOverlayPreparedBackdropKind === 'live')
+      preparedBackdropIsAcceptable()
     ) return;
   }
 
-  const operation = performGameplayQuickOverlayPreparation(gameId, captureSnapshot);
+  const operation = performGameplayQuickOverlayPreparation(gameId, captureSnapshot, preferDirectGameplay);
   gameplayQuickOverlayPreparePromise = operation;
   try {
     await operation;
@@ -569,7 +662,12 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     overlay.moveTop();
     overlay.focus();
     overlay.webContents.focus();
-    await enforceGameplayQuickOverlayZOrder(overlay);
+    const zOrderVerified = await enforceGameplayQuickOverlayZOrder(overlay);
+    if (!zOrderVerified) {
+      await replaceUnsafeDirectBackdrop(overlay, gameId);
+      if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
+      await enforceGameplayQuickOverlayZOrder(overlay);
+    }
     if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
     overlay.webContents.focus();
     return;
@@ -581,7 +679,7 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     gameplayQuickOverlayDesiredOpen &&
     visibilityGeneration === gameplayQuickOverlayVisibilityGeneration &&
     !overlay.isDestroyed() &&
-    (!gameplayQuickOverlayRendererReady || gameplayQuickOverlayPreparedBackdropKind !== 'live')
+    (!gameplayQuickOverlayRendererReady || !['direct', 'live'].includes(gameplayQuickOverlayPreparedBackdropKind ?? ''))
   ) {
     // Re-probe once before showing artwork. A Store game's titled visual frame
     // often appears just after its provisional package shell.
@@ -613,7 +711,12 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   overlay.moveTop();
   overlay.focus();
   overlay.webContents.focus();
-  await enforceGameplayQuickOverlayZOrder(overlay);
+  const zOrderVerified = await enforceGameplayQuickOverlayZOrder(overlay);
+  if (!zOrderVerified) {
+    await replaceUnsafeDirectBackdrop(overlay, gameId);
+    if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
+    await enforceGameplayQuickOverlayZOrder(overlay);
+  }
   if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
   overlay.webContents.focus();
   await logLine(
@@ -814,7 +917,10 @@ async function transitionGameplayQuickOverlay(
       resetToHome: false
     });
     if (result.ok) {
-      hideGameplayQuickOverlay(true);
+      // Keep the direct live surface painted for the next toggle. Clearing it
+      // here forced every subsequent Home press through window discovery and
+      // capture preparation again, making the navbar appear seconds late.
+      hideGameplayQuickOverlay();
       return result;
     }
 
@@ -862,11 +968,11 @@ function openHomeFromGame(reason: ShellHomeReason = 'system'): void {
     return;
   }
 
-  // Home is a one-way request to reveal the gameplay overlay. Toggling from
-  // an internal boolean allowed a stale "open" flag to route a real Home press
-  // into resume/hide while Chrome or another app remained foreground. Esc,
-  // Back, Resume Game, and renderer-request remain the only hide paths.
-  void transitionGameplayQuickOverlay(true, reason).catch((error) => {
+  // Flip the desired state immediately, not the eventual BrowserWindow state.
+  // A second press therefore remains deterministic even while the first
+  // show/resume transition is waiting on Windows foreground ownership.
+  const shouldOpen = !gameplayQuickOverlayDesiredOpen;
+  void transitionGameplayQuickOverlay(shouldOpen, reason).catch((error) => {
     void logLine('error', `Unhandled gameplay Home transition failure: ${String(error)}`);
   });
 }
@@ -1030,6 +1136,12 @@ async function handleSessionWarningAction(
 sessionWarningOverlay = new SessionWarningOverlay(handleSessionWarningAction);
 
 function handleShellHomeRequest(reason: ShellHomeReason): void {
+  const requestedAt = Date.now();
+  if (reason !== 'emergency-close' && requestedAt - lastShellHomeRequestAt < 220) {
+    void logLine('info', `Coalesced duplicate ${reason} Home input from the same physical press.`);
+    return;
+  }
+  lastShellHomeRequestAt = requestedAt;
   if (reason === 'controller-home' || reason === 'controller-combo') {
     void suppressXboxGameBarSurfaces();
   }

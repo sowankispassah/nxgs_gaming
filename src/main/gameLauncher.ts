@@ -185,6 +185,23 @@ export class GameLauncher {
           break;
         }
       }
+      if (!verifiedVisualWindow) {
+        for (const candidate of candidates) {
+          if (
+            isProvisionalShellHostedStoreWindow(candidate) &&
+            gameWindowMatchesGame(game, candidate, this.activeProcessId) &&
+            await isGameWindowVisible(candidate)
+          ) {
+            verifiedVisualWindow = candidate;
+            await logLine(
+              'info',
+              `Using process-bound shell-hosted visual window ${candidate.handle} for ${game.title}; ` +
+                'the current Windows host did not publish a titled child HWND.'
+            );
+            break;
+          }
+        }
+      }
       if (verifiedVisualWindow) {
         if (window?.handle !== verifiedVisualWindow.handle) {
           await logLine(
@@ -926,6 +943,24 @@ export class GameLauncher {
         'warn',
         `Window detection timed out for ${game.title}; retaining the active session and keeping NXGS Play visible.`
       );
+      if (storeLaunchMayStillBePending) {
+        // Modern Store apps can render through an untitled Explorer-owned
+        // ApplicationFrameWindow that appears after the package process.
+        // The game is already foreground, so do not manufacture a Home-overlay
+        // state or force the player back to the launcher while exact identity
+        // reconciliation continues in the background.
+        this.releaseLaunchShield();
+        this.gameInForeground = true;
+        this.monitorByProcessName(game);
+        this.setActiveState({
+          status: 'running',
+          game,
+          message: `${game.title} is running while NXGS finishes detecting its Store window.`,
+          windowDetected: false,
+          windowState: 'foreground'
+        });
+        return;
+      }
       this.showLaunchShield();
       this.setActiveState({
         status: 'quickOverlayOpen',

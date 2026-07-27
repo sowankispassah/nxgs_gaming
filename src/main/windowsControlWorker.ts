@@ -6,6 +6,7 @@ export type WindowsControlCommand =
   | 'brightness'
   | 'escape'
   | 'focus-window'
+  | 'stage-overlay'
   | 'release-window'
   | 'close-window'
   | 'taskbar-visible';
@@ -21,6 +22,12 @@ type PendingRequest = {
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
 };
+
+export interface OverlayStageRequest {
+  overlayHandle: number;
+  gameHandle: number;
+  hideGame?: boolean;
+}
 
 const WORKER_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -134,8 +141,11 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string className, string windowName);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint command);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")] private static extern bool EnableWindow(IntPtr window, bool enabled);
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern IntPtr SetActiveWindow(IntPtr window);
@@ -144,6 +154,8 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")] private static extern void SwitchToThisWindow(IntPtr window, bool altTab);
+    [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint parameter, ref uint value, uint flags);
 
     private const uint KeyUp = 0x0002;
     private const uint NoSize = 0x0001;
@@ -151,10 +163,12 @@ public static class NxgsWarningInput {
     private const uint NoActivate = 0x0010;
     private const uint ShowWindowFlag = 0x0040;
     private const uint WindowClose = 0x0010;
+    private const uint PreviousWindow = 3;
 
     public static bool FocusWindow(long handle) {
         var window = new IntPtr(handle);
         if (window == IntPtr.Zero || !IsWindow(window)) return false;
+        EnableWindow(window, true);
         AllowSetForegroundWindow(-1);
         ShowWindowAsync(window, 9);
         SetWindowPos(window, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | ShowWindowFlag);
@@ -162,10 +176,112 @@ public static class NxgsWarningInput {
         return GetForegroundWindow() == window;
     }
 
+    public static string StageOverlay(long overlayHandle, long gameHandle, bool hideGame) {
+        var overlay = new IntPtr(overlayHandle);
+        var game = new IntPtr(gameHandle);
+        if (overlay == IntPtr.Zero || !IsWindow(overlay)) return "invalid_overlay";
+
+        var currentThread = GetCurrentThreadId();
+        var foregroundBefore = GetForegroundWindow();
+        uint foregroundProcess = 0;
+        uint overlayProcess = 0;
+        var foregroundThread = foregroundBefore == IntPtr.Zero
+            ? 0
+            : GetWindowThreadProcessId(foregroundBefore, out foregroundProcess);
+        var overlayThread = GetWindowThreadProcessId(overlay, out overlayProcess);
+        var attachedForeground = false;
+        var attachedOverlay = false;
+        var attachedOverlayToForeground = false;
+        uint foregroundLockTimeout = 0;
+        var foregroundLockTimeoutRead = SystemParametersInfo(0x2000, 0, ref foregroundLockTimeout, 0);
+        try {
+            if (foregroundThread != 0 && foregroundThread != currentThread) {
+                attachedForeground = AttachThreadInput(currentThread, foregroundThread, true);
+            }
+            if (overlayThread != 0 && overlayThread != currentThread) {
+                attachedOverlay = AttachThreadInput(currentThread, overlayThread, true);
+            }
+            if (
+                overlayThread != 0 &&
+                foregroundThread != 0 &&
+                overlayThread != foregroundThread
+            ) {
+                attachedOverlayToForeground = AttachThreadInput(overlayThread, foregroundThread, true);
+            }
+
+            AllowSetForegroundWindow(-1);
+            uint unlockedTimeout = 0;
+            SystemParametersInfo(0x2001, 0, ref unlockedTimeout, 0);
+            if (game != IntPtr.Zero && IsWindow(game)) {
+                if (hideGame) {
+                    // Direct composition frames can refuse every foreground
+                    // handoff. Once the exact game capture is painted, hide
+                    // only that verified HWND so the frozen last frame—not
+                    // the desktop or another app—remains under the navbar.
+                    ShowWindow(game, 0);
+                } else {
+                    ShowWindowAsync(game, 9);
+                    SetWindowPos(game, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate | ShowWindowFlag);
+                    // The tracked game keeps rendering, but cannot immediately
+                    // steal activation back while NXGS owns the Home overlay.
+                    EnableWindow(game, false);
+                }
+            }
+
+            ShowWindowAsync(overlay, 5);
+            SetWindowPos(overlay, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | ShowWindowFlag);
+            keybd_event(0x12, 0, 0, UIntPtr.Zero);
+            BringWindowToTop(overlay);
+            SetActiveWindow(overlay);
+            SetForegroundWindow(overlay);
+            SetFocus(overlay);
+            if (GetForegroundWindow() != overlay) {
+                SwitchToThisWindow(overlay, true);
+                SetForegroundWindow(overlay);
+                SetFocus(overlay);
+            }
+            keybd_event(0x12, 0, KeyUp, UIntPtr.Zero);
+            // Reassert the final z-order after foreground activation because
+            // some Store frames promote themselves while handling WM_ACTIVATE.
+            SetWindowPos(overlay, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | ShowWindowFlag);
+
+            var overlayAboveGame = true;
+            if (!hideGame && game != IntPtr.Zero && IsWindow(game)) {
+                overlayAboveGame = false;
+                var cursor = GetWindow(game, PreviousWindow);
+                var guard = 0;
+                while (cursor != IntPtr.Zero && guard < 4096) {
+                    if (cursor == overlay) {
+                        overlayAboveGame = true;
+                        break;
+                    }
+                    cursor = GetWindow(cursor, PreviousWindow);
+                    guard += 1;
+                }
+            }
+
+            var visible = IsWindowVisible(overlay);
+            var foreground = GetForegroundWindow();
+            if (visible && foreground == overlay && overlayAboveGame) return "ok";
+            return "foreground=" + foreground.ToInt64() +
+                ";visible=" + visible +
+                ";above=" + overlayAboveGame;
+        } finally {
+            keybd_event(0x12, 0, KeyUp, UIntPtr.Zero);
+            if (foregroundLockTimeoutRead) {
+                SystemParametersInfo(0x2001, 0, ref foregroundLockTimeout, 0);
+            }
+            if (attachedOverlayToForeground) AttachThreadInput(overlayThread, foregroundThread, false);
+            if (attachedOverlay) AttachThreadInput(currentThread, overlayThread, false);
+            if (attachedForeground) AttachThreadInput(currentThread, foregroundThread, false);
+        }
+    }
+
     public static bool ReleaseWindow(long handle) {
         var window = new IntPtr(handle);
-        return window != IntPtr.Zero && IsWindow(window) &&
-            SetWindowPos(window, new IntPtr(-2), 0, 0, 0, 0, NoSize | NoMove | NoActivate);
+        if (window == IntPtr.Zero || !IsWindow(window)) return false;
+        EnableWindow(window, true);
+        return SetWindowPos(window, new IntPtr(-2), 0, 0, 0, 0, NoSize | NoMove | NoActivate);
     }
 
     public static bool CloseWindow(long handle) {
@@ -270,6 +386,13 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             $handle = [long]$request.value
             $focused = [NxgsWarningInput]::FocusWindow($handle)
             $response = @{ id = $request.id; ok = $focused; value = $focused; message = $(if ($focused) { 'Game window focused.' } else { 'Game window focus was not confirmed.' }) }
+        } elseif ($request.command -eq 'stage-overlay') {
+            $overlayHandle = [long]$request.value.overlayHandle
+            $gameHandle = [long]$request.value.gameHandle
+            $hideGame = [bool]$request.value.hideGame
+            $stageDetail = [NxgsWarningInput]::StageOverlay($overlayHandle, $gameHandle, $hideGame)
+            $staged = $stageDetail -eq 'ok'
+            $response = @{ id = $request.id; ok = $staged; value = $staged; message = $(if ($staged) { 'Quick overlay staged above the tracked game.' } else { "Quick overlay z-order was not confirmed ($stageDetail)." }) }
         } elseif ($request.command -eq 'release-window') {
             $handle = [long]$request.value
             $released = [NxgsWarningInput]::ReleaseWindow($handle)
@@ -366,7 +489,10 @@ export function warmWindowsControlWorker(): void {
   if (process.platform === 'win32') ensureWorker();
 }
 
-export function runWindowsControl(command: WindowsControlCommand, value: number | boolean): Promise<WindowsControlResult> {
+export function runWindowsControl(
+  command: WindowsControlCommand,
+  value: number | boolean | OverlayStageRequest
+): Promise<WindowsControlResult> {
   if (process.platform !== 'win32') {
     return Promise.resolve({ ok: false, message: 'System controls are unavailable on this device.' });
   }

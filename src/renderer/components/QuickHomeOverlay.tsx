@@ -66,7 +66,18 @@ function quickOverlayImageUrl(path: string): string {
   return `file:///${path.replace(/\\/g, '/')}`;
 }
 
-function LiveGameBackdrop(props: { stream: MediaStream; poster: string }): JSX.Element {
+function captureCropStyle(cropTopPx = 0): CSSProperties | undefined {
+  const safeCrop = Math.max(0, Math.min(160, Math.round(cropTopPx)));
+  return safeCrop > 0
+    ? {
+        top: -safeCrop,
+        bottom: 'auto',
+        height: `calc(100% + ${safeCrop}px)`
+      }
+    : undefined;
+}
+
+function LiveGameBackdrop(props: { stream: MediaStream; poster: string; cropTopPx?: number }): JSX.Element {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -84,6 +95,7 @@ function LiveGameBackdrop(props: { stream: MediaStream; poster: string }): JSX.E
       ref={videoRef}
       className="quick-overlay-game-video"
       poster={props.poster || undefined}
+      style={captureCropStyle(props.cropTopPx)}
       autoPlay
       muted
       playsInline
@@ -185,9 +197,11 @@ export function QuickHomeOverlay(props: {
   const disabled = pendingAction !== null || selectedSession?.status === 'closing';
   const backgroundGame = activeSession?.game;
   const backgroundImage = quickOverlayImageUrl(backgroundGame?.coverImagePath || backgroundGame?.avatarImagePath || '');
-  const safeBackdropImage = props.backdrop?.imageUrl
-    ? quickOverlayImageUrl(props.backdrop.imageUrl)
-    : backgroundImage;
+  const safeBackdropImage = props.backdrop?.kind === 'direct'
+    ? ''
+    : props.backdrop?.imageUrl
+      ? quickOverlayImageUrl(props.backdrop.imageUrl)
+      : backgroundImage;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
@@ -722,13 +736,20 @@ export function QuickHomeOverlay(props: {
       }}
     >
       {props.liveBackdropStream ? (
-        <LiveGameBackdrop stream={props.liveBackdropStream} poster={safeBackdropImage} />
+        <LiveGameBackdrop
+          stream={props.liveBackdropStream}
+          poster={safeBackdropImage}
+          cropTopPx={props.backdrop?.cropTopPx}
+        />
       ) : (props.backdrop || safeBackdropImage) && (
         <div
           className={`quick-overlay-game-backdrop quick-overlay-backdrop-${props.backdrop?.kind ?? 'cover'}`}
-          style={safeBackdropImage
-            ? { backgroundImage: `url("${safeBackdropImage.replace(/"/g, '%22')}")` }
-            : undefined}
+          style={{
+            ...(safeBackdropImage
+              ? { backgroundImage: `url("${safeBackdropImage.replace(/"/g, '%22')}")` }
+              : {}),
+            ...captureCropStyle(props.backdrop?.cropTopPx)
+          }}
           aria-hidden="true"
         />
       )}

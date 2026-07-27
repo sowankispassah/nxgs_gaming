@@ -52,6 +52,7 @@ export interface GameWindowActivationState {
 }
 
 export interface QuickOverlayZOrderState {
+  error?: string;
   foregroundHandle: number;
   gameTopMost: boolean;
   gameVisible: boolean;
@@ -417,9 +418,16 @@ $callback = [GameWindowSearchWin32+EnumWindowsProc]{
 [GameWindowSearchWin32]::EnumWindows($callback, [IntPtr]::Zero) | Out-Null
 $shellHostedCandidates = @($windows | Where-Object { $_.score -eq 3 })
 if ($shellHostedCandidates.Count -gt 1) {
-  # Ambiguous shell-hosted windows are deliberately rejected so NXGS never
-  # guesses which Store app should be used as the live gameplay background.
-  $windows = @($windows | Where-Object { $_.score -ne 3 })
+  $foregroundShellHosted = @($shellHostedCandidates | Where-Object { $_.foreground })
+  if ($foregroundShellHosted.Count -eq 1) {
+    # The launch activation makes the selected Store frame foreground. Keep
+    # that one exact HWND while discarding other untitled package frames.
+    $foregroundHandle = $foregroundShellHosted[0].handle
+    $windows = @($windows | Where-Object { $_.score -ne 3 -or $_.handle -eq $foregroundHandle })
+  } else {
+    # Without one foreground frame there is no safe identity discriminator.
+    $windows = @($windows | Where-Object { $_.score -ne 3 })
+  }
 }
 $selected = $windows |
   Sort-Object score, @{ Expression = { $_.foreground }; Descending = $true }, order, @{ Expression = { $_.started }; Descending = $true } |
@@ -849,9 +857,49 @@ if ($root -eq [IntPtr]::Zero) { $root = $window }
   }
 }
 
+export async function getWindowCaptureTopInset(handle: number): Promise<number> {
+  if (process.platform !== 'win32' || !Number.isFinite(handle) || handle <= 0) {
+    return 0;
+  }
+  const safeHandle = Math.trunc(handle);
+  const script = `
+$ErrorActionPreference = "Stop"
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public struct CaptureInsetPoint { public int X; public int Y; }
+public struct CaptureInsetRect { public int Left; public int Top; public int Right; public int Bottom; }
+public static class CaptureInsetWin32 {
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref CaptureInsetPoint point);
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hwnd, out CaptureInsetRect rect);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out CaptureInsetRect rect);
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
+}
+"@
+$window = [IntPtr]${safeHandle}
+if (-not [CaptureInsetWin32]::IsWindow($window)) { "0"; exit }
+$windowRect = New-Object CaptureInsetRect
+$clientRect = New-Object CaptureInsetRect
+$clientOrigin = New-Object CaptureInsetPoint
+if (
+  -not [CaptureInsetWin32]::GetWindowRect($window, [ref]$windowRect) -or
+  -not [CaptureInsetWin32]::GetClientRect($window, [ref]$clientRect) -or
+  -not [CaptureInsetWin32]::ClientToScreen($window, [ref]$clientOrigin)
+) { "0"; exit }
+$topInset = [Math]::Max(0, $clientOrigin.Y - $windowRect.Top)
+[Math]::Min(160, $topInset)
+`;
+  try {
+    return Number((await runPowerShell(script)).trim()) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function enforceQuickOverlayZOrder(
   overlayHandle: number,
-  gameHandle?: number
+  gameHandle?: number,
+  hideGame = false
 ): Promise<QuickOverlayZOrderState | null> {
   if (process.platform !== 'win32' || !Number.isFinite(overlayHandle) || overlayHandle <= 0) {
     return null;
@@ -862,6 +910,29 @@ export async function enforceQuickOverlayZOrder(
     ? Math.trunc(Number(gameHandle))
     : 0;
   let lastState: QuickOverlayZOrderState | null = null;
+
+  try {
+    const staged = await runWindowsControl('stage-overlay', {
+      overlayHandle: safeOverlayHandle,
+      gameHandle: safeGameHandle,
+      hideGame
+    });
+    // The warm native worker keeps Home input deterministic. In particular,
+    // do not make a failed Store-frame attempt wait for a new PowerShell
+    // process before the caller can switch to the safe recovery path.
+    return {
+      error: staged.ok ? undefined : staged.message,
+      foregroundHandle: staged.ok ? safeOverlayHandle : 0,
+      gameTopMost: staged.ok && safeGameHandle > 0 && !hideGame,
+      gameVisible: safeGameHandle > 0 && !hideGame,
+      overlayAboveGame: staged.ok,
+      overlayForeground: staged.ok,
+      overlayTopMost: staged.ok,
+      overlayVisible: staged.ok
+    };
+  } catch {
+    // Retain the standalone path as a recovery if the warm worker restarted.
+  }
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const script = `
@@ -898,7 +969,6 @@ public static class QuickOverlayZOrderWin32 {
 $overlay = [IntPtr]${safeOverlayHandle}
 $game = [IntPtr]${safeGameHandle}
 $topMost = [IntPtr](-1)
-$notTopMost = [IntPtr](-2)
 $noMoveNoSizeShowNoActivate = 0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040
 $noMoveNoSizeShow = 0x0001 -bor 0x0002 -bor 0x0040
 $gwlExStyle = -20
@@ -908,12 +978,10 @@ $gwHwndPrev = 3
 if (-not [QuickOverlayZOrderWin32]::IsWindow($overlay)) { throw "Overlay HWND is invalid." }
 if ($game -ne [IntPtr]::Zero -and [QuickOverlayZOrderWin32]::IsWindow($game)) {
   [QuickOverlayZOrderWin32]::ShowWindow($game, 9) | Out-Null
-  # Fullscreen Store games commonly retain WS_EX_TOPMOST after launch. Two
-  # independent topmost windows do not give Electron a stable ordering, and
-  # ApplicationFrameHost can immediately reclaim the front slot. Keep the
-  # game visible and running, but release only its topmost bit before placing
-  # the NXGS overlay in the topmost band.
-  [QuickOverlayZOrderWin32]::SetWindowPos($game, $notTopMost, 0, 0, 0, 0, $noMoveNoSizeShowNoActivate) | Out-Null
+  # Stage the exact tracked game at the front of the topmost band first, then
+  # place NXGS immediately above it. Transparent pixels can therefore reveal
+  # only the running game—never Chrome, Explorer, or another open app.
+  [QuickOverlayZOrderWin32]::SetWindowPos($game, $topMost, 0, 0, 0, 0, $noMoveNoSizeShowNoActivate) | Out-Null
 }
 [QuickOverlayZOrderWin32]::ShowWindow($overlay, 5) | Out-Null
 [QuickOverlayZOrderWin32]::SetWindowPos($overlay, $topMost, 0, 0, 0, 0, $noMoveNoSizeShow) | Out-Null
