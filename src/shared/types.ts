@@ -599,6 +599,7 @@ export interface QuickOverlayBackdrop {
   gameId?: string;
   kind: QuickOverlayBackdropKind;
   imageUrl?: string;
+  posterKind?: 'snapshot' | 'cover';
   sourceId?: string;
   capturedWindowHandle?: number;
 }

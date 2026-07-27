@@ -160,7 +160,7 @@ export class GameLauncher {
     const game = this.activeGame;
     if (!game) return null;
     let window = this.activeWindow ?? await this.getActiveWindow(game);
-    if (window && isProvisionalShellHostedStoreWindow(window)) {
+    if (game.launchType === 'microsoftStore') {
       const [upgradedWindow, foregroundWindow] = await Promise.all([
         findGameWindow({
           pid: this.activeProcessId ?? this.child?.pid,
@@ -171,7 +171,7 @@ export class GameLauncher {
         }),
         getForegroundWindowInfo()
       ]);
-      const candidates = [upgradedWindow, foregroundWindow].filter(
+      const candidates = [upgradedWindow, window, foregroundWindow].filter(
         (candidate): candidate is GameWindowInfo => Boolean(candidate)
       );
       let verifiedVisualWindow: GameWindowInfo | null = null;
@@ -186,18 +186,21 @@ export class GameLauncher {
         }
       }
       if (verifiedVisualWindow) {
-        await logLine(
-          'info',
-          `Upgraded ${game.title} from provisional shell frame ${window.handle} ` +
-            `to verified visual window ${verifiedVisualWindow.handle}.`
-        );
+        if (window?.handle !== verifiedVisualWindow.handle) {
+          await logLine(
+            'info',
+            `Reconciled ${game.title} visual window ${window?.handle ?? 0} ` +
+              `to verified visual window ${verifiedVisualWindow.handle}.`
+          );
+        }
         window = verifiedVisualWindow;
       } else {
         await logLine(
           'warn',
-          `No verified visual window replaced provisional ${game.title} shell frame ${window.handle}; ` +
+          `No verified visual window replaced provisional ${game.title} shell frame ${window?.handle ?? 0}; ` +
             `foreground ${foregroundWindow?.handle ?? 0} was rejected by game identity checks.`
         );
+        return null;
       }
     }
     if (
@@ -206,7 +209,6 @@ export class GameLauncher {
       !await isGameWindowVisible(window)
     ) return null;
     this.activeWindow = window;
-    this.activeProcessId = window.processId;
     return { ...window };
   }
 
@@ -711,7 +713,7 @@ export class GameLauncher {
       } else {
         this.releaseLaunchShield();
       }
-      if (game) {
+      if (game && focusLauncher) {
         const homeGeneration = this.focusGeneration;
         void this.releaseGameWindowsForQuickOverlay(game, homeGeneration, focusLauncher);
       }
@@ -760,7 +762,6 @@ export class GameLauncher {
       const currentWindow = refreshedWindow ?? trackedWindow;
       if (currentWindow) {
         this.activeWindow = currentWindow;
-        this.activeProcessId = currentWindow.processId;
       }
       if (focusLauncher && this.focusGeneration === homeGeneration && this.state.status === 'quickOverlayOpen') {
         await this.focusLauncherAfterGameRelease(game, homeGeneration);

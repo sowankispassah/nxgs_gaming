@@ -193,6 +193,9 @@ const api = {
   notifyQuickOverlayBackdropReady: (requestId: number) => {
     ipcRenderer.send('quickOverlay:backdropReady', requestId);
   },
+  notifyQuickOverlayBackdropFailed: (requestId: number, reason: string) => {
+    ipcRenderer.send('quickOverlay:backdropFailed', requestId, reason);
+  },
   onShellHome: (callback: (event: ShellHomeEvent) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: ShellHomeEvent) => callback(event);
     ipcRenderer.on('shell:home', listener);

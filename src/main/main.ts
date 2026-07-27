@@ -62,6 +62,7 @@ import type {
   PaymentCheckoutAccess,
   PlayPlanInput,
   QuickOverlayBackdrop,
+  QuickOverlayBackdropKind,
   ShellHomeEvent,
   ShellHomeReason,
   SessionState,
@@ -81,6 +82,7 @@ let gameplayQuickOverlayTransitionGeneration = 0;
 let gameplayQuickOverlayVisibilityGeneration = 0;
 let gameplayQuickOverlayRequestId = 0;
 let gameplayQuickOverlayPreparedGameId: string | null = null;
+let gameplayQuickOverlayPreparedBackdropKind: QuickOverlayBackdropKind | null = null;
 let gameplayQuickOverlayRendererReady = false;
 let gameplayQuickOverlayNativeZOrderVerified = false;
 let pendingQuickOverlayPaint: {
@@ -211,12 +213,12 @@ function finishPendingQuickOverlayPaint(requestId: number, painted: boolean): vo
   pending.resolve(painted);
 }
 
-function waitForQuickOverlayPaint(requestId: number): Promise<boolean> {
+function waitForQuickOverlayPaint(requestId: number, timeoutMs = 5000): Promise<boolean> {
   if (pendingQuickOverlayPaint) {
     finishPendingQuickOverlayPaint(pendingQuickOverlayPaint.requestId, false);
   }
   return new Promise((resolve) => {
-    const timeout = setTimeout(() => finishPendingQuickOverlayPaint(requestId, false), 1500);
+    const timeout = setTimeout(() => finishPendingQuickOverlayPaint(requestId, false), timeoutMs);
     pendingQuickOverlayPaint = { requestId, resolve, timeout };
   });
 }
@@ -280,24 +282,26 @@ async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise
           const [kind, handle] = source.id.split(':');
           return kind === 'window' && safeCaptureHandles.has(Number(handle));
         });
-        if (exactWindowSource && quickOverlaySnapshotIsUsable(exactWindowSource.thumbnail)) {
+        if (exactWindowSource) {
           const capturedHandle = Number(exactWindowSource.id.split(':')[1]);
+          const snapshotIsUsable = quickOverlaySnapshotIsUsable(exactWindowSource.thumbnail);
           await logLine(
             'info',
             `Prepared exact live game-window source for ${game.title} from tracked window ` +
-              `${gameWindow.handle} (capture root ${capturedHandle}).`
+              `${gameWindow.handle} (capture root ${capturedHandle}; thumbnail usable: ${snapshotIsUsable}).`
           );
           return {
             kind: 'live',
             gameId: game.id,
-            imageUrl: exactWindowSource.thumbnail.toDataURL(),
+            imageUrl: snapshotIsUsable ? exactWindowSource.thumbnail.toDataURL() : coverImage || undefined,
+            posterKind: snapshotIsUsable ? 'snapshot' : coverImage ? 'cover' : undefined,
             sourceId: exactWindowSource.id,
             capturedWindowHandle: capturedHandle
           };
         }
         await logLine(
           'warn',
-          `Exact game-window snapshot was unavailable or blank for ${game.title} (window ${gameWindow.handle}); using safe artwork fallback.`
+          `No exact desktop-capture source was published for ${game.title} (window ${gameWindow.handle}); using safe artwork while live discovery retries.`
         );
       } else if (!gameWindow) {
         await logLine('warn', `No visible tracked window was available to snapshot for ${game.title}; using safe artwork fallback.`);
@@ -319,6 +323,7 @@ async function createSafeQuickOverlayBackdrop(captureSnapshot: boolean): Promise
 
 function clearGameplayQuickOverlayPreparation(overlay: BrowserWindow): void {
   gameplayQuickOverlayPreparedGameId = null;
+  gameplayQuickOverlayPreparedBackdropKind = null;
   gameplayQuickOverlayRendererReady = false;
   if (!overlay.webContents.isDestroyed()) {
     overlay.webContents.send('quickOverlay:backdrop', { requestId: 0, kind: 'generated' } satisfies QuickOverlayBackdrop);
@@ -463,19 +468,51 @@ async function performGameplayQuickOverlayPreparation(gameId: string, captureSna
   }
   if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
 
+  const shouldStageHiddenRenderer =
+    captureSnapshot &&
+    !overlay.isVisible() &&
+    ['launching', 'running', 'resuming'].includes(launcher.activeState.status);
+  if (shouldStageHiddenRenderer) {
+    // Chromium can defer video decoding in a never-shown transparent window.
+    // Paint it inactive underneath the still-topmost game so the live stream is
+    // already producing frames before Home needs to take foreground.
+    overlay.setAlwaysOnTop(false);
+    overlay.setIgnoreMouseEvents(true);
+    overlay.showInactive();
+  }
+
   const backdrop = await createSafeQuickOverlayBackdrop(captureSnapshot);
   if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
-  const requestId = ++gameplayQuickOverlayRequestId;
-  const paintReady = waitForQuickOverlayPaint(requestId);
+  let preparedKind = backdrop.kind;
+  let requestId = ++gameplayQuickOverlayRequestId;
+  let paintReady = waitForQuickOverlayPaint(requestId);
   overlay.webContents.send('activeGame:state', launcher.activeState);
   overlay.webContents.send('quickOverlay:backdrop', {
     ...backdrop,
     requestId
   } satisfies QuickOverlayBackdrop);
-  const painted = await paintReady;
+  let painted = await paintReady;
   if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
 
+  if (!painted && backdrop.kind === 'live' && backdrop.posterKind === 'snapshot' && backdrop.imageUrl) {
+    // Preserve the exact game-window frame ahead of cover art if the live
+    // desktop stream itself cannot decode on this GPU.
+    preparedKind = 'snapshot';
+    requestId = ++gameplayQuickOverlayRequestId;
+    paintReady = waitForQuickOverlayPaint(requestId);
+    overlay.webContents.send('quickOverlay:backdrop', {
+      requestId,
+      gameId,
+      kind: 'snapshot',
+      imageUrl: backdrop.imageUrl,
+      capturedWindowHandle: backdrop.capturedWindowHandle
+    } satisfies QuickOverlayBackdrop);
+    painted = await paintReady;
+    if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
+  }
+
   gameplayQuickOverlayPreparedGameId = gameId;
+  gameplayQuickOverlayPreparedBackdropKind = preparedKind;
   gameplayQuickOverlayRendererReady = painted;
   if (launcher.activeState.status !== 'quickOverlayOpen') {
     overlay.hide();
@@ -483,17 +520,25 @@ async function performGameplayQuickOverlayPreparation(gameId: string, captureSna
   await logLine(
     gameplayQuickOverlayRendererReady ? 'info' : 'warn',
     `Quick overlay renderer prepared in ${Date.now() - preparationStartedAt}ms ` +
-      `(renderer ready: ${gameplayQuickOverlayRendererReady}; backdrop: ${backdrop.kind}).`
+      `(renderer ready: ${gameplayQuickOverlayRendererReady}; backdrop: ${preparedKind}).`
   );
 }
 
 async function prepareGameplayQuickOverlayRenderer(captureSnapshot = false): Promise<void> {
   const gameId = launcher.activeState.game?.id;
   if (!gameId) return;
-  if (!captureSnapshot && gameplayQuickOverlayPreparedGameId === gameId && gameplayQuickOverlayRendererReady) return;
+  if (
+    gameplayQuickOverlayPreparedGameId === gameId &&
+    gameplayQuickOverlayRendererReady &&
+    (!captureSnapshot || gameplayQuickOverlayPreparedBackdropKind === 'live')
+  ) return;
   if (gameplayQuickOverlayPreparePromise) {
     await gameplayQuickOverlayPreparePromise;
-    if (!captureSnapshot) return;
+    if (
+      gameplayQuickOverlayPreparedGameId === gameId &&
+      gameplayQuickOverlayRendererReady &&
+      (!captureSnapshot || gameplayQuickOverlayPreparedBackdropKind === 'live')
+    ) return;
   }
 
   const operation = performGameplayQuickOverlayPreparation(gameId, captureSnapshot);
@@ -533,6 +578,27 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   const visibilityGeneration = ++gameplayQuickOverlayVisibilityGeneration;
   await prepareGameplayQuickOverlayRenderer(true);
   if (
+    gameplayQuickOverlayDesiredOpen &&
+    visibilityGeneration === gameplayQuickOverlayVisibilityGeneration &&
+    !overlay.isDestroyed() &&
+    (!gameplayQuickOverlayRendererReady || gameplayQuickOverlayPreparedBackdropKind !== 'live')
+  ) {
+    // Re-probe once before showing artwork. A Store game's titled visual frame
+    // often appears just after its provisional package shell.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await prepareGameplayQuickOverlayRenderer(true);
+  }
+  if (
+    gameplayQuickOverlayDesiredOpen &&
+    visibilityGeneration === gameplayQuickOverlayVisibilityGeneration &&
+    !overlay.isDestroyed() &&
+    !gameplayQuickOverlayRendererReady
+  ) {
+    // A safe opaque poster is permitted only after live capture itself has
+    // failed. Scheduled reconciliations continue upgrading it to live.
+    await prepareGameplayQuickOverlayRenderer(false);
+  }
+  if (
     !gameplayQuickOverlayDesiredOpen ||
     visibilityGeneration !== gameplayQuickOverlayVisibilityGeneration ||
     overlay.isDestroyed()
@@ -547,17 +613,6 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   overlay.moveTop();
   overlay.focus();
   overlay.webContents.focus();
-  if (!gameplayQuickOverlayRendererReady) {
-    // A transparent Chromium window may not paint while prewarmed and hidden.
-    // Retry once after showing it so the navbar is guaranteed to receive a
-    // visible compositor frame above the already-staged game window.
-    await prepareGameplayQuickOverlayRenderer(true);
-    if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
-    overlay.setAlwaysOnTop(true, 'screen-saver');
-    overlay.moveTop();
-    overlay.focus();
-    overlay.webContents.focus();
-  }
   await enforceGameplayQuickOverlayZOrder(overlay);
   if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
   overlay.webContents.focus();
@@ -887,6 +942,8 @@ const launcher = new GameLauncher(
       if (status === 'quickOverlayOpen') {
         gameplayQuickOverlayDesiredOpen = true;
         void showGameplayQuickOverlay();
+      } else if (status === 'launching' && launcher.activeState.windowDetected) {
+        void prepareGameplayQuickOverlayRenderer(true);
       } else if (status === 'closing') {
         if (gameplayQuickOverlayDesiredOpen) void showGameplayQuickOverlay();
       } else if (status === 'running') {
@@ -895,7 +952,7 @@ const launcher = new GameLauncher(
         } else {
           hideGameplayQuickOverlay();
         }
-        void prepareGameplayQuickOverlayRenderer();
+        void prepareGameplayQuickOverlayRenderer(true);
       } else if (status === 'minimizedToHome') {
         if (gameplayQuickOverlayDesiredOpen) {
           void showGameplayQuickOverlay();
@@ -1324,6 +1381,13 @@ function registerIpc(): void {
     const overlay = getLiveGameplayQuickOverlayWindow();
     if (!overlay || event.sender !== overlay.webContents || !Number.isInteger(requestId)) return;
     finishPendingQuickOverlayPaint(requestId, true);
+  });
+
+  ipcMain.on('quickOverlay:backdropFailed', (event, requestId: number, reason: string) => {
+    const overlay = getLiveGameplayQuickOverlayWindow();
+    if (!overlay || event.sender !== overlay.webContents || !Number.isInteger(requestId)) return;
+    void logLine('warn', `Quick overlay live capture ${requestId} failed before first frame: ${reason || 'unknown error'}.`);
+    finishPendingQuickOverlayPaint(requestId, false);
   });
 
   ipcMain.handle('shell:dismissQuickOverlay', async (): Promise<GameControlResult> => {

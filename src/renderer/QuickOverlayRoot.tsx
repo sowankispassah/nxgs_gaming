@@ -55,6 +55,8 @@ export function QuickOverlayRoot(): JSX.Element {
     let cancelled = false;
     const animationFrames = new Set<number>();
     let captureStream: MediaStream | null = null;
+    let captureTimeout = 0;
+    let captureSettled = false;
     setLiveBackdropStream(null);
     const markPaintable = () => {
       const firstFrame = window.requestAnimationFrame(() => {
@@ -68,16 +70,18 @@ export function QuickOverlayRoot(): JSX.Element {
       animationFrames.add(firstFrame);
     };
 
-    if (backdrop.imageUrl) {
-      const image = new Image();
-      image.onload = markPaintable;
-      image.onerror = markPaintable;
-      image.src = backdropImageUrl(backdrop.imageUrl);
-    } else {
-      markPaintable();
-    }
-
     if (backdrop.kind === 'live' && backdrop.sourceId && navigator.mediaDevices?.getUserMedia) {
+      const failLiveCapture = (reason: string) => {
+        if (cancelled || captureSettled) return;
+        captureSettled = true;
+        window.clearTimeout(captureTimeout);
+        for (const track of captureStream?.getTracks() ?? []) track.stop();
+        captureStream = null;
+        window.nxgs.notifyQuickOverlayBackdropFailed(backdrop.requestId, reason);
+      };
+      captureTimeout = window.setTimeout(() => {
+        failLiveCapture('timed out waiting for a decoded game frame');
+      }, 4000);
       const constraints = {
         audio: false,
         video: {
@@ -98,24 +102,39 @@ export function QuickOverlayRoot(): JSX.Element {
         probe.playsInline = true;
         probe.srcObject = stream;
         probe.onloadeddata = () => {
-          if (cancelled) return;
+          if (cancelled || captureSettled) return;
+          if (probe.videoWidth <= 0 || probe.videoHeight <= 0) {
+            failLiveCapture('capture stream returned an empty video frame');
+            return;
+          }
+          captureSettled = true;
+          window.clearTimeout(captureTimeout);
           setLiveBackdropStream(stream);
           markPaintable();
         };
         probe.onerror = () => {
-          for (const track of stream.getTracks()) track.stop();
-          captureStream = null;
+          failLiveCapture('game video element could not decode the capture stream');
         };
-        void probe.play().catch(() => {
-          // The already-loaded exact snapshot remains the safe fallback.
+        void probe.play().catch((error) => {
+          failLiveCapture(error instanceof Error ? error.message : 'game capture playback was rejected');
         });
-      }).catch(() => {
-        // The exact snapshot supplied with the source remains visible.
+      }).catch((error) => {
+        failLiveCapture(error instanceof Error ? error.message : 'desktop capture permission was rejected');
       });
+    } else if (backdrop.kind === 'live') {
+      window.nxgs.notifyQuickOverlayBackdropFailed(backdrop.requestId, 'exact live source was unavailable');
+    } else if (backdrop.imageUrl) {
+      const image = new Image();
+      image.onload = markPaintable;
+      image.onerror = markPaintable;
+      image.src = backdropImageUrl(backdrop.imageUrl);
+    } else {
+      markPaintable();
     }
 
     return () => {
       cancelled = true;
+      window.clearTimeout(captureTimeout);
       for (const frame of animationFrames) window.cancelAnimationFrame(frame);
       for (const track of captureStream?.getTracks() ?? []) track.stop();
     };

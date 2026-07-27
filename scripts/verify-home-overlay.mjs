@@ -44,8 +44,8 @@ assert.match(
 );
 assert.match(
   launcherSource,
-  /isProvisionalShellHostedStoreWindow\(window\)[\s\S]*findGameWindow[\s\S]*getForegroundWindowInfo[\s\S]*gameWindowMatchesGame[\s\S]*Upgraded \$\{game\.title\} from provisional shell frame/,
-  'overlay capture must re-probe and upgrade any cached provisional Store frame'
+  /game\.launchType === 'microsoftStore'[\s\S]*findGameWindow[\s\S]*getForegroundWindowInfo[\s\S]*gameWindowMatchesGame[\s\S]*Reconciled \$\{game\.title\} visual window/,
+  'overlay capture must re-probe every Store visual window and reject provisional frames'
 );
 assert.match(
   launcherSource,
@@ -67,8 +67,9 @@ assert.equal(
 );
 assert.match(mainSource, /kind: 'live'[\s\S]*kind: 'cover'[\s\S]*kind: 'generated'/, 'exact live capture must fall back to game artwork and then an opaque generated backdrop');
 assert.doesNotMatch(mainSource, /stageQuickOverlayBackdropWindow\(gameWindow\)[\s\S]*kind: 'direct'/, 'blank captures must never expose unrelated desktop windows through a transparent direct backdrop');
-assert.match(mainSource, /Exact game-window snapshot was unavailable or blank[\s\S]*using safe artwork fallback/, 'blank captures must fall back to safe game artwork');
-assert.match(mainSource, /quickOverlaySnapshotIsUsable/, 'blank hardware-capture frames must be rejected');
+assert.match(mainSource, /if \(exactWindowSource\)[\s\S]*thumbnail usable[\s\S]*kind: 'live'/, 'an exact UWP source must be tried as a live stream even when its thumbnail is blank');
+assert.match(mainSource, /snapshotIsUsable \? exactWindowSource\.thumbnail\.toDataURL\(\) : coverImage/, 'blank thumbnails may be posters but must not reject exact live capture');
+assert.match(mainSource, /posterKind === 'snapshot'[\s\S]*kind: 'snapshot'/, 'a real game-window snapshot must be preserved ahead of cover art when live decoding fails');
 assert.match(mainSource, /quickOverlay:backdrop/);
 assert.match(mainSource, /quickOverlay:backdropReady/);
 assert.match(mainSource, /backgroundThrottling: false/);
@@ -76,6 +77,7 @@ assert.match(mainSource, /Preloaded the transparent quick-overlay renderer/);
 assert.match(mainSource, /gameplayQuickOverlayShowPromise/);
 assert.match(mainSource, /gameplayQuickOverlayPreparePromise/);
 assert.match(mainSource, /reused prewarmed renderer/);
+assert.match(mainSource, /await gameplayQuickOverlayPreparePromise[\s\S]*gameplayQuickOverlayPreparedBackdropKind === 'live'[\s\S]*return/, 'concurrent Home requests must reuse the already-decoding live stream instead of recapturing it');
 assert.match(mainSource, /performGameplayQuickOverlayShow[\s\S]*overlay\.setAlwaysOnTop\(true, 'screen-saver'\)[\s\S]*overlay\.show\(\)/);
 assert.match(mainSource, /topmost restored: \$\{overlay\.isAlwaysOnTop\(\)\}/);
 assert.match(
@@ -93,7 +95,7 @@ assert.match(
   /getRootWindowHandle\(gameWindow\.handle\)[\s\S]*safeCaptureHandles[\s\S]*exactWindowSource/,
   'UWP capture must resolve the verified tracked CoreWindow to its exact root frame'
 );
-assert.match(mainSource, /overlay\.show\(\)[\s\S]*if \(!gameplayQuickOverlayRendererReady\)[\s\S]*prepareGameplayQuickOverlayRenderer\(true\)/, 'hidden-window paint timeout must retry after the overlay is visible');
+assert.match(mainSource, /prepareGameplayQuickOverlayRenderer\(true\)[\s\S]*gameplayQuickOverlayPreparedBackdropKind !== 'live'[\s\S]*prepareGameplayQuickOverlayRenderer\(true\)[\s\S]*overlay\.show\(\)/, 'live capture must be retried before the overlay can show a safe poster');
 assert.match(mainSource, /status === 'running'[\s\S]*prepareGameplayQuickOverlayRenderer/);
 assert.doesNotMatch(mainSource, /overlay\.setOpacity\(/);
 assert.match(mainSource, /fullscreenable: false/);
@@ -128,8 +130,8 @@ assert.match(launcherSource, /if \(focusLauncher\) \{[\s\S]*this\.focusLauncher\
 assert.match(launcherSource, /fastResumeError instanceof FocusOperationCanceledError/);
 assert.match(
   launcherSource,
-  /if \(game\) \{[\s\S]*releaseGameWindowsForQuickOverlay\(game, homeGeneration, focusLauncher\)/,
-  'every Home overlay path must release the tracked game topmost lock'
+  /if \(game && focusLauncher\) \{[\s\S]*releaseGameWindowsForQuickOverlay\(game, homeGeneration, focusLauncher\)/,
+  'overlay-only Home must not race live capture by releasing the game topmost lock'
 );
 assert.match(launcherSource, /Discarded stale or unrelated cached window/, 'cached resume handles must be identity-checked');
 assert.match(appSource, /if \(event\.resetToHome\) \{[\s\S]*resetToHome\(\)/);
@@ -138,8 +140,8 @@ assert.match(rendererMainSource, /isQuickOverlayWindow[\s\S]*document\.documentE
 assert.match(stylesSource, /html\.quick-overlay-document,[\s\S]*background: transparent/);
 assert.match(overlayRootSource, /live-gameplay-overlay/);
 assert.match(overlayRootSource, /backdropReadyRequestId !== renderRequestId/, 'overlay must wait for the safe backdrop before becoming paint-ready');
-assert.match(overlayRootSource, /image\.onload = markPaintable/);
-assert.match(overlayRootSource, /image\.onerror = markPaintable/);
+assert.match(overlayRootSource, /backdrop\.kind === 'live'[\s\S]*probe\.onloadeddata[\s\S]*markPaintable/, 'live readiness must require a decoded game video frame');
+assert.match(overlayRootSource, /notifyQuickOverlayBackdropFailed/, 'live capture failures must be reported instead of accepting the poster as live');
 assert.match(overlayRootSource, /notifyQuickOverlayBackdropReady/);
 assert.match(overlayRootSource, /querySelector<HTMLElement>\('\.quick-navbar'\)/);
 assert.match(overlayRootSource, /getBoundingClientRect\(\)/);
