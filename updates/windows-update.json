@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.11",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.11/NXGS-Play-Setup.exe",
-    "sha256":  "0617975d509effc1084ffafa6161bd148bbb957e403c133ea90a473944b8d2cc",
+    "version":  "0.20.12",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.12/NXGS-Play-Setup.exe",
+    "sha256":  "21a015220452e4152d4349060029e7c96c1e1c282585225d455e4972d265c913",
     "required":  false,
-    "notes":  "Restores the Windows taskbar whenever NXGS is minimized, hidden, windowed, in Admin mode, or exiting; it stays hidden only during fullscreen NXGS presentation."
+    "notes":  "Adds an NXGS Home tile as the default launcher focus, a launcher overview, and admin-managed NXGS logo branding across the app."
 }
