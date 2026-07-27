@@ -24,12 +24,12 @@ import {
   Trash2,
   X
 } from 'lucide-react';
-import brandImage from './assets/nxgs-gaming-banner.png';
 import {
   ConsoleHome,
   type ConsoleFocusSection,
   type ConsoleTab
 } from './components/ConsoleHome';
+import { BrandLogo } from './components/BrandLogo';
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 import { ConsoleSettings } from './components/ConsoleSettings';
 import { PlanManager } from './components/PlanManager';
@@ -68,7 +68,7 @@ import type {
 import { requiresPaymentForLaunch } from '../shared/playAccess';
 
 type View = 'home' | 'settings' | 'admin';
-type AdminTab = 'games' | 'scan' | 'sessions' | 'kiosk' | 'updates' | 'plans' | 'device';
+type AdminTab = 'games' | 'scan' | 'sessions' | 'branding' | 'kiosk' | 'updates' | 'plans' | 'device';
 
 const EMPTY_SESSION: SessionState = {
   status: 'idle',
@@ -151,7 +151,7 @@ export function App(): JSX.Element {
   const [homeFocusSection, setHomeFocusSection] = useState<ConsoleFocusSection>('games');
   const [homeUtilityIndex, setHomeUtilityIndex] = useState(0);
   const [homeContentIndex, setHomeContentIndex] = useState(0);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const [confirmGame, setConfirmGame] = useState<GameRecord | null>(null);
   const [switchTargetGame, setSwitchTargetGame] = useState<GameRecord | null>(null);
   const [extendPaymentOpen, setExtendPaymentOpen] = useState(false);
@@ -183,7 +183,13 @@ export function App(): JSX.Element {
   const navigateBack = useCallback((): void => {
     setViewHistory((current) => popNavigationEntry(current, 'home'));
   }, []);
-  const resetToHome = useCallback((): void => setViewHistory(['home']), []);
+  const resetToHome = useCallback((): void => {
+    setViewHistory(['home']);
+    setHomeTab('games');
+    setHomeFocusSection('games');
+    setHomeContentIndex(0);
+    setSelectedIndex(-1);
+  }, []);
 
   const enabledGames = useMemo(() => games.filter((game) => game.enabled), [games]);
   const selectedGame = enabledGames[selectedIndex] ?? null;
@@ -386,10 +392,7 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     if (selectedIndex >= enabledGames.length) {
-      setSelectedIndex(Math.max(0, enabledGames.length - 1));
-    }
-    if (initialData && enabledGames.length === 0 && homeFocusSection === 'games') {
-      setHomeFocusSection('tabs');
+      setSelectedIndex(enabledGames.length - 1);
     }
   }, [enabledGames.length, homeFocusSection, initialData, selectedIndex]);
 
@@ -448,7 +451,7 @@ export function App(): JSX.Element {
         });
         return;
       }
-      if (homeFocusSection === 'games' && homeTab === 'games' && enabledGames.length > 0) {
+      if (homeFocusSection === 'games' && homeTab === 'games') {
         setSelectedIndex((index) => {
           const next = index + delta;
           if (next >= enabledGames.length) {
@@ -456,7 +459,7 @@ export function App(): JSX.Element {
             setHomeFocusSection('utilities');
             return index;
           }
-          return Math.max(0, next);
+          return Math.max(-1, next);
         });
         return;
       }
@@ -474,13 +477,13 @@ export function App(): JSX.Element {
       }
       setHomeFocusSection((current) => {
         if (delta < 0) {
-          if (current === 'content') return homeTab === 'games' && enabledGames.length > 0 ? 'hero' : 'tabs';
-          if (current === 'hero') return enabledGames.length > 0 ? 'games' : 'tabs';
+          if (current === 'content') return homeTab === 'games' ? 'hero' : 'tabs';
+          if (current === 'hero') return 'games';
           if (current === 'games') return 'tabs';
           return current;
         }
         if (current === 'tabs' || current === 'utilities') {
-          return homeTab === 'games' && enabledGames.length > 0 ? 'games' : 'content';
+          return homeTab === 'games' ? 'games' : 'content';
         }
         if (current === 'games') return 'hero';
         if (current === 'hero') return 'content';
@@ -502,8 +505,15 @@ export function App(): JSX.Element {
       selectedGame
     ) {
       void selectGame(selectedGame);
+    } else if (homeTab === 'games' && homeFocusSection === 'hero' && selectedIndex === -1) {
+      if (enabledGames.length > 0) {
+        setSelectedIndex(0);
+        setHomeFocusSection('games');
+      } else {
+        openConsoleSettings();
+      }
     }
-  }, [confirmGame, homeFocusSection, homeTab, homeUtilityIndex, pinOpen, selectGame, selectedGame, switchTargetGame, view]);
+  }, [confirmGame, enabledGames.length, homeFocusSection, homeTab, homeUtilityIndex, openConsoleSettings, pinOpen, selectGame, selectedGame, selectedIndex, switchTargetGame, view]);
 
   const back = useCallback(() => {
     if (confirmGame) {
@@ -528,13 +538,15 @@ export function App(): JSX.Element {
     }
     if (homeTab === 'media') {
       setHomeTab('games');
-      setHomeFocusSection(enabledGames.length > 0 ? 'games' : 'tabs');
+      setSelectedIndex(-1);
+      setHomeFocusSection('games');
       return;
     }
-    if (homeFocusSection !== 'games' && enabledGames.length > 0) {
+    if (homeFocusSection !== 'games' || selectedIndex !== -1) {
+      setSelectedIndex(-1);
       setHomeFocusSection('games');
     }
-  }, [closeAdminPin, confirmGame, enabledGames.length, homeFocusSection, homeTab, navigateBack, pinOpen, returnToCustomerHome, switchTargetGame, view]);
+  }, [closeAdminPin, confirmGame, homeFocusSection, homeTab, navigateBack, pinOpen, returnToCustomerHome, selectedIndex, switchTargetGame, view]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -636,7 +648,7 @@ export function App(): JSX.Element {
   if (bootError) {
     return (
       <main className="boot-state">
-        <img className="boot-logo" src={brandImage} alt="NXGS Gaming" />
+        <BrandLogo className="boot-logo" />
         <AlertTriangle size={34} />
         <h1>NXGS Play failed to start</h1>
         <p>{bootError}</p>
@@ -647,7 +659,7 @@ export function App(): JSX.Element {
   if (!initialData || !settings) {
     return (
       <main className="boot-state">
-        <img className="boot-logo" src={brandImage} alt="NXGS Gaming" />
+        <BrandLogo className="boot-logo" />
         <h1>NXGS Play</h1>
         <p>Loading local library...</p>
       </main>
@@ -672,6 +684,8 @@ export function App(): JSX.Element {
       ) : view === 'home' ? (
         <ConsoleHome
           games={enabledGames}
+          logoPath={settings.branding.logoPath}
+          appVersion={initialData.appVersion}
           selectedIndex={selectedIndex}
           selectedGame={selectedGame}
           session={session}
@@ -684,7 +698,16 @@ export function App(): JSX.Element {
           emergencyCloseRequestId={emergencyCloseRequestId}
           onTabChange={(tab) => {
             setHomeTab(tab);
-            setHomeFocusSection(tab === 'games' && enabledGames.length > 0 ? 'games' : 'tabs');
+            if (tab === 'games') {
+              setSelectedIndex(-1);
+              setHomeFocusSection('games');
+            } else {
+              setHomeFocusSection('tabs');
+            }
+          }}
+          onHighlightHome={() => {
+            setSelectedIndex(-1);
+            setHomeFocusSection('games');
           }}
           onHighlightGame={(index) => {
             setSelectedIndex(index);
@@ -699,6 +722,12 @@ export function App(): JSX.Element {
             setHomeFocusSection('content');
           }}
           onOpenAdmin={openConsoleSettings}
+          onBrowseGames={() => {
+            if (enabledGames.length > 0) {
+              setSelectedIndex(0);
+              setHomeFocusSection('games');
+            }
+          }}
           onSelectGame={(game) => void selectGame(game)}
           launchPendingGameId={launchPendingGameId || (activeGame.status === 'launching' ? activeGame.game?.id ?? '' : '')}
         />
@@ -871,7 +900,7 @@ export function App(): JSX.Element {
       )}
 
       {shouldShowBlockingLaunchTransition(activeGame) && (
-        <GameTransitionOverlay activeGame={activeGame} />
+        <GameTransitionOverlay activeGame={activeGame} logoPath={settings.branding.logoPath} />
       )}
     </main>
   );
@@ -1087,10 +1116,10 @@ function AdminOptionsDialog(props: { onAction: (action: KioskAdminAction) => Pro
   );
 }
 
-function GameTransitionOverlay(props: { activeGame: ActiveGameState }): JSX.Element {
+function GameTransitionOverlay(props: { activeGame: ActiveGameState; logoPath: string }): JSX.Element {
   return (
     <div className="game-transition-overlay">
-      <img className="boot-logo" src={brandImage} alt="NXGS Gaming" />
+      <BrandLogo className="boot-logo" logoPath={props.logoPath} />
       <div>
         <p className="eyebrow">{props.activeGame.status === 'closing' ? 'Closing game' : 'Launching game'}</p>
         <h2>{props.activeGame.game?.title ?? 'Game'}</h2>
@@ -1495,7 +1524,7 @@ function AdminScreen(props: {
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<AdminTab>('games');
-  const adminTabs: AdminTab[] = ['games', 'scan', 'sessions', 'kiosk', 'updates', 'plans', 'device'];
+  const adminTabs: AdminTab[] = ['games', 'scan', 'sessions', 'branding', 'kiosk', 'updates', 'plans', 'device'];
   const moveAdminTab = useCallback((delta: number): void => {
     setTab((current) => adminTabs[(adminTabs.indexOf(current) + delta + adminTabs.length) % adminTabs.length]);
   }, []);
@@ -1527,7 +1556,7 @@ function AdminScreen(props: {
     <section className="admin-screen">
       <aside className="admin-sidebar">
         <div>
-          <img className="admin-brand-logo" src={brandImage} alt="NXGS Gaming" />
+          <BrandLogo className="admin-brand-logo" logoPath={props.settings.branding.logoPath} />
           <p className="eyebrow">Admin mode</p>
           <h1>Settings</h1>
         </div>
@@ -1535,6 +1564,7 @@ function AdminScreen(props: {
           <TabButton active={tab === 'games'} icon={<Gamepad2 size={19} />} label="Games" onClick={() => setTab('games')} />
           <TabButton active={tab === 'scan'} icon={<Search size={19} />} label="Scan" onClick={() => setTab('scan')} />
           <TabButton active={tab === 'sessions'} icon={<Timer size={19} />} label="Sessions" onClick={() => setTab('sessions')} />
+          <TabButton active={tab === 'branding'} icon={<ImageIcon size={19} />} label="Branding" onClick={() => setTab('branding')} />
           <TabButton active={tab === 'kiosk'} icon={<Monitor size={19} />} label="Kiosk" onClick={() => setTab('kiosk')} />
           <TabButton active={tab === 'updates'} icon={<RefreshCw size={19} />} label="Updates" onClick={() => setTab('updates')} />
           <TabButton active={tab === 'plans'} icon={<IndianRupee size={19} />} label="Plan Manager" onClick={() => setTab('plans')} />
@@ -1551,6 +1581,9 @@ function AdminScreen(props: {
         {tab === 'scan' && <ScanPanel currentDevice={props.initialData.currentDevice} onGamesChanged={props.onGamesChanged} />}
         {tab === 'sessions' && (
           <SessionSettings settings={props.settings} onSettingsChanged={props.onSettingsChanged} />
+        )}
+        {tab === 'branding' && (
+          <BrandingSettingsPanel settings={props.settings} onSettingsChanged={props.onSettingsChanged} />
         )}
         {tab === 'kiosk' && (
           <KioskSettingsPanel
@@ -2063,6 +2096,99 @@ function ScanPanel(props: { currentDevice: DeviceRecord; onGamesChanged: (games:
           </article>
         ))}
         {!pendingScan && suggestions.length === 0 && <p className="muted">No scan results yet.</p>}
+      </div>
+    </section>
+  );
+}
+
+function BrandingSettingsPanel(props: {
+  settings: AppSettings;
+  onSettingsChanged: (settings: AppSettings) => void;
+}): JSX.Element {
+  const [pendingAction, setPendingAction] = useState<'upload' | 'reset' | null>(null);
+  const [message, setMessage] = useState('');
+
+  const saveLogoPath = async (logoPath: string): Promise<void> => {
+    const next = await window.nxgs.updateSettings({
+      ...props.settings,
+      branding: { logoPath }
+    });
+    props.onSettingsChanged(next);
+  };
+
+  const chooseLogo = async (): Promise<void> => {
+    if (pendingAction) return;
+    setPendingAction('upload');
+    setMessage('');
+    try {
+      const selected = await window.nxgs.selectBrandLogo();
+      if (selected.canceled) return;
+      if (selected.error || !selected.path) {
+        throw new Error(selected.error ?? 'No logo image was selected.');
+      }
+      await saveLogoPath(selected.path);
+      setMessage('Saved NXGS logo. Branding updated across the launcher.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const resetLogo = async (): Promise<void> => {
+    if (pendingAction) return;
+    setPendingAction('reset');
+    setMessage('');
+    try {
+      await saveLogoPath('');
+      setMessage('Restored the built-in NXGS logo.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  return (
+    <section className="panel narrow-panel branding-panel">
+      <p className="eyebrow">Launcher identity</p>
+      <h2>NXGS logo</h2>
+      <p className="muted">
+        This logo is shown on the Home tile, launcher navigation, loading screens, and admin branding.
+      </p>
+      <div className="branding-preview">
+        <BrandLogo className="branding-preview-logo" logoPath={props.settings.branding.logoPath} />
+        <div>
+          <strong>Current logo</strong>
+          <span>{props.settings.branding.logoPath ? 'Custom logo stored in NXGS app data' : 'Built-in NXGS logo'}</span>
+        </div>
+      </div>
+      {message && (
+        <p className={message.startsWith('Saved') || message.startsWith('Restored') ? 'success-text' : 'error-text'} role="status">
+          {message}
+        </p>
+      )}
+      <div className="branding-actions">
+        <button
+          className="primary-action"
+          type="button"
+          disabled={pendingAction !== null}
+          onClick={() => void chooseLogo()}
+        >
+          {pendingAction === 'upload' ? <LoaderCircle size={19} className="spin" /> : <FileUp size={19} />}
+          {pendingAction === 'upload' ? 'Updating...' : 'Upload / Change Logo'}
+        </button>
+        {props.settings.branding.logoPath && (
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={pendingAction !== null}
+            onClick={() => void resetLogo()}
+          >
+            {pendingAction === 'reset' ? <LoaderCircle size={19} className="spin" /> : <RefreshCw size={19} />}
+            {pendingAction === 'reset' ? 'Restoring...' : 'Use Built-in Logo'}
+          </button>
+        )}
       </div>
     </section>
   );

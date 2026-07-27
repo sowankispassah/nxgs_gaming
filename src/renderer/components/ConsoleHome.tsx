@@ -13,6 +13,7 @@ import {
   UserRound
 } from 'lucide-react';
 import type { ActiveGameState, GameRecord, SessionState } from '../../shared/types';
+import { BrandLogo } from './BrandLogo';
 
 export type ConsoleTab = 'games' | 'media';
 export type ConsoleFocusSection = 'tabs' | 'utilities' | 'games' | 'hero' | 'content';
@@ -137,6 +138,7 @@ export function GameHeroBackground(props: { game: GameRecord | null }): JSX.Elem
 }
 
 export function TopNav(props: {
+  logoPath: string;
   activeTab: ConsoleTab;
   focusSection: ConsoleFocusSection;
   utilityIndex: number;
@@ -155,9 +157,7 @@ export function TopNav(props: {
   return (
     <header className="console-top-nav">
       <div className="console-nav-left">
-        <div className="nxgs-mark" aria-label="NXGS Play">
-          <span>N</span>
-        </div>
+        <BrandLogo className="nxgs-mark" logoPath={props.logoPath} alt="NXGS Play" />
         <nav className={`console-tabs ${props.focusSection === 'tabs' ? 'keyboard-focus' : ''}`} aria-label="Dashboard sections">
           <button
             ref={(element) => {
@@ -281,8 +281,10 @@ export function UtilityIcons(props: {
 
 export function GameAvatarRow(props: {
   games: GameRecord[];
+  logoPath: string;
   selectedIndex: number;
   focusSection: ConsoleFocusSection;
+  onHighlightHome: () => void;
   onHighlight: (index: number) => void;
   onPlay: (game: GameRecord) => void;
   launchPendingGameId: string;
@@ -292,7 +294,7 @@ export function GameAvatarRow(props: {
 
   useEffect(() => {
     const row = rowRef.current;
-    const tile = tileRefs.current[props.selectedIndex];
+    const tile = tileRefs.current[props.selectedIndex + 1];
     if (!row || !tile) {
       return;
     }
@@ -304,13 +306,30 @@ export function GameAvatarRow(props: {
   }, [props.focusSection, props.selectedIndex]);
 
   return (
-    <div ref={rowRef} className={`console-game-row ${props.focusSection === 'games' ? 'keyboard-focus' : ''}`} aria-label="Game library">
+    <div ref={rowRef} className={`console-game-row ${props.focusSection === 'games' ? 'keyboard-focus' : ''}`} aria-label="NXGS Home and game library">
+      <button
+        ref={(element) => {
+          tileRefs.current[0] = element;
+        }}
+        className={`console-game-avatar console-home-avatar ${props.selectedIndex === -1 ? 'selected' : ''}`}
+        type="button"
+        aria-label={`NXGS Home${props.selectedIndex === -1 ? ', selected' : ''}`}
+        aria-pressed={props.selectedIndex === -1}
+        onFocus={props.onHighlightHome}
+        onMouseEnter={props.onHighlightHome}
+        onClick={props.onHighlightHome}
+      >
+        <span className="game-avatar-art home-avatar-art">
+          <BrandLogo logoPath={props.logoPath} alt="" />
+        </span>
+        <strong>Home</strong>
+      </button>
       {props.games.map((game, index) => {
         const selected = index === props.selectedIndex;
         return (
           <button
             ref={(element) => {
-              tileRefs.current[index] = element;
+              tileRefs.current[index + 1] = element;
             }}
             key={game.id}
             className={`console-game-avatar ${selected ? 'selected' : ''}`}
@@ -339,15 +358,44 @@ export function DashboardContentRow(props: {
   focusSection: ConsoleFocusSection;
   selectedIndex: number;
   game: GameRecord | null;
+  games: GameRecord[];
+  session: SessionState;
+  activeGame: ActiveGameState;
+  appVersion: string;
   onFocusIndex: (index: number) => void;
 }): JSX.Element {
   const cardRefs = useRef<Array<HTMLElement | null>>([]);
-  const cards = [
-    { icon: <Sparkles size={19} />, label: 'Recently added', value: props.game?.title ?? 'Your library' },
-    { icon: <Library size={19} />, label: 'Installed games', value: 'Ready to play' },
-    { icon: <Play size={19} />, label: 'Continue playing', value: props.game ? `Return to ${props.game.title}` : 'Choose a game' },
-    { icon: <Layers3 size={19} />, label: 'Game details', value: props.game ? 'Available in your library' : 'Your library' }
-  ];
+  const cards = props.game
+    ? [
+      { icon: <Sparkles size={19} />, label: 'Recently added', value: props.game.title },
+      { icon: <Library size={19} />, label: 'Installed games', value: 'Ready to play' },
+      { icon: <Play size={19} />, label: 'Continue playing', value: `Return to ${props.game.title}` },
+      { icon: <Layers3 size={19} />, label: 'Game details', value: 'Available in your library' }
+    ]
+    : [
+      {
+        icon: <Library size={19} />,
+        label: 'Game library',
+        value: `${props.games.length} ${props.games.length === 1 ? 'game' : 'games'} ready`
+      },
+      {
+        icon: <Timer size={19} />,
+        label: 'Current session',
+        value: props.session.status === 'running'
+          ? `${formatSessionTime(props.session.remainingSeconds)} remaining`
+          : 'Ready when you are'
+      },
+      {
+        icon: <Play size={19} />,
+        label: 'Current activity',
+        value: props.activeGame.game?.title ?? 'No game running'
+      },
+      {
+        icon: <Layers3 size={19} />,
+        label: 'Launcher',
+        value: `NXGS Play ${props.appVersion}`
+      }
+    ];
 
   useEffect(() => {
     if (props.focusSection !== 'content') return;
@@ -357,7 +405,7 @@ export function DashboardContentRow(props: {
   return (
     <section className={`dashboard-content ${props.focusSection === 'content' ? 'keyboard-focus' : ''}`} aria-label="Dashboard content">
       <div className="content-heading">
-        <span>Must play</span>
+        <span>{props.game ? 'Must play' : 'Launcher overview'}</span>
         <small>NXGS Play</small>
       </div>
       <div className="content-card-row">
@@ -389,6 +437,8 @@ export function DashboardContentRow(props: {
 
 export function ConsoleHome(props: {
   games: GameRecord[];
+  logoPath: string;
+  appVersion: string;
   selectedIndex: number;
   selectedGame: GameRecord | null;
   session: SessionState;
@@ -400,10 +450,12 @@ export function ConsoleHome(props: {
   homeOverlayRequestId: number;
   emergencyCloseRequestId: number;
   onTabChange: (tab: ConsoleTab) => void;
+  onHighlightHome: () => void;
   onHighlightGame: (index: number) => void;
   onUtilityFocus: (index: number) => void;
   onContentFocus: (index: number) => void;
   onOpenAdmin: () => void;
+  onBrowseGames: () => void;
   onSelectGame: (game: GameRecord) => void;
   launchPendingGameId: string;
 }): JSX.Element {
@@ -425,6 +477,7 @@ export function ConsoleHome(props: {
       <GameHeroBackground game={heroGame} />
       <div className={`console-dashboard ${hasActiveGame ? 'has-active-game' : ''}`}>
         <TopNav
+          logoPath={props.logoPath}
           activeTab={props.activeTab}
           focusSection={props.focusSection}
           utilityIndex={props.utilityIndex}
@@ -436,51 +489,60 @@ export function ConsoleHome(props: {
 
         {showingGames ? (
           <>
-            {props.games.length > 0 ? (
-              <>
-                <GameAvatarRow
-                  games={props.games}
-                  selectedIndex={props.selectedIndex}
-                  focusSection={props.focusSection}
-                  onHighlight={props.onHighlightGame}
-                  onPlay={props.onSelectGame}
-                  launchPendingGameId={props.launchPendingGameId}
-                />
-                <section className="console-hero-copy" aria-live="polite">
-                  <h1 title={props.selectedGame?.title}>{props.selectedGame?.title}</h1>
-                  <span>{props.selectedGame?.availabilityStatus === 'available' ? 'Installed and ready' : 'Ready from your saved library'}</span>
-                  <button
-                    ref={playButtonRef}
-                    className={`console-play-button ${props.focusSection === 'hero' ? 'controller-focused' : ''}`}
-                    type="button"
-                    disabled={Boolean(props.launchPendingGameId)}
-                    onClick={() => props.selectedGame && props.onSelectGame(props.selectedGame)}
-                  >
-                    {props.launchPendingGameId === props.selectedGame?.id
-                      ? <LoaderCircle size={20} className="spin" />
-                      : <Play size={20} fill="currentColor" />}
-                    {props.launchPendingGameId === props.selectedGame?.id ? 'Starting...' : 'Play'}
-                  </button>
-                </section>
-                <DashboardContentRow
-                  focusSection={props.focusSection}
-                  selectedIndex={props.contentIndex}
-                  game={props.selectedGame}
-                  onFocusIndex={props.onContentFocus}
-                />
-              </>
-            ) : (
-              <section className="console-empty-state">
-                <div className="empty-state-mark"><Gamepad2 size={42} /></div>
-                <p>NXGS Play library</p>
-                <h1>No games added yet</h1>
-                <span>Open Admin Settings to add games.</span>
-                <button className="console-play-button" type="button" onClick={props.onOpenAdmin}>
-                  <Settings size={19} />
-                  Open Admin Settings
-                </button>
-              </section>
-            )}
+            <GameAvatarRow
+              games={props.games}
+              logoPath={props.logoPath}
+              selectedIndex={props.selectedIndex}
+              focusSection={props.focusSection}
+              onHighlightHome={props.onHighlightHome}
+              onHighlight={props.onHighlightGame}
+              onPlay={props.onSelectGame}
+              launchPendingGameId={props.launchPendingGameId}
+            />
+            <section className={`console-hero-copy ${props.selectedGame ? '' : 'home-hero-copy'}`} aria-live="polite">
+              <h1 title={props.selectedGame?.title ?? 'Welcome to NXGS Play'}>
+                {props.selectedGame?.title ?? 'Welcome to NXGS Play'}
+              </h1>
+              <span>
+                {props.selectedGame
+                  ? props.selectedGame.availabilityStatus === 'available'
+                    ? 'Installed and ready'
+                    : 'Ready from your saved library'
+                  : 'Your launcher, library, and current session at a glance.'}
+              </span>
+              <button
+                ref={playButtonRef}
+                className={`console-play-button ${props.focusSection === 'hero' ? 'controller-focused' : ''}`}
+                type="button"
+                disabled={Boolean(props.launchPendingGameId)}
+                onClick={() => props.selectedGame ? props.onSelectGame(props.selectedGame) : props.games.length > 0 ? props.onBrowseGames() : props.onOpenAdmin()}
+              >
+                {props.selectedGame && props.launchPendingGameId === props.selectedGame.id
+                  ? <LoaderCircle size={20} className="spin" />
+                  : props.selectedGame
+                    ? <Play size={20} fill="currentColor" />
+                    : props.games.length > 0
+                      ? <Gamepad2 size={20} />
+                      : <Settings size={20} />}
+                {props.selectedGame && props.launchPendingGameId === props.selectedGame.id
+                  ? 'Starting...'
+                  : props.selectedGame
+                    ? 'Play'
+                    : props.games.length > 0
+                      ? 'Browse games'
+                      : 'Open Admin Settings'}
+              </button>
+            </section>
+            <DashboardContentRow
+              focusSection={props.focusSection}
+              selectedIndex={props.contentIndex}
+              game={props.selectedGame}
+              games={props.games}
+              session={props.session}
+              activeGame={props.activeGame}
+              appVersion={props.appVersion}
+              onFocusIndex={props.onContentFocus}
+            />
           </>
         ) : (
           <section className="media-placeholder">

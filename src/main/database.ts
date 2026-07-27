@@ -20,6 +20,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   adminPin: '1234',
   playAccessMode: 'paid',
   sessionDurationsMinutes: [30, 60, 90],
+  branding: {
+    logoPath: ''
+  },
   kiosk: {
     alwaysOnTop: false,
     hideCursorAfterSeconds: 5,
@@ -33,7 +36,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const CONTROLLER_IDLE_TIMEOUTS = new Set([0, 5, 10, 15, 30]);
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -287,6 +290,10 @@ export class DataStore {
         controllerIdle: {
           ...DEFAULT_SETTINGS.controllerIdle,
           ...(parsed.settings?.controllerIdle ?? {})
+        },
+        branding: {
+          ...DEFAULT_SETTINGS.branding,
+          ...(parsed.settings?.branding ?? {})
         }
       },
       games: (parsed.games ?? []).map((game) => {
@@ -554,6 +561,9 @@ export class DataStore {
       adminPin: settings.adminPin?.trim() || data.settings.adminPin,
       playAccessMode: settings.playAccessMode === 'free' ? 'free' : 'paid',
       sessionDurationsMinutes: durations.length > 0 ? durations : DEFAULT_SETTINGS.sessionDurationsMinutes,
+      branding: {
+        logoPath: settings.branding?.logoPath?.trim() ?? data.settings.branding.logoPath
+      },
       kiosk: {
         alwaysOnTop: Boolean(settings.kiosk.alwaysOnTop),
         hideCursorAfterSeconds: Math.max(0, Number(settings.kiosk.hideCursorAfterSeconds) || 0),

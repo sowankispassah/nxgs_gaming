@@ -106,6 +106,7 @@ const api = {
     ipcRenderer.invoke('updates:install', request),
   selectImageFile: (imageKind: GameImageKind = 'cover'): Promise<FilePickerResult> =>
     ipcRenderer.invoke('dialog:selectImageFile', imageKind),
+  selectBrandLogo: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectBrandLogo'),
   selectExecutableFile: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectExecutableFile'),
   selectFolder: (): Promise<FilePickerResult> => ipcRenderer.invoke('dialog:selectFolder'),
   getPaymentCatalog: (): Promise<PaymentCatalogResult> => ipcRenderer.invoke('payment:catalog'),

@@ -101,12 +101,17 @@ export interface ControllerIdleSettings {
   shutdownWarning: boolean;
 }
 
+export interface BrandingSettings {
+  logoPath: string;
+}
+
 export interface AppSettings {
   adminPin: string;
   playAccessMode: 'paid' | 'free';
   sessionDurationsMinutes: number[];
   kiosk: KioskSettings;
   controllerIdle: ControllerIdleSettings;
+  branding: BrandingSettings;
 }
 
 export interface ControllerIdleNotification {

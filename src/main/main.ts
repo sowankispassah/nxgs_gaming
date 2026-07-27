@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions, ty
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
+import { copyFile, mkdir } from 'node:fs/promises';
 import { DataStore } from './database';
 import { ControllerCompatibilityService } from './controllerCompatibilityService';
 import { ControllerIdleService } from './controllerIdleService';
@@ -1234,6 +1235,37 @@ function registerIpc(): void {
       return { canceled: true };
     }
     return validatePickedPath(result.filePaths[0], ['.png', '.jpg', '.jpeg', '.webp']);
+  });
+
+  ipcMain.handle('dialog:selectBrandLogo', async (): Promise<FilePickerResult> => {
+    const result = await showOpenDialog({
+      title: 'Select NXGS Logo',
+      properties: ['openFile'],
+      filters: [{ name: 'Logo image', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+
+    const selected = validatePickedPath(result.filePaths[0], ['.png', '.jpg', '.jpeg', '.webp']);
+    if (selected.canceled || selected.error || !selected.path) {
+      return selected;
+    }
+
+    try {
+      const brandingDirectory = join(app.getPath('userData'), 'branding');
+      const storedPath = join(brandingDirectory, `nxgs-logo${extname(selected.path).toLowerCase()}`);
+      await mkdir(brandingDirectory, { recursive: true });
+      await copyFile(selected.path, storedPath);
+      return {
+        canceled: false,
+        path: storedPath,
+        fileName: basename(storedPath),
+        directory: brandingDirectory
+      };
+    } catch (error) {
+      return { canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   ipcMain.handle('dialog:selectExecutableFile', async (): Promise<FilePickerResult> => {

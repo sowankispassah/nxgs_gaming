@@ -712,22 +712,14 @@ button:not(:disabled):active {
 }
 
 .nxgs-mark {
-  display: grid;
   width: 44px;
   height: 44px;
-  place-items: center;
   border: 1px solid rgba(129, 244, 219, 0.5);
-  border-radius: 15px 7px 15px 7px;
+  border-radius: 13px;
   background: linear-gradient(145deg, rgba(32, 218, 177, 0.2), rgba(13, 33, 56, 0.72));
   box-shadow: 0 0 30px rgba(31, 209, 170, 0.14);
-  color: #86f6df;
-  font-size: 20px;
-  font-weight: 950;
-  transform: rotate(-4deg);
-}
-
-.nxgs-mark span {
-  transform: rotate(4deg);
+  object-fit: contain;
+  padding: 4px;
 }
 
 .console-tabs {
@@ -962,6 +954,17 @@ button:not(:disabled):active {
 
 .game-avatar-art img {
   object-fit: cover;
+}
+
+.home-avatar-art {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(88, 154, 255, 0.2), transparent 46%),
+    linear-gradient(145deg, rgba(20, 25, 45, 0.96), rgba(7, 11, 24, 0.98));
+}
+
+.home-avatar-art img {
+  object-fit: contain;
+  padding: 10px;
 }
 
 .nxgs-image-placeholder {
@@ -2834,8 +2837,50 @@ button.console-game-avatar:not(:disabled):active {
   height: 102px;
   margin-bottom: 18px;
   border-radius: 8px;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
+}
+
+.branding-panel {
+  max-width: 760px;
+}
+
+.branding-preview {
+  display: flex;
+  min-height: 190px;
+  align-items: center;
+  gap: 28px;
+  margin: 26px 0 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 25% 35%, rgba(71, 160, 255, 0.14), transparent 42%),
+    rgba(255, 255, 255, 0.035);
+  padding: 24px;
+}
+
+.branding-preview-logo {
+  width: 180px;
+  height: 140px;
+  flex: 0 0 180px;
+  border-radius: 14px;
+  object-fit: contain;
+}
+
+.branding-preview > div {
+  display: grid;
+  gap: 7px;
+}
+
+.branding-preview > div span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.branding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .admin-sidebar nav button {
