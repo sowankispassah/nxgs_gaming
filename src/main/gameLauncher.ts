@@ -115,6 +115,7 @@ export class GameLauncher {
   private lastResumeResult: string | undefined;
   private focusGeneration = 0;
   private operationInFlight: 'launch' | 'home' | 'resume' | 'minimize' | 'close' | null = null;
+  private quickOverlayRequestedDuringLaunch = false;
   private state: ActiveGameState = {
     status: 'idle',
     updatedAt: new Date().toISOString()
@@ -255,6 +256,7 @@ export class GameLauncher {
       this.activeWindow = null;
       this.activeProcessId = null;
       this.gameInForeground = false;
+      this.quickOverlayRequestedDuringLaunch = false;
       this.lastHandoffError = undefined;
       this.clearReinforcementTimers();
       this.setActiveState({
@@ -424,6 +426,17 @@ export class GameLauncher {
   }
 
   async resumeActiveGame(gameId?: string): Promise<GameControlResult> {
+    if (
+      this.quickOverlayRequestedDuringLaunch &&
+      (this.state.status === 'launching' || this.state.status === 'running')
+    ) {
+      this.quickOverlayRequestedDuringLaunch = false;
+      await logLine(
+        'info',
+        'Dismissed the pending Home overlay while launch window discovery continues.'
+      );
+      return { ok: true };
+    }
     if (this.operationInFlight) {
       if (this.operationInFlight === 'home') {
         this.operationInFlight = null;
@@ -684,6 +697,16 @@ export class GameLauncher {
 
   async openQuickOverlay(options: { focusLauncher?: boolean } = {}): Promise<GameControlResult> {
     const focusLauncher = options.focusLauncher ?? true;
+    if (this.operationInFlight === 'launch') {
+      this.quickOverlayRequestedDuringLaunch = true;
+      this.lastHomeResult =
+        'Home is waiting for the launched game window without canceling game discovery.';
+      await logLine(
+        'info',
+        'Home requested during launch; preserving game window discovery and deferring overlay staging.'
+      );
+      return { ok: true };
+    }
     if (this.operationInFlight === 'home') {
       if (focusLauncher) this.focusLauncher();
       return { ok: true };
@@ -703,7 +726,7 @@ export class GameLauncher {
     const game = this.activeGame;
     this.lastHomeResult = `Quick overlay started from ${stateBeforeHome}.`;
     await logLine('info', `Quick Home pressed. State before overlay: ${stateBeforeHome}.`);
-    if (canceledOperation === 'launch' || canceledOperation === 'resume') {
+    if (canceledOperation === 'resume') {
       await logLine('info', `Canceled pending ${canceledOperation} focus loop before opening Home.`);
     }
     if (this.operationInFlight !== 'home' || this.focusGeneration !== homeGeneration) {
@@ -805,6 +828,7 @@ export class GameLauncher {
     this.activeWindow = null;
     this.activeProcessId = null;
     this.gameInForeground = false;
+    this.quickOverlayRequestedDuringLaunch = false;
     this.lastHandoffError = undefined;
     this.clearReinforcementTimers();
     this.setActiveState({
@@ -1031,6 +1055,22 @@ export class GameLauncher {
       windowDetected: true,
       windowState: 'foreground'
     });
+    if (this.quickOverlayRequestedDuringLaunch) {
+      this.quickOverlayRequestedDuringLaunch = false;
+      this.gameInForeground = false;
+      this.clearReinforcementTimers();
+      this.setActiveState({
+        status: 'quickOverlayOpen',
+        game,
+        message: `${game.title} is still running behind the NXGS quick overlay.`,
+        windowDetected: true,
+        windowState: 'background'
+      });
+      this.lastHomeResult =
+        `${game.title} launch discovery completed; the pending Home overlay can now be staged.`;
+      await logLine('info', this.lastHomeResult);
+      return;
+    }
     this.scheduleGamePresentationReinforcement(game, this.activeWindow ?? window, launchMode);
     this.lastHandoffError = undefined;
     await logLine('info', `Game window focused for ${game.title}; NXGS Play handoff completed.`);

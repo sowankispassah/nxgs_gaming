@@ -916,7 +916,7 @@ $topInset = [Math]::Max($clientInset, $offscreenInset)
 export async function enforceQuickOverlayZOrder(
   overlayHandle: number,
   gameHandle?: number,
-  hideGame = false
+  minimizeGameAfterPaint = false
 ): Promise<QuickOverlayZOrderState | null> {
   if (process.platform !== 'win32' || !Number.isFinite(overlayHandle) || overlayHandle <= 0) {
     return null;
@@ -932,7 +932,7 @@ export async function enforceQuickOverlayZOrder(
     const staged = await runWindowsControl('stage-overlay', {
       overlayHandle: safeOverlayHandle,
       gameHandle: safeGameHandle,
-      hideGame
+      minimizeGameAfterPaint
     });
     // The warm native worker keeps Home input deterministic. In particular,
     // do not make a failed Store-frame attempt wait for a new PowerShell
@@ -940,10 +940,10 @@ export async function enforceQuickOverlayZOrder(
     return {
       error: staged.ok ? undefined : staged.message,
       foregroundHandle: staged.ok ? safeOverlayHandle : 0,
-      gameTopMost: staged.ok && safeGameHandle > 0 && !hideGame,
-      gameVisible: safeGameHandle > 0 && !hideGame,
+      gameTopMost: staged.ok && safeGameHandle > 0 && !minimizeGameAfterPaint,
+      gameVisible: safeGameHandle > 0 && !minimizeGameAfterPaint,
       overlayAboveGame: staged.ok,
-      overlayForeground: staged.ok,
+      overlayForeground: staged.ok && !minimizeGameAfterPaint,
       overlayTopMost: staged.ok,
       overlayVisible: staged.ok
     };
@@ -958,6 +958,7 @@ Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public static class QuickOverlayZOrderWin32 {
+  [DllImport("dwmapi.dll")] public static extern int DwmFlush();
   [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(uint processId);
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
@@ -965,6 +966,7 @@ public static class QuickOverlayZOrderWin32 {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern IntPtr SetActiveWindow(IntPtr hWnd);
@@ -985,7 +987,9 @@ public static class QuickOverlayZOrderWin32 {
 "@
 $overlay = [IntPtr]${safeOverlayHandle}
 $game = [IntPtr]${safeGameHandle}
+$minimizeGameAfterPaint = ${minimizeGameAfterPaint ? '$true' : '$false'}
 $topMost = [IntPtr](-1)
+$notTopMost = [IntPtr](-2)
 $noMoveNoSizeShowNoActivate = 0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040
 $noMoveNoSizeShow = 0x0001 -bor 0x0002 -bor 0x0040
 $gwlExStyle = -20
@@ -993,7 +997,11 @@ $wsExTopMost = 0x00000008L
 $gwHwndPrev = 3
 
 if (-not [QuickOverlayZOrderWin32]::IsWindow($overlay)) { throw "Overlay HWND is invalid." }
-if ($game -ne [IntPtr]::Zero -and [QuickOverlayZOrderWin32]::IsWindow($game)) {
+if (
+  -not $minimizeGameAfterPaint -and
+  $game -ne [IntPtr]::Zero -and
+  [QuickOverlayZOrderWin32]::IsWindow($game)
+) {
   [QuickOverlayZOrderWin32]::ShowWindow($game, 9) | Out-Null
   # Stage the exact tracked game at the front of the topmost band first, then
   # place NXGS immediately above it. Transparent pixels can therefore reveal
@@ -1002,6 +1010,18 @@ if ($game -ne [IntPtr]::Zero -and [QuickOverlayZOrderWin32]::IsWindow($game)) {
 }
 [QuickOverlayZOrderWin32]::ShowWindow($overlay, 5) | Out-Null
 [QuickOverlayZOrderWin32]::SetWindowPos($overlay, $topMost, 0, 0, 0, 0, $noMoveNoSizeShow) | Out-Null
+if (
+  $minimizeGameAfterPaint -and
+  $game -ne [IntPtr]::Zero -and
+  [QuickOverlayZOrderWin32]::IsWindow($game)
+) {
+  [QuickOverlayZOrderWin32]::DwmFlush() | Out-Null
+  [QuickOverlayZOrderWin32]::SetWindowPos($game, $notTopMost, 0, 0, 0, 0, $noMoveNoSizeShowNoActivate) | Out-Null
+  [QuickOverlayZOrderWin32]::ShowWindow($game, 6) | Out-Null
+  for ($wait = 0; $wait -lt 30 -and -not [QuickOverlayZOrderWin32]::IsIconic($game); $wait += 1) {
+    Start-Sleep -Milliseconds 15
+  }
+}
 
 # SetForegroundWindow alone is allowed to fail when a game or unrelated app
 # owns the foreground lock. Join the relevant input queues for this short,
@@ -1059,8 +1079,15 @@ try {
   }
 }
 
-$overlayAboveGame = $true
-if ($game -ne [IntPtr]::Zero -and [QuickOverlayZOrderWin32]::IsWindow($game)) {
+$gameMinimized = $game -ne [IntPtr]::Zero -and
+  [QuickOverlayZOrderWin32]::IsWindow($game) -and
+  [QuickOverlayZOrderWin32]::IsIconic($game)
+$overlayAboveGame = [bool]($minimizeGameAfterPaint -and $gameMinimized)
+if (
+  -not $overlayAboveGame -and
+  $game -ne [IntPtr]::Zero -and
+  [QuickOverlayZOrderWin32]::IsWindow($game)
+) {
   $overlayAboveGame = $false
   $cursor = [QuickOverlayZOrderWin32]::GetWindow($game, $gwHwndPrev)
   $guard = 0
@@ -1082,7 +1109,11 @@ $foregroundAfter = [QuickOverlayZOrderWin32]::GetForegroundWindow()
 [pscustomobject]@{
   foregroundHandle = [int64]$foregroundAfter
   gameTopMost = [bool](($gameExStyle -band $wsExTopMost) -ne 0)
-  gameVisible = [bool]($game -ne [IntPtr]::Zero -and [QuickOverlayZOrderWin32]::IsWindowVisible($game))
+  gameVisible = [bool](
+    $game -ne [IntPtr]::Zero -and
+    [QuickOverlayZOrderWin32]::IsWindowVisible($game) -and
+    -not $gameMinimized
+  )
   overlayAboveGame = [bool]$overlayAboveGame
   overlayForeground = [bool]($foregroundAfter -eq $overlay)
   overlayTopMost = [bool](($overlayExStyle -band $wsExTopMost) -ne 0)

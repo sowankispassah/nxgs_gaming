@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.18",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.18/NXGS-Play-Setup.exe",
-    "sha256":  "8049e286ee6ae767a952ab5a4d16b8d092a513eb89ae00c05311405bf1a7173d",
+    "version":  "0.20.19",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.19/NXGS-Play-Setup.exe",
+    "sha256":  "42f7cf28f34fe6fc38240420a6abd44b5ac6db9454ce63361dbc72cba9d222ec",
     "required":  false,
-    "notes":  "Ctrl+Shift+H now toggles through one serialized transition, keeps the game or captured game frame covered throughout, never invokes Windows app switching, rejects stale focus operations, and removes fullscreen capture strips."
+    "notes":  "Ctrl+Shift+H now stays queued through slow game launch, binds only to the tracked game window, shows the live game or an exact captured game frame, and toggles reliably without exposing Settings, desktop, other apps, or library cover art."
 }

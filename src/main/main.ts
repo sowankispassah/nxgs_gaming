@@ -85,6 +85,7 @@ let gameplayQuickOverlayVisibilityGeneration = 0;
 let gameplayQuickOverlayRequestId = 0;
 let gameplayQuickOverlayPreparedGameId: string | null = null;
 let gameplayQuickOverlayPreparedBackdropKind: QuickOverlayBackdropKind | null = null;
+let gameplayQuickOverlayPreparedWindowHandle: number | null = null;
 let gameplayQuickOverlayRendererReady = false;
 let gameplayQuickOverlayNativeZOrderVerified = false;
 let lastShellHomeRequestAt = 0;
@@ -355,6 +356,7 @@ async function createSafeQuickOverlayBackdrop(
 function clearGameplayQuickOverlayPreparation(overlay: BrowserWindow): void {
   gameplayQuickOverlayPreparedGameId = null;
   gameplayQuickOverlayPreparedBackdropKind = null;
+  gameplayQuickOverlayPreparedWindowHandle = null;
   gameplayQuickOverlayRendererReady = false;
   if (!overlay.webContents.isDestroyed()) {
     overlay.webContents.send('quickOverlay:backdrop', { requestId: 0, kind: 'generated' } satisfies QuickOverlayBackdrop);
@@ -395,30 +397,32 @@ function browserWindowNativeHandle(window: BrowserWindow): number {
   return handle.length >= 8 ? Number(handle.readBigUInt64LE(0)) : handle.readUInt32LE(0);
 }
 
-async function enforceGameplayQuickOverlayZOrder(overlay: BrowserWindow): Promise<boolean> {
-  const gameWindow = await launcher.getQuickOverlayBackdropWindow();
+async function enforceGameplayQuickOverlayZOrder(
+  overlay: BrowserWindow,
+  minimizeGameAfterPaint = false
+): Promise<boolean> {
   const overlayHandle = browserWindowNativeHandle(overlay);
-  const directBackdrop = gameplayQuickOverlayPreparedBackdropKind === 'direct';
   const state = await enforceQuickOverlayZOrder(
     overlayHandle,
-    gameWindow?.handle,
-    !directBackdrop
+    gameplayQuickOverlayPreparedWindowHandle ?? undefined,
+    minimizeGameAfterPaint
   );
   const verified = Boolean(
     state?.overlayVisible &&
     state.overlayTopMost &&
     state.overlayAboveGame &&
-    state.overlayForeground
+    (state.overlayForeground || (minimizeGameAfterPaint && !state.gameVisible))
   );
   gameplayQuickOverlayNativeZOrderVerified = verified;
   await logLine(
     verified ? 'info' : 'warn',
     `Quick overlay native z-order ${verified ? 'verified' : 'failed'}: ` +
-      `overlay=${overlayHandle}, game=${gameWindow?.handle ?? 0}, ` +
+      `overlay=${overlayHandle}, game=${gameplayQuickOverlayPreparedWindowHandle ?? 0}, ` +
       `foreground=${state?.foregroundHandle ?? 0}, overlayVisible=${state?.overlayVisible ?? false}, ` +
       `overlayForeground=${state?.overlayForeground ?? false}, overlayTopMost=${state?.overlayTopMost ?? false}, ` +
       `overlayAboveGame=${state?.overlayAboveGame ?? false}, ` +
-      `gameVisible=${state?.gameVisible ?? false}, gameTopMost=${state?.gameTopMost ?? false}.`
+      `gameVisible=${state?.gameVisible ?? false}, gameTopMost=${state?.gameTopMost ?? false}, ` +
+      `captured-frame fallback=${minimizeGameAfterPaint}.`
       + (state?.error ? ` Native worker: ${state.error}` : '')
   );
   return verified;
@@ -436,6 +440,56 @@ async function replaceUnsafeDirectBackdrop(overlay: BrowserWindow, gameId: strin
     'Direct game staging was not verified; keeping the game visible while NXGS paints its exact tracked frame.'
   );
   await prepareGameplayQuickOverlayRenderer(true, false, true);
+}
+
+async function stageGameplayQuickOverlay(
+  overlay: BrowserWindow,
+  gameId: string | null
+): Promise<boolean> {
+  if (await enforceGameplayQuickOverlayZOrder(overlay)) {
+    return true;
+  }
+
+  await replaceUnsafeDirectBackdrop(overlay, gameId);
+  if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return false;
+
+  const exactCapturedFrameReady =
+    gameplayQuickOverlayRendererReady &&
+    ['live', 'snapshot'].includes(gameplayQuickOverlayPreparedBackdropKind ?? '') &&
+    Number(gameplayQuickOverlayPreparedWindowHandle) > 0;
+  if (!exactCapturedFrameReady) {
+    await logLine(
+      'warn',
+      'Native live overlay staging failed and no exact captured game frame was ready; ' +
+        'NXGS left the game visible instead of exposing another window.'
+    );
+    return false;
+  }
+
+  overlay.setAlwaysOnTop(true, 'screen-saver');
+  overlay.show();
+  overlay.moveTop();
+  const capturedFrameStaged = await enforceGameplayQuickOverlayZOrder(overlay, true);
+  if (!capturedFrameStaged || overlay.isDestroyed()) return false;
+
+  // Some composition-locked Store frames keep their stale foreground HWND
+  // briefly after being moved behind the painted capture. Reassert Electron
+  // focus from its owning process without switching through another app.
+  overlay.focus();
+  overlay.webContents.focus();
+  for (const delay of [0, 50]) {
+    setTimeout(() => {
+      if (
+        gameplayQuickOverlayDesiredOpen &&
+        !overlay.isDestroyed() &&
+        overlay.isVisible()
+      ) {
+        overlay.focus();
+        overlay.webContents.focus();
+      }
+    }, delay);
+  }
+  return true;
 }
 
 async function createGameplayQuickOverlayWindow(): Promise<BrowserWindow> {
@@ -569,6 +623,7 @@ async function performGameplayQuickOverlayPreparation(
 
   gameplayQuickOverlayPreparedGameId = gameId;
   gameplayQuickOverlayPreparedBackdropKind = preparedKind;
+  gameplayQuickOverlayPreparedWindowHandle = backdrop.capturedWindowHandle ?? null;
   gameplayQuickOverlayRendererReady = painted;
   if (launcher.activeState.status !== 'quickOverlayOpen') {
     overlay.hide();
@@ -590,6 +645,7 @@ async function prepareGameplayQuickOverlayRenderer(
   const preparedBackdropIsAcceptable = (): boolean =>
     !captureSnapshot ||
     gameplayQuickOverlayPreparedBackdropKind === 'live' ||
+    gameplayQuickOverlayPreparedBackdropKind === 'snapshot' ||
     (preferDirectGameplay && gameplayQuickOverlayPreparedBackdropKind === 'direct');
   if (
     !force &&
@@ -635,12 +691,7 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     overlay.moveTop();
     overlay.focus();
     overlay.webContents.focus();
-    const zOrderVerified = await enforceGameplayQuickOverlayZOrder(overlay);
-    if (!zOrderVerified) {
-      await replaceUnsafeDirectBackdrop(overlay, gameId);
-      if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
-      await enforceGameplayQuickOverlayZOrder(overlay);
-    }
+    await stageGameplayQuickOverlay(overlay, gameId);
     if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
     overlay.webContents.focus();
     return;
@@ -660,20 +711,22 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     await prepareGameplayQuickOverlayRenderer(true);
   }
   if (
-    gameplayQuickOverlayDesiredOpen &&
-    visibilityGeneration === gameplayQuickOverlayVisibilityGeneration &&
-    !overlay.isDestroyed() &&
-    !gameplayQuickOverlayRendererReady
-  ) {
-    // A safe opaque poster is permitted only after live capture itself has
-    // failed. Scheduled reconciliations continue upgrading it to live.
-    await prepareGameplayQuickOverlayRenderer(false);
-  }
-  if (
     !gameplayQuickOverlayDesiredOpen ||
     visibilityGeneration !== gameplayQuickOverlayVisibilityGeneration ||
     overlay.isDestroyed()
   ) return;
+  const exactGameVisualPrepared =
+    gameplayQuickOverlayRendererReady &&
+    ['direct', 'live', 'snapshot'].includes(gameplayQuickOverlayPreparedBackdropKind ?? '') &&
+    Number(gameplayQuickOverlayPreparedWindowHandle) > 0;
+  if (!exactGameVisualPrepared) {
+    await logLine(
+      'warn',
+      'Home overlay remained hidden because no exact tracked game window or frame was ready; ' +
+        'the running game was left visible and window discovery will retry.'
+    );
+    return;
+  }
 
   // The prewarm/hide path deliberately releases topmost. Reapply it on every
   // show before asking Windows for focus, otherwise the transparent renderer
@@ -684,12 +737,7 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   overlay.moveTop();
   overlay.focus();
   overlay.webContents.focus();
-  const zOrderVerified = await enforceGameplayQuickOverlayZOrder(overlay);
-  if (!zOrderVerified) {
-    await replaceUnsafeDirectBackdrop(overlay, gameId);
-    if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
-    await enforceGameplayQuickOverlayZOrder(overlay);
-  }
+  await stageGameplayQuickOverlay(overlay, gameId);
   if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
   overlay.webContents.focus();
   await logLine(
@@ -819,9 +867,33 @@ async function performGameplayQuickOverlayTransition(
   }
 
   if (shouldOpen) {
-    const showOperation = showGameplayQuickOverlay();
     try {
+      const launchWasStillDiscovering = launcher.activeState.status === 'launching';
+      if (!launchWasStillDiscovering && !launcher.diagnosticState.windowHandle) {
+        const trackedWindowReady = await waitForGameplayQuickOverlayTrackedWindow(
+          transitionGeneration
+        );
+        if (!trackedWindowReady) {
+          if (
+            transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
+            gameplayQuickOverlayDesiredOpen
+          ) {
+            gameplayQuickOverlayDesiredOpen = false;
+          }
+          return {
+            ok: false,
+            error: 'The running game has not published a verified visual window yet.'
+          };
+        }
+      }
       const result = await launcher.openQuickOverlay({ focusLauncher: false });
+      if (launchWasStillDiscovering) {
+        const settled = await waitForGameplayQuickOverlayLaunchHandoff(transitionGeneration);
+        if (!settled) {
+          return result;
+        }
+      }
+      const showOperation = showGameplayQuickOverlay();
       await showOperation;
       if (
         transitionGeneration !== gameplayQuickOverlayTransitionGeneration ||
@@ -842,7 +914,6 @@ async function performGameplayQuickOverlayTransition(
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await showOperation.catch(() => undefined);
       if (
         transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
         gameplayQuickOverlayDesiredOpen
@@ -855,8 +926,13 @@ async function performGameplayQuickOverlayTransition(
   }
 
   const overlayWasVisible = Boolean(getLiveGameplayQuickOverlayWindow()?.isVisible());
-  if (!overlayWasVisible && launcher.activeState.status === 'running') {
-    return { ok: true };
+  if (
+    !overlayWasVisible &&
+    (launcher.activeState.status === 'running' || launcher.activeState.status === 'launching')
+  ) {
+    // A second Home press while Store-window discovery is pending cancels
+    // only the requested overlay. It must not cancel or restart the launch.
+    return launcher.resumeActiveGame(gameId);
   }
 
   protectGameplayQuickOverlayDuringResume();
@@ -903,6 +979,77 @@ async function performGameplayQuickOverlayTransition(
     await logLine('error', `Home toggle resume failed: ${message}`);
     return { ok: false, error: message };
   }
+}
+
+async function waitForGameplayQuickOverlayTrackedWindow(
+  transitionGeneration: number
+): Promise<boolean> {
+  const startedAt = Date.now();
+  let waitingLogged = false;
+  while (
+    transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
+    gameplayQuickOverlayDesiredOpen
+  ) {
+    if (!launcher.hasTrackedGames || ['idle', 'closed', 'error'].includes(launcher.activeState.status)) {
+      return false;
+    }
+    if (await launcher.getQuickOverlayBackdropWindow()) {
+      return true;
+    }
+    if (!waitingLogged && Date.now() - startedAt >= 6000) {
+      waitingLogged = true;
+      await logLine(
+        'warn',
+        'Home overlay is still waiting for the active game to publish a verified visual window; ' +
+          'the request remains queued without exposing a fallback screen.'
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
+async function waitForGameplayQuickOverlayLaunchHandoff(
+  transitionGeneration: number
+): Promise<boolean> {
+  const startedAt = Date.now();
+  let waitingLogged = false;
+  while (
+    transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
+    gameplayQuickOverlayDesiredOpen
+  ) {
+    if (
+      launcher.activeState.status === 'quickOverlayOpen' &&
+      launcher.diagnosticState.windowHandle
+    ) {
+      return true;
+    }
+    if (!launcher.hasTrackedGames || ['idle', 'closed', 'error'].includes(launcher.activeState.status)) {
+      return false;
+    }
+
+    const trackedWindow = await launcher.getQuickOverlayBackdropWindow();
+    if (trackedWindow) {
+      await launcher.openQuickOverlay({ focusLauncher: false });
+      if (
+        launcher.activeState.status === 'quickOverlayOpen' &&
+        launcher.diagnosticState.windowHandle
+      ) {
+        return true;
+      }
+    }
+
+    if (!waitingLogged && Date.now() - startedAt >= 15000) {
+      waitingLogged = true;
+      await logLine(
+        'warn',
+        'Home overlay is still waiting for the launched game to publish a verified visual window; ' +
+          'the request remains queued without exposing a fallback screen.'
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
 }
 
 function transitionGameplayQuickOverlay(
@@ -1119,7 +1266,7 @@ sessionWarningOverlay = new SessionWarningOverlay(handleSessionWarningAction);
 
 function handleShellHomeRequest(reason: ShellHomeReason): void {
   const requestedAt = Date.now();
-  if (reason !== 'emergency-close' && requestedAt - lastShellHomeRequestAt < 220) {
+  if (reason !== 'emergency-close' && requestedAt - lastShellHomeRequestAt < 80) {
     void logLine('info', `Coalesced duplicate ${reason} Home input from the same physical press.`);
     return;
   }

@@ -26,7 +26,7 @@ type PendingRequest = {
 export interface OverlayStageRequest {
   overlayHandle: number;
   gameHandle: number;
-  hideGame?: boolean;
+  minimizeGameAfterPaint?: boolean;
 }
 
 const WORKER_SCRIPT = String.raw`
@@ -145,6 +145,7 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("user32.dll")] private static extern bool EnableWindow(IntPtr window, bool enabled);
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
@@ -155,6 +156,7 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint parameter, ref uint value, uint flags);
+    [DllImport("dwmapi.dll")] private static extern int DwmFlush();
 
     private const uint KeyUp = 0x0002;
     private const uint NoSize = 0x0001;
@@ -175,7 +177,7 @@ public static class NxgsWarningInput {
         return GetForegroundWindow() == window;
     }
 
-    public static string StageOverlay(long overlayHandle, long gameHandle, bool hideGame) {
+    public static string StageOverlay(long overlayHandle, long gameHandle, bool minimizeGameAfterPaint) {
         var overlay = new IntPtr(overlayHandle);
         var game = new IntPtr(gameHandle);
         if (overlay == IntPtr.Zero || !IsWindow(overlay)) return "invalid_overlay";
@@ -213,12 +215,12 @@ public static class NxgsWarningInput {
             SystemParametersInfo(0x2001, 0, ref unlockedTimeout, 0);
             if (game != IntPtr.Zero && IsWindow(game)) {
                 EnableWindow(game, true);
-                if (!hideGame) {
-                    ShowWindowAsync(game, 9);
+                ShowWindowAsync(game, 9);
+                if (!minimizeGameAfterPaint) {
                     SetWindowPos(game, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate | ShowWindowFlag);
-                    // Keep the live game enabled; NXGS takes the higher
-                    // topmost slot without forcing Windows to pick a new app.
                 }
+                // The game is never hidden during Home. If overlay activation
+                // fails, the only surface Windows can reveal is still the game.
             }
 
             // Cover the display before changing the tracked game's visibility
@@ -228,8 +230,19 @@ public static class NxgsWarningInput {
             keybd_event(0x12, 0, 0, UIntPtr.Zero);
             BringWindowToTop(overlay);
             if (!IsWindowVisible(overlay)) return "overlay_not_visible";
-            if (hideGame && game != IntPtr.Zero && IsWindow(game)) {
-                ShowWindow(game, 0);
+            if (minimizeGameAfterPaint && game != IntPtr.Zero && IsWindow(game)) {
+                // The renderer has already acknowledged an exact game frame.
+                // Commit that frame before moving a composition-locked Store
+                // surface behind it, so no desktop or unrelated app can flash.
+                DwmFlush();
+                SetWindowPos(game, new IntPtr(-2), 0, 0, 0, 0, NoSize | NoMove | NoActivate);
+                ShowWindow(game, 6);
+                // ApplicationFrameHost applies minimize asynchronously. Wait
+                // only for that exact tracked window instead of rejecting the
+                // first Home press while Windows is still committing it.
+                for (var wait = 0; wait < 30 && !IsIconic(game); wait += 1) {
+                    System.Threading.Thread.Sleep(15);
+                }
             }
             SetActiveWindow(overlay);
             SetForegroundWindow(overlay);
@@ -244,8 +257,9 @@ public static class NxgsWarningInput {
             // some Store frames promote themselves while handling WM_ACTIVATE.
             SetWindowPos(overlay, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | ShowWindowFlag);
 
-            var overlayAboveGame = true;
-            if (!hideGame && game != IntPtr.Zero && IsWindow(game)) {
+            var gameMinimized = game != IntPtr.Zero && IsWindow(game) && IsIconic(game);
+            var overlayAboveGame = minimizeGameAfterPaint && gameMinimized;
+            if (!overlayAboveGame && game != IntPtr.Zero && IsWindow(game)) {
                 overlayAboveGame = false;
                 var cursor = GetWindow(game, PreviousWindow);
                 var guard = 0;
@@ -261,10 +275,14 @@ public static class NxgsWarningInput {
 
             var visible = IsWindowVisible(overlay);
             var foreground = GetForegroundWindow();
-            if (visible && foreground == overlay && overlayAboveGame) return "ok";
+            if (visible && overlayAboveGame && (foreground == overlay || gameMinimized)) {
+                DwmFlush();
+                return "ok";
+            }
             return "foreground=" + foreground.ToInt64() +
                 ";visible=" + visible +
-                ";above=" + overlayAboveGame;
+                ";above=" + overlayAboveGame +
+                ";gameMinimized=" + gameMinimized;
         } finally {
             keybd_event(0x12, 0, KeyUp, UIntPtr.Zero);
             if (foregroundLockTimeoutRead) {
@@ -388,8 +406,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         } elseif ($request.command -eq 'stage-overlay') {
             $overlayHandle = [long]$request.value.overlayHandle
             $gameHandle = [long]$request.value.gameHandle
-            $hideGame = [bool]$request.value.hideGame
-            $stageDetail = [NxgsWarningInput]::StageOverlay($overlayHandle, $gameHandle, $hideGame)
+            $minimizeGameAfterPaint = [bool]$request.value.minimizeGameAfterPaint
+            $stageDetail = [NxgsWarningInput]::StageOverlay($overlayHandle, $gameHandle, $minimizeGameAfterPaint)
             $staged = $stageDetail -eq 'ok'
             $response = @{ id = $request.id; ok = $staged; value = $staged; message = $(if ($staged) { 'Quick overlay staged above the tracked game.' } else { "Quick overlay z-order was not confirmed ($stageDetail)." }) }
         } elseif ($request.command -eq 'release-window') {

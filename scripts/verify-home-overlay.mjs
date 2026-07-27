@@ -113,8 +113,28 @@ assert.match(
 );
 assert.match(
   windowsControlSource,
-  /ShowWindow\(overlay, 5\)[\s\S]*IsWindowVisible\(overlay\)[\s\S]*ShowWindow\(game, 0\)/,
-  'a composition-locked Store frame must stay visible until the painted overlay covers the display'
+  /ShowWindowAsync\(game, 9\)[\s\S]*SetWindowPos\(game,[\s\S]*ShowWindow\(overlay, 5\)/,
+  'the tracked game must remain visible while the overlay is staged immediately above it'
+);
+assert.doesNotMatch(
+  windowsControlSource,
+  /ShowWindow\(game, 0\)|hideGame/,
+  'Home must never hide the tracked game and uncover Settings, desktop, or another app'
+);
+assert.match(
+  windowsControlSource,
+  /minimizeGameAfterPaint[\s\S]*DwmFlush\(\);[\s\S]*SetWindowPos\(game, new IntPtr\(-2\)[\s\S]*ShowWindow\(game, 6\)/,
+  'composition-locked fallback must commit the exact painted frame before moving the game behind it'
+);
+assert.match(
+  windowsControlSource,
+  /for \(var wait = 0; wait < 30 && !IsIconic\(game\); wait \+= 1\) \{[\s\S]*System\.Threading\.Thread\.Sleep\(15\);/,
+  'composition-locked fallback must wait for the asynchronous Store-window minimize before validating the first Home press'
+);
+assert.match(
+  mainSource,
+  /exactCapturedFrameReady[\s\S]*\['live', 'snapshot'\]\.includes[\s\S]*enforceGameplayQuickOverlayZOrder\(overlay, true\)/,
+  'game minimization fallback must be unreachable unless a real live capture or game snapshot is painted'
 );
 assert.match(windowsControlSource, /FocusWindow[\s\S]*EnableWindow\(window, true\)/, 'resume must ensure the tracked game accepts foreground input');
 assert.doesNotMatch(windowsControlSource, /EnableWindow\(game, false\)/, 'opening Home must never disable the game and expose another desktop window');
@@ -124,7 +144,11 @@ assert.match(
   /getRootWindowHandle\(gameWindow\.handle\)[\s\S]*safeCaptureHandles[\s\S]*exactWindowSource/,
   'UWP capture must resolve the verified tracked CoreWindow to its exact root frame'
 );
-assert.match(mainSource, /prepareGameplayQuickOverlayRenderer\(true\)[\s\S]*\['direct', 'live'\]\.includes[\s\S]*prepareGameplayQuickOverlayRenderer\(true\)[\s\S]*overlay\.show\(\)/, 'direct or captured live gameplay must be retried before the overlay shows a safe poster');
+assert.match(
+  mainSource,
+  /prepareGameplayQuickOverlayRenderer\(true\)[\s\S]*exactGameVisualPrepared[\s\S]*\['direct', 'live', 'snapshot'\]\.includes[\s\S]*if \(!exactGameVisualPrepared\)[\s\S]*return;[\s\S]*overlay\.show\(\)/,
+  'the overlay must stay hidden unless a direct game view, live capture, or real game snapshot is ready'
+);
 assert.match(mainSource, /status === 'running'[\s\S]*prepareGameplayQuickOverlayRenderer/);
 assert.doesNotMatch(mainSource, /overlay\.setOpacity\(/);
 assert.match(mainSource, /fullscreenable: false/);
@@ -168,6 +192,41 @@ assert.doesNotMatch(
 );
 assert.match(mainSource, /if \(result\.ok\)[\s\S]*hideGameplayQuickOverlay\(\)/, 'hiding must retain the prewarmed backdrop for the next deterministic toggle');
 assert.match(mainSource, /performGameplayQuickOverlayTransition[\s\S]*launcher\.resumeActiveGame\(gameId\)/);
+assert.match(
+  launcherSource,
+  /operationInFlight === 'launch'[\s\S]*quickOverlayRequestedDuringLaunch = true[\s\S]*preserving game window discovery/,
+  'Home pressed during launch must preserve the game-window discovery operation'
+);
+assert.match(
+  launcherSource,
+  /if \(this\.quickOverlayRequestedDuringLaunch\)[\s\S]*status: 'quickOverlayOpen'[\s\S]*pending Home overlay can now be staged/,
+  'a Home request made during launch must be fulfilled only after the real game window is bound'
+);
+assert.match(
+  mainSource,
+  /waitForGameplayQuickOverlayLaunchHandoff[\s\S]*launcher\.getQuickOverlayBackdropWindow\(\)[\s\S]*launcher\.openQuickOverlay\(\{ focusLauncher: false \}\)[\s\S]*windowHandle/,
+  'overlay staging must wait for launch handoff instead of falling back to cover art'
+);
+assert.doesNotMatch(
+  mainSource,
+  /waitForGameplayQuickOverlayLaunchHandoff\([\s\S]{0,120}timeoutMs =/,
+  'a slow Store visual window must not expire and discard a valid first Home press'
+);
+assert.doesNotMatch(
+  mainSource,
+  /waitForGameplayQuickOverlayTrackedWindow\([\s\S]{0,120}timeoutMs =/,
+  'late window reconciliation must not discard the first Home press after launch state settles'
+);
+assert.match(
+  mainSource,
+  /request remains queued without exposing a fallback screen/,
+  'slow Store launch feedback must keep the exact-game request queued'
+);
+assert.match(
+  mainSource,
+  /gameplayQuickOverlayPreparedWindowHandle[\s\S]*enforceQuickOverlayZOrder\([\s\S]*gameplayQuickOverlayPreparedWindowHandle/,
+  'native z-order must use the exact handle captured during safe backdrop preparation'
+);
 assert.match(mainSource, /shell:dismissQuickOverlay[\s\S]*transitionGameplayQuickOverlay\(false, 'renderer-request'\)/);
 assert.doesNotMatch(mainSource, /Ignored overlapping Home request/);
 assert.match(mainSource, /endPaidSession[\s\S]*openQuickNav: false,[\s\S]*resetToHome: true/);
