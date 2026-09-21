@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.19",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.19/NXGS-Play-Setup.exe",
-    "sha256":  "42f7cf28f34fe6fc38240420a6abd44b5ac6db9454ce63361dbc72cba9d222ec",
+    "version":  "0.20.20",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.20/NXGS-Play-Setup.exe",
+    "sha256":  "6477d2297263d4147b82fad169f6c50680ae84c23f31bcd3ffdc7a861cc76e24",
     "required":  false,
-    "notes":  "Ctrl+Shift+H now stays queued through slow game launch, binds only to the tracked game window, shows the live game or an exact captured game frame, and toggles reliably without exposing Settings, desktop, other apps, or library cover art."
+    "notes":  "Smoother Home switcher with verified direct game composition, faster native resume, active-game selection, and corrected Store window handoff."
 }
