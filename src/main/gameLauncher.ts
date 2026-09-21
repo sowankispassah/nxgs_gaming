@@ -99,6 +99,10 @@ class FocusOperationCanceledError extends Error {
 }
 
 export class GameLauncher {
+  get isLaunchInProgress(): boolean {
+    return this.operationInFlight === 'launch';
+  }
+
   private readonly sessions = new Map<string, StoredGameSession>();
   private activeGame: GameRecord | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -438,10 +442,10 @@ export class GameLauncher {
     }
   }
 
-  async resumeActiveGame(gameId?: string): Promise<GameControlResult> {
+  async resumeActiveGame(gameId?: string, requireFullHandoff = false): Promise<GameControlResult> {
     if (
       this.quickOverlayRequestedDuringLaunch &&
-      (this.state.status === 'launching' || this.state.status === 'running')
+      this.isLaunchInProgress
     ) {
       this.quickOverlayRequestedDuringLaunch = false;
       await logLine(
@@ -481,6 +485,7 @@ export class GameLauncher {
 
     try {
       if (
+        !requireFullHandoff &&
         this.activeWindow &&
         gameWindowMatchesGame(game, this.activeWindow, this.activeProcessId)
       ) {
@@ -715,10 +720,10 @@ export class GameLauncher {
     if (this.operationInFlight === 'launch') {
       this.quickOverlayRequestedDuringLaunch = true;
       this.lastHomeResult =
-        'Home is waiting for the launched game window without canceling game discovery.';
+        'Home is open while the game continues starting in the background.';
       await logLine(
         'info',
-        'Home requested during launch; preserving game window discovery and deferring overlay staging.'
+        'Home requested during launch; preserving game window discovery while the switcher opens immediately.'
       );
       return { ok: true };
     }
@@ -982,6 +987,11 @@ export class GameLauncher {
         'warn',
         `Window detection timed out for ${game.title}; retaining the active session and keeping NXGS Play visible.`
       );
+      if (this.quickOverlayRequestedDuringLaunch) {
+        this.monitorByProcessName(game);
+        this.completeLaunchBehindHome(game);
+        return;
+      }
       if (storeLaunchMayStillBePending) {
         // Modern Store apps can render through an untitled Explorer-owned
         // ApplicationFrameWindow that appears after the package process.
@@ -1025,6 +1035,10 @@ export class GameLauncher {
     this.events.onGameWindowDetected(game);
 
     const launchMode = this.launchMode(game);
+    if (this.quickOverlayRequestedDuringLaunch) {
+      this.completeLaunchBehindHome(game);
+      return;
+    }
     if (launchMode === 'fullscreen' || launchMode === 'borderlessPreferred') {
       await logLine(
         'info',
@@ -1062,6 +1076,10 @@ export class GameLauncher {
       return;
     }
     this.assertFocusOperationCurrent(focusGeneration, game);
+    if (this.quickOverlayRequestedDuringLaunch) {
+      this.completeLaunchBehindHome(game);
+      return;
+    }
     this.gameInForeground = true;
     this.setActiveState({
       status: 'running',
@@ -1070,22 +1088,6 @@ export class GameLauncher {
       windowDetected: true,
       windowState: 'foreground'
     });
-    if (this.quickOverlayRequestedDuringLaunch) {
-      this.quickOverlayRequestedDuringLaunch = false;
-      this.gameInForeground = false;
-      this.clearReinforcementTimers();
-      this.setActiveState({
-        status: 'quickOverlayOpen',
-        game,
-        message: `${game.title} is still running behind the NXGS quick overlay.`,
-        windowDetected: true,
-        windowState: 'background'
-      });
-      this.lastHomeResult =
-        `${game.title} launch discovery completed; the pending Home overlay can now be staged.`;
-      await logLine('info', this.lastHomeResult);
-      return;
-    }
     this.scheduleGamePresentationReinforcement(game, this.activeWindow ?? window, launchMode);
     this.lastHandoffError = undefined;
     await logLine('info', `Game window focused for ${game.title}; NXGS Play handoff completed.`);
@@ -1126,6 +1128,22 @@ export class GameLauncher {
     });
 
     this.monitorByProcessName(game);
+  }
+
+  private completeLaunchBehindHome(game: GameRecord): void {
+    this.quickOverlayRequestedDuringLaunch = false;
+    this.gameInForeground = false;
+    this.clearReinforcementTimers();
+    this.setActiveState({
+      status: 'quickOverlayOpen',
+      game,
+      message: this.activeWindow
+        ? `${game.title} is ready. Choose Resume Game to enter fullscreen.`
+        : `${game.title} is still starting. Choose Resume Game once its window appears.`,
+      windowDetected: Boolean(this.activeWindow),
+      windowState: 'background'
+    });
+    void logLine('info', `${game.title} discovery completed behind the open switcher without taking foreground.`);
   }
 
   private async launchCustomCommand(game: GameRecord): Promise<void> {
@@ -1568,12 +1586,14 @@ export class GameLauncher {
       let lastState: GameWindowActivationState | null = null;
       for (let attempt = 1; attempt <= 8; attempt += 1) {
         this.assertFocusOperationCurrent(focusGeneration, game);
+        if (reason === 'launch' && this.quickOverlayRequestedDuringLaunch) return targetWindow;
         if (attempt > 1) {
           // Store discovery may keep returning its splash frame. Reconcile the
           // visible foreground candidate too, using the same exact-game identity
           // checks as overlay capture, before retrying the native handoff.
           const refreshed = await this.getQuickOverlayBackdropWindow();
           this.assertFocusOperationCurrent(focusGeneration, game);
+          if (reason === 'launch' && this.quickOverlayRequestedDuringLaunch) return targetWindow;
           if (refreshed && gameWindowMatchesGame(game, refreshed, this.activeProcessId)) {
             targetWindow = refreshed;
             this.activeWindow = refreshed;
@@ -1581,6 +1601,7 @@ export class GameLauncher {
         }
         lastState = await keepGameWindowOnTop(targetWindow, launchMode);
         this.assertFocusOperationCurrent(focusGeneration, game);
+        if (reason === 'launch' && this.quickOverlayRequestedDuringLaunch) return targetWindow;
         // The same native operation applies borderless fullscreen and focuses the
         // game. Drop the NXGS shield as soon as that visible window is ready;
         // taskbar cleanup continues in the background and must not hold gameplay

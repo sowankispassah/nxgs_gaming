@@ -194,30 +194,14 @@ assert.match(
   'Home pressed during launch must preserve the game-window discovery operation'
 );
 assert.match(
-  launcherSource,
-  /if \(this\.quickOverlayRequestedDuringLaunch\)[\s\S]*status: 'quickOverlayOpen'[\s\S]*pending Home overlay can now be staged/,
-  'a Home request made during launch must be fulfilled only after the real game window is bound'
-);
-assert.match(
   mainSource,
-  /waitForGameplayQuickOverlayLaunchHandoff[\s\S]*launcher\.getQuickOverlayBackdropWindow\(\)[\s\S]*launcher\.openQuickOverlay\(\{ focusLauncher: false \}\)[\s\S]*windowHandle/,
-  'overlay staging must wait for launch handoff instead of falling back to cover art'
+  /if \(shouldOpen && \(\s*launcher\.isLaunchInProgress[^]*!gameplayQuickOverlayRendererReady[^]*return showLaunchHomeImmediately[^]*gameplayQuickOverlayTransitionQueue/,
+  'Home during startup must paint before queued native focus work'
 );
-assert.doesNotMatch(
-  mainSource,
-  /waitForGameplayQuickOverlayLaunchHandoff\([\s\S]{0,120}timeoutMs =/,
-  'a slow Store visual window must not expire and discard a valid first Home press'
-);
-assert.doesNotMatch(
-  mainSource,
-  /waitForGameplayQuickOverlayTrackedWindow\([\s\S]{0,120}timeoutMs =/,
-  'late window reconciliation must not discard the first Home press after launch state settles'
-);
-assert.match(
-  mainSource,
-  /request remains queued without exposing a fallback screen/,
-  'slow Store launch feedback must keep the exact-game request queued'
-);
+assert.doesNotMatch(mainSource, /waitForGameplayQuickOverlay(?:LaunchHandoff|TrackedWindow)/,
+  'Home must not wait for a game window before presenting its loading menu');
+assert.match(mainSource, /gameplayLaunchCoverGameId === gameId\) return;/,
+  'background preparation must not replace the explicit loading cover');
 assert.match(
   mainSource,
   /gameplayQuickOverlayPreparedWindowHandle[\s\S]*enforceQuickOverlayZOrder\([\s\S]*gameplayQuickOverlayPreparedWindowHandle/,

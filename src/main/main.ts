@@ -104,6 +104,8 @@ type SessionExtensionRequest = { id: string; stage: SessionWarningStage };
 let pendingSessionExtension: SessionExtensionRequest | null = null;
 let sessionExtensionDeliveryTimers: NodeJS.Timeout[] = [];
 let launcherQuickNavOpen = false;
+let gameplayLaunchCoverGameId: string | null = null;
+let gameplayLaunchCoverFocusTimer: NodeJS.Timeout | null = null;
 let controllerDiagnostics: AppDiagnostics['controller'] = {
   detected: false,
   homeSupported: 'unknown'
@@ -355,6 +357,10 @@ function clearGameplayQuickOverlayPreparation(overlay: BrowserWindow): void {
 }
 
 function hideGameplayQuickOverlay(resetPreparation = false): void {
+  const wasLoadingHome = Boolean(gameplayLaunchCoverGameId);
+  gameplayLaunchCoverGameId = null;
+  if (gameplayLaunchCoverFocusTimer) clearInterval(gameplayLaunchCoverFocusTimer);
+  gameplayLaunchCoverFocusTimer = null;
   gameplayQuickOverlayVisibilityGeneration += 1;
   gameplayQuickOverlayNativeZOrderVerified = false;
   if (pendingQuickOverlayPaint) {
@@ -363,9 +369,13 @@ function hideGameplayQuickOverlay(resetPreparation = false): void {
   const overlay = getLiveGameplayQuickOverlayWindow();
   if (!overlay) return;
   overlay.hide();
+  overlay.setBackgroundColor('#00000000');
   overlay.setIgnoreMouseEvents(false);
   overlay.setAlwaysOnTop(false);
   if (resetPreparation) clearGameplayQuickOverlayPreparation(overlay);
+  if (wasLoadingHome && !resetPreparation && launcher.activeState.status === 'running') {
+    void prepareGameplayQuickOverlayRenderer(true);
+  }
 }
 
 function protectGameplayQuickOverlayDuringResume(): void {
@@ -581,7 +591,9 @@ async function performGameplayQuickOverlayPreparation(
     overlay.showInactive();
   }
 
+  if (gameplayLaunchCoverGameId === gameId) return;
   const backdrop = await createSafeQuickOverlayBackdrop(captureSnapshot, preferDirectGameplay);
+  if (gameplayLaunchCoverGameId === gameId) return;
   if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
   let preparedKind = backdrop.kind;
   let requestId = ++gameplayQuickOverlayRequestId;
@@ -592,6 +604,7 @@ async function performGameplayQuickOverlayPreparation(
     requestId
   } satisfies QuickOverlayBackdrop);
   let painted = await paintReady;
+  if (gameplayLaunchCoverGameId === gameId) return;
   if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
 
   if (!painted && backdrop.kind === 'live' && backdrop.posterKind === 'snapshot' && backdrop.imageUrl) {
@@ -609,6 +622,7 @@ async function performGameplayQuickOverlayPreparation(
       cropTopPx: backdrop.cropTopPx
     } satisfies QuickOverlayBackdrop);
     painted = await paintReady;
+    if (gameplayLaunchCoverGameId === gameId) return;
     if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
   }
 
@@ -666,6 +680,11 @@ async function prepareGameplayQuickOverlayRenderer(
 }
 
 async function performGameplayQuickOverlayShow(): Promise<void> {
+  if (gameplayLaunchCoverGameId) {
+    const overlay = getLiveGameplayQuickOverlayWindow();
+    if (overlay && gameplayQuickOverlayDesiredOpen) protectLoadingHome(overlay, gameplayLaunchCoverGameId);
+    return;
+  }
   const transitionStartedAt = Date.now();
   const overlay = await createGameplayQuickOverlayWindow();
   const gameId = launcher.activeState.game?.id ?? null;
@@ -847,6 +866,57 @@ function sendShellHome(event: ShellHomeEvent): void {
   }
 }
 
+function protectLoadingHome(overlay: BrowserWindow, gameId: string): void {
+  const keepHomeVisible = () => {
+    if (!gameplayQuickOverlayDesiredOpen || gameplayLaunchCoverGameId !== gameId || overlay.isDestroyed()) return;
+    overlay.setIgnoreMouseEvents(false);
+    if (!overlay.isAlwaysOnTop()) overlay.setAlwaysOnTop(true, 'screen-saver');
+    if (!overlay.isVisible()) overlay.show();
+    if (!overlay.isFocused()) {
+      overlay.moveTop();
+      overlay.focus();
+      overlay.webContents.focus();
+    }
+  };
+  keepHomeVisible();
+  if (gameplayLaunchCoverFocusTimer) clearInterval(gameplayLaunchCoverFocusTimer);
+  // Startup splash windows may auto-activate; explicit Home retains ownership.
+  gameplayLaunchCoverFocusTimer = setInterval(keepHomeVisible, 100);
+}
+
+async function showLaunchHomeImmediately(generation: number, reason: ShellHomeReason): Promise<GameControlResult> {
+  const startedAt = Date.now();
+  const gameId = launcher.activeState.game?.id;
+  if (!gameId) return { ok: false, error: 'No launching game is available.' };
+  // Set launch ownership before the first await. Discovery continues, but its
+  // eventual focus handoff must not take foreground from an open Home menu.
+  const request = launcher.openQuickOverlay({ focusLauncher: false });
+  gameplayLaunchCoverGameId = gameId;
+  const overlay = await createGameplayQuickOverlayWindow();
+  if (generation !== gameplayQuickOverlayTransitionGeneration || !gameplayQuickOverlayDesiredOpen) return request;
+  const display = screen.getDisplayMatching(getLiveMainWindow()?.getBounds() ?? screen.getPrimaryDisplay().bounds);
+  overlay.setBounds(display.bounds);
+  const requestId = ++gameplayQuickOverlayRequestId;
+  const painted = waitForQuickOverlayPaint(requestId);
+  overlay.webContents.send('activeGame:state', launcher.activeState);
+  // No game may exist yet. Use an opaque loading surface, never desktop capture
+  // or a transparent window over an unverified splash screen.
+  overlay.webContents.send('quickOverlay:backdrop', { requestId, gameId, kind: 'generated' } satisfies QuickOverlayBackdrop);
+  // A hidden Chromium window can delay animation-frame paint acknowledgments
+  // by a second. Show an opaque surface first to wake its compositor safely.
+  overlay.setBackgroundColor('#070b12');
+  protectLoadingHome(overlay, gameId);
+  if (!await painted || generation !== gameplayQuickOverlayTransitionGeneration || !gameplayQuickOverlayDesiredOpen) return request;
+  gameplayQuickOverlayPreparedGameId = null;
+  gameplayQuickOverlayPreparedWindowHandle = null;
+  gameplayQuickOverlayPreparedBackdropKind = null;
+  gameplayQuickOverlayRendererReady = false;
+  protectLoadingHome(overlay, gameId);
+  sendShellHome({ reason, openActiveGamePanel: false, openQuickNav: false, resetToHome: false, emergencyClose: reason === 'emergency-close' });
+  void logLine('info', `Loading Home became visible in ${Date.now() - startedAt}ms without waiting for game discovery.`);
+  return request;
+}
+
 async function performGameplayQuickOverlayTransition(
   shouldOpen: boolean,
   reason: ShellHomeReason,
@@ -859,31 +929,10 @@ async function performGameplayQuickOverlayTransition(
 
   if (shouldOpen) {
     try {
-      const launchWasStillDiscovering = launcher.activeState.status === 'launching';
-      if (!launchWasStillDiscovering && !launcher.diagnosticState.windowHandle) {
-        const trackedWindowReady = await waitForGameplayQuickOverlayTrackedWindow(
-          transitionGeneration
-        );
-        if (!trackedWindowReady) {
-          if (
-            transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
-            gameplayQuickOverlayDesiredOpen
-          ) {
-            gameplayQuickOverlayDesiredOpen = false;
-          }
-          return {
-            ok: false,
-            error: 'The running game has not published a verified visual window yet.'
-          };
-        }
+      if (launcher.isLaunchInProgress || !launcher.diagnosticState.windowHandle) {
+        return showLaunchHomeImmediately(transitionGeneration, reason);
       }
       const result = await launcher.openQuickOverlay({ focusLauncher: false });
-      if (launchWasStillDiscovering) {
-        const settled = await waitForGameplayQuickOverlayLaunchHandoff(transitionGeneration);
-        if (!settled) {
-          return result;
-        }
-      }
       const showOperation = showGameplayQuickOverlay();
       await showOperation;
       if (
@@ -928,7 +977,9 @@ async function performGameplayQuickOverlayTransition(
 
   protectGameplayQuickOverlayDuringResume();
   try {
-    const result = await launcher.resumeActiveGame(gameId);
+    // A game discovered behind Home has never been sized for gameplay. Avoid
+    // focusing its small startup window before the full handoff applies styles.
+    const result = await launcher.resumeActiveGame(gameId, Boolean(gameplayLaunchCoverGameId));
     if (
       transitionGeneration !== gameplayQuickOverlayTransitionGeneration ||
       gameplayQuickOverlayDesiredOpen
@@ -972,77 +1023,6 @@ async function performGameplayQuickOverlayTransition(
   }
 }
 
-async function waitForGameplayQuickOverlayTrackedWindow(
-  transitionGeneration: number
-): Promise<boolean> {
-  const startedAt = Date.now();
-  let waitingLogged = false;
-  while (
-    transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
-    gameplayQuickOverlayDesiredOpen
-  ) {
-    if (!launcher.hasTrackedGames || ['idle', 'closed', 'error'].includes(launcher.activeState.status)) {
-      return false;
-    }
-    if (await launcher.getQuickOverlayBackdropWindow()) {
-      return true;
-    }
-    if (!waitingLogged && Date.now() - startedAt >= 6000) {
-      waitingLogged = true;
-      await logLine(
-        'warn',
-        'Home overlay is still waiting for the active game to publish a verified visual window; ' +
-          'the request remains queued without exposing a fallback screen.'
-      );
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return false;
-}
-
-async function waitForGameplayQuickOverlayLaunchHandoff(
-  transitionGeneration: number
-): Promise<boolean> {
-  const startedAt = Date.now();
-  let waitingLogged = false;
-  while (
-    transitionGeneration === gameplayQuickOverlayTransitionGeneration &&
-    gameplayQuickOverlayDesiredOpen
-  ) {
-    if (
-      launcher.activeState.status === 'quickOverlayOpen' &&
-      launcher.diagnosticState.windowHandle
-    ) {
-      return true;
-    }
-    if (!launcher.hasTrackedGames || ['idle', 'closed', 'error'].includes(launcher.activeState.status)) {
-      return false;
-    }
-
-    const trackedWindow = await launcher.getQuickOverlayBackdropWindow();
-    if (trackedWindow) {
-      await launcher.openQuickOverlay({ focusLauncher: false });
-      if (
-        launcher.activeState.status === 'quickOverlayOpen' &&
-        launcher.diagnosticState.windowHandle
-      ) {
-        return true;
-      }
-    }
-
-    if (!waitingLogged && Date.now() - startedAt >= 15000) {
-      waitingLogged = true;
-      await logLine(
-        'warn',
-        'Home overlay is still waiting for the launched game to publish a verified visual window; ' +
-          'the request remains queued without exposing a fallback screen.'
-      );
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return false;
-}
-
 function transitionGameplayQuickOverlay(
   shouldOpen: boolean,
   reason: ShellHomeReason,
@@ -1055,6 +1035,26 @@ function transitionGameplayQuickOverlay(
     'info',
     `Gameplay Home transition ${transitionGeneration} requested by ${reason}: ${shouldOpen ? 'show' : 'hide'}.`
   );
+
+  if (shouldOpen && (
+    launcher.isLaunchInProgress ||
+    !launcher.diagnosticState.windowHandle ||
+    gameplayQuickOverlayPreparedGameId !== launcher.activeState.game?.id ||
+    !gameplayQuickOverlayRendererReady
+  )) {
+    return showLaunchHomeImmediately(transitionGeneration, reason);
+  }
+  if (!shouldOpen && launcher.isLaunchInProgress && launcher.activeState.status === 'launching') {
+    const result = launcher.resumeActiveGame(gameId);
+    hideGameplayQuickOverlay(true);
+    return result;
+  }
+  // A game discovered behind the loading menu has not had a fullscreen handoff
+  // yet. Keep the opaque cover until resume validates the native presentation.
+  if (!shouldOpen && gameplayLaunchCoverFocusTimer) {
+    clearInterval(gameplayLaunchCoverFocusTimer);
+    gameplayLaunchCoverFocusTimer = null;
+  }
 
   const operation = gameplayQuickOverlayTransitionQueue
     .catch(() => undefined)
@@ -1869,11 +1869,12 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('game:goToLauncherHome', async (): Promise<GameControlResult> => {
+    const result = await launcher.returnToHome();
+    if (!result.ok) return result;
     gameplayQuickOverlayDesiredOpen = false;
     gameplayQuickOverlayTransitionGeneration += 1;
     hideGameplayQuickOverlay();
     launcherQuickNavOpen = false;
-    const result = await launcher.returnToHome();
     if (result.ok) {
       controllerCompatibility.stop();
       applyKioskSettings(store.getSettings());

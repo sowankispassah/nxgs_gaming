@@ -167,7 +167,7 @@ export function QuickHomeOverlay(props: {
   const lastSwitcherInput = useRef({ action: '', at: 0 });
 
   useEffect(() => {
-    if (props.activeGame.status !== 'quickOverlayOpen') return;
+    if (props.activeGame.status !== 'quickOverlayOpen' && props.activeGame.status !== 'launching') return;
     setSelectedNavKey(initialNavKey);
     setFocusArea('navbar');
     setMenuIndex(0);
