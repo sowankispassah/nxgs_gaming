@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.20",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.20/NXGS-Play-Setup.exe",
-    "sha256":  "6477d2297263d4147b82fad169f6c50680ae84c23f31bcd3ffdc7a861cc76e24",
+    "version":  "0.20.21",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.21/NXGS-Play-Setup.exe",
+    "sha256":  "5816439da1f4787fb38bd6b346fbadc47b52ab03a7545dea950d97c198c6d451",
     "required":  false,
-    "notes":  "Smoother Home switcher with verified direct game composition, faster native resume, active-game selection, and corrected Store window handoff."
+    "notes":  "Home opens promptly during game startup without waiting for window discovery. Startup focus no longer takes over the switcher, and first resume applies protected fullscreen."
 }
