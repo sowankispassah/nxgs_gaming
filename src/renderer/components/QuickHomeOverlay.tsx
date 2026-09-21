@@ -166,6 +166,19 @@ export function QuickHomeOverlay(props: {
   const initialNavActionRef = useRef<HTMLButtonElement | null>(null);
   const lastSwitcherInput = useRef({ action: '', at: 0 });
 
+  useEffect(() => {
+    if (props.activeGame.status !== 'quickOverlayOpen') return;
+    setSelectedNavKey(initialNavKey);
+    setFocusArea('navbar');
+    setMenuIndex(0);
+    setConfirmClose(false);
+    setQuickSettingsOpen(false);
+    setMessage('');
+    lastSwitcherInput.current = { action: '', at: 0 };
+    const frame = window.requestAnimationFrame(() => initialNavActionRef.current?.focus({ preventScroll: true }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [props.activeGame.status, initialNavKey]);
+
   const navItems = useMemo<NavItem[]>(
     () => [
       { key: 'home', label: 'Launcher Home', icon: <Home size={23} /> },

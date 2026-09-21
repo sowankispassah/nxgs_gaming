@@ -72,12 +72,8 @@ assert.equal(
 );
 assert.match(mainSource, /kind: 'direct'[\s\S]*kind: 'live'[\s\S]*kind: 'cover'[\s\S]*kind: 'generated'/, 'the tracked live game must precede capture, artwork, and generated fallbacks');
 assert.match(mainSource, /Prepared direct live game backdrop[\s\S]*capturedWindowHandle: gameWindow\.handle/, 'direct mode must be tied to the tracked game HWND');
-assert.match(mainSource, /shellHostedStoreFrame[\s\S]*Prewarming exact capture for shell-hosted Store frame/, 'shell-hosted Store frames must prewarm exact capture instead of relying on unsafe direct composition');
-assert.match(
-  mainSource,
-  /shellHostedStoreFrame[\s\S]*hostProcessName[\s\S]*windowProcessName/,
-  'Store capture fallback must depend on the actual Windows host process, not the ApplicationFrameWindow class alone'
-);
+assert.match(mainSource, /if \(preferDirectGameplay\)[\s\S]*kind: 'direct'/, 'verified games must try direct composition before expensive capture');
+assert.match(mainSource, /replaceUnsafeDirectBackdrop[\s\S]*prepareGameplayQuickOverlayRenderer\(true, false, true\)/, 'unverified direct composition must recover through exact capture');
 assert.match(mainSource, /if \(exactWindowSource\)[\s\S]*thumbnail usable[\s\S]*kind: 'live'/, 'an exact UWP source must be tried as a live stream even when its thumbnail is blank');
 assert.match(mainSource, /snapshotIsUsable \? exactWindowSource\.thumbnail\.toDataURL\(\) : coverImage/, 'blank thumbnails may be posters but must not reject exact live capture');
 assert.match(mainSource, /posterKind === 'snapshot'[\s\S]*kind: 'snapshot'/, 'a real game-window snapshot must be preserved ahead of cover art when live decoding fails');
@@ -243,6 +239,12 @@ assert.match(
   'overlay-only Home must not race live capture by releasing the game topmost lock'
 );
 assert.match(launcherSource, /Discarded stale or unrelated cached window/, 'cached resume handles must be identity-checked');
+assert.match(launcherSource, /const candidates = \[foregroundWindow, window, upgradedWindow\]/, 'Store splash enumeration must not replace the verified foreground game');
+assert.match(launcherSource, /this\.focusGeneration !== generation\) return null/, 'stale backdrop probes must not overwrite a newer focus operation');
+assert.match(windowManagerSource, /result\.presentation && isFullscreenGamePresentation\(result\.presentation\)/, 'fast resume must validate real native geometry');
+assert.doesNotMatch(windowManagerSource.slice(windowManagerSource.indexOf('export async function resumeGameWindowFast')), /monitorHeight: 0/, 'fast resume must not synthesize a successful native snapshot');
+assert.match(windowsControlSource, /if \(IsIconic\(game\) && !minimizeGameAfterPaint\) ShowWindowAsync/, 'Home must not restore an already visible game');
+assert.match(overlaySource, /props\.activeGame\.status !== 'quickOverlayOpen'[\s\S]*setSelectedNavKey\(initialNavKey\)/, 'every opening must select the active game');
 assert.match(appSource, /if \(event\.resetToHome\) \{[\s\S]*resetToHome\(\)/);
 assert.match(appSource, /setQuickNavOpen\(event\.openQuickNav \?\? false\)/);
 assert.match(rendererMainSource, /isQuickOverlayWindow[\s\S]*document\.documentElement\.classList\.add\('quick-overlay-document'\)/);

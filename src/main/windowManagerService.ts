@@ -648,10 +648,10 @@ $wsVisible = 0x10000000L
 $wsOverlappedWindow = 0x00CF0000L
 $borderExStyles = 0x00000001L -bor 0x00000100L -bor 0x00000200L -bor 0x00020000L -bor 0x00040000L
 [Win32]::AllowSetForegroundWindow(-1) | Out-Null
-[Win32]::OpenIcon($hwnd) | Out-Null
-[Win32]::ShowWindow($hwnd, 9) | Out-Null
-Start-Sleep -Milliseconds 80
-[Win32]::ShowWindowAsync($hwnd, 9) | Out-Null
+if ([Win32]::IsIconic($hwnd)) {
+  [Win32]::ShowWindow($hwnd, 9) | Out-Null
+  Start-Sleep -Milliseconds 80
+}
 if ($useBorderless) {
   $style = [Win32]::GetWindowLongPtr($hwnd, $gwlStyle).ToInt64()
   $exStyle = [Win32]::GetWindowLongPtr($hwnd, $gwlExStyle).ToInt64()
@@ -1269,22 +1269,8 @@ export async function resumeGameWindowFast(
 ): Promise<GameWindowActivationState | null> {
   try {
     const result = await runWindowsControl('focus-window', Math.trunc(window.handle));
-    if (result.ok && result.value === true) {
-      return {
-        foregroundHandle: window.handle,
-        hasWindowChrome: false,
-        isForeground: true,
-        isMinimized: false,
-        isVisible: true,
-        height: 0,
-        monitorHeight: 0,
-        monitorWidth: 0,
-        monitorX: 0,
-        monitorY: 0,
-        width: 0,
-        x: 0,
-        y: 0
-      };
+    if (result.ok && result.presentation && isFullscreenGamePresentation(result.presentation)) {
+      return result.presentation;
     }
   } catch {
     // Use the full presentation command when the persistent worker is unavailable.

@@ -159,6 +159,7 @@ export class GameLauncher {
 
   async getQuickOverlayBackdropWindow(): Promise<GameWindowInfo | null> {
     const game = this.activeGame;
+    const generation = this.focusGeneration;
     if (!game) return null;
     let window = this.activeWindow ?? await this.getActiveWindow(game);
     if (game.launchType === 'microsoftStore') {
@@ -172,7 +173,9 @@ export class GameLauncher {
         }),
         getForegroundWindowInfo()
       ]);
-      const candidates = [upgradedWindow, window, foregroundWindow].filter(
+      // Prefer the verified foreground surface, then the bound gameplay window.
+      // Enumeration can still publish an old Store splash frame after launch.
+      const candidates = [foregroundWindow, window, upgradedWindow].filter(
         (candidate): candidate is GameWindowInfo => Boolean(candidate)
       );
       let verifiedVisualWindow: GameWindowInfo | null = null;
@@ -211,7 +214,16 @@ export class GameLauncher {
               `to verified visual window ${verifiedVisualWindow.handle}.`
           );
         }
-        window = verifiedVisualWindow;
+        // Keep the package PID separate from ApplicationFrameHost's visual PID.
+        // Monitoring the shared host would leave closed games in the switcher.
+        window = this.activeProcessId &&
+          verifiedVisualWindow.processName.toLowerCase().replace(/\.exe$/, '') === 'applicationframehost'
+          ? {
+              ...verifiedVisualWindow,
+              processId: this.activeProcessId,
+              processName: window?.processName ?? upgradedWindow?.processName ?? verifiedVisualWindow.processName
+            }
+          : verifiedVisualWindow;
       } else {
         await logLine(
           'warn',
@@ -226,6 +238,7 @@ export class GameLauncher {
       !gameWindowMatchesGame(game, window, this.activeProcessId) ||
       !await isGameWindowVisible(window)
     ) return null;
+    if (this.activeGame?.id !== game.id || this.focusGeneration !== generation) return null;
     this.activeWindow = window;
     return { ...window };
   }
@@ -476,7 +489,7 @@ export class GameLauncher {
           this.releaseLaunchShield();
           const fastState = await resumeGameWindowFast(cachedWindow, this.launchMode(game));
           this.assertFocusOperationCurrent(focusGeneration, game);
-          if (fastState?.isForeground) {
+          if (isFullscreenGamePresentation(fastState)) {
             this.activeProcessId = cachedWindow.processId;
             this.gameInForeground = true;
             this.monitorByProcessName(game);
@@ -487,7 +500,9 @@ export class GameLauncher {
               windowDetected: true,
               windowState: 'foreground'
             });
-            this.scheduleGamePresentationReinforcement(game, cachedWindow, this.launchMode(game));
+            // This exact window was just measured by the persistent native worker.
+            // Re-running launch enforcement here restores/resizes an already valid
+            // game after the switcher disappears and causes a second visible jump.
             this.lastHandoffError = undefined;
             this.lastResumeResult = `${game.title} restored and focused immediately.`;
             void this.suppressWindowsTaskbar().catch((error) => {
@@ -1520,14 +1535,16 @@ export class GameLauncher {
       return;
     }
     const display = screen.getDisplayMatching(window.getBounds());
-    window.setBounds(display.bounds);
-    window.setFullScreen(true);
+    if (!window.isFullScreen()) {
+      window.setBounds(display.bounds);
+      window.setFullScreen(true);
+    }
     window.setMenuBarVisibility(false);
     if (!window.isVisible()) {
       window.showInactive();
     }
-    window.setAlwaysOnTop(false);
-    window.blur();
+    if (window.isAlwaysOnTop()) window.setAlwaysOnTop(false);
+    if (window.isFocused()) window.blur();
   }
 
   private async handOffToGameWindow(
@@ -1537,7 +1554,7 @@ export class GameLauncher {
     reason: 'launch' | 'resume',
     focusGeneration: number
   ): Promise<GameWindowInfo> {
-    const targetWindow = window;
+    let targetWindow = window;
     try {
       this.assertFocusOperationCurrent(focusGeneration, game);
       this.showLaunchShield();
@@ -1551,6 +1568,17 @@ export class GameLauncher {
       let lastState: GameWindowActivationState | null = null;
       for (let attempt = 1; attempt <= 8; attempt += 1) {
         this.assertFocusOperationCurrent(focusGeneration, game);
+        if (attempt > 1) {
+          // Store discovery may keep returning its splash frame. Reconcile the
+          // visible foreground candidate too, using the same exact-game identity
+          // checks as overlay capture, before retrying the native handoff.
+          const refreshed = await this.getQuickOverlayBackdropWindow();
+          this.assertFocusOperationCurrent(focusGeneration, game);
+          if (refreshed && gameWindowMatchesGame(game, refreshed, this.activeProcessId)) {
+            targetWindow = refreshed;
+            this.activeWindow = refreshed;
+          }
+        }
         lastState = await keepGameWindowOnTop(targetWindow, launchMode);
         this.assertFocusOperationCurrent(focusGeneration, game);
         // The same native operation applies borderless fullscreen and focuses the

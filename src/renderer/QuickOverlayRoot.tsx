@@ -25,6 +25,8 @@ export function QuickOverlayRoot(): JSX.Element {
   const [backdropReadyRequestId, setBackdropReadyRequestId] = useState(0);
   const [liveBackdropStream, setLiveBackdropStream] = useState<MediaStream | null>(null);
   const readyRequestRef = useRef(0);
+  const activeGameRef = useRef(activeGame);
+  activeGameRef.current = activeGame;
 
   useEffect(() => {
     let mounted = true;
@@ -38,6 +40,18 @@ export function QuickOverlayRoot(): JSX.Element {
       setBackdropReadyRequestId(0);
     });
     const unsubscribeShellHome = window.nxgs.onShellHome((event) => {
+      // Main emits this only after native staging finishes. Animate controls,
+      // never the captured game, and keep them visible even on a delayed frame.
+      if (activeGameRef.current.status === 'quickOverlayOpen' &&
+          !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.querySelectorAll<HTMLElement>('.quick-navbar, .quick-game-menu').forEach((element) => {
+          element.getAnimations().forEach((animation) => animation.cancel());
+          element.animate([
+            { opacity: 0.85, translate: '0 6px' },
+            { opacity: 1, translate: '0 0' }
+          ], { duration: 120, easing: 'ease-out' });
+        });
+      }
       if (event.emergencyClose) {
         setEmergencyCloseRequestId((value) => value + 1);
       }

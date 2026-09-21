@@ -1,7 +1,7 @@
 import type { GameLaunchMode } from '../shared/types';
 
 export const CONSOLE_GAME_LAUNCH_MODE: GameLaunchMode = 'fullscreen';
-export const FULLSCREEN_EDGE_TOLERANCE_PX = 4;
+export const FULLSCREEN_EDGE_TOLERANCE_PX = 0;
 
 export interface GamePresentationSnapshot {
   foregroundHandle: number;
@@ -17,11 +17,12 @@ export interface GamePresentationSnapshot {
   width: number;
   x: number;
   y: number;
+  taskbarVisible?: boolean;
 }
 
 export function gamePresentationFailures(
   state: GamePresentationSnapshot | null,
-  taskbarVisible = false
+  taskbarVisible = state?.taskbarVisible ?? false
 ): string[] {
   if (!state) {
     return ['no native window state was returned'];
@@ -58,14 +59,14 @@ export function gamePresentationFailures(
 
 export function isFullscreenGamePresentation(
   state: GamePresentationSnapshot | null,
-  taskbarVisible = false
+  taskbarVisible = state?.taskbarVisible ?? false
 ): boolean {
   return gamePresentationFailures(state, taskbarVisible).length === 0;
 }
 
 export function describeGamePresentation(
   state: GamePresentationSnapshot | null,
-  taskbarVisible = false
+  taskbarVisible = state?.taskbarVisible ?? false
 ): string {
   if (!state) {
     return `invalid: ${gamePresentationFailures(state, taskbarVisible).join('; ')}`;

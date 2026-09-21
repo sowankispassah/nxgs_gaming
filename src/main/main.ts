@@ -265,13 +265,10 @@ async function createSafeQuickOverlayBackdrop(
     try {
       const gameWindow = await launcher.getQuickOverlayBackdropWindow();
       if (gameWindow && gameWindowMatchesGame(game, gameWindow, launcher.diagnosticState.processId)) {
-        const hostProcessName = gameWindow.hostProcessName?.toLowerCase() ?? '';
-        const windowProcessName = gameWindow.processName.toLowerCase();
-        const shellHostedStoreFrame = game.launchType === 'microsoftStore' && (
-          ['explorer', 'explorer.exe', 'applicationframehost', 'applicationframehost.exe'].includes(hostProcessName) ||
-          ['explorer', 'explorer.exe', 'applicationframehost', 'applicationframehost.exe'].includes(windowProcessName)
-        );
-        if (preferDirectGameplay && !shellHostedStoreFrame) {
+        // Native staging verifies the exact game/overlay z-order before accepting
+        // this path, including Store games. Capture is a recovery path, not a
+        // prerequisite that delays every first Home press by several seconds.
+        if (preferDirectGameplay) {
           await logLine(
             'info',
             `Prepared direct live game backdrop for ${game.title} from tracked window ${gameWindow.handle}.`
@@ -281,12 +278,6 @@ async function createSafeQuickOverlayBackdrop(
             gameId: game.id,
             capturedWindowHandle: gameWindow.handle
           };
-        }
-        if (preferDirectGameplay && shellHostedStoreFrame) {
-          await logLine(
-            'info',
-            `Prewarming exact capture for shell-hosted Store frame ${gameWindow.handle} (${game.title}).`
-          );
         }
         const display = screen.getDisplayMatching(getLiveMainWindow()?.getBounds() ?? screen.getPrimaryDisplay().bounds);
         const sources = await desktopCapturer.getSources({
@@ -1190,9 +1181,10 @@ const launcher = new GameLauncher(
       controllerIdleService?.setGameplayActive(launcher.hasTrackedGames);
       broadcastActiveGame();
       const status = launcher.activeState.status;
-      if (status === 'launching' && launcher.activeState.windowDetected) {
-        void prepareGameplayQuickOverlayRenderer(true);
-      } else if (status === 'running') {
+      // Prepare only after the launch handoff has committed its final HWND.
+      // Store games can replace their splash frame during launch; capturing it
+      // concurrently used to overwrite the target while handoff still focused it.
+      if (status === 'running') {
         void prepareGameplayQuickOverlayRenderer(true);
       } else if (['idle', 'closed', 'error'].includes(status)) {
         gameplayQuickOverlayDesiredOpen = false;

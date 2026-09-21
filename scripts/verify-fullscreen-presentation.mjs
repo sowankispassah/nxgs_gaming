@@ -38,6 +38,9 @@ assert.equal(
   'a title bar or window border must be rejected'
 );
 assert.equal(isFullscreenGamePresentation(fullscreen, true), false, 'a visible taskbar must be rejected');
+assert.equal(isFullscreenGamePresentation({ ...fullscreen, taskbarVisible: true }), false, 'native taskbar state must be honored');
+assert.equal(isFullscreenGamePresentation({ ...fullscreen, x: 1, width: 1919 }), false, 'even a one-pixel desktop gap must be rejected');
+assert.equal(isFullscreenGamePresentation({ ...fullscreen, monitorWidth: 0, monitorHeight: 0 }), false, 'a synthetic focus-only result is not fullscreen proof');
 assert.equal(
   isFullscreenGamePresentation({ ...fullscreen, isForeground: false }),
   false,

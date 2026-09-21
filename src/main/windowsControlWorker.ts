@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { GamePresentationSnapshot } from './gamePresentation';
 
 export type WindowsControlCommand =
   | 'volume'
@@ -14,6 +15,7 @@ export type WindowsControlCommand =
 export interface WindowsControlResult {
   ok: boolean;
   value?: number | boolean;
+  presentation?: GamePresentationSnapshot;
   message: string;
 }
 
@@ -134,6 +136,45 @@ public static class NxgsLiveAudio {
 }
 
 public static class NxgsWarningInput {
+    [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct MonitorInfo { public int Size; public Rect Bounds, Work; public uint Flags; }
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+    [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr64(IntPtr window, int index);
+    [DllImport("user32.dll", EntryPoint="GetWindowLongW")] private static extern int GetWindowLong32(IntPtr window, int index);
+    private static long WindowStyle(IntPtr window, int index) {
+        return IntPtr.Size == 8 ? GetWindowLongPtr64(window, index).ToInt64() : GetWindowLong32(window, index);
+    }
+    public static object Presentation(long handle) {
+        var window = new IntPtr(handle);
+        Rect rect;
+        var monitor = new MonitorInfo();
+        monitor.Size = Marshal.SizeOf(typeof(MonitorInfo));
+        if (!IsWindow(window) || !GetWindowRect(window, out rect) ||
+            !GetMonitorInfo(MonitorFromWindow(window, 2), ref monitor)) return null;
+        var foreground = GetForegroundWindow();
+        return new {
+            foregroundHandle = foreground.ToInt64(), isForeground = foreground == window,
+            isVisible = IsWindowVisible(window), isMinimized = IsIconic(window),
+            hasWindowChrome = (WindowStyle(window, -16) & 0x00CF0000L) != 0 ||
+                (WindowStyle(window, -20) & 0x00060301L) != 0,
+            x = rect.Left, y = rect.Top, width = rect.Right - rect.Left, height = rect.Bottom - rect.Top,
+            monitorX = monitor.Bounds.Left, monitorY = monitor.Bounds.Top,
+            monitorWidth = monitor.Bounds.Right - monitor.Bounds.Left,
+            monitorHeight = monitor.Bounds.Bottom - monitor.Bounds.Top,
+            taskbarVisible = TaskbarVisible()
+        };
+    }
+    private static bool TaskbarVisible() {
+        foreach (var className in new[] { "Shell_TrayWnd", "Shell_SecondaryTrayWnd" }) {
+            var after = IntPtr.Zero;
+            while ((after = FindWindowEx(IntPtr.Zero, after, className, null)) != IntPtr.Zero) {
+                if (IsWindowVisible(after)) return true;
+            }
+        }
+        return false;
+    }
     [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(int processId);
     [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint attach, uint attachTo, bool attachState);
     [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
@@ -170,11 +211,30 @@ public static class NxgsWarningInput {
         var window = new IntPtr(handle);
         if (window == IntPtr.Zero || !IsWindow(window)) return false;
         EnableWindow(window, true);
-        AllowSetForegroundWindow(-1);
-        ShowWindowAsync(window, 9);
-        SetWindowPos(window, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | ShowWindowFlag);
-        SetForegroundWindow(window);
-        return GetForegroundWindow() == window;
+        SetTaskbarVisible(false);
+        var currentThread = GetCurrentThreadId();
+        uint targetProcess, foregroundProcess;
+        var targetThread = GetWindowThreadProcessId(window, out targetProcess);
+        var foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), out foregroundProcess);
+        var attachedTarget = false;
+        var attachedForeground = false;
+        try {
+            if (currentThread != targetThread) attachedTarget = AttachThreadInput(currentThread, targetThread, true);
+            if (foregroundThread != 0 && foregroundThread != targetThread && foregroundThread != currentThread)
+                attachedForeground = AttachThreadInput(currentThread, foregroundThread, true);
+            AllowSetForegroundWindow(-1);
+            // SW_RESTORE changes maximized/Store geometry even when already visible.
+            if (IsIconic(window)) ShowWindow(window, 9);
+            SetWindowPos(window, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | ShowWindowFlag);
+            BringWindowToTop(window);
+            SetActiveWindow(window);
+            SetForegroundWindow(window);
+            SetFocus(window);
+            return GetForegroundWindow() == window;
+        } finally {
+            if (attachedForeground) AttachThreadInput(currentThread, foregroundThread, false);
+            if (attachedTarget) AttachThreadInput(currentThread, targetThread, false);
+        }
     }
 
     public static string StageOverlay(long overlayHandle, long gameHandle, bool minimizeGameAfterPaint) {
@@ -215,7 +275,7 @@ public static class NxgsWarningInput {
             SystemParametersInfo(0x2001, 0, ref unlockedTimeout, 0);
             if (game != IntPtr.Zero && IsWindow(game)) {
                 EnableWindow(game, true);
-                ShowWindowAsync(game, 9);
+                if (IsIconic(game) && !minimizeGameAfterPaint) ShowWindowAsync(game, 9);
                 if (!minimizeGameAfterPaint) {
                     SetWindowPos(game, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate | ShowWindowFlag);
                 }
@@ -402,7 +462,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         } elseif ($request.command -eq 'focus-window') {
             $handle = [long]$request.value
             $focused = [NxgsWarningInput]::FocusWindow($handle)
-            $response = @{ id = $request.id; ok = $focused; value = $focused; message = $(if ($focused) { 'Game window focused.' } else { 'Game window focus was not confirmed.' }) }
+            $response = @{ id = $request.id; ok = $focused; value = $focused; presentation = [NxgsWarningInput]::Presentation($handle); message = $(if ($focused) { 'Game window focused.' } else { 'Game window focus was not confirmed.' }) }
         } elseif ($request.command -eq 'stage-overlay') {
             $overlayHandle = [long]$request.value.overlayHandle
             $gameHandle = [long]$request.value.gameHandle
@@ -428,7 +488,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
     } catch {
         $response = @{ id = $(if ($null -ne $request) { $request.id } else { 0 }); ok = $false; message = $_.Exception.Message }
     }
-    [Console]::Out.WriteLine(($response | ConvertTo-Json -Compress))
+    [Console]::Out.WriteLine(($response | ConvertTo-Json -Depth 5 -Compress))
     [Console]::Out.Flush()
 }
 `;
@@ -482,7 +542,7 @@ function ensureWorker(): ChildProcessWithoutNullStreams {
           if (request) {
             pending.delete(result.id);
             clearTimeout(request.timeout);
-            request.resolve({ ok: result.ok, value: result.value, message: result.message });
+            request.resolve({ ok: result.ok, value: result.value, presentation: result.presentation, message: result.message });
           }
         } catch {
           // Ignore non-JSON PowerShell diagnostics; the request timeout reports a useful failure.
