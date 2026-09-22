@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.21",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.21/NXGS-Play-Setup.exe",
-    "sha256":  "5816439da1f4787fb38bd6b346fbadc47b52ab03a7545dea950d97c198c6d451",
+    "version":  "0.20.23",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.23/NXGS-Play-Setup.exe",
+    "sha256":  "d6e9aa5c3a73ea4673854749a4c8c1c2fe72a2b6f947b33f5555d855553f5eab",
     "required":  false,
-    "notes":  "Home opens promptly during game startup without waiting for window discovery. Startup focus no longer takes over the switcher, and first resume applies protected fullscreen."
+    "notes":  "PIN-gated five-press admin shortcuts: C closes NXGS, E exits fullscreen, and M minimizes. Running games are hidden and retained when leaving fullscreen."
 }
