@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.23",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.23/NXGS-Play-Setup.exe",
-    "sha256":  "d6e9aa5c3a73ea4673854749a4c8c1c2fe72a2b6f947b33f5555d855553f5eab",
+    "version":  "0.20.24",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.24/NXGS-Play-Setup.exe",
+    "sha256":  "505247e57e7851948c8191a2d78c3b84be38912ba999ea47d0433dd4b286a871",
     "required":  false,
-    "notes":  "PIN-gated five-press admin shortcuts: C closes NXGS, E exits fullscreen, and M minimizes. Running games are hidden and retained when leaving fullscreen."
+    "notes":  "Close NXGS now terminates remaining tracked game processes without requiring a controllable game window. Loading Home automatically upgrades to the real game view after Store window discovery."
 }

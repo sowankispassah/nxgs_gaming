@@ -31,6 +31,7 @@ Commands:
 - `npm run test:home-overlay`
 - `npm run test:fullscreen-presentation`
 - `npm run test:taskbar-lifecycle`
+- `node scripts/verify-native-shutdown.mjs` (Windows integration: real windowless root and descendant processes terminated by the production shutdown method)
 - `npm run build`
 - `npm run build:win`
 - `git diff --check`
@@ -42,4 +43,11 @@ Commands:
 - Observed the real Angry Birds scene behind the Home menu. Logs confirm loading Home appeared in 50 ms and subsequently upgraded to live gameplay after exact-window capture and native stacking verification.
 - On this machine the live upgrade took about 19 seconds while Windows exposed the Store frame and capture initialized; the menu remained available during that discovery.
 - The installed 0.20.23 Hill Climb test confirmed that its established game view can be captured, and identified the missing loading-to-live upgrade addressed here.
-- The final PIN-authenticated Angry Birds app-shutdown check requires manual PIN entry. It is not marked passed until process exit is observed.
+- Both Angry Birds and NXGS were absent after the user's close sequence. Logs show Angry Birds closed at 09:07:34 UTC and PIN-authorized NXGS shutdown began at 09:07:45 UTC. This verifies their individual exits, not simultaneous shutdown with a game still running; that specific UI sequence remains unverified.
+
+## Published update
+
+- Public latest release: https://github.com/sowankispassah/nxgs_gaming/releases/tag/v0.20.24
+- Live latest manifest reports 0.20.24 and compares newer than 0.20.23.
+- All five required assets are present; the versioned installer returns HTTP 200.
+- Live manifest and uploaded installer SHA-256 match: `505247e57e7851948c8191a2d78c3b84be38912ba999ea47d0433dd4b286a871`.
