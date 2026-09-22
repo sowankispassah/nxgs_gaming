@@ -1,7 +1,8 @@
 import { BrowserWindow, globalShortcut } from 'electron';
-import type { AppDiagnostics, KioskMode, ShellHomeReason } from '../shared/types';
+import type { AppDiagnostics, KioskAdminAction, KioskMode, ShellHomeReason } from '../shared/types';
 import { logLine } from './logger';
 import { NativeKioskHook } from './nativeKioskHook';
+import { SecretAdminSequence } from './secretAdminSequence';
 
 type ShortcutLabel = keyof Pick<
   AppDiagnostics['shortcuts'],
@@ -12,6 +13,7 @@ type KioskInputEvents = {
   onHome: (reason: ShellHomeReason) => void;
   onRestrictedInput: (input: string) => void;
   onEmergencyClose: () => void;
+  onSecretAdminAction: (action: Extract<KioskAdminAction, 'closeApp' | 'exitFullscreen' | 'minimize'>) => void;
 };
 
 const BLOCKED_SYSTEM_SHORTCUTS = [
@@ -48,7 +50,8 @@ export class KioskInputService {
     restrictedRegisteredCount: 0,
     failures: []
   };
-  private readonly nativeHook = new NativeKioskHook((input) => this.blockRestrictedInput('Native system input guard', input));
+  private readonly nativeHook = new NativeKioskHook((input) => this.handleNativeHookInput(input));
+  private readonly secretAdminSequence = new SecretAdminSequence();
 
   constructor(private readonly events: KioskInputEvents) {}
 
@@ -144,6 +147,7 @@ export class KioskInputService {
       return;
     }
     this.mode = mode;
+    this.secretAdminSequence.reset();
     if (mode === 'admin') {
       this.adminPinActive = false;
     } else {
@@ -159,6 +163,7 @@ export class KioskInputService {
       return;
     }
     this.adminPinActive = active;
+    if (active) this.secretAdminSequence.reset();
   }
 
   setAdminControlsUnlocked(unlocked: boolean): void {
@@ -266,6 +271,27 @@ export class KioskInputService {
     this.lastHomeTrigger = reason;
     void logLine('info', `Kiosk Home triggered by ${reason}.`);
     this.events.onHome(reason);
+  }
+
+  private handleNativeHookInput(input: string): void {
+    if (input === 'SECRET_RESET') {
+      this.secretAdminSequence.reset();
+      return;
+    }
+    if (input.startsWith('SECRET_KEY|')) {
+      if (this.mode !== 'customer' || this.adminPinActive || this.adminControlsUnlocked) {
+        this.secretAdminSequence.reset();
+        return;
+      }
+      const action = this.secretAdminSequence.observe(input.slice('SECRET_KEY|'.length));
+      if (action) {
+        void logLine('info', `Secret admin sequence requested ${action}; waiting for PIN verification.`);
+        this.events.onSecretAdminAction(action);
+      }
+      return;
+    }
+    this.secretAdminSequence.reset();
+    this.blockRestrictedInput('Native system input guard', input);
   }
 
   private blockRestrictedInput(source: string, key: string): void {

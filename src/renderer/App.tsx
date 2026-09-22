@@ -197,6 +197,7 @@ export function App(): JSX.Element {
     setAdminUnlockRequest({
       source: request?.source ?? 'ui',
       key: request?.key,
+      action: request?.action,
       message: request?.message ?? 'Enter Admin PIN to unlock admin controls.',
       requestedAt: request?.requestedAt ?? new Date().toISOString()
     });
@@ -254,6 +255,37 @@ export function App(): JSX.Element {
       setAdminModeTransitionPending(false);
     }
   }, [resetToHome]);
+
+  const executeAdminAction = useCallback(async (action: KioskAdminAction): Promise<void> => {
+    if (action === 'returnLocked') {
+      await returnWindowedAdminToKiosk();
+      return;
+    }
+    if (action === 'exitFullscreen') {
+      setConfirmGame(null);
+      setQuickNavOpen(false);
+      resetToHome();
+      setAdminModeError('');
+    }
+    const result = await window.nxgs.performKioskAdminAction(action);
+    if (!result.ok) {
+      if (action === 'exitFullscreen') {
+        setAdminModeError(result.error ?? 'Could not enter windowed admin mode.');
+      }
+      throw new Error(result.error ?? 'Admin action failed.');
+    }
+    setWindowedAdminMode(true);
+    setAdminControlsActive(true);
+    if (action === 'openManagement') {
+      navigateToView('admin');
+    } else if (action === 'exitFullscreen') {
+      resetToHome();
+      setQuickNavOpen(false);
+      const data = await window.nxgs.getInitialData();
+      setActiveGame(data.activeGame);
+    }
+    if (action !== 'closeApp') setAdminOptionsOpen(false);
+  }, [navigateToView, resetToHome, returnWindowedAdminToKiosk]);
 
   const openConsoleSettings = useCallback(() => {
     setConfirmGame(null);
@@ -335,6 +367,11 @@ export function App(): JSX.Element {
         setEmergencyCloseRequestId((value) => value + 1);
       }
     });
+    const unsubscribeAdminUnlock = window.nxgs.onAdminUnlockRequested((request) => {
+      setConfirmGame(null);
+      setQuickNavOpen(false);
+      openAdminPin(request);
+    });
     const unsubscribeControllerIdle = window.nxgs.onControllerIdleNotification((notification) => {
       setControllerIdleNotification((current) => notification.action === 'clear'
         ? current?.controllerId === notification.controllerId ? null : current
@@ -346,9 +383,10 @@ export function App(): JSX.Element {
       unsubscribeExtendRequested();
       unsubscribeActiveGame();
       unsubscribeShellHome();
+      unsubscribeAdminUnlock();
       unsubscribeControllerIdle();
     };
-  }, [resetToHome]);
+  }, [openAdminPin, resetToHome]);
 
   useEffect(() => {
     if (!extendPaymentOpen || !extensionRequestId) return;
@@ -789,8 +827,12 @@ export function App(): JSX.Element {
         <PinDialog
           title="Admin PIN"
           message={adminUnlockRequest?.message}
-          actionLabel="Unlock"
-          pendingLabel="Checking..."
+          actionLabel={adminUnlockRequest?.action === 'closeApp' ? 'Close NXGS'
+            : adminUnlockRequest?.action === 'exitFullscreen' ? 'Exit Full Screen'
+              : adminUnlockRequest?.action === 'minimize' ? 'Minimize NXGS' : 'Unlock'}
+          pendingLabel={adminUnlockRequest?.action === 'closeApp' ? 'Closing...'
+            : adminUnlockRequest?.action === 'exitFullscreen' ? 'Exiting...'
+              : adminUnlockRequest?.action === 'minimize' ? 'Minimizing...' : 'Checking...'}
           onClose={closeAdminPin}
           onSubmit={async (pin) => {
             const result = await window.nxgs.unlockKioskAdminActions(pin);
@@ -798,6 +840,12 @@ export function App(): JSX.Element {
               setPinOpen(false);
               setAdminUnlockRequest(null);
               await window.nxgs.performKioskAdminAction('returnLocked');
+              return true;
+            }
+            if (adminUnlockRequest?.action) {
+              await executeAdminAction(adminUnlockRequest.action);
+              setPinOpen(false);
+              setAdminUnlockRequest(null);
               return true;
             }
             setPinOpen(false);
@@ -811,37 +859,7 @@ export function App(): JSX.Element {
 
       {adminOptionsOpen && (
         <AdminOptionsDialog
-          onAction={async (action) => {
-            if (action === 'returnLocked') {
-              await returnWindowedAdminToKiosk();
-              return;
-            }
-            if (action === 'exitFullscreen') {
-              setConfirmGame(null);
-              setQuickNavOpen(false);
-              resetToHome();
-              setAdminModeError('');
-            }
-            const result = await window.nxgs.performKioskAdminAction(action);
-            if (!result.ok) {
-              if (action === 'exitFullscreen') {
-                setAdminModeError(result.error ?? 'Could not enter windowed admin mode.');
-              }
-              throw new Error(result.error ?? 'Admin action failed.');
-            }
-            setWindowedAdminMode(true);
-            if (action === 'openManagement') {
-              navigateToView('admin');
-            } else if (action === 'exitFullscreen') {
-              resetToHome();
-              setQuickNavOpen(false);
-              const data = await window.nxgs.getInitialData();
-              setActiveGame(data.activeGame);
-            }
-            if (action !== 'closeApp') {
-              setAdminOptionsOpen(false);
-            }
-          }}
+          onAction={executeAdminAction}
         />
       )}
 
@@ -2546,6 +2564,8 @@ function PinDialog(props: {
     try {
       const ok = await props.onSubmit(pin);
       if (!ok) setError('Invalid PIN.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
     } finally {
       setPending(false);
     }

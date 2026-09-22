@@ -1135,6 +1135,34 @@ function requestEmergencyCloseOverlay(): void {
   openHomeFromGame('emergency-close');
 }
 
+function requestSecretAdminAction(
+  action: Extract<KioskAdminAction, 'closeApp' | 'exitFullscreen' | 'minimize'>
+): void {
+  if (kioskInput.currentMode !== 'customer' || kioskInput.isAdminPinActive) return;
+  const window = getLiveMainWindow();
+  if (!window || window.webContents.isDestroyed()) return;
+
+  stopGameplayOverlayForManagement();
+  kioskAdminActionGranted = false;
+  kioskInput.setAdminPinActive(true);
+  kioskInput.setAdminControlsUnlocked(false);
+  launcher.focusLauncher();
+  applyKioskSettings(store.getSettings());
+  const labels: Record<typeof action, string> = {
+    closeApp: 'close NXGS',
+    exitFullscreen: 'exit fullscreen',
+    minimize: 'minimize NXGS'
+  };
+  window.webContents.send('kiosk:adminUnlockRequested', {
+    source: 'secret-sequence',
+    key: action === 'closeApp' ? 'C' : action === 'exitFullscreen' ? 'E' : 'M',
+    action,
+    message: `Enter Admin PIN to ${labels[action]}.`,
+    requestedAt: new Date().toISOString()
+  });
+  void logLine('info', `Secret ${action} sequence opened PIN verification.`);
+}
+
 function handleRestrictedCustomerInput(input: string): void {
   void logLine('info', `Keeping NXGS focused after blocked input: ${input}.`);
   applyKioskSettings(store.getSettings());
@@ -1205,7 +1233,8 @@ const launcher = new GameLauncher(
 const kioskInput = new KioskInputService({
   onHome: handleShellHomeRequest,
   onRestrictedInput: handleRestrictedCustomerInput,
-  onEmergencyClose: requestEmergencyCloseOverlay
+  onEmergencyClose: requestEmergencyCloseOverlay,
+  onSecretAdminAction: requestSecretAdminAction
 });
 
 async function endPaidSession(): Promise<GameControlResult> {

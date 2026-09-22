@@ -608,6 +608,7 @@ export interface QuickOverlayBackdrop {
 export interface AdminUnlockRequest {
   source: string;
   key?: string;
+  action?: Extract<KioskAdminAction, 'closeApp' | 'exitFullscreen' | 'minimize'>;
   message: string;
   requestedAt: string;
 }

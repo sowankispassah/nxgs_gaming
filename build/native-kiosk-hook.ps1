@@ -10,7 +10,9 @@ using System.Threading;
 public static class NxgsLockdownKeyboardHook {
   private const int WH_KEYBOARD_LL = 13;
   private const int WM_KEYDOWN = 0x0100;
+  private const int WM_KEYUP = 0x0101;
   private const int WM_SYSKEYDOWN = 0x0104;
+  private const int WM_SYSKEYUP = 0x0105;
   private const int PM_REMOVE = 0x0001;
   private const int VK_TAB = 0x09;
   private const int VK_ESCAPE = 0x1B;
@@ -51,6 +53,8 @@ public static class NxgsLockdownKeyboardHook {
   private static IntPtr notificationLocationHook = IntPtr.Zero;
   private static readonly System.Collections.Generic.HashSet<IntPtr> reportedNotifications =
     new System.Collections.Generic.HashSet<IntPtr>();
+  private static readonly System.Collections.Generic.HashSet<int> pressedKeys =
+    new System.Collections.Generic.HashSet<int>();
 
   [StructLayout(LayoutKind.Sequential)] private struct KBDLLHOOKSTRUCT { public uint vkCode, scanCode, flags, time; public UIntPtr dwExtraInfo; }
   [StructLayout(LayoutKind.Sequential)] private struct POINT { public int x, y; }
@@ -216,9 +220,16 @@ public static class NxgsLockdownKeyboardHook {
   }
 
   private static IntPtr HookCallback(int code, IntPtr wParam, IntPtr lParam) {
-    if (code >= 0 && (wParam.ToInt32() == WM_KEYDOWN || wParam.ToInt32() == WM_SYSKEYDOWN)) {
+    if (code >= 0) {
       KBDLLHOOKSTRUCT data = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
       int key = (int)data.vkCode;
+      int message = wParam.ToInt32();
+      if (message == WM_KEYUP || message == WM_SYSKEYUP) {
+        pressedKeys.Remove(key);
+        return CallNextHookEx(hook, code, wParam, lParam);
+      }
+      if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN) return CallNextHookEx(hook, code, wParam, lParam);
+      bool firstKeyDown = pressedKeys.Add(key);
       bool control = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
       bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
       string blocked = null;
@@ -232,6 +243,14 @@ public static class NxgsLockdownKeyboardHook {
         Console.WriteLine(blocked);
         Console.Out.Flush();
         return new IntPtr(1);
+      }
+      if (firstKeyDown && !control && !alt) {
+        if (key == 0x43 || key == 0x45 || key == 0x4D) {
+          Console.WriteLine("SECRET_KEY|" + ((char)key).ToString());
+        } else {
+          Console.WriteLine("SECRET_RESET");
+        }
+        Console.Out.Flush();
       }
     }
     return CallNextHookEx(hook, code, wParam, lParam);
