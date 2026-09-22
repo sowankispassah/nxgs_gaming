@@ -975,42 +975,109 @@ export class GameLauncher {
     this.parkedGameIds.clear();
   }
 
-  /** A normal close request must finish before NXGS gives up ownership. */
+  /**
+   * Closing NXGS is an unconditional process shutdown, not a desktop-containment
+   * transition. A game may still be loading, may have discarded its HWND, or may
+   * ignore WM_CLOSE; none of those conditions may keep the launcher open.
+   */
   async closeGamesForExit(): Promise<GameControlResult> {
-    const parked = await this.parkAllGames();
-    if (!parked.ok) return parked;
+    if (this.managingGames) {
+      await this.parkingInFlight?.catch(() => undefined);
+    }
     this.managingGames = true;
     try {
+      const pendingLaunch = this.launchCompletion;
+      const pendingResume = this.resumeCompletion;
+      this.cancelFocusOperations('NXGS shutdown requested');
+      this.stopParking();
+
+      // A Store activation can take several seconds to publish its PID. Cancel
+      // its focus work, then let identity discovery finish so the newly started
+      // process cannot appear after NXGS has already exited.
+      await pendingLaunch?.catch(() => undefined);
+      await pendingResume?.catch(() => undefined);
+      this.storeCurrentSession();
       const sessions = [...this.sessions.values()];
+
+      // Give cooperative games one short opportunity to close cleanly. Missing
+      // or stale windows are intentionally skipped; the PID-tree pass below is
+      // authoritative.
       for (const session of sessions) {
-        const pid = session.processId ?? session.child?.pid;
-        if (pid && !await isProcessRunningByPid(pid, true)) continue;
-        if (session.window) await closeGameWindow(session.window);
-      }
-      const deadline = Date.now() + 8000;
-      let remaining = sessions;
-      while (remaining.length) {
-        const checks = await Promise.all(remaining.map(async (session) => {
-          const pid = session.processId ?? session.child?.pid;
-          // Unknown identities cannot be silently retired on shutdown.
-          return !pid || await isProcessRunningByPid(pid, true);
-        }));
-        remaining.forEach((session, index) => {
-          if (!checks[index]) this.finishActiveGameSession(session.game, `${session.game.title} closed.`, false);
-        });
-        remaining = remaining.filter((_session, index) => checks[index]);
-        if (!remaining.length) break;
-        if (Date.now() >= deadline) {
-          return { ok: false, error: `NXGS is staying open because ${remaining.map(s => s.game.title).join(', ')} did not close. Resume the game to save or dismiss its exit prompt, then try again.` };
+        if (
+          session.window &&
+          gameWindowMatchesGame(session.game, session.window, session.processId)
+        ) {
+          try {
+            await closeGameWindow(session.window);
+          } catch (error) {
+            await logLine('warn', `Graceful shutdown failed for ${session.game.title}: ${String(error)}`);
+          }
         }
-        await new Promise(resolve => setTimeout(resolve, 250));
       }
+
+      if (sessions.length) await new Promise(resolve => setTimeout(resolve, 650));
+
+      // taskkill /T /F closes the tracked process and every child process. Run
+      // two passes because launchers can briefly replace their bootstrap process
+      // while NXGS itself is shutting down.
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        for (const session of sessions) {
+          await this.forceTerminateTrackedSession(session, attempt);
+        }
+        if (attempt === 1 && sessions.length) {
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
+      }
+
       await this.clearActive();
       return { ok: true };
     } catch (error) {
-      return { ok: false, error: `Could not close running games: ${String(error)}` };
+      // A shutdown request must never strand the user in a PIN dialog. Individual
+      // termination failures are logged by forceTerminateTrackedSession; clear
+      // launcher ownership and let the OS finish tearing down the app.
+      await logLine('error', `Unexpected game shutdown error: ${String(error)}`);
+      await this.clearActive().catch(() => undefined);
+      return { ok: true };
     } finally {
       this.managingGames = false;
+    }
+  }
+
+  private async forceTerminateTrackedSession(session: StoredGameSession, attempt: number): Promise<void> {
+    const processIds = new Set(
+      [session.child?.pid, session.processId, session.window?.processId]
+        .filter((pid): pid is number => Boolean(pid && pid > 0 && pid !== process.pid))
+    );
+
+    for (const pid of processIds) {
+      let running = true;
+      try {
+        running = await isProcessRunningByPid(pid, true);
+      } catch {
+        // If process inspection is unavailable, taskkill is still the safest
+        // deterministic way to finish the exact process tree NXGS recorded.
+      }
+      if (!running) continue;
+      try {
+        await closeProcessByPid(pid, true);
+        await logLine('info', `Forced ${session.game.title} process tree ${pid} closed (pass ${attempt}).`);
+      } catch (error) {
+        // taskkill also returns an error when the process exits between the
+        // liveness check and termination. Retry below and keep shutdown moving.
+        await logLine('warn', `Could not force PID ${pid} for ${session.game.title} on pass ${attempt}: ${String(error)}`);
+      }
+    }
+
+    const configuredProcessName = session.game.processName?.trim();
+    if (configuredProcessName) {
+      try {
+        if (await isProcessRunning(configuredProcessName)) {
+          await closeProcessByName(configuredProcessName, true);
+          await logLine('info', `Forced remaining ${session.game.title} processes closed by executable name (pass ${attempt}).`);
+        }
+      } catch (error) {
+        await logLine('warn', `Could not force ${session.game.title} by executable name on pass ${attempt}: ${String(error)}`);
+      }
     }
   }
 

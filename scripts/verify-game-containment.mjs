@@ -46,16 +46,26 @@ function harness(options = {}) {
   const hidden = new Set();
   const running = new Set([101, 102]);
   const closed = [];
+  const forced = [];
   let clock = 0;
   let sweep;
   const mocks = {
     electron: {}, './logger': { logLine: async () => {} }, './gameLifecycle': {},
     './windowsProcess': {
+      isProcessRunning: async () => false,
       isProcessRunningByPid: async (pid, strict) => {
-        assert.equal(strict, true, 'shutdown requires a verified process result');
+        if (options.probeFails) {
+          assert.equal(strict, true, 'shutdown must treat an unavailable probe as still running');
+        }
         if (options.probeFails) throw new Error('tasklist failed');
         return running.has(pid);
-      }
+      },
+      closeProcessByPid: async (pid, force) => {
+        assert.equal(force, true, 'shutdown must force the complete PID tree');
+        forced.push(pid);
+        running.delete(pid);
+      },
+      closeProcessByName: async () => {}
     },
     './gameWindowIdentity': { gameWindowMatchesGame: (_game, win, pid) => win.processId === pid },
     './gamePresentation': { isFullscreenGamePresentation: () => true, describeGamePresentation: () => 'verified' },
@@ -95,7 +105,7 @@ function harness(options = {}) {
     });
     launcher.storeCurrentSession();
   }
-  return { launcher, hidden, running, closed, sweep: () => sweep?.() };
+  return { launcher, hidden, running, closed, forced, sweep: () => sweep?.() };
 }
 
 {
@@ -115,20 +125,34 @@ function harness(options = {}) {
   assert.equal((await h.launcher.closeGamesForExit()).ok, true);
   assert.deepEqual(h.closed, [101, 102]);
   assert.equal(h.running.size, 0);
+  assert.deepEqual(h.forced, [], 'cooperative games do not require force termination');
   assert.equal(h.launcher.hasTrackedGames, false);
 }
 {
   const h = harness({ refusesClose: true });
   const result = await h.launcher.closeGamesForExit();
-  assert.equal(result.ok, false);
-  assert.match(result.error, /did not close/);
-  assert.equal(h.launcher.activeState.sessions.length, 2, 'refusal must retain game ownership');
-  assert.equal(h.hidden.size, 2);
+  assert.equal(result.ok, true);
+  assert.deepEqual(h.forced, [101, 102]);
+  assert.equal(h.running.size, 0, 'refusing games must be force terminated');
+  assert.equal(h.launcher.hasTrackedGames, false);
+  assert.equal(h.hidden.size, 0, 'shutdown must not depend on hiding game windows');
 }
 {
   const h = harness({ probeFails: true });
-  assert.equal((await h.launcher.closeGamesForExit()).ok, false);
-  assert.equal(h.launcher.hasTrackedGames, true, 'probe failure cannot be treated as exit');
+  assert.equal((await h.launcher.closeGamesForExit()).ok, true);
+  assert.deepEqual(h.forced, [101, 102, 101, 102], 'failed process inspection must force exact tracked PIDs on both passes');
+  assert.equal(h.launcher.hasTrackedGames, false);
+}
+{
+  const h = harness({ refusesClose: true });
+  const launch = defer();
+  h.launcher.launchCompletion = launch.promise;
+  const closing = h.launcher.closeGamesForExit();
+  await Promise.resolve();
+  assert.deepEqual(h.forced, [], 'shutdown must wait for pending launch identity discovery');
+  launch.resolve();
+  assert.equal((await closing).ok, true);
+  assert.deepEqual(h.forced, [101, 102]);
 }
 {
   const h = harness();
@@ -153,9 +177,12 @@ function harness(options = {}) {
 }
 {
   const h = harness({ noWindows: true });
-  h.running.clear();
-  assert.equal((await h.launcher.closeGamesForExit()).ok, true, 'already exited sessions should be retired safely');
-  assert.equal(h.closed.length, 0, 'never close a stale HWND after its process exited');
+  h.launcher.sessions.get('game-101').window = null;
+  h.launcher.sessions.get('game-102').window = null;
+  h.launcher.activeWindow = null;
+  assert.equal((await h.launcher.closeGamesForExit()).ok, true, 'windowless games must never block app shutdown');
+  assert.deepEqual(h.forced, [101, 102]);
+  assert.equal(h.closed.length, 0, 'windowless shutdown goes directly through tracked process trees');
 }
 {
   const gate = defer();
@@ -170,7 +197,8 @@ function harness(options = {}) {
 }
 
 const main = readFileSync(new URL('../src/main/main.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(compiled, /closeGamesForExit[\s\S]*?await this\.parkAllGames\(\)/, 'shutdown must not depend on desktop containment');
 assert.match(main, /await launcher\.parkAllGames\(\)[\s\S]*if \(!parked.ok\) return parked;[\s\S]*setKioskMode\('admin'\)/);
 assert.match(main, /app\.on\('before-quit'[\s\S]*event\.preventDefault\(\)[\s\S]*closeGamesBeforeQuit/);
 assert.match(main, /updates:install[\s\S]*await closeGamesBeforeQuit\(\)[\s\S]*startUpdateInstaller/);
-console.log('Game containment: multiple games, selective resume, native hide race, slow launch, failed hide, graceful exit, refused close, and failed exit probe passed.');
+console.log('Game containment: multiple games, selective resume, native hide race, slow launch, failed hide, graceful shutdown, forced shutdown, windowless shutdown, and failed exit probe passed.');

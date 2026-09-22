@@ -131,4 +131,63 @@ function harness() {
   assert.equal(h.launcher.activeState.status, 'running');
 }
 
-console.log('Launch Home: pending discovery, dismiss, handoff races, repeated toggles, timeout, and first fullscreen resume passed.');
+// Execute the production loading-to-live transition with delayed preparation.
+// Cover removal must be gated by painted game content, native stacking, and the
+// same Home request still being open after asynchronous work settles.
+{
+  const main = readFileSync(new URL('../src/main/main.ts', import.meta.url), 'utf8');
+  const promotion = main.slice(main.indexOf('async function promoteLoadingHome('), main.indexOf('function protectLoadingHome('));
+  function promotionHarness({ kind = 'direct', staged = true, launching = false } = {}) {
+    const ready = deferred();
+    const colors = [];
+    let stages = 0;
+    let prepares = 0;
+    const context = vm.createContext({
+      gameplayQuickOverlayTransitionGeneration: 4,
+      gameplayQuickOverlayDesiredOpen: true,
+      gameplayLaunchCoverGameId: 'test-game',
+      gameplayQuickOverlayRendererReady: true,
+      gameplayQuickOverlayPreparedBackdropKind: kind,
+      gameplayQuickOverlayPreparedWindowHandle: 123,
+      gameplayLaunchCoverFocusTimer: 1,
+      launcher: { activeState: { game }, isLaunchInProgress: launching, isManagingGames: false },
+      prepareGameplayQuickOverlayRenderer: async () => { prepares++; await ready.promise; },
+      stageGameplayQuickOverlay: async () => { stages++; return staged; },
+      clearInterval() {}, logLine: async () => {}
+    });
+    vm.runInContext(ts.transpileModule(promotion, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
+    const run = () => context.promoteLoadingHome({ isDestroyed: () => false, setBackgroundColor: color => colors.push(color) }, game.id);
+    return { context, ready, colors, run, stages: () => stages, prepares: () => prepares };
+  }
+  for (const kind of ['direct', 'live']) {
+    const h = promotionHarness({ kind });
+    const pending = h.run();
+    assert.equal(h.colors.length, 0, 'keep opaque while waiting for real gameplay');
+    h.ready.resolve();
+    await pending;
+    assert.deepEqual(h.colors, ['#00000000']);
+    assert.equal(h.context.gameplayLaunchCoverGameId, null);
+  }
+  for (const options of [{ kind: 'cover' }, { staged: false }]) {
+    const h = promotionHarness(options);
+    h.ready.resolve();
+    await h.run();
+    assert.equal(h.colors.length, 0, 'unverified content must retain the opaque cover');
+    assert.equal(h.context.gameplayLaunchCoverGameId, game.id);
+  }
+  {
+    const h = promotionHarness();
+    const pending = h.run();
+    h.context.gameplayQuickOverlayTransitionGeneration++;
+    h.ready.resolve();
+    await pending;
+    assert.equal(h.stages(), 0, 'dismissed/reopened Home must reject a stale promotion');
+    assert.equal(h.colors.length, 0);
+  }
+  {
+    const h = promotionHarness({ launching: true });
+    await h.run();
+    assert.equal(h.prepares(), 0, 'promotion must not compete with launch window discovery');
+  }
+}
+console.log('Launch Home: discovery, handoff races, resume, live promotion, failed staging, and stale promotion cancellation passed.');

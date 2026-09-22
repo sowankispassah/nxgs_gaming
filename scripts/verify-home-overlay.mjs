@@ -200,8 +200,8 @@ assert.match(
 );
 assert.doesNotMatch(mainSource, /waitForGameplayQuickOverlay(?:LaunchHandoff|TrackedWindow)/,
   'Home must not wait for a game window before presenting its loading menu');
-assert.match(mainSource, /gameplayLaunchCoverGameId === gameId\) return;/,
-  'background preparation must not replace the explicit loading cover');
+assert.match(mainSource, /loadingHomeBlocksPreparation\(\)\) return;/,
+  'background preparation must respect loading Home ownership and cancel stale promotions');
 assert.match(
   mainSource,
   /gameplayQuickOverlayPreparedWindowHandle[\s\S]*enforceQuickOverlayZOrder\([\s\S]*gameplayQuickOverlayPreparedWindowHandle/,
