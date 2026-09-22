@@ -10,6 +10,7 @@ export type WindowsControlCommand =
   | 'stage-overlay'
   | 'release-window'
   | 'close-window'
+  | 'hide-game'
   | 'taskbar-visible';
 
 export interface WindowsControlResult {
@@ -17,6 +18,13 @@ export interface WindowsControlResult {
   value?: number | boolean;
   presentation?: GamePresentationSnapshot;
   message: string;
+  handles?: number[];
+}
+
+export interface HideGameRequest {
+  handle: number;
+  processId: number;
+  processName: string;
 }
 
 type PendingRequest = {
@@ -196,6 +204,9 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
+    private delegate bool EnumWindowProc(IntPtr window, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowProc callback, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumWindowProc callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint parameter, ref uint value, uint flags);
     [DllImport("dwmapi.dll")] private static extern int DwmFlush();
 
@@ -206,6 +217,45 @@ public static class NxgsWarningInput {
     private const uint ShowWindowFlag = 0x0040;
     private const uint WindowClose = 0x0010;
     private const uint PreviousWindow = 3;
+
+    public static long[] HideGame(long handle, int processId, string processName) {
+        var hidden = new System.Collections.Generic.List<long>();
+        System.Diagnostics.Process process;
+        try { process = System.Diagnostics.Process.GetProcessById(processId); }
+        catch (ArgumentException) { return hidden.ToArray(); }
+        using (process) {
+            if (!String.Equals(process.ProcessName, System.IO.Path.GetFileNameWithoutExtension(processName), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Tracked game process identity changed.");
+        }
+        // Shared Windows hosts must never be hidden by process ID alone.
+        bool sharedHost = String.Equals(processName, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase) ||
+            String.Equals(processName, "ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase);
+        bool failed = false;
+        EnumWindows(delegate(IntPtr candidate, IntPtr unused) {
+            uint owner;
+            GetWindowThreadProcessId(candidate, out owner);
+            bool matches = owner == (uint)processId && (!sharedHost || candidate.ToInt64() == handle);
+            if (!matches && !sharedHost) {
+                EnumChildWindows(candidate, delegate(IntPtr child, IntPtr childUnused) {
+                    uint childOwner;
+                    GetWindowThreadProcessId(child, out childOwner);
+                    if (childOwner == (uint)processId) matches = true;
+                    return !matches;
+                }, IntPtr.Zero);
+            }
+            if (matches) {
+                if (IsWindowVisible(candidate)) {
+                    SetWindowPos(candidate, new IntPtr(-2), 0, 0, 0, 0, NoSize | NoMove | NoActivate);
+                    ShowWindow(candidate, 0);
+                    if (IsWindowVisible(candidate)) failed = true;
+                }
+                hidden.Add(candidate.ToInt64());
+            }
+            return true;
+        }, IntPtr.Zero);
+        if (failed) throw new InvalidOperationException("Game window did not hide.");
+        return hidden.ToArray();
+    }
 
     public static bool FocusWindow(long handle) {
         var window = new IntPtr(handle);
@@ -474,6 +524,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             $handle = [long]$request.value
             $released = [NxgsWarningInput]::ReleaseWindow($handle)
             $response = @{ id = $request.id; ok = $released; value = $released; message = $(if ($released) { 'Game window topmost state released.' } else { 'Game window could not be released.' }) }
+        } elseif ($request.command -eq 'hide-game') {
+            $handles = [NxgsWarningInput]::HideGame([long]$request.value.handle, [int]$request.value.processId, [string]$request.value.processName)
+            $response = @{ id = $request.id; ok = $true; handles = @($handles); message = 'Tracked game windows hidden.' }
         } elseif ($request.command -eq 'close-window') {
             $handle = [long]$request.value
             $closed = [NxgsWarningInput]::CloseWindow($handle)
@@ -542,7 +595,7 @@ function ensureWorker(): ChildProcessWithoutNullStreams {
           if (request) {
             pending.delete(result.id);
             clearTimeout(request.timeout);
-            request.resolve({ ok: result.ok, value: result.value, presentation: result.presentation, message: result.message });
+            request.resolve({ ok: result.ok, value: result.value, handles: result.handles, presentation: result.presentation, message: result.message });
           }
         } catch {
           // Ignore non-JSON PowerShell diagnostics; the request timeout reports a useful failure.
@@ -568,7 +621,7 @@ export function warmWindowsControlWorker(): void {
 
 export function runWindowsControl(
   command: WindowsControlCommand,
-  value: number | boolean | OverlayStageRequest
+  value: number | boolean | OverlayStageRequest | HideGameRequest
 ): Promise<WindowsControlResult> {
   if (process.platform !== 'win32') {
     return Promise.resolve({ ok: false, message: 'System controls are unavailable on this device.' });

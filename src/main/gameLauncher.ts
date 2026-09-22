@@ -36,6 +36,7 @@ import {
   isProvisionalShellHostedStoreWindow,
   isWindowsTaskbarVisible,
   isGameWindowVisible,
+  hideGameWindows,
   keepGameWindowOnTop,
   type GameWindowActivationState,
   type GameWindowInfo,
@@ -103,6 +104,8 @@ export class GameLauncher {
     return this.operationInFlight === 'launch';
   }
 
+  get isManagingGames(): boolean { return this.managingGames; }
+
   private readonly sessions = new Map<string, StoredGameSession>();
   private activeGame: GameRecord | null = null;
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -120,6 +123,12 @@ export class GameLauncher {
   private focusGeneration = 0;
   private operationInFlight: 'launch' | 'home' | 'resume' | 'minimize' | 'close' | null = null;
   private quickOverlayRequestedDuringLaunch = false;
+  private launchCompletion: Promise<void> | null = null;
+  private resumeCompletion: Promise<GameControlResult> | null = null;
+  private readonly parkedGameIds = new Set<string>();
+  private parkingTimer: NodeJS.Timeout | null = null;
+  private parkingInFlight: Promise<void> | null = null;
+  private managingGames = false;
   private state: ActiveGameState = {
     status: 'idle',
     updatedAt: new Date().toISOString()
@@ -248,6 +257,17 @@ export class GameLauncher {
   }
 
   async launch(game: GameRecord): Promise<void> {
+    if (this.managingGames) throw new Error('NXGS is managing running games. Please wait.');
+    const operation = this.performLaunch(game);
+    this.launchCompletion = operation;
+    try {
+      await operation;
+    } finally {
+      if (this.launchCompletion === operation) this.launchCompletion = null;
+    }
+  }
+
+  private async performLaunch(game: GameRecord): Promise<void> {
     if (process.platform !== 'win32') {
       throw new Error('Game launching is unavailable on this device.');
     }
@@ -443,6 +463,14 @@ export class GameLauncher {
   }
 
   async resumeActiveGame(gameId?: string, requireFullHandoff = false): Promise<GameControlResult> {
+    const operation = this.performResume(gameId, requireFullHandoff);
+    this.resumeCompletion = operation;
+    try { return await operation; }
+    finally { if (this.resumeCompletion === operation) this.resumeCompletion = null; }
+  }
+
+  private async performResume(gameId?: string, requireFullHandoff = false): Promise<GameControlResult> {
+    if (this.managingGames) return { ok: false, error: 'NXGS is managing running games. Please wait.' };
     if (
       this.quickOverlayRequestedDuringLaunch &&
       this.isLaunchInProgress
@@ -474,6 +502,10 @@ export class GameLauncher {
     }
 
     this.operationInFlight = 'resume';
+    const wasParked = this.parkedGameIds.delete(game.id);
+    if (this.parkingInFlight) await this.parkingInFlight.catch(() => undefined);
+    if (wasParked) requireFullHandoff = true;
+
     this.setActiveState({
       status: 'resuming',
       game,
@@ -716,6 +748,7 @@ export class GameLauncher {
   }
 
   async openQuickOverlay(options: { focusLauncher?: boolean } = {}): Promise<GameControlResult> {
+    if (this.managingGames) return { ok: false, error: 'NXGS is managing running games. Please wait.' };
     const focusLauncher = options.focusLauncher ?? true;
     if (this.operationInFlight === 'launch') {
       this.quickOverlayRequestedDuringLaunch = true;
@@ -841,6 +874,7 @@ export class GameLauncher {
   }
 
   async clearActive(): Promise<void> {
+    this.stopParking();
     await this.stopMonitoring(false);
     this.sessions.clear();
     this.activeGame = null;
@@ -863,6 +897,121 @@ export class GameLauncher {
       await this.closeActiveGame(true, { gameId, retireActiveSession: true });
     }
     await this.clearActive();
+  }
+
+  /** Hide every tracked game before exposing the Windows desktop. */
+  async parkAllGames(): Promise<GameControlResult> {
+    if (this.managingGames) return { ok: false, error: 'A game management action is already in progress.' };
+    this.managingGames = true;
+    try {
+      // Let launch bind its exact game identity before hiding anything. The NXGS
+      // fullscreen shield remains up throughout this wait.
+      await this.launchCompletion;
+      await this.resumeCompletion;
+      this.cancelFocusOperations('Games retained inside NXGS while leaving fullscreen');
+      this.storeCurrentSession();
+      for (const session of this.sessions.values()) this.parkedGameIds.add(session.game.id);
+      if (!this.parkingTimer && this.parkedGameIds.size) {
+        this.parkingTimer = setInterval(() => {
+          void this.hideParkedGames().catch((error) => {
+            void logLine('warn', `Could not keep a tracked game hidden: ${String(error)}`);
+          });
+        }, 350);
+      }
+      await this.hideParkedGames();
+      void logLine('info', `Retained ${this.parkedGameIds.size} game(s) inside NXGS with their Windows surfaces hidden.`);
+      if (this.activeGame) {
+        this.setActiveState({
+          status: 'minimizedToHome', game: this.activeGame,
+          message: 'Game kept inside NXGS. Use Resume Game to return to fullscreen.',
+          windowDetected: Boolean(this.activeWindow), windowState: 'background'
+        });
+      }
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: `NXGS could not hide every game: ${String(error)}` };
+    } finally {
+      this.managingGames = false;
+    }
+  }
+
+  private hideParkedGames(): Promise<void> {
+    if (this.parkingInFlight) return this.parkingInFlight;
+    const operation = (async () => {
+      for (const gameId of this.parkedGameIds) {
+        const session = this.sessions.get(gameId);
+        if (!session) { this.parkedGameIds.delete(gameId); continue; }
+        const window = session.window;
+        if (!window || !gameWindowMatchesGame(session.game, window, session.processId)) {
+          throw new Error(`${session.game.title} has no verified game window yet.`);
+        }
+        const handles = await hideGameWindows(window);
+        if (!handles.length) {
+          if (!await isProcessRunningByPid(window.processId, true)) {
+            this.finishActiveGameSession(session.game, `${session.game.title} exited.`, false);
+            continue;
+          }
+          throw new Error(`${session.game.title} has not published a controllable game window.`);
+        }
+        // Preserve hidden HWNDs: visible-window discovery cannot find them later.
+        if (handles.length && !handles.includes(window.handle)) {
+          session.window = { ...window, handle: handles[0] };
+          if (this.activeGame?.id === gameId) this.activeWindow = session.window;
+        }
+        session.windowState = 'background';
+        session.status = 'minimizedToHome';
+      }
+    })();
+    this.parkingInFlight = operation;
+    void operation.finally(() => {
+      if (this.parkingInFlight === operation) this.parkingInFlight = null;
+    }).catch(() => undefined);
+    return operation;
+  }
+
+  private stopParking(): void {
+    if (this.parkingTimer) clearInterval(this.parkingTimer);
+    this.parkingTimer = null;
+    this.parkedGameIds.clear();
+  }
+
+  /** A normal close request must finish before NXGS gives up ownership. */
+  async closeGamesForExit(): Promise<GameControlResult> {
+    const parked = await this.parkAllGames();
+    if (!parked.ok) return parked;
+    this.managingGames = true;
+    try {
+      const sessions = [...this.sessions.values()];
+      for (const session of sessions) {
+        const pid = session.processId ?? session.child?.pid;
+        if (pid && !await isProcessRunningByPid(pid, true)) continue;
+        if (session.window) await closeGameWindow(session.window);
+      }
+      const deadline = Date.now() + 8000;
+      let remaining = sessions;
+      while (remaining.length) {
+        const checks = await Promise.all(remaining.map(async (session) => {
+          const pid = session.processId ?? session.child?.pid;
+          // Unknown identities cannot be silently retired on shutdown.
+          return !pid || await isProcessRunningByPid(pid, true);
+        }));
+        remaining.forEach((session, index) => {
+          if (!checks[index]) this.finishActiveGameSession(session.game, `${session.game.title} closed.`, false);
+        });
+        remaining = remaining.filter((_session, index) => checks[index]);
+        if (!remaining.length) break;
+        if (Date.now() >= deadline) {
+          return { ok: false, error: `NXGS is staying open because ${remaining.map(s => s.game.title).join(', ')} did not close. Resume the game to save or dismiss its exit prompt, then try again.` };
+        }
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      await this.clearActive();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: `Could not close running games: ${String(error)}` };
+    } finally {
+      this.managingGames = false;
+    }
   }
 
   async pauseActiveGameForWarning(): Promise<boolean> {
@@ -1263,6 +1412,7 @@ export class GameLauncher {
   private finishActiveGameSession(game: GameRecord, message: string, focusLauncher = true): void {
     const wasActive = this.activeGame?.id === game.id;
     this.sessions.delete(game.id);
+    this.parkedGameIds.delete(game.id);
     if (!wasActive) {
       this.state = this.withTrackedSessions(this.state);
       this.events.onActiveGameChanged(this.state);
@@ -1382,6 +1532,7 @@ export class GameLauncher {
   }
 
   async stageQuickOverlayBackdropWindow(window: GameWindowInfo): Promise<boolean> {
+    if (this.managingGames || (this.activeGame && this.parkedGameIds.has(this.activeGame.id))) return false;
     const game = this.activeGame;
     if (!game || !gameWindowMatchesGame(game, window, this.activeProcessId)) {
       return false;
@@ -1407,7 +1558,7 @@ export class GameLauncher {
         return;
       }
       try {
-        window = await findGameWindow({
+        window = this.parkedGameIds.has(game.id) ? this.activeWindow : await findGameWindow({
           pid: this.activeProcessId ?? this.child?.pid,
           processName: game.processName,
           titleHint: game.title,
@@ -1417,14 +1568,27 @@ export class GameLauncher {
         if (window && !gameWindowMatchesGame(game, window, this.activeProcessId)) {
           window = null;
         }
+        if (this.activeProcessId && !await isProcessRunningByPid(this.activeProcessId, true)) {
+          this.handleGameExit(game);
+          return;
+        }
+        if (!window && this.activeProcessId) {
+          // Hidden windows may be absent from discovery while their process
+          // still owns an exit prompt. Preserve that tracked session.
+          window = this.activeWindow;
+          if (attempt < GRACEFUL_CLOSE_MAX_ATTEMPTS - 1) {
+            await new Promise((resolve) => setTimeout(resolve, GRACEFUL_CLOSE_RETRY_DELAY_MS));
+          }
+          continue;
+        }
       } catch (error) {
         probeFailed = true;
         await logLine('warn', `Background close verification failed for ${game.title}: ${String(error)}`);
         break;
       }
       if (!window) {
-        this.handleGameExit(game);
-        return;
+        probeFailed = true;
+        break;
       }
       this.activeWindow = window;
       this.activeProcessId = window.processId;

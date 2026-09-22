@@ -820,7 +820,6 @@ export function App(): JSX.Element {
               setConfirmGame(null);
               setQuickNavOpen(false);
               resetToHome();
-              setAdminOptionsOpen(false);
               setAdminModeError('');
             }
             const result = await window.nxgs.performKioskAdminAction(action);

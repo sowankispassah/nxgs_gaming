@@ -31,7 +31,7 @@ export async function isProcessRunning(processName: string): Promise<boolean> {
   }
 }
 
-export async function isProcessRunningByPid(pid: number): Promise<boolean> {
+export async function isProcessRunningByPid(pid: number, requireVerifiedResult = false): Promise<boolean> {
   if (process.platform !== 'win32' || !Number.isFinite(pid) || pid <= 0) {
     return false;
   }
@@ -41,7 +41,8 @@ export async function isProcessRunningByPid(pid: number): Promise<boolean> {
       windowsHide: true
     });
     return stdout.includes(String(pid));
-  } catch {
+  } catch (error) {
+    if (requireVerifiedResult) throw error;
     return false;
   }
 }

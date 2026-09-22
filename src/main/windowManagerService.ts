@@ -1284,6 +1284,16 @@ export async function resumeGameWindowFast(
   });
 }
 
+export async function hideGameWindows(window: GameWindowInfo): Promise<number[]> {
+  const result = await runWindowsControl('hide-game', {
+    handle: window.handle,
+    processId: window.processId,
+    processName: window.processName
+  });
+  if (!result.ok) throw new Error(result.message);
+  return result.handles ?? [];
+}
+
 export async function restoreGameWindow(window: GameWindowInfo, launchMode: GameLaunchMode = 'maximized'): Promise<void> {
   await activateGameWindow(window, launchMode);
 }

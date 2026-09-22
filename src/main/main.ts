@@ -563,6 +563,7 @@ async function performGameplayQuickOverlayPreparation(
   captureSnapshot: boolean,
   preferDirectGameplay = true
 ): Promise<void> {
+  if (launcher.isManagingGames) return;
   const overlay = await createGameplayQuickOverlayWindow();
   const preparationStartedAt = Date.now();
   const owner = getLiveMainWindow();
@@ -1028,6 +1029,7 @@ function transitionGameplayQuickOverlay(
   reason: ShellHomeReason,
   gameId?: string
 ): Promise<GameControlResult> {
+  if (launcher.isManagingGames) return Promise.resolve({ ok: false, error: 'NXGS is managing running games. Please wait.' });
   const transitionGeneration = ++gameplayQuickOverlayTransitionGeneration;
   gameplayQuickOverlayDesiredOpen = shouldOpen;
   launcherQuickNavOpen = false;
@@ -1184,7 +1186,7 @@ const launcher = new GameLauncher(
       // Prepare only after the launch handoff has committed its final HWND.
       // Store games can replace their splash frame during launch; capturing it
       // concurrently used to overwrite the target while handoff still focused it.
-      if (status === 'running') {
+      if (status === 'running' && !launcher.isManagingGames) {
         void prepareGameplayQuickOverlayRenderer(true);
       } else if (['idle', 'closed', 'error'].includes(status)) {
         gameplayQuickOverlayDesiredOpen = false;
@@ -1325,24 +1327,19 @@ async function performKioskAdminAction(action: KioskAdminAction): Promise<KioskA
     return { ok: false, error: 'NXGS window is unavailable.' };
   }
 
-  kioskAdminActionGranted = false;
   if (action === 'closeApp') {
-    isQuitting = true;
-    sessionTimer.stop('idle', false);
-    sessionCountdownOverlay.close();
-    sessionWarningOverlay?.close();
-    kioskInput.unregisterAll();
-    window.setSkipTaskbar(false);
-    try {
-      await setWindowsTaskbarVisible(true);
-      taskbarHiddenByKiosk = false;
-    } catch (error) {
-      await logLine('warn', `Could not restore Windows taskbar before closing NXGS: ${String(error)}`);
-    }
+    const closed = await closeGamesBeforeQuit();
+    if (!closed.ok) return closed;
+    kioskAdminActionGranted = false;
+    prepareForQuit();
     app.quit();
     return { ok: true };
   }
 
+  stopGameplayOverlayForManagement();
+  const parked = await launcher.parkAllGames();
+  if (!parked.ok) return parked;
+  kioskAdminActionGranted = false;
   setKioskMode('admin');
   kioskInput.setAdminPinActive(false);
   kioskInput.setAdminControlsUnlocked(false);
@@ -1432,6 +1429,26 @@ function applyKioskSettings(_settings: AppSettings): void {
   window.setMenuBarVisibility(false);
   window.setFullScreen(true);
   syncTaskbarForWindowPresentation('customer fullscreen');
+}
+
+let closingGamesForQuit: Promise<GameControlResult> | null = null;
+
+function stopGameplayOverlayForManagement(): void {
+  gameplayQuickOverlayDesiredOpen = false;
+  gameplayQuickOverlayTransitionGeneration += 1;
+  hideGameplayQuickOverlay(true);
+  launcherQuickNavOpen = false;
+}
+
+function closeGamesBeforeQuit(): Promise<GameControlResult> {
+  if (closingGamesForQuit) return closingGamesForQuit;
+  stopGameplayOverlayForManagement();
+  const operation = launcher.closeGamesForExit();
+  closingGamesForQuit = operation;
+  void operation.finally(() => {
+    if (closingGamesForQuit === operation) closingGamesForQuit = null;
+  }).catch(() => undefined);
+  return operation;
 }
 
 function prepareForQuit(): void {
@@ -1693,6 +1710,8 @@ function registerIpc(): void {
   );
 
   ipcMain.handle('updates:install', async (_event, request: UpdateInstallRequest) => {
+    const closed = await closeGamesBeforeQuit();
+    if (!closed.ok) return closed;
     const result = await startUpdateInstaller(request);
     if (result.ok) {
       prepareForQuit();
@@ -1808,6 +1827,8 @@ function registerIpc(): void {
       if (requiresPaymentForLaunch(store.getSettings(), sessionTimer.current)) {
         throw new Error('Paid play time is required before launching a game.');
       }
+      if (launcher.isManagingGames) return { ok: false, error: 'NXGS is managing running games. Please wait.' };
+      if (kioskInput.currentMode === 'admin') returnToLockedMode();
       if (launcher.activeState.sessions?.some((session) => session.game.id === game.id)) {
         return launcher.resumeActiveGame(game.id);
       }
@@ -1839,6 +1860,8 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('game:resumeActive', async (_event, gameId?: string): Promise<GameControlResult> => {
+    if (launcher.isManagingGames) return { ok: false, error: 'NXGS is managing running games. Please wait.' };
+    if (kioskInput.currentMode === 'admin') returnToLockedMode();
     const game = gameId
       ? launcher.activeState.sessions?.find((session) => session.game.id === gameId)?.game ?? launcher.active
       : launcher.active;
@@ -1945,10 +1968,12 @@ function registerIpc(): void {
     await endPaidSession();
   });
 
-  ipcMain.handle('app:exit', (_event, pin: string) => {
+  ipcMain.handle('app:exit', async (_event, pin: string) => {
     if (!store.verifyPin(pin)) {
       return { ok: false };
     }
+    const closed = await closeGamesBeforeQuit();
+    if (!closed.ok) return closed;
     prepareForQuit();
     app.quit();
     return { ok: true };
@@ -1996,9 +2021,26 @@ if (!hasSingleInstanceLock) {
     }
   });
 
+  app.on('before-quit', (event) => {
+    if (isQuitting || !launcher.hasTrackedGames) return;
+    event.preventDefault();
+    if (closingGamesForQuit) return;
+    void closeGamesBeforeQuit().then(async (result) => {
+      if (result.ok) {
+        prepareForQuit();
+        app.quit();
+      } else {
+        if (!getLiveMainWindow()) await createWindow();
+        launcher.focusLauncher();
+        await dialog.showMessageBox(getLiveMainWindow()!, {
+          type: 'warning', title: 'Games are still open', message: result.error ?? 'Close the running games before exiting NXGS.', buttons: ['Return to NXGS']
+        });
+      }
+    });
+  });
+
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
-      prepareForQuit();
       app.quit();
     }
   });

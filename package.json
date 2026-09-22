@@ -1,6 +1,6 @@
 {
   "name": "nxgs-play",
-  "version": "0.20.21",
+  "version": "0.20.22",
   "description": "Windows-only PC gaming launcher and kiosk MVP.",
   "private": true,
   "main": "out/main/main.js",
@@ -19,6 +19,7 @@
     "test:back-navigation": "node --experimental-strip-types scripts/verify-back-navigation.mjs",
     "test:launch-flow": "node --experimental-strip-types scripts/verify-launch-flow.mjs && node scripts/verify-launch-home.mjs",
     "test:close-flow": "node --experimental-strip-types scripts/verify-close-flow.mjs",
+    "test:game-containment": "node scripts/verify-game-containment.mjs",
     "test:fullscreen-presentation": "node --experimental-strip-types scripts/verify-fullscreen-presentation.mjs",
     "test:taskbar-lifecycle": "node scripts/verify-taskbar-lifecycle.mjs",
     "test:notification-guard": "node scripts/verify-notification-guard.mjs",
