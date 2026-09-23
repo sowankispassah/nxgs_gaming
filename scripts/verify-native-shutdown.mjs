@@ -22,7 +22,7 @@ const native = loadSource('../src/main/windowsProcess.ts');
 const { GameLauncher } = loadSource('../src/main/gameLauncher.ts', {
   electron: {}, './logger': { logLine: async () => {} }, './gameLifecycle': {},
   './windowsProcess': native, './gameWindowIdentity': {}, './gamePresentation': {},
-  './windowManagerService': {}
+  './windowManagerService': {}, './windowsControlWorker': {}
 });
 
 // Both processes belong to this fixture; neither publishes a window or exits

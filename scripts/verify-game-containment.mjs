@@ -51,6 +51,7 @@ function harness(options = {}) {
   let sweep;
   const mocks = {
     electron: {}, './logger': { logLine: async () => {} }, './gameLifecycle': {},
+    './windowsControlWorker': {},
     './windowsProcess': {
       isProcessRunning: async () => false,
       isProcessRunningByPid: async (pid, strict) => {

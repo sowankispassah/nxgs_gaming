@@ -8,6 +8,7 @@ export interface GamePresentationSnapshot {
   isForeground: boolean;
   isMinimized: boolean;
   isVisible: boolean;
+  isCloaked?: boolean;
   hasWindowChrome: boolean;
   height: number;
   monitorHeight: number;
@@ -36,6 +37,7 @@ export function gamePresentationFailures(
   const windowBottom = state.y + state.height;
 
   if (!state.isVisible) failures.push('window is not visible');
+  if (state.isCloaked) failures.push('window is cloaked by Windows');
   if (state.isMinimized) failures.push('window is minimized');
   if (!state.isForeground) failures.push('window is not foreground');
   if (state.hasWindowChrome) failures.push('title bar or resizable border is still present');

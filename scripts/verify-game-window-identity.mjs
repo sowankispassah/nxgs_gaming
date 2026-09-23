@@ -30,6 +30,8 @@ const window = (overrides = {}) => ({
 });
 
 assert.equal(gameWindowMatchesGame(game(), window(), 200), true);
+assert.equal(gameWindowMatchesGame(game(), window({ hostProcessName: 'explorer', title: '' }), 200), false,
+  'a fabricated package PID cannot authenticate an empty Explorer frame');
 assert.equal(
   gameWindowMatchesGame(game(), window({ processName: 'ApplicationFrameHost', title: 'Angry Birds 2' }), 300),
   true

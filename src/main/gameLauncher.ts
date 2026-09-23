@@ -20,6 +20,7 @@ import {
   PROCESS_MONITOR_INTERVAL_MS
 } from './gameLifecycle';
 import { logLine } from './logger';
+import { runWindowsControl } from './windowsControlWorker';
 import {
   closeProcessByName,
   closeProcessByPid,
@@ -83,13 +84,21 @@ function splitArgs(raw: string): string[] {
   return args;
 }
 
-function activateMicrosoftStoreApp(appUserModelId: string): void {
+async function activateMicrosoftStoreApp(appUserModelId: string): Promise<number | null> {
+  try {
+    const result = await runWindowsControl('activate-store-app', appUserModelId);
+    if (result.ok && typeof result.value === 'number' && result.value > 0) return result.value;
+    await logLine('warn', `Native Store activation failed: ${result.message}; retrying through the shell.`);
+  } catch (error) {
+    await logLine('warn', `Native Store activation failed: ${String(error)}; retrying through the shell.`);
+  }
   const explorer = spawn('explorer.exe', [`shell:AppsFolder\\${appUserModelId}`], {
     detached: true,
     windowsHide: false,
     stdio: 'ignore'
   });
   explorer.unref();
+  return null;
 }
 
 class FocusOperationCanceledError extends Error {
@@ -175,14 +184,18 @@ export class GameLauncher {
     const generation = this.focusGeneration;
     if (!game) return null;
     let window = this.activeWindow ?? await this.getActiveWindow(game);
+    if (window && !isProvisionalShellHostedStoreWindow(window) &&
+        gameWindowMatchesGame(game, window, this.activeProcessId) && await isGameWindowVisible(window)) {
+      if (this.activeGame?.id !== game.id || this.focusGeneration !== generation) return null;
+      return { ...window };
+    }
     if (game.launchType === 'microsoftStore') {
       const [upgradedWindow, foregroundWindow] = await Promise.all([
         findGameWindow({
           pid: this.activeProcessId ?? this.child?.pid,
           processName: game.processName,
           titleHint: game.title,
-          allowVerifiedShellHostedStoreFrame:
-            game.launchType === 'microsoftStore' && Boolean(this.activeProcessId)
+          appUserModelId: game.launchType === 'microsoftStore' ? game.launchCommand : undefined
         }),
         getForegroundWindowInfo()
       ]);
@@ -200,23 +213,6 @@ export class GameLauncher {
         ) {
           verifiedVisualWindow = candidate;
           break;
-        }
-      }
-      if (!verifiedVisualWindow) {
-        for (const candidate of candidates) {
-          if (
-            isProvisionalShellHostedStoreWindow(candidate) &&
-            gameWindowMatchesGame(game, candidate, this.activeProcessId) &&
-            await isGameWindowVisible(candidate)
-          ) {
-            verifiedVisualWindow = candidate;
-            await logLine(
-              'info',
-              `Using process-bound shell-hosted visual window ${candidate.handle} for ${game.title}; ` +
-                'the current Windows host did not publish a titled child HWND.'
-            );
-            break;
-          }
         }
       }
       if (verifiedVisualWindow) {
@@ -576,15 +572,16 @@ export class GameLauncher {
         : await this.getActiveWindow(game);
       this.assertFocusOperationCurrent(focusGeneration, game);
       const untrackedStoreApp = game.launchType === 'microsoftStore' && !game.processName?.trim();
-      if (!window && untrackedStoreApp) {
+      if (game.launchType === 'microsoftStore') {
+        // A cached Store frame may have been retired or cloaked while Home was
+        // open. A failed fast resume must reactivate the package, then discover
+        // its current real window instead of accepting the stale frame again.
         await logLine('info', `Retrying Microsoft Store activation and window discovery for ${game.title}.`);
-        const explorer = spawn('explorer.exe', [`shell:AppsFolder\\${game.launchCommand.trim()}`], {
-          detached: true,
-          windowsHide: false,
-          stdio: 'ignore'
-        });
-        explorer.unref();
-        const storeProcess = await waitForMicrosoftStoreProcess(game.launchCommand, [], 3500);
+        const activatedPid = await activateMicrosoftStoreApp(game.launchCommand.trim());
+        this.assertFocusOperationCurrent(focusGeneration, game);
+        const storeProcess = activatedPid
+          ? { processId: activatedPid, processName: game.title }
+          : await waitForMicrosoftStoreProcess(game.launchCommand, [], 3500);
         if (storeProcess) {
           this.activeProcessId = storeProcess.processId;
           await logLine(
@@ -596,7 +593,7 @@ export class GameLauncher {
           {
             pid: storeProcess?.processId,
             titleHint: game.title,
-            allowVerifiedShellHostedStoreFrame: Boolean(storeProcess?.processId)
+            appUserModelId: game.launchType === 'microsoftStore' ? game.launchCommand : undefined
           },
           9000,
           150,
@@ -836,8 +833,7 @@ export class GameLauncher {
         pid: this.activeProcessId ?? this.child?.pid,
         processName: game.processName,
         titleHint: game.title,
-        allowVerifiedShellHostedStoreFrame:
-          game.launchType === 'microsoftStore' && Boolean(this.activeProcessId)
+        appUserModelId: game.launchType === 'microsoftStore' ? game.launchCommand : undefined
       });
       const windows = [trackedWindow, refreshedWindow].filter(
         (candidate, index, candidates): candidate is GameWindowInfo =>
@@ -945,7 +941,8 @@ export class GameLauncher {
         if (!window || !gameWindowMatchesGame(session.game, window, session.processId)) {
           throw new Error(`${session.game.title} has no verified game window yet.`);
         }
-        const handles = await hideGameWindows(window);
+        const handles = await hideGameWindows(window,
+          session.game.launchType === 'microsoftStore' ? session.game.launchCommand : undefined);
         if (!handles.length) {
           if (!await isProcessRunningByPid(window.processId, true)) {
             this.finishActiveGameSession(session.game, `${session.game.title} exited.`, false);
@@ -1165,8 +1162,7 @@ export class GameLauncher {
         pid: this.activeProcessId ?? this.child?.pid,
         processName: game.processName,
         titleHint: game.title,
-        allowVerifiedShellHostedStoreFrame:
-          game.launchType === 'microsoftStore' && Boolean(this.activeProcessId)
+        appUserModelId: game.launchType === 'microsoftStore' ? game.launchCommand : undefined
       },
       12000,
       125,
@@ -1208,24 +1204,8 @@ export class GameLauncher {
         this.completeLaunchBehindHome(game);
         return;
       }
-      if (storeLaunchMayStillBePending) {
-        // Modern Store apps can render through an untitled Explorer-owned
-        // ApplicationFrameWindow that appears after the package process.
-        // The game is already foreground, so do not manufacture a Home-overlay
-        // state or force the player back to the launcher while exact identity
-        // reconciliation continues in the background.
-        this.releaseLaunchShield();
-        this.gameInForeground = true;
-        this.monitorByProcessName(game);
-        this.setActiveState({
-          status: 'running',
-          game,
-          message: `${game.title} is running while NXGS finishes detecting its Store window.`,
-          windowDetected: false,
-          windowState: 'foreground'
-        });
-        return;
-      }
+      this.gameInForeground = false;
+      this.monitorByProcessName(game);
       this.showLaunchShield();
       this.setActiveState({
         status: 'quickOverlayOpen',
@@ -1394,12 +1374,11 @@ export class GameLauncher {
       throw new Error(`${game.title} does not have a Microsoft Store app identifier.`);
     }
 
-    const existingProcess = await waitForMicrosoftStoreProcess(appUserModelId, [], 250);
-    activateMicrosoftStoreApp(appUserModelId);
+    const activatedPid = await activateMicrosoftStoreApp(appUserModelId);
 
-    const storeProcess = await waitForMicrosoftStoreProcess(
+    const storeProcess = activatedPid ? { processId: activatedPid, processName: game.title } : await waitForMicrosoftStoreProcess(
       appUserModelId,
-      existingProcess ? [existingProcess.processId] : [],
+      [],
       6000
     );
     if (storeProcess) {
@@ -1408,11 +1387,6 @@ export class GameLauncher {
         'info',
         `Bound ${game.title} to Microsoft Store process ${storeProcess.processName} (${storeProcess.processId}).`
       );
-      // Some packaged games create their visible ApplicationFrameHost window only
-      // after a second activation once the package process is ready. Re-activating
-      // the same AUMID focuses that existing package; it does not launch a second
-      // unrelated application.
-      activateMicrosoftStoreApp(appUserModelId);
     }
 
     this.monitorByProcessName(game);
@@ -1578,8 +1552,7 @@ export class GameLauncher {
       pid: this.activeProcessId ?? this.child?.pid,
       processName: game.processName,
       titleHint: game.title,
-      allowVerifiedShellHostedStoreFrame:
-        game.launchType === 'microsoftStore' && Boolean(this.activeProcessId)
+      appUserModelId: game.launchType === 'microsoftStore' ? game.launchCommand : undefined
     });
     if (window && !gameWindowMatchesGame(game, window, this.activeProcessId)) {
       await logLine(
@@ -1629,8 +1602,7 @@ export class GameLauncher {
           pid: this.activeProcessId ?? this.child?.pid,
           processName: game.processName,
           titleHint: game.title,
-          allowVerifiedShellHostedStoreFrame:
-            game.launchType === 'microsoftStore' && Boolean(this.activeProcessId)
+          appUserModelId: game.launchType === 'microsoftStore' ? game.launchCommand : undefined
         });
         if (window && !gameWindowMatchesGame(game, window, this.activeProcessId)) {
           window = null;

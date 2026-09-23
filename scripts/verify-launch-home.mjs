@@ -28,6 +28,7 @@ function harness() {
     './logger': { logLine: async () => {} },
     './gameLifecycle': {},
     './windowsProcess': { isProcessRunning: async () => true },
+    './windowsControlWorker': {},
     './gameWindowIdentity': { gameWindowMatchesGame: () => true },
     './gamePresentation': { isFullscreenGamePresentation: () => true, describeGamePresentation: () => 'verified' },
     './windowManagerService': {
@@ -190,4 +191,30 @@ function harness() {
     assert.equal(h.prepares(), 0, 'promotion must not compete with launch window discovery');
   }
 }
-console.log('Launch Home: discovery, handoff races, resume, live promotion, failed staging, and stale promotion cancellation passed.');
+// Resume must wait for a loading promotion already touching native z-order.
+// Otherwise its capture fallback can minimize the newly resumed game.
+{
+  const main = readFileSync(new URL('../src/main/main.ts', import.meta.url), 'utf8');
+  const transition = main.slice(main.indexOf('async function performGameplayQuickOverlayTransition('), main.indexOf('function transitionGameplayQuickOverlay('));
+  for (const superseded of [false, true]) {
+    const promotion = deferred();
+    const calls = [];
+    const context = vm.createContext({
+      launcher: { activeState: { status: 'quickOverlayOpen' },
+        resumeActiveGame: async () => { calls.push('resume'); return { ok: true }; } },
+      gameplayQuickOverlayTransitionGeneration: 2, gameplayQuickOverlayDesiredOpen: false,
+      gameplayLaunchCoverGameId: game.id, loadingHomePromotion: promotion.promise,
+      getLiveGameplayQuickOverlayWindow: () => ({ isVisible: () => true }),
+      protectGameplayQuickOverlayDuringResume() {}, sendShellHome() {},
+      hideGameplayQuickOverlay: () => calls.push('hide'), logLine: async () => {}
+    });
+    vm.runInContext(ts.transpileModule(transition, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
+    const resume = context.performGameplayQuickOverlayTransition(false, 'renderer-request', 2);
+    assert.deepEqual(calls, [], 'native resume must wait for in-flight promotion');
+    if (superseded) context.gameplayQuickOverlayTransitionGeneration++;
+    promotion.resolve();
+    await resume;
+    assert.deepEqual(calls, superseded ? [] : ['resume', 'hide']);
+  }
+}
+console.log('Launch Home: discovery, handoff races, resume, live promotion, and promotion/resume serialization passed.');

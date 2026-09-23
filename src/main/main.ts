@@ -451,12 +451,17 @@ async function stageGameplayQuickOverlay(
   gameId: string | null,
   allowLoadingHome = false
 ): Promise<boolean> {
+  const generation = gameplayQuickOverlayTransitionGeneration;
+  const stillOpen = () => gameplayQuickOverlayDesiredOpen &&
+    generation === gameplayQuickOverlayTransitionGeneration && !overlay.isDestroyed();
+  if (!stillOpen()) return false;
   if (await enforceGameplayQuickOverlayZOrder(overlay)) {
-    return true;
+    return stillOpen();
   }
 
+  if (!stillOpen()) return false;
   await replaceUnsafeDirectBackdrop(overlay, gameId, allowLoadingHome);
-  if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return false;
+  if (!stillOpen()) return false;
 
   const exactCapturedFrameReady =
     gameplayQuickOverlayRendererReady &&
@@ -475,7 +480,7 @@ async function stageGameplayQuickOverlay(
   overlay.show();
   overlay.moveTop();
   const capturedFrameStaged = await enforceGameplayQuickOverlayZOrder(overlay, true);
-  if (!capturedFrameStaged || overlay.isDestroyed()) return false;
+  if (!capturedFrameStaged || !stillOpen()) return false;
 
   // Some composition-locked Store frames keep their stale foreground HWND
   // briefly after being moved behind the painted capture. Reassert Electron
@@ -1023,6 +1028,13 @@ async function performGameplayQuickOverlayTransition(
 
   protectGameplayQuickOverlayDuringResume();
   try {
+    // Promotion can already be inside a native staging call when Resume is
+    // clicked. Drain that call before restoring, so it cannot minimize the game
+    // after the resume handoff has succeeded.
+    await loadingHomePromotion?.catch(() => undefined);
+    if (transitionGeneration !== gameplayQuickOverlayTransitionGeneration || gameplayQuickOverlayDesiredOpen) {
+      return { ok: false, error: 'Resume was superseded by a newer Home request.' };
+    }
     // A game discovered behind Home has never been sized for gameplay. Avoid
     // focusing its small startup window before the full handoff applies styles.
     const result = await launcher.resumeActiveGame(gameId, Boolean(gameplayLaunchCoverGameId));
@@ -1904,7 +1916,7 @@ function registerIpc(): void {
       if (launcher.isManagingGames) return { ok: false, error: 'NXGS is managing running games. Please wait.' };
       if (kioskInput.currentMode === 'admin') returnToLockedMode();
       if (launcher.activeState.sessions?.some((session) => session.game.id === game.id)) {
-        return launcher.resumeActiveGame(game.id);
+        return transitionGameplayQuickOverlay(false, 'renderer-request', game.id);
       }
       controllerIdleService?.setGameplayActive(true);
       const launch = launcher.launch(game);

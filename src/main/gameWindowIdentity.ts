@@ -29,6 +29,9 @@ export function gameWindowMatchesGame(
   window: GameWindowInfo,
   trackedProcessId?: number | null
 ): boolean {
+  // An untitled Explorer frame without a game-owned child is not proof of a
+  // package identity. Older discovery fabricated a game PID for these frames.
+  if (normalizeWindowIdentity(window.hostProcessName ?? '') === 'explorer') return false;
   if (isUnsafeGameWindowProcess(window.processName)) return false;
   if (trackedProcessId && trackedProcessId > 0 && window.processId === trackedProcessId) return true;
 

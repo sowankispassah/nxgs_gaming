@@ -36,22 +36,10 @@ assert.match(
 );
 assert.match(windowManagerSource, /unsafeProcess[\s\S]*'chatgpt'[\s\S]*'explorer'/, 'global window discovery must reject unrelated apps');
 assert.doesNotMatch(windowManagerSource, /allowUntitledStoreFrame/, 'untitled Explorer Store frames must never be treated as games');
-assert.match(windowManagerSource, /allowVerifiedShellHostedStoreFrame[\s\S]*\$targetProcess[\s\S]*ApplicationFrameWindow/, 'shell-hosted Store frames require an exact package process');
-assert.match(
-  windowManagerSource,
-  /\$shellHostedCandidates\.Count -gt 1[\s\S]*\$foregroundShellHosted\.Count -eq 1[\s\S]*\$foregroundHandle[\s\S]*score -ne 3/,
-  'ambiguous shell-hosted Store frames must retain only one foreground frame and reject the rest'
-);
-assert.match(
-  windowManagerSource,
-  /isProvisionalShellHostedStoreWindow[\s\S]*provisionalDetectedAt[\s\S]*2500[\s\S]*return provisionalWindow/,
-  'Store launch discovery must wait briefly for the real visual frame before accepting a blank shell fallback'
-);
-assert.match(
-  launcherSource,
-  /game\.launchType === 'microsoftStore'[\s\S]*findGameWindow[\s\S]*getForegroundWindowInfo[\s\S]*isProvisionalShellHostedStoreWindow[\s\S]*Using process-bound shell-hosted visual window/,
-  'overlay staging must re-probe Store windows and retain a process-bound shell frame when Windows publishes no titled child HWND'
-);
+assert.match(windowManagerSource, /\$frameAppId -ne \$appId\) \{ return \$true \}[\s\S]*\$matchedProcessId = \$targetPid/,
+  'a childless Store frame must verify its exact package identity before binding the game PID');
+assert.match(windowManagerSource, /DwmGetWindowAttribute\(\$hwnd, 14, \[ref\]\$cloaked, 4\)/,
+  'discovery must reject cloaked frames even when WS_VISIBLE is set');
 assert.match(
   launcherSource,
   /foregroundWindow[\s\S]*gameWindowMatchesGame\(game, candidate, this\.activeProcessId\)/,
@@ -62,14 +50,11 @@ assert.match(
   /titleMatchesHint[\s\S]*\$windowPid -eq \$targetPid -or \$titleMatchesHint[\s\S]*Sort-Object score,[\s\S]*foreground/,
   'duplicate Store frames must prefer the titled or foreground frame for the exact tracked process'
 );
-assert.match(launcherSource, /allowVerifiedShellHostedStoreFrame:[\s\S]*game\.launchType === 'microsoftStore'[\s\S]*Boolean\(this\.activeProcessId\)/, 'shell-hosted discovery must be scoped to a tracked Store process');
+assert.doesNotMatch(launcherSource, /allowVerifiedShellHostedStoreFrame/, 'unbound shell-frame fallback must stay removed');
 assert.match(windowsProcessSource, /Get-AppxPackageManifest[\s\S]*application\.Executable/, 'Store games must bind to their package application executable');
 assert.match(launcherSource, /Bound \$\{game\.title\} to Microsoft Store process/, 'Store launch must retain the discovered process identity');
-assert.equal(
-  launcherSource.match(/activateMicrosoftStoreApp\(appUserModelId\);/g)?.length,
-  2,
-  'Store games must be reactivated after their exact package process is ready so the real game frame becomes visible'
-);
+assert.match(launcherSource, /runWindowsControl\('activate-store-app', appUserModelId\)/,
+  'Store activation must return the exact package process from Windows');
 assert.match(mainSource, /kind: 'direct'[\s\S]*kind: 'live'[\s\S]*kind: 'cover'[\s\S]*kind: 'generated'/, 'the tracked live game must precede capture, artwork, and generated fallbacks');
 assert.match(mainSource, /Prepared direct live game backdrop[\s\S]*capturedWindowHandle: gameWindow\.handle/, 'direct mode must be tied to the tracked game HWND');
 assert.match(mainSource, /if \(preferDirectGameplay\)[\s\S]*kind: 'direct'/, 'verified games must try direct composition before expensive capture');
@@ -212,11 +197,8 @@ assert.doesNotMatch(mainSource, /Ignored overlapping Home request/);
 assert.match(mainSource, /endPaidSession[\s\S]*openQuickNav: false,[\s\S]*resetToHome: true/);
 assert.match(launcherSource, /if \(focusLauncher\) \{[\s\S]*this\.focusLauncher\(\);[\s\S]*\} else \{[\s\S]*this\.releaseLaunchShield\(\)/);
 assert.match(launcherSource, /fastResumeError instanceof FocusOperationCanceledError/);
-assert.match(
-  launcherSource,
-  /if \(storeLaunchMayStillBePending\)[\s\S]*status: 'running'[\s\S]*finishes detecting its Store window/,
-  'a late Store window must remain in gameplay instead of opening Home automatically'
-);
+assert.doesNotMatch(launcherSource, /finishes detecting its Store window/,
+  'an undiscovered Store window must not be falsely reported as foreground gameplay');
 assert.match(
   launcherSource,
   /if \(game && focusLauncher\) \{[\s\S]*releaseGameWindowsForQuickOverlay\(game, homeGeneration, focusLauncher\)/,

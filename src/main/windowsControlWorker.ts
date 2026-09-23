@@ -7,6 +7,8 @@ export type WindowsControlCommand =
   | 'brightness'
   | 'escape'
   | 'focus-window'
+  | 'activate-store-app'
+  | 'inspect-window'
   | 'stage-overlay'
   | 'release-window'
   | 'close-window'
@@ -25,6 +27,7 @@ export interface HideGameRequest {
   handle: number;
   processId: number;
   processName: string;
+  appUserModelId?: string;
 }
 
 type PendingRequest = {
@@ -43,6 +46,7 @@ const WORKER_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 public static class NxgsLiveAudio {
@@ -144,9 +148,30 @@ public static class NxgsLiveAudio {
 }
 
 public static class NxgsWarningInput {
+    [ComImport, Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")]
+    private class ApplicationActivationManager { }
+    [ComImport, Guid("2E941141-7F97-4756-BA1D-9DECDE894A3D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IApplicationActivationManager {
+        [PreserveSig] int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appId,
+            [MarshalAs(UnmanagedType.LPWStr)] string arguments, uint options, out uint processId);
+    }
+    [DllImport("ole32.dll")] private static extern int CoAllowSetForegroundWindow(
+        [MarshalAs(UnmanagedType.IUnknown)] object manager, IntPtr reserved);
+    public static uint ActivateStoreApp(string appId) {
+        var manager = (IApplicationActivationManager)new ApplicationActivationManager();
+        try {
+            AllowSetForegroundWindow(-1);
+            CoAllowSetForegroundWindow(manager, IntPtr.Zero);
+            uint processId;
+            Marshal.ThrowExceptionForHR(manager.ActivateApplication(appId, null, 2, out processId));
+            return processId;
+        } finally { Marshal.ReleaseComObject(manager); }
+    }
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct MonitorInfo { public int Size; public Rect Bounds, Work; public uint Flags; }
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll")] private static extern bool GetWindowBand(IntPtr window, out uint band);
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
     [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
     [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr64(IntPtr window, int index);
@@ -162,9 +187,11 @@ public static class NxgsWarningInput {
         if (!IsWindow(window) || !GetWindowRect(window, out rect) ||
             !GetMonitorInfo(MonitorFromWindow(window, 2), ref monitor)) return null;
         var foreground = GetForegroundWindow();
+        int cloaked;
+        bool isCloaked = DwmGetWindowAttribute(window, 14, out cloaked, 4) != 0 || cloaked != 0;
         return new {
             foregroundHandle = foreground.ToInt64(), isForeground = foreground == window,
-            isVisible = IsWindowVisible(window), isMinimized = IsIconic(window),
+            isVisible = IsWindowVisible(window), isMinimized = IsIconic(window), isCloaked = isCloaked,
             hasWindowChrome = (WindowStyle(window, -16) & 0x00CF0000L) != 0 ||
                 (WindowStyle(window, -20) & 0x00060301L) != 0,
             x = rect.Left, y = rect.Top, width = rect.Right - rect.Left, height = rect.Bottom - rect.Top,
@@ -211,6 +238,7 @@ public static class NxgsWarningInput {
     [DllImport("dwmapi.dll")] private static extern int DwmFlush();
 
     private const uint KeyUp = 0x0002;
+    private static readonly HashSet<long> FailedImmersiveWindowToggles = new HashSet<long>();
     private const uint NoSize = 0x0001;
     private const uint NoMove = 0x0002;
     private const uint NoActivate = 0x0010;
@@ -218,7 +246,23 @@ public static class NxgsWarningInput {
     private const uint WindowClose = 0x0010;
     private const uint PreviousWindow = 3;
 
-    public static long[] HideGame(long handle, int processId, string processName) {
+    [StructLayout(LayoutKind.Sequential)] public struct PropertyKey { public Guid id; public uint pid; }
+    [StructLayout(LayoutKind.Explicit, Size=24)] public struct PropertyValue { [FieldOffset(0)] public ushort type; [FieldOffset(8)] public IntPtr pointer; }
+    [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface PropertyStore { int Count(out uint n); int At(uint i, out PropertyKey k); [PreserveSig] int Get(ref PropertyKey k, out PropertyValue v); }
+    [DllImport("shell32.dll")] static extern int SHGetPropertyStoreForWindow(IntPtr h, ref Guid id, out PropertyStore s);
+    [DllImport("ole32.dll")] static extern int PropVariantClear(ref PropertyValue v);
+    private static bool HasAppId(IntPtr h, string appId) {
+        if (String.IsNullOrEmpty(appId)) return false;
+        var id = typeof(PropertyStore).GUID; PropertyStore s;
+        if (SHGetPropertyStoreForWindow(h, ref id, out s) != 0) return false;
+        try { var k = new PropertyKey { id = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), pid = 5 }; PropertyValue v;
+            if (s.Get(ref k, out v) != 0) return false;
+            try { return v.type == 31 && String.Equals(Marshal.PtrToStringUni(v.pointer), appId, StringComparison.OrdinalIgnoreCase); }
+            finally { PropVariantClear(ref v); }
+        } finally { Marshal.ReleaseComObject(s); }
+    }
+    public static long[] HideGame(long handle, int processId, string processName, string appId) {
         var hidden = new System.Collections.Generic.List<long>();
         System.Diagnostics.Process process;
         try { process = System.Diagnostics.Process.GetProcessById(processId); }
@@ -231,10 +275,17 @@ public static class NxgsWarningInput {
         bool sharedHost = String.Equals(processName, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase) ||
             String.Equals(processName, "ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase);
         bool failed = false;
-        EnumWindows(delegate(IntPtr candidate, IntPtr unused) {
+        var seen = new System.Collections.Generic.HashSet<long>();
+        EnumWindowProc hide = delegate(IntPtr candidate, IntPtr unused) {
+            if (!IsWindow(candidate) || !seen.Add(candidate.ToInt64())) return true;
             uint owner;
             GetWindowThreadProcessId(candidate, out owner);
             bool matches = owner == (uint)processId && (!sharedHost || candidate.ToInt64() == handle);
+            if (!matches && candidate.ToInt64() == handle && HasAppId(candidate, appId)) {
+                try { using (var host = System.Diagnostics.Process.GetProcessById((int)owner)) {
+                    matches = String.Equals(host.ProcessName, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase);
+                } } catch (ArgumentException) { }
+            }
             if (!matches && !sharedHost) {
                 EnumChildWindows(candidate, delegate(IntPtr child, IntPtr childUnused) {
                     uint childOwner;
@@ -252,7 +303,10 @@ public static class NxgsWarningInput {
                 hidden.Add(candidate.ToInt64());
             }
             return true;
-        }, IntPtr.Zero);
+        };
+        // Immersive package frames can be absent from EnumWindows.
+        hide(new IntPtr(handle), IntPtr.Zero);
+        EnumWindows(hide, IntPtr.Zero);
         if (failed) throw new InvalidOperationException("Game window did not hide.");
         return hidden.ToArray();
     }
@@ -325,6 +379,24 @@ public static class NxgsWarningInput {
             SystemParametersInfo(0x2001, 0, ref unlockedTimeout, 0);
             if (game != IntPtr.Zero && IsWindow(game)) {
                 EnableWindow(game, true);
+                uint gameBand;
+                if (!minimizeGameAfterPaint && GetForegroundWindow() == game &&
+                    GetWindowBand(game, out gameBand) && gameBand == 8 &&
+                    !FailedImmersiveWindowToggles.Contains(game.ToInt64())) {
+                    // UWP fullscreen frames sit in an immersive z-order band
+                    // that a normal Electron overlay cannot cover. Alt+Enter
+                    // asks the game to leave that mode while NXGS keeps its
+                    // tracked window borderless and screen-sized.
+                    keybd_event(0x12, 0, 0, UIntPtr.Zero);
+                    keybd_event(0x0D, 0, 0, UIntPtr.Zero);
+                    keybd_event(0x0D, 0, KeyUp, UIntPtr.Zero);
+                    keybd_event(0x12, 0, KeyUp, UIntPtr.Zero);
+                    for (var wait = 0; wait < 30; wait += 1) {
+                        if (GetWindowBand(game, out gameBand) && gameBand != 8) break;
+                        System.Threading.Thread.Sleep(10);
+                    }
+                    if (gameBand == 8) FailedImmersiveWindowToggles.Add(game.ToInt64());
+                }
                 if (IsIconic(game) && !minimizeGameAfterPaint) ShowWindowAsync(game, 9);
                 if (!minimizeGameAfterPaint) {
                     SetWindowPos(game, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate | ShowWindowFlag);
@@ -369,6 +441,12 @@ public static class NxgsWarningInput {
 
             var gameMinimized = game != IntPtr.Zero && IsWindow(game) && IsIconic(game);
             var overlayAboveGame = minimizeGameAfterPaint && gameMinimized;
+            if (!minimizeGameAfterPaint && game != IntPtr.Zero && IsWindow(game) && GetForegroundWindow() == overlay) {
+                // Immersive frames may be omitted from GetWindow's z-order
+                // traversal. Ask Windows to place this exact frame directly
+                // behind the focused topmost overlay, and check its result.
+                overlayAboveGame = SetWindowPos(game, overlay, 0, 0, 0, 0, NoSize | NoMove | NoActivate);
+            }
             if (!overlayAboveGame && game != IntPtr.Zero && IsWindow(game)) {
                 overlayAboveGame = false;
                 var cursor = GetWindow(game, PreviousWindow);
@@ -509,6 +587,12 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             $delivery = [NxgsWarningInput]::SendEscape($value)
             if ($delivery -ne 'ok') { throw "Could not deliver native Escape input ($delivery)." }
             $response = @{ id = $request.id; ok = $true; value = $value; message = 'Native Escape input delivered to the foreground game window.' }
+        } elseif ($request.command -eq 'activate-store-app') {
+            $processId = [NxgsWarningInput]::ActivateStoreApp([string]$request.value)
+            $response = @{ id = $request.id; ok = $true; value = $processId; message = 'Store app activated by its exact app identifier.' }
+        } elseif ($request.command -eq 'inspect-window') {
+            $presentation = [NxgsWarningInput]::Presentation([long]$request.value)
+            $response = @{ id = $request.id; ok = ($null -ne $presentation); presentation = $presentation; message = 'Window presentation inspected.' }
         } elseif ($request.command -eq 'focus-window') {
             $handle = [long]$request.value
             $focused = [NxgsWarningInput]::FocusWindow($handle)
@@ -525,7 +609,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             $released = [NxgsWarningInput]::ReleaseWindow($handle)
             $response = @{ id = $request.id; ok = $released; value = $released; message = $(if ($released) { 'Game window topmost state released.' } else { 'Game window could not be released.' }) }
         } elseif ($request.command -eq 'hide-game') {
-            $handles = [NxgsWarningInput]::HideGame([long]$request.value.handle, [int]$request.value.processId, [string]$request.value.processName)
+            $handles = [NxgsWarningInput]::HideGame([long]$request.value.handle, [int]$request.value.processId, [string]$request.value.processName, [string]$request.value.appUserModelId)
             $response = @{ id = $request.id; ok = $true; handles = @($handles); message = 'Tracked game windows hidden.' }
         } elseif ($request.command -eq 'close-window') {
             $handle = [long]$request.value
@@ -621,7 +705,7 @@ export function warmWindowsControlWorker(): void {
 
 export function runWindowsControl(
   command: WindowsControlCommand,
-  value: number | boolean | OverlayStageRequest | HideGameRequest
+  value: number | boolean | string | OverlayStageRequest | HideGameRequest
 ): Promise<WindowsControlResult> {
   if (process.platform !== 'win32') {
     return Promise.resolve({ ok: false, message: 'System controls are unavailable on this device.' });

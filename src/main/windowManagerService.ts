@@ -23,7 +23,7 @@ export interface GameWindowSearch {
   pid?: number;
   processName?: string;
   titleHint?: string;
-  allowVerifiedShellHostedStoreFrame?: boolean;
+  appUserModelId?: string;
 }
 
 type WindowCommand = 'foreground' | 'maximize' | 'restore' | 'minimize' | 'close';
@@ -41,6 +41,7 @@ export interface GameWindowActivationState {
   isForeground: boolean;
   isMinimized: boolean;
   isVisible: boolean;
+  isCloaked?: boolean;
   height: number;
   monitorHeight: number;
   monitorWidth: number;
@@ -278,7 +279,6 @@ export async function findGameWindow(search: GameWindowSearch): Promise<GameWind
   const normalizedName = search.processName ? normalizeProcessName(search.processName).replace(/\.exe$/i, '') : '';
   const pid = Number.isFinite(search.pid) ? Number(search.pid) : 0;
   const titleHint = search.titleHint?.trim().toLowerCase() ?? '';
-  const allowVerifiedShellHostedStoreFrame = Boolean(search.allowVerifiedShellHostedStoreFrame && pid > 0);
   const script = `
 $ErrorActionPreference = "SilentlyContinue"
 Add-Type @"
@@ -287,6 +287,21 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class GameWindowSearchWin32 {
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string className, string title);
+  [StructLayout(LayoutKind.Sequential)] public struct PropertyKey { public Guid id; public uint pid; }
+  [StructLayout(LayoutKind.Explicit, Size=24)] public struct PropertyValue { [FieldOffset(0)] public ushort type; [FieldOffset(8)] public IntPtr pointer; }
+  [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface PropertyStore { int Count(out uint n); int At(uint i, out PropertyKey k); [PreserveSig] int Get(ref PropertyKey k, out PropertyValue v); }
+  [DllImport("shell32.dll")] static extern int SHGetPropertyStoreForWindow(IntPtr h, ref Guid id, out PropertyStore s);
+  [DllImport("ole32.dll")] static extern int PropVariantClear(ref PropertyValue v);
+  public static string AppId(IntPtr h) {
+    var id = typeof(PropertyStore).GUID; PropertyStore s;
+    if (SHGetPropertyStoreForWindow(h, ref id, out s) != 0) return "";
+    try { var k = new PropertyKey { id = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), pid = 5 }; PropertyValue v;
+      if (s.Get(ref k, out v) != 0) return "";
+      try { return v.type == 31 ? Marshal.PtrToStringUni(v.pointer) : ""; } finally { PropVariantClear(ref v); }
+    } finally { Marshal.ReleaseComObject(s); }
+  }
   public delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc callback, IntPtr lParam);
@@ -297,20 +312,24 @@ public static class GameWindowSearchWin32 {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, StringBuilder text, int maxCount);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out WindowRect rect);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
 }
 public struct WindowRect { public int Left; public int Top; public int Right; public int Bottom; }
 "@
 $targetPid = ${pid}
 $targetName = ${powershellQuote(normalizedName)}
 $hint = ${powershellQuote(titleHint)}
+$appId = ${powershellQuote(search.appUserModelId?.trim() ?? '')}
 $hintIdentity = $hint -replace '[^a-z0-9]', ''
-$allowVerifiedShellHostedStoreFrame = ${allowVerifiedShellHostedStoreFrame ? '$true' : '$false'}
-$targetProcess = if ($targetPid -gt 0) { Get-Process -Id $targetPid } else { $null }
 $foregroundWindow = [GameWindowSearchWin32]::GetForegroundWindow()
 $windows = New-Object System.Collections.Generic.List[object]
+$seenWindows = New-Object 'System.Collections.Generic.HashSet[long]'
 $callback = [GameWindowSearchWin32+EnumWindowsProc]{
   param([IntPtr]$hwnd, [IntPtr]$lParam)
-  if (-not [GameWindowSearchWin32]::IsWindowVisible($hwnd)) { return $true }
+  if ($hwnd -eq [IntPtr]::Zero -or -not $seenWindows.Add($hwnd.ToInt64())) { return $true }
+  $visible = [GameWindowSearchWin32]::IsWindowVisible($hwnd)
+  [int]$cloaked = 0
+  $cloakRead = [GameWindowSearchWin32]::DwmGetWindowAttribute($hwnd, 14, [ref]$cloaked, 4) -eq 0
   $length = [GameWindowSearchWin32]::GetWindowTextLength($hwnd)
   $text = New-Object System.Text.StringBuilder ([Math]::Max(2, $length + 1))
   if ($length -gt 0) {
@@ -329,6 +348,11 @@ $callback = [GameWindowSearchWin32+EnumWindowsProc]{
   $process = Get-Process -Id $windowPid
   if (-not $process) { return $true }
   $hostProcessName = $process.ProcessName
+  $exactStoreFrame = $appId -ne '' -and $hostProcessName -eq 'ApplicationFrameHost' -and
+    [GameWindowSearchWin32]::AppId($hwnd) -eq $appId
+  # Hidden package frames are valid recovery targets, not valid presentation.
+  # Resume restores them and separately verifies visibility and DWM uncloaking.
+  if ((-not $visible -or -not $cloakRead -or $cloaked -ne 0) -and -not $exactStoreFrame) { return $true }
   $matchedProcessId = [int]$windowPid
   $matchedProcessName = [string]$process.ProcessName
   $descendantMatches = New-Object System.Collections.Generic.List[object]
@@ -359,6 +383,17 @@ $callback = [GameWindowSearchWin32+EnumWindowsProc]{
     $matchedProcessId = [int]$descendantMatch.processId
     $matchedProcessName = [string]$descendantMatch.processName
   }
+  # Some immersive frames are not enumerated and expose no child HWND. Bind
+  # their visual host to the package only when Windows publishes its exact AUMID.
+  if ($appId -ne '' -and $hostProcessName -eq 'ApplicationFrameHost') {
+    $frameAppId = [GameWindowSearchWin32]::AppId($hwnd)
+    if ($frameAppId -ne $appId) { return $true }
+    $packageProcess = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
+    if ($targetPid -gt 0 -and $packageProcess) {
+      $matchedProcessId = $targetPid
+      $matchedProcessName = [string]$packageProcess.ProcessName
+    }
+  }
   $processName = $matchedProcessName.ToLower()
   $processIdentity = $processName -replace '[^a-z0-9]', ''
   $titleLower = $title.ToLower()
@@ -382,21 +417,6 @@ $callback = [GameWindowSearchWin32+EnumWindowsProc]{
       ($processIdentity.Length -ge 4 -and ($processIdentity.Contains($hintIdentity) -or $hintIdentity.Contains($processIdentity)))
     )
   ) { $score = 2 }
-  elseif (
-    $allowVerifiedShellHostedStoreFrame -and
-    $targetProcess -and
-    $hostProcessName.ToLower() -eq 'explorer' -and
-    $className -eq 'ApplicationFrameWindow' -and
-    [string]::IsNullOrWhiteSpace($title)
-  ) {
-    # Current Windows builds can host a packaged game's composition surface in
-    # an Explorer-owned ApplicationFrameWindow without exposing a child HWND.
-    # Retain the exact package process identity and treat the shell only as host.
-    $matchedProcessId = $targetPid
-    $matchedProcessName = [string]$targetProcess.ProcessName
-    $processName = $matchedProcessName.ToLower()
-    $score = 3
-  }
   $unsafeProcess = $processName -in @('brave', 'chatgpt', 'chrome', 'code', 'electron', 'explorer', 'firefox', 'msedge', 'nxgs play', 'opera')
   if ($score -lt 99 -and -not $unsafeProcess -and $width -gt 64 -and $height -gt 64) {
     $windows.Add([pscustomobject]@{
@@ -416,19 +436,13 @@ $callback = [GameWindowSearchWin32+EnumWindowsProc]{
   return $true
 }
 [GameWindowSearchWin32]::EnumWindows($callback, [IntPtr]::Zero) | Out-Null
-$shellHostedCandidates = @($windows | Where-Object { $_.score -eq 3 })
-if ($shellHostedCandidates.Count -gt 1) {
-  $foregroundShellHosted = @($shellHostedCandidates | Where-Object { $_.foreground })
-  if ($foregroundShellHosted.Count -eq 1) {
-    # The launch activation makes the selected Store frame foreground. Keep
-    # that one exact HWND while discarding other untitled package frames.
-    $foregroundHandle = $foregroundShellHosted[0].handle
-    $windows = @($windows | Where-Object { $_.score -ne 3 -or $_.handle -eq $foregroundHandle })
-  } else {
-    # Without one foreground frame there is no safe identity discriminator.
-    $windows = @($windows | Where-Object { $_.score -ne 3 })
-  }
+# EnumWindows excludes some immersive Store frames. Exact title lookup and
+# foreground lookup still return them; apply the same identity/presentation checks.
+if ($appId -ne '' -and $hint -ne '') {
+  $exactFrame = [GameWindowSearchWin32]::FindWindow('ApplicationFrameWindow', ${powershellQuote(search.titleHint?.trim() ?? '')})
+  $callback.Invoke($exactFrame, [IntPtr]::Zero) | Out-Null
 }
+$callback.Invoke($foregroundWindow, [IntPtr]::Zero) | Out-Null
 $selected = $windows |
   Sort-Object score, @{ Expression = { $_.foreground }; Descending = $true }, order, @{ Expression = { $_.started }; Descending = $true } |
   Select-Object -First 1
@@ -456,32 +470,17 @@ export async function waitForGameWindow(
   shouldContinue: () => boolean = () => true
 ): Promise<GameWindowInfo | null> {
   const startedAt = Date.now();
-  let provisionalWindow: GameWindowInfo | null = null;
-  let provisionalDetectedAt = 0;
   while (Date.now() - startedAt < timeoutMs && shouldContinue()) {
     const window = await findGameWindow(search);
     if (!shouldContinue()) {
       return null;
     }
-    if (window) {
-      if (!isProvisionalShellHostedStoreWindow(window)) {
-        return window;
-      }
-      provisionalWindow = window;
-      provisionalDetectedAt ||= Date.now();
-      // Explorer can publish a blank package frame several frames before
-      // ApplicationFrameHost publishes the titled, capturable game frame.
-      // Keep the verified package fallback, but give the real visual window a
-      // bounded opportunity to appear instead of caching the blank shell.
-      if (Date.now() - provisionalDetectedAt >= 2500) {
-        return provisionalWindow;
-      }
-    }
+    if (window) return window;
     const elapsedMs = Date.now() - startedAt;
     const intervalMs = elapsedMs < 5000 ? fastIntervalMs : settledIntervalMs;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-  return provisionalWindow;
+  return null;
 }
 
 async function runWindowCommand(handle: number, command: WindowCommand): Promise<void> {
@@ -544,6 +543,7 @@ function parseActivationState(raw: string): GameWindowActivationState | null {
       isForeground: Boolean(parsed.isForeground),
       isMinimized: Boolean(parsed.isMinimized),
       isVisible: Boolean(parsed.isVisible),
+      isCloaked: Boolean(parsed.isCloaked),
       height: Number(parsed.height ?? 0),
       monitorHeight: Number(parsed.monitorHeight ?? 0),
       monitorWidth: Number(parsed.monitorWidth ?? 0),
@@ -597,6 +597,7 @@ public static class Win32 {
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
   [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
   [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int attrValue, int attrSize);
   [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
@@ -744,6 +745,8 @@ if ($activateForeground) {
 }
 Start-Sleep -Milliseconds 160
 $foreground = [Win32]::GetForegroundWindow()
+[int]$cloaked = 0
+$cloakRead = [Win32]::DwmGetWindowAttribute($hwnd, 14, [ref]$cloaked, 4)
 $rect = New-Object RECT
 [Win32]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
 $finalStyle = [Win32]::GetWindowLongPtr($hwnd, $gwlStyle).ToInt64()
@@ -759,6 +762,7 @@ $hasMonitorInfo = [Win32]::GetMonitorInfo($finalMonitor, [ref]$finalMonitorInfo)
   isForeground = ($foreground -eq $hwnd)
   isMinimized = [Win32]::IsIconic($hwnd)
   isVisible = [Win32]::IsWindowVisible($hwnd)
+  isCloaked = ($cloakRead -ne 0 -or $cloaked -ne 0)
   x = [int]$rect.Left
   y = [int]$rect.Top
   width = [int]($rect.Right - $rect.Left)
@@ -1178,12 +1182,23 @@ export async function isGameWindowVisible(window: GameWindowInfo): Promise<boole
   if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
     return false;
   }
+  try {
+    const result = await runWindowsControl('inspect-window', Math.trunc(window.handle));
+    if (result.presentation) {
+      const state = result.presentation;
+      return state.isVisible && !state.isCloaked && !state.isMinimized && state.width > 32 && state.height > 32;
+    }
+    if (!result.ok) return false;
+  } catch {
+    // A restarted worker can fall back to the standalone inspection below.
+  }
   const script = `
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public struct QuickWindowRect { public int Left; public int Top; public int Right; public int Bottom; }
 public static class QuickWindowStateWin32 {
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out QuickWindowRect rect);
@@ -1194,7 +1209,9 @@ $rect = New-Object QuickWindowRect
 $hasRect = [QuickWindowStateWin32]::GetWindowRect($hwnd, [ref]$rect)
 $width = if ($hasRect) { $rect.Right - $rect.Left } else { 0 }
 $height = if ($hasRect) { $rect.Bottom - $rect.Top } else { 0 }
-if ([QuickWindowStateWin32]::IsWindow($hwnd) -and [QuickWindowStateWin32]::IsWindowVisible($hwnd) -and $width -gt 32 -and $height -gt 32) { "true" } else { "false" }
+[int]$cloaked = 0
+$cloakRead = [QuickWindowStateWin32]::DwmGetWindowAttribute($hwnd, 14, [ref]$cloaked, 4)
+if ($cloakRead -eq 0 -and $cloaked -eq 0 -and [QuickWindowStateWin32]::IsWindow($hwnd) -and [QuickWindowStateWin32]::IsWindowVisible($hwnd) -and $width -gt 32 -and $height -gt 32) { "true" } else { "false" }
 `;
   return (await runPowerShell(script)).trim().toLowerCase() === 'true';
 }
@@ -1204,6 +1221,12 @@ export async function getGameWindowActivationState(
 ): Promise<GameWindowActivationState | null> {
   if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
     return null;
+  }
+  try {
+    const result = await runWindowsControl('inspect-window', Math.trunc(window.handle));
+    if (result.ok && result.presentation) return result.presentation;
+  } catch {
+    // Fall back to a standalone read if the persistent worker restarted.
   }
   const script = `
 Add-Type @"
@@ -1217,6 +1240,7 @@ public struct InspectMonitorInfo {
   public uint dwFlags;
 }
 public static class InspectGameWindowWin32 {
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr monitor, ref InspectMonitorInfo info);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out InspectWindowRect rect);
@@ -1233,6 +1257,8 @@ public static class InspectGameWindowWin32 {
 "@
 $hwnd = [IntPtr]${Math.trunc(window.handle)}
 $foreground = [InspectGameWindowWin32]::GetForegroundWindow()
+[int]$cloaked = 0
+$cloakRead = [InspectGameWindowWin32]::DwmGetWindowAttribute($hwnd, 14, [ref]$cloaked, 4)
 $rect = New-Object InspectWindowRect
 [InspectGameWindowWin32]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
 $monitor = [InspectGameWindowWin32]::MonitorFromWindow($hwnd, 2)
@@ -1250,6 +1276,7 @@ $hasWindowChrome = (($style -band $wsOverlappedWindow) -ne 0) -or (($exStyle -ba
   isForeground = ($foreground -eq $hwnd)
   isMinimized = [InspectGameWindowWin32]::IsIconic($hwnd)
   isVisible = [InspectGameWindowWin32]::IsWindowVisible($hwnd)
+  isCloaked = ($cloakRead -ne 0 -or $cloaked -ne 0)
   x = [int]$rect.Left
   y = [int]$rect.Top
   width = [int]($rect.Right - $rect.Left)
@@ -1284,11 +1311,12 @@ export async function resumeGameWindowFast(
   });
 }
 
-export async function hideGameWindows(window: GameWindowInfo): Promise<number[]> {
+export async function hideGameWindows(window: GameWindowInfo, appUserModelId?: string): Promise<number[]> {
   const result = await runWindowsControl('hide-game', {
     handle: window.handle,
     processId: window.processId,
-    processName: window.processName
+    processName: window.processName,
+    appUserModelId
   });
   if (!result.ok) throw new Error(result.message);
   return result.handles ?? [];

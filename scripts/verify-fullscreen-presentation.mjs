@@ -23,6 +23,8 @@ const fullscreen = {
 
 assert.equal(CONSOLE_GAME_LAUNCH_MODE, 'fullscreen', 'console gameplay must always request fullscreen');
 assert.equal(isFullscreenGamePresentation(fullscreen), true, 'exact monitor coverage must pass');
+assert.equal(isFullscreenGamePresentation({ ...fullscreen, isCloaked: true }), false,
+  'a cloaked Store frame can report visible and foreground but must never count as gameplay');
 assert.equal(
   isFullscreenGamePresentation({ ...fullscreen, x: -2, y: -2, width: 1924, height: 1084 }),
   true,
