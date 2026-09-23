@@ -76,7 +76,10 @@ Live Computer Use evidence:
 - [DWM window attributes](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute)
 - [Store activation contract](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-iapplicationactivationmanager-activateapplication)
 
-Publication and final packaged verification are recorded below when completed.
+The packaged build was published as
+[v0.20.25](https://github.com/sowankispassah/nxgs_gaming/releases/tag/v0.20.25).
+The live update manifest reports 0.20.25, and its installer SHA-256 matches the
+locally tested installer (`2f6f351931e869ba697dac81ad787fa216d2db1e507ce3a1904337089f2b8c80`).
 
 ## Immersive-layer investigation, September 23
 
@@ -94,5 +97,4 @@ Computer Use clicked the actual Resume button twice.
 
 Experiments with resizing, disabling game input, shell activation, DWM cloak,
 and `SW_RESTORE` did not establish the requested behavior and were removed.
-DWM cloak returned `0x80070005` (access denied). Publication remains to be
-completed.
+DWM cloak returned `0x80070005` (access denied).
