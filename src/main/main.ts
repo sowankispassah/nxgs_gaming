@@ -272,7 +272,12 @@ async function createSafeQuickOverlayBackdrop(
         // Native staging verifies the exact game/overlay z-order before accepting
         // this path, including Store games. Capture is a recovery path, not a
         // prerequisite that delays every first Home press by several seconds.
-        if (preferDirectGameplay) {
+        // Store composition surfaces can stop painting underneath a transparent
+        // Electron window even when native z-order reports the game as visible.
+        // Prefer an exact window capture for those games; ordinary desktop games
+        // keep the faster direct path.
+        const captureStoreWindowFirst = game.launchType === 'microsoftStore';
+        if (preferDirectGameplay && !captureStoreWindowFirst) {
           await logLine(
             'info',
             `Prepared direct live game backdrop for ${game.title} from tracked window ${gameWindow.handle}.`
@@ -324,6 +329,14 @@ async function createSafeQuickOverlayBackdrop(
             sourceId: exactWindowSource.id,
             capturedWindowHandle: capturedHandle,
             cropTopPx
+          };
+        }
+        if (preferDirectGameplay) {
+          await logLine('warn', `No exact live capture source was published for ${game.title}; trying direct window staging.`);
+          return {
+            kind: 'direct',
+            gameId: game.id,
+            capturedWindowHandle: gameWindow.handle
           };
         }
         await logLine(
@@ -623,6 +636,23 @@ async function performGameplayQuickOverlayPreparation(
   let painted = await paintReady;
   if (loadingHomeBlocksPreparation()) return;
   if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
+
+  if (!painted && backdrop.kind === 'live' && preferDirectGameplay && backdrop.capturedWindowHandle) {
+    // Exact Store capture is preferred, but a game that refuses Chromium's
+    // video stream may still accept native direct stacking.
+    preparedKind = 'direct';
+    requestId = ++gameplayQuickOverlayRequestId;
+    paintReady = waitForQuickOverlayPaint(requestId);
+    overlay.webContents.send('quickOverlay:backdrop', {
+      requestId,
+      gameId,
+      kind: 'direct',
+      capturedWindowHandle: backdrop.capturedWindowHandle
+    } satisfies QuickOverlayBackdrop);
+    painted = await paintReady;
+    if (loadingHomeBlocksPreparation()) return;
+    if (launcher.activeState.game?.id !== gameId || overlay.isDestroyed()) return;
+  }
 
   if (!painted && backdrop.kind === 'live' && backdrop.posterKind === 'snapshot' && backdrop.imageUrl) {
     // Preserve the exact game-window frame ahead of cover art if the live

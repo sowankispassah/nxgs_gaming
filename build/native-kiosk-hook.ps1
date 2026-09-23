@@ -1,4 +1,7 @@
-param([Parameter(Mandatory = $true)][int]$ParentProcessId)
+param(
+  [Parameter(Mandatory = $true)][int]$ParentProcessId,
+  [Parameter(Mandatory = $true)][string]$TrustedInputToken
+)
 $ErrorActionPreference = "Stop"
 
 Add-Type -TypeDefinition @"
@@ -22,6 +25,7 @@ public static class NxgsLockdownKeyboardHook {
   private const int VK_RWIN = 0x5C;
   private const int VK_CONTROL = 0x11;
   private const int VK_MENU = 0x12;
+  private const uint LLKHF_INJECTED = 0x10;
   private const int SW_HIDE = 0;
   private const uint EVENT_OBJECT_SHOW = 0x8002;
   private const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
@@ -55,6 +59,7 @@ public static class NxgsLockdownKeyboardHook {
     new System.Collections.Generic.HashSet<IntPtr>();
   private static readonly System.Collections.Generic.HashSet<int> pressedKeys =
     new System.Collections.Generic.HashSet<int>();
+  private static ulong trustedInputToken;
 
   [StructLayout(LayoutKind.Sequential)] private struct KBDLLHOOKSTRUCT { public uint vkCode, scanCode, flags, time; public UIntPtr dwExtraInfo; }
   [StructLayout(LayoutKind.Sequential)] private struct POINT { public int x, y; }
@@ -82,7 +87,8 @@ public static class NxgsLockdownKeyboardHook {
   [DllImport("user32.dll")] private static extern IntPtr DispatchMessage(ref MSG message);
   [DllImport("kernel32.dll", CharSet = CharSet.Auto)] private static extern IntPtr GetModuleHandle(string moduleName);
 
-  public static void Run(int parentProcessId) {
+  public static void Run(int parentProcessId, string token) {
+    trustedInputToken = Convert.ToUInt64(token, 16);
     hook = SetWindowsHookEx(WH_KEYBOARD_LL, callback, GetModuleHandle(null), 0);
     if (hook == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
     notificationShowHook = SetWinEventHook(
@@ -224,6 +230,11 @@ public static class NxgsLockdownKeyboardHook {
       KBDLLHOOKSTRUCT data = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
       int key = (int)data.vkCode;
       int message = wParam.ToInt32();
+      if ((key == VK_LWIN || key == VK_RWIN) &&
+          (data.flags & LLKHF_INJECTED) != 0 &&
+          data.dwExtraInfo.ToUInt64() == trustedInputToken) {
+        return CallNextHookEx(hook, code, wParam, lParam);
+      }
       if (message == WM_KEYUP || message == WM_SYSKEYUP) {
         pressedKeys.Remove(key);
         return CallNextHookEx(hook, code, wParam, lParam);
@@ -258,4 +269,4 @@ public static class NxgsLockdownKeyboardHook {
 }
 "@
 
-[NxgsLockdownKeyboardHook]::Run($ParentProcessId)
+[NxgsLockdownKeyboardHook]::Run($ParentProcessId, $TrustedInputToken)

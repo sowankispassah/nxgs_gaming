@@ -189,16 +189,23 @@ function powershellQuote(value: string): string {
 }
 
 async function runPowerShell(script: string): Promise<string> {
-  const { stdout } = await execFileAsync(
-    'powershell.exe',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-    {
-      maxBuffer: 1024 * 1024,
-      timeout: 8000,
-      windowsHide: true
-    }
-  );
-  return stdout.trim();
+  try {
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      {
+        maxBuffer: 1024 * 1024,
+        timeout: 8000,
+        windowsHide: true
+      }
+    );
+    return stdout.trim();
+  } catch (error) {
+    const failure = error as Error & { killed?: boolean; code?: string | number; stderr?: string };
+    const detail = failure.killed ? 'timed out' : `failed (${failure.code ?? 'unknown'})`;
+    const stderr = failure.stderr?.trim().slice(-300);
+    throw new Error(`Windows window command ${detail}${stderr ? `: ${stderr}` : ''}`);
+  }
 }
 
 function parseWindowInfo(raw: string): GameWindowInfo | null {
@@ -279,6 +286,19 @@ export async function findGameWindow(search: GameWindowSearch): Promise<GameWind
   const normalizedName = search.processName ? normalizeProcessName(search.processName).replace(/\.exe$/i, '') : '';
   const pid = Number.isFinite(search.pid) ? Number(search.pid) : 0;
   const titleHint = search.titleHint?.trim().toLowerCase() ?? '';
+  if (pid > 0 && search.appUserModelId && search.titleHint?.trim()) {
+    try {
+      const exact = await runWindowsControl('find-store-window', {
+        processId: pid,
+        title: search.titleHint.trim(),
+        appUserModelId: search.appUserModelId
+      });
+      if (exact.ok && exact.window) return exact.window;
+    } catch {
+      // A Store frame can publish before the native worker is ready. The
+      // existing enumerator remains a recovery path for that brief interval.
+    }
+  }
   const script = `
 $ErrorActionPreference = "SilentlyContinue"
 Add-Type @"
@@ -471,7 +491,13 @@ export async function waitForGameWindow(
 ): Promise<GameWindowInfo | null> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs && shouldContinue()) {
-    const window = await findGameWindow(search);
+    let window: GameWindowInfo | null = null;
+    try {
+      window = await findGameWindow(search);
+    } catch {
+      // Transient Store startup and a slow Windows query must not abort the
+      // launch while the game process may still publish a usable window.
+    }
     if (!shouldContinue()) {
       return null;
     }
@@ -951,7 +977,21 @@ export async function enforceQuickOverlayZOrder(
       overlayTopMost: staged.ok,
       overlayVisible: staged.ok
     };
-  } catch {
+  } catch (error) {
+    // A stalled native focus call must not keep Home waiting through three
+    // additional standalone attempts. The next request gets a fresh worker.
+    if (String(error).includes('did not respond in time')) {
+      return {
+        error: String(error),
+        foregroundHandle: 0,
+        gameTopMost: false,
+        gameVisible: false,
+        overlayAboveGame: false,
+        overlayForeground: false,
+        overlayTopMost: false,
+        overlayVisible: false
+      };
+    }
     // Retain the standalone path as a recovery if the warm worker restarted.
   }
 

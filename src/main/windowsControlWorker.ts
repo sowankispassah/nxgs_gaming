@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { GamePresentationSnapshot } from './gamePresentation';
+import { trustedNativeInputToken } from './trustedNativeInput';
 
 export type WindowsControlCommand =
   | 'volume'
@@ -9,6 +10,7 @@ export type WindowsControlCommand =
   | 'focus-window'
   | 'activate-store-app'
   | 'inspect-window'
+  | 'find-store-window'
   | 'stage-overlay'
   | 'release-window'
   | 'close-window'
@@ -21,6 +23,15 @@ export interface WindowsControlResult {
   presentation?: GamePresentationSnapshot;
   message: string;
   handles?: number[];
+  window?: {
+    handle: number;
+    processId: number;
+    processName: string;
+    hostProcessId: number;
+    hostProcessName: string;
+    className: string;
+    title: string;
+  };
 }
 
 export interface HideGameRequest {
@@ -40,6 +51,12 @@ export interface OverlayStageRequest {
   overlayHandle: number;
   gameHandle: number;
   minimizeGameAfterPaint?: boolean;
+}
+
+export interface StoreWindowRequest {
+  processId: number;
+  title: string;
+  appUserModelId: string;
 }
 
 const WORKER_SCRIPT = String.raw`
@@ -217,6 +234,7 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string className, string windowName);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint command);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("user32.dll")] private static extern bool EnableWindow(IntPtr window, bool enabled);
@@ -236,6 +254,7 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumWindowProc callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint parameter, ref uint value, uint flags);
     [DllImport("dwmapi.dll")] private static extern int DwmFlush();
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out uint value, int size);
 
     private const uint KeyUp = 0x0002;
     private static readonly HashSet<long> FailedImmersiveWindowToggles = new HashSet<long>();
@@ -261,6 +280,33 @@ public static class NxgsWarningInput {
             try { return v.type == 31 && String.Equals(Marshal.PtrToStringUni(v.pointer), appId, StringComparison.OrdinalIgnoreCase); }
             finally { PropVariantClear(ref v); }
         } finally { Marshal.ReleaseComObject(s); }
+    }
+    public static System.Collections.Generic.Dictionary<string, object> FindStoreWindow(int processId, string title, string appId) {
+        if (processId <= 0 || String.IsNullOrWhiteSpace(title) || String.IsNullOrWhiteSpace(appId)) return null;
+        var frame = FindWindow("ApplicationFrameWindow", title);
+        if (frame == IntPtr.Zero || !IsWindow(frame) || !IsWindowVisible(frame) || !HasAppId(frame, appId)) return null;
+        uint cloaked = 0;
+        if (DwmGetWindowAttribute(frame, 14, out cloaked, sizeof(uint)) == 0 && cloaked != 0) return null;
+        uint hostProcessId;
+        GetWindowThreadProcessId(frame, out hostProcessId);
+        if (hostProcessId == 0) return null;
+        try {
+            using (var host = System.Diagnostics.Process.GetProcessById((int)hostProcessId))
+            using (var package = System.Diagnostics.Process.GetProcessById(processId)) {
+                if (!String.Equals(host.ProcessName, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase)) return null;
+                return new System.Collections.Generic.Dictionary<string, object> {
+                    { "handle", frame.ToInt64() },
+                    { "processId", processId },
+                    { "processName", package.ProcessName },
+                    { "hostProcessId", (int)hostProcessId },
+                    { "hostProcessName", host.ProcessName },
+                    { "className", "ApplicationFrameWindow" },
+                    { "title", title }
+                };
+            }
+        } catch (ArgumentException) {
+            return null;
+        }
     }
     public static long[] HideGame(long handle, int processId, string processName, string appId) {
         var hidden = new System.Collections.Generic.List<long>();
@@ -341,10 +387,17 @@ public static class NxgsWarningInput {
         }
     }
 
-    public static string StageOverlay(long overlayHandle, long gameHandle, bool minimizeGameAfterPaint) {
+    public static string StageOverlay(long overlayHandle, long gameHandle, bool minimizeGameAfterPaint, string trustedInputToken) {
         var overlay = new IntPtr(overlayHandle);
         var game = new IntPtr(gameHandle);
         if (overlay == IntPtr.Zero || !IsWindow(overlay)) return "invalid_overlay";
+        // Store apps may publish a CoreWindow child while ApplicationFrameHost
+        // owns the actual desktop z-order. Only the verified child's root can
+        // be ordered relative to Electron's top-level overlay.
+        if (game != IntPtr.Zero && IsWindow(game)) {
+            var root = GetAncestor(game, 2);
+            if (root != IntPtr.Zero && IsWindow(root)) game = root;
+        }
 
         var currentThread = GetCurrentThreadId();
         var foregroundBefore = GetForegroundWindow();
@@ -383,15 +436,18 @@ public static class NxgsWarningInput {
                 if (!minimizeGameAfterPaint && GetForegroundWindow() == game &&
                     GetWindowBand(game, out gameBand) && gameBand == 8 &&
                     !FailedImmersiveWindowToggles.Contains(game.ToInt64())) {
-                    // UWP fullscreen frames sit in an immersive z-order band
-                    // that a normal Electron overlay cannot cover. Alt+Enter
-                    // asks the game to leave that mode while NXGS keeps its
-                    // tracked window borderless and screen-sized.
-                    keybd_event(0x12, 0, 0, UIntPtr.Zero);
+                    // Windows' UWP fullscreen toggle leaves the immersive
+                    // z-order band so the game can keep rendering underneath
+                    // NXGS Home. The kiosk hook permits only this tagged
+                    // injected Windows-key press; physical presses stay blocked.
+                    var trustedInput = new UIntPtr(Convert.ToUInt64(trustedInputToken, 16));
+                    keybd_event(0x10, 0, 0, UIntPtr.Zero);
+                    keybd_event(0x5B, 0, 0, trustedInput);
                     keybd_event(0x0D, 0, 0, UIntPtr.Zero);
                     keybd_event(0x0D, 0, KeyUp, UIntPtr.Zero);
-                    keybd_event(0x12, 0, KeyUp, UIntPtr.Zero);
-                    for (var wait = 0; wait < 30; wait += 1) {
+                    keybd_event(0x5B, 0, KeyUp, trustedInput);
+                    keybd_event(0x10, 0, KeyUp, UIntPtr.Zero);
+                    for (var wait = 0; wait < 50; wait += 1) {
                         if (GetWindowBand(game, out gameBand) && gameBand != 8) break;
                         System.Threading.Thread.Sleep(10);
                     }
@@ -463,6 +519,12 @@ public static class NxgsWarningInput {
 
             var visible = IsWindowVisible(overlay);
             var foreground = GetForegroundWindow();
+            uint cloaked = 0;
+            var gameCloaked = game != IntPtr.Zero && IsWindow(game) &&
+                DwmGetWindowAttribute(game, 14, out cloaked, sizeof(uint)) == 0 && cloaked != 0;
+            var gameVisible = game != IntPtr.Zero && IsWindow(game) &&
+                IsWindowVisible(game) && !IsIconic(game) && !gameCloaked;
+            if (!minimizeGameAfterPaint && !gameVisible) return "game_not_visible_or_cloaked";
             if (visible && overlayAboveGame && (foreground == overlay || gameMinimized)) {
                 DwmFlush();
                 return "ok";
@@ -593,6 +655,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         } elseif ($request.command -eq 'inspect-window') {
             $presentation = [NxgsWarningInput]::Presentation([long]$request.value)
             $response = @{ id = $request.id; ok = ($null -ne $presentation); presentation = $presentation; message = 'Window presentation inspected.' }
+        } elseif ($request.command -eq 'find-store-window') {
+            $foundWindow = [NxgsWarningInput]::FindStoreWindow([int]$request.value.processId, [string]$request.value.title, [string]$request.value.appUserModelId)
+            $response = @{ id = $request.id; ok = ($null -ne $foundWindow); window = $foundWindow; message = 'Exact Store game window inspected.' }
         } elseif ($request.command -eq 'focus-window') {
             $handle = [long]$request.value
             $focused = [NxgsWarningInput]::FocusWindow($handle)
@@ -601,7 +666,7 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
             $overlayHandle = [long]$request.value.overlayHandle
             $gameHandle = [long]$request.value.gameHandle
             $minimizeGameAfterPaint = [bool]$request.value.minimizeGameAfterPaint
-            $stageDetail = [NxgsWarningInput]::StageOverlay($overlayHandle, $gameHandle, $minimizeGameAfterPaint)
+            $stageDetail = [NxgsWarningInput]::StageOverlay($overlayHandle, $gameHandle, $minimizeGameAfterPaint, [string]$request.value.trustedInputToken)
             $staged = $stageDetail -eq 'ok'
             $response = @{ id = $request.id; ok = $staged; value = $staged; message = $(if ($staged) { 'Quick overlay staged above the tracked game.' } else { "Quick overlay z-order was not confirmed ($stageDetail)." }) }
         } elseif ($request.command -eq 'release-window') {
@@ -646,7 +711,7 @@ function rejectPending(message: string): void {
 function ensureWorker(): ChildProcessWithoutNullStreams {
   if (worker && !worker.killed && worker.exitCode === null) return worker;
 
-  worker = spawn(
+  const activeWorker = spawn(
     'powershell.exe',
     [
       '-NoLogo',
@@ -663,10 +728,12 @@ function ensureWorker(): ChildProcessWithoutNullStreams {
       env: { ...process.env, NXGS_WINDOWS_CONTROL_WORKER: WORKER_SCRIPT }
     }
   );
+  worker = activeWorker;
   stdoutBuffer = '';
-  worker.stdout.setEncoding('utf8');
-  worker.stderr.resume();
-  worker.stdout.on('data', (chunk: string) => {
+  activeWorker.stdout.setEncoding('utf8');
+  activeWorker.stderr.resume();
+  activeWorker.stdout.on('data', (chunk: string) => {
+    if (worker !== activeWorker) return;
     stdoutBuffer += chunk;
     let newline = stdoutBuffer.indexOf('\n');
     while (newline >= 0) {
@@ -679,7 +746,7 @@ function ensureWorker(): ChildProcessWithoutNullStreams {
           if (request) {
             pending.delete(result.id);
             clearTimeout(request.timeout);
-            request.resolve({ ok: result.ok, value: result.value, handles: result.handles, presentation: result.presentation, message: result.message });
+            request.resolve({ ok: result.ok, value: result.value, handles: result.handles, presentation: result.presentation, window: result.window, message: result.message });
           }
         } catch {
           // Ignore non-JSON PowerShell diagnostics; the request timeout reports a useful failure.
@@ -688,15 +755,17 @@ function ensureWorker(): ChildProcessWithoutNullStreams {
       newline = stdoutBuffer.indexOf('\n');
     }
   });
-  worker.once('error', (error) => {
+  activeWorker.once('error', (error) => {
+    if (worker !== activeWorker) return;
     rejectPending(`Live control failed: ${error.message}`);
     worker = null;
   });
-  worker.once('exit', () => {
+  activeWorker.once('exit', () => {
+    if (worker !== activeWorker) return;
     rejectPending('Live control stopped unexpectedly.');
     worker = null;
   });
-  return worker;
+  return activeWorker;
 }
 
 export function warmWindowsControlWorker(): void {
@@ -705,7 +774,7 @@ export function warmWindowsControlWorker(): void {
 
 export function runWindowsControl(
   command: WindowsControlCommand,
-  value: number | boolean | string | OverlayStageRequest | HideGameRequest
+  value: number | boolean | string | OverlayStageRequest | HideGameRequest | StoreWindowRequest
 ): Promise<WindowsControlResult> {
   if (process.platform !== 'win32') {
     return Promise.resolve({ ok: false, message: 'System controls are unavailable on this device.' });
@@ -715,11 +784,17 @@ export function runWindowsControl(
   const id = ++nextRequestId;
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      pending.delete(id);
-      reject(new Error('The system control did not respond in time.'));
-    }, 7000);
+      if (worker === activeWorker) {
+        worker = null;
+        rejectPending(`Live control ${command} did not respond in time.`);
+        activeWorker.kill();
+      }
+    }, command === 'stage-overlay' ? 2500 : 7000);
     pending.set(id, { resolve, reject, timeout });
-    activeWorker.stdin.write(`${JSON.stringify({ id, command, value })}\n`);
+    const requestValue = command === 'stage-overlay'
+      ? { ...(value as OverlayStageRequest), trustedInputToken: trustedNativeInputToken }
+      : value;
+    activeWorker.stdin.write(`${JSON.stringify({ id, command, value: requestValue })}\n`);
   });
 }
 

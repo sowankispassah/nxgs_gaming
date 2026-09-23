@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
 import { app } from 'electron';
 import { logLine } from './logger';
+import { trustedNativeInputToken } from './trustedNativeInput';
 
 function getHookScriptPath(): string {
   return app.isPackaged
@@ -29,7 +30,9 @@ export class NativeKioskHook {
         '-File',
         getHookScriptPath(),
         '-ParentProcessId',
-        String(process.pid)
+        String(process.pid),
+        '-TrustedInputToken',
+        trustedNativeInputToken
       ],
       { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }
     );

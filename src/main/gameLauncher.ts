@@ -512,8 +512,9 @@ export class GameLauncher {
     const focusGeneration = this.beginFocusOperation('resume', game);
 
     try {
+      let cachedWindowNeedsRepair: GameWindowInfo | null = null;
       if (
-        !requireFullHandoff &&
+        (!requireFullHandoff || wasParked) &&
         this.activeWindow &&
         gameWindowMatchesGame(game, this.activeWindow, this.activeProcessId)
       ) {
@@ -544,6 +545,12 @@ export class GameLauncher {
             void logLine('info', `Fast resume focused cached ${game.title} window ${cachedWindow.handle}.`);
             return { ok: true };
           }
+          if (fastState?.isVisible && !fastState.isMinimized) {
+            cachedWindowNeedsRepair = cachedWindow;
+          }
+          if (requireFullHandoff) {
+            await logLine('info', `Cached ${game.title} window needs fullscreen repair after Home; continuing with the full handoff.`);
+          }
         } catch (fastResumeError) {
           if (
             fastResumeError instanceof FocusOperationCanceledError ||
@@ -566,13 +573,13 @@ export class GameLauncher {
         windowState: this.activeWindow ? 'background' : 'unknown'
       });
       await logLine('info', `Resume fallback started for ${game.title}. Rediscovering the active game window.`);
-      let window = this.activeWindow &&
+      let window = cachedWindowNeedsRepair ?? (this.activeWindow &&
         gameWindowMatchesGame(game, this.activeWindow, this.activeProcessId)
         ? this.activeWindow
-        : await this.getActiveWindow(game);
+        : await this.getActiveWindow(game));
       this.assertFocusOperationCurrent(focusGeneration, game);
       const untrackedStoreApp = game.launchType === 'microsoftStore' && !game.processName?.trim();
-      if (game.launchType === 'microsoftStore') {
+      if (game.launchType === 'microsoftStore' && !cachedWindowNeedsRepair) {
         // A cached Store frame may have been retired or cloaked while Home was
         // open. A failed fast resume must reactivate the package, then discover
         // its current real window instead of accepting the stale frame again.
@@ -1903,19 +1910,11 @@ export class GameLauncher {
         })()
           .catch((error) => {
             if (this.isPresentationReinforcementCurrent(reinforcementGeneration, game)) {
-              const message = `Protected fullscreen enforcement failed: ${String(error)}`;
-              this.lastHandoffError = message;
-              this.gameInForeground = false;
-              this.clearReinforcementTimers();
-              this.showLaunchShield();
-              this.setActiveState({
-                status: 'quickOverlayOpen',
-                game,
-                message: `${message}. Choose Resume Game to retry.`,
-                windowDetected: true,
-                windowState: 'background'
-              });
-              void logLine('error', `${message}. NXGS restored its fullscreen shell shield.`);
+              // A failed Windows query is not proof that the already-verified
+              // game lost fullscreen. Raising the shell here steals focus from
+              // Store games and can cause them to close. Only the measured
+              // three-attempt failure above may interrupt gameplay.
+              void logLine('warn', `Fullscreen reinforcement could not be measured for ${game.title}; keeping gameplay visible: ${String(error)}`);
             }
           })
           .finally(() => {

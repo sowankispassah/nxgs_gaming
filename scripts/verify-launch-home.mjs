@@ -132,6 +132,20 @@ function harness() {
   assert.equal(h.launcher.activeState.status, 'running');
 }
 
+// A parked game with the same verified window can return directly instead of
+// waiting for Store activation and a second discovery pass.
+{
+  const h = harness();
+  h.launcher.operationInFlight = null;
+  h.launcher.activeWindow = window;
+  h.launcher.state.status = 'minimizedToHome';
+  h.launcher.parkedGameIds.add(game.id);
+  assert.equal((await h.launcher.resumeActiveGame()).ok, true);
+  assert.equal(h.fastCalls(), 1);
+  assert.equal(h.nativeCalls(), 0);
+  assert.equal(h.launcher.activeState.status, 'running');
+}
+
 // Execute the production loading-to-live transition with delayed preparation.
 // Cover removal must be gated by painted game content, native stacking, and the
 // same Home request still being open after asynchronous work settles.
