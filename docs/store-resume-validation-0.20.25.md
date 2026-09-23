@@ -59,6 +59,9 @@ Live Computer Use evidence:
   different hand and pig poses, confirming a moving game scene behind Home.
   Direct Computer Use clicks on **Resume Game** succeeded twice and the native
   log recorded fast returns to the `running` state with the game foreground.
+- In the packaged build, Computer Use sent Ctrl+Shift+H to the Angry Birds
+  window. NXGS logged `global-home` and staged the live overlay in 181 ms;
+  a direct Resume click then returned to gameplay.
 - Angry Birds: the Close Game confirmation removed its process without the
   former controllable-window error.
 - The final packaged `release/win-unpacked` build repeated the live Home,
