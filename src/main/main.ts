@@ -272,12 +272,10 @@ async function createSafeQuickOverlayBackdrop(
         // Native staging verifies the exact game/overlay z-order before accepting
         // this path, including Store games. Capture is a recovery path, not a
         // prerequisite that delays every first Home press by several seconds.
-        // Store composition surfaces can stop painting underneath a transparent
-        // Electron window even when native z-order reports the game as visible.
-        // Prefer an exact window capture for those games; ordinary desktop games
-        // keep the faster direct path.
-        const captureStoreWindowFirst = game.launchType === 'microsoftStore';
-        if (preferDirectGameplay && !captureStoreWindowFirst) {
+        // The native stage moves immersive Store frames into a compositable
+        // layer. Keep the real game running beneath Home and avoid starting a
+        // GPU video capture during game startup unless native staging fails.
+        if (preferDirectGameplay) {
           await logLine(
             'info',
             `Prepared direct live game backdrop for ${game.title} from tracked window ${gameWindow.handle}.`
@@ -329,14 +327,6 @@ async function createSafeQuickOverlayBackdrop(
             sourceId: exactWindowSource.id,
             capturedWindowHandle: capturedHandle,
             cropTopPx
-          };
-        }
-        if (preferDirectGameplay) {
-          await logLine('warn', `No exact live capture source was published for ${game.title}; trying direct window staging.`);
-          return {
-            kind: 'direct',
-            gameId: game.id,
-            capturedWindowHandle: gameWindow.handle
           };
         }
         await logLine(
