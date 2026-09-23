@@ -1,7 +1,7 @@
 {
-    "version":  "0.20.26",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.26/NXGS-Play-Setup.exe",
-    "sha256":  "fd0e4ae6cbed8b7f325f98f6036012b45b16e2a65ddaba2d023ac26d0797b83c",
+    "version":  "0.20.27",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.20.27/NXGS-Play-Setup.exe",
+    "sha256":  "494af780d837d743d97fac75f184570138096a815e7409b758bc245b62ef4eac",
     "required":  false,
-    "notes":  "Hill Climb Racing stays live behind Home, Ctrl+Shift+H responds during gameplay, and Resume Game returns quickly. Store game window handling also improves Angry Birds 2 and future games."
+    "notes":  "Store games stay live behind Home, including Hill Climb Racing and Angry Birds 2. Ctrl+Shift+H works during loading and active gameplay, and Resume Game returns to the same session."
 }
