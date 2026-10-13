@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { readRendererStyles } from './lib/rendererSources.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 
@@ -13,7 +14,7 @@ async function hash(relativePath) {
 const [service, main, styles, packageJson, chickenInvadersProfile, autoProfiles, actions] = await Promise.all([
   readFile(resolve(root, 'src/main/controllerCompatibilityService.ts'), 'utf8'),
   readFile(resolve(root, 'src/main/main.ts'), 'utf8'),
-  readFile(resolve(root, 'src/renderer/styles.css'), 'utf8'),
+  readRendererStyles(),
   readFile(resolve(root, 'package.json'), 'utf8'),
   readFile(resolve(root, 'vendor/controller-bridge/Profiles/Chicken Invaders 4.xml'), 'utf8'),
   readFile(resolve(root, 'vendor/controller-bridge/Auto Profiles.xml'), 'utf8'),

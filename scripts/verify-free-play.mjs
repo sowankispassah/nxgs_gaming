@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isFreePlayEnabled, requiresPaymentForLaunch } from '../src/shared/playAccess.ts';
+import { readAppShellSource } from './lib/rendererSources.mjs';
 
 const paid = { playAccessMode: 'paid' };
 const free = { playAccessMode: 'free' };
@@ -15,7 +16,7 @@ assert.equal(requiresPaymentForLaunch(free, { status: 'expired', remainingSecond
 const [databaseSource, mainSource, appSource] = await Promise.all([
   readFile(new URL('../src/main/database.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8')
+  readAppShellSource()
 ]);
 
 assert.match(databaseSource, /playAccessMode: 'paid'/);

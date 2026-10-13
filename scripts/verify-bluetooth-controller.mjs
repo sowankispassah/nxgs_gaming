@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { readRendererStyles } from './lib/rendererSources.mjs';
 
 const bluetoothSource = await readFile(
   new URL('../src/main/bluetoothService.ts', import.meta.url),
@@ -14,10 +15,7 @@ const sharedTypes = await readFile(
   new URL('../src/shared/types.ts', import.meta.url),
   'utf8'
 );
-const settingsStyles = await readFile(
-  new URL('../src/renderer/styles.css', import.meta.url),
-  'utf8'
-);
+const settingsStyles = await readRendererStyles();
 const pairFunction = bluetoothSource.slice(
   bluetoothSource.indexOf('export async function pairBluetoothDevice'),
   bluetoothSource.indexOf('export async function disconnectBluetoothDevice')

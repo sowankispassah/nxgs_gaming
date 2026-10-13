@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SessionTimer } from '../src/main/sessionTimer.ts';
+import { readAppShellSource } from './lib/rendererSources.mjs';
 
 const states = [];
 const warnings = [];
@@ -40,7 +41,7 @@ const [mainSource, paymentSource, functionSource, overlaySource, warningOverlayS
   readFile(new URL('../src/main/sessionWarningOverlay.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/gameLauncher.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/sessionTimer.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+  readAppShellSource(),
   readFile(new URL('../src/main/preload.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/windowManagerService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/windowsControlWorker.ts', import.meta.url), 'utf8')

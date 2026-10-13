@@ -1,0 +1,29 @@
+/* Design tokens shared by every launcher surface. */
+
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #07090d;
+  color: #f5f7fb;
+  font-synthesis: none;
+  letter-spacing: 0;
+  text-rendering: geometricPrecision;
+  --focus-border: rgba(244, 247, 251, 0.62);
+  --focus-bg: rgba(244, 247, 251, 0.1);
+  --focus-bg-strong: rgba(244, 247, 251, 0.15);
+  --focus-accent: rgba(139, 220, 255, 0.96);
+  --focus-accent-soft: rgba(109, 203, 255, 0.2);
+  --focus-glow: 0 0 0 2px var(--focus-accent), 0 0 0 6px var(--focus-accent-soft), 0 12px 30px rgba(0, 0, 0, 0.34);
+  --focus-ring: 0 0 0 2px var(--focus-accent), 0 0 0 6px var(--focus-accent-soft), 0 12px 30px rgba(0, 0, 0, 0.34);
+  --hover-ring: 0 0 0 1px rgba(244, 247, 251, 0.52), 0 8px 22px rgba(0, 0, 0, 0.24);
+  --panel-bg: rgba(8, 12, 18, 0.82);
+  --panel-bg-strong: rgba(10, 14, 20, 0.94);
+  --panel-border: rgba(231, 236, 242, 0.17);
+  --text-primary: #f4f6f8;
+  --text-secondary: rgba(225, 230, 236, 0.64);
+  --slider-track: rgba(226, 231, 237, 0.18);
+  --slider-active: #d8dde3;
+  --slider-thumb: #f4f6f8;
+  --slider-thumb-border: #232932;
+}

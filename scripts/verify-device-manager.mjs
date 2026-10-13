@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readAppShellSource } from './lib/rendererSources.mjs';
 
 const [types, database, payment, main, preload, app, manager] = await Promise.all([
   readFile(new URL('../src/shared/types.ts', import.meta.url), 'utf8'),
@@ -7,7 +8,7 @@ const [types, database, payment, main, preload, app, manager] = await Promise.al
   readFile(new URL('../src/main/paymentService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/preload.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+  readAppShellSource(),
   readFile(new URL('../src/renderer/components/DeviceManager.tsx', import.meta.url), 'utf8')
 ]);
 

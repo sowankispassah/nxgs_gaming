@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readAppShellSource } from './lib/rendererSources.mjs';
 
 const [types, database, payment, main, preload, app, manager, edgeFunction, migration] = await Promise.all([
   readFile(new URL('../src/shared/types.ts', import.meta.url), 'utf8'),
@@ -7,7 +8,7 @@ const [types, database, payment, main, preload, app, manager, edgeFunction, migr
   readFile(new URL('../src/main/paymentService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/preload.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+  readAppShellSource(),
   readFile(new URL('../src/renderer/components/PlanManager.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/functions/pcPayment/index.ts', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/migrations/20260721152250_local_plan_checkouts.sql', import.meta.url), 'utf8')

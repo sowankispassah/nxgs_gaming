@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SecretAdminSequence } from '../src/main/secretAdminSequence.ts';
+import { readAppShellSource } from './lib/rendererSources.mjs';
 
 const sequence = new SecretAdminSequence(5, 1400);
 for (let press = 0; press < 4; press += 1) {
@@ -36,7 +37,7 @@ const [hook, kioskInput, main, renderer] = await Promise.all([
   readFile(new URL('../build/native-kiosk-hook.ps1', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/kioskInputService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8')
+  readAppShellSource()
 ]);
 
 assert.match(hook, /WM_KEYUP[\s\S]*pressedKeys\.Remove\(key\)/, 'held keys must not count as repeated presses');

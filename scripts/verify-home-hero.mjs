@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readAppShellSource, readRendererStyles } from './lib/rendererSources.mjs';
 
 const [app, home, styles, database, main] = await Promise.all([
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+  readAppShellSource(),
   readFile(new URL('../src/renderer/components/ConsoleHome.tsx', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8'),
+  readRendererStyles(),
   readFile(new URL('../src/main/database.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8')
 ]);

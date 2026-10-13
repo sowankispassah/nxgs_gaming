@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readAppShellSource, readRendererStyles } from './lib/rendererSources.mjs';
 import {
   CONTROLLER_INITIAL_REPEAT_DELAY_MS,
   CONTROLLER_REPEAT_INTERVAL_MS,
@@ -97,11 +98,11 @@ pad.buttons[0].pressed = true;
 assert.equal(engine.update(pad, 1020).navigation.filter((event) => event.type === 'accept').length, 1);
 
 const [app, home, settings, switcher, styles, launcher, windowManager] = await Promise.all([
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+  readAppShellSource(),
   readFile(new URL('../src/renderer/components/ConsoleHome.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/ConsoleSettings.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/QuickHomeOverlay.tsx', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8'),
+  readRendererStyles(),
   readFile(new URL('../src/main/gameLauncher.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/windowManagerService.ts', import.meta.url), 'utf8')
 ]);

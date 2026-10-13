@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readAppShellSource, readRendererStyles } from './lib/rendererSources.mjs';
 
 const [mainSource, preloadSource, launcherSource, windowManagerSource, windowsControlSource, windowsProcessSource, identitySource, appSource, rendererMainSource, overlayRootSource, overlaySource, stylesSource] = await Promise.all([
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8'),
@@ -9,11 +10,11 @@ const [mainSource, preloadSource, launcherSource, windowManagerSource, windowsCo
   readFile(new URL('../src/main/windowsControlWorker.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/windowsProcess.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/gameWindowIdentity.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+  readAppShellSource(),
   readFile(new URL('../src/renderer/main.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/QuickOverlayRoot.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/QuickHomeOverlay.tsx', import.meta.url), 'utf8'),
-  readFile(new URL('../src/renderer/styles.css', import.meta.url), 'utf8')
+  readRendererStyles()
 ]);
 
 assert.match(mainSource, /title: 'NXGS Play Quick Switcher'[\s\S]*transparent: true/);

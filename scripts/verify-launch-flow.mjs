@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readAppShellSource } from './lib/rendererSources.mjs';
 import {
   hasConfirmedGameWindow,
   shouldShowBlockingLaunchTransition
@@ -23,7 +24,7 @@ assert.equal(shouldShowBlockingLaunchTransition(state('launching', true)), true)
 assert.equal(shouldShowBlockingLaunchTransition(state('running', true)), false);
 
 const [appSource, launcherSource] = await Promise.all([
-  readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8'),
+  readAppShellSource(),
   readFile(new URL('../src/main/gameLauncher.ts', import.meta.url), 'utf8')
 ]);
 
