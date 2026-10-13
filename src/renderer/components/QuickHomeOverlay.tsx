@@ -1,19 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import {
-  Bell,
-  Gamepad2,
-  Home,
-  LoaderCircle,
-  Music2,
-  Play,
-  Power,
-  Settings,
-  Sun,
-  UsersRound,
-  Volume2,
-  VolumeX,
-  X
-} from 'lucide-react';
+import { Bell, Home, Music2, Power, Settings, UsersRound } from 'lucide-react';
 import type {
   ActiveGameState,
   AudioStatus,
@@ -22,20 +8,59 @@ import type {
   TrackedGameSessionState
 } from '../../shared/types';
 import { SafeGameImage } from './ConsoleHome';
+import { ControlCenterClosing } from './control-center/ControlCenterClosing';
+import { ControlCenterGameCard, MENU_LABELS, type PendingAction } from './control-center/ControlCenterGameCard';
+import { ControlCenterQuickSettings } from './control-center/ControlCenterQuickSettings';
+import { ControlCenterStatus } from './control-center/ControlCenterStatus';
+import { cx } from './control-center/cx';
 import { isBackKeyboardEvent, shouldKeepEditing } from '../navigation';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../controllerNavigation';
+import { ControllerHints, type ControllerHint } from '../ui/ControllerHints';
+import { SystemToast } from '../ui/SystemToast';
+import { playUiSound } from '../ui/uiSound';
 
-type PendingAction = 'resume' | 'home' | 'close' | 'force' | null;
 type FocusArea = 'navbar' | 'menu' | 'quickAudio' | 'quickBrightness';
+type NavGroup = 'switcher' | 'controls';
 type NavItem = {
   key: string;
   label: string;
+  caption: string;
+  group: NavGroup;
   icon: JSX.Element | null;
   session?: TrackedGameSessionState;
+  notice?: string;
+};
+type OverlayNotice = {
+  key: string;
+  title: string;
+  message: string;
 };
 
-const MENU_LABELS = ['Resume Game', 'Go to Launcher Home', 'Close Game'] as const;
 const SWITCHER_INPUT_DEDUPLICATION_MS = 120;
+// Emergency request ids only grow within a window. Remember the last one shown
+// at module scope so a remounted overlay never replays an old Close prompt.
+let lastHandledEmergencyRequest = 0;
+const NAV_GROUPS: NavGroup[] = ['switcher', 'controls'];
+const COMING_SOON_NOTICE = 'Coming soon to NXGS Play.';
+
+const NAVIGATION_HINTS: ControllerHint[] = [
+  { glyph: 'dpad', label: 'Navigate' },
+  { glyph: 'cross', label: 'Select' },
+  { glyph: 'circle', label: 'Back' }
+];
+const CONFIRM_HINTS: ControllerHint[] = [
+  { glyph: 'dpad-horizontal', label: 'Choose' },
+  { glyph: 'cross', label: 'Select' },
+  { glyph: 'circle', label: 'Cancel' }
+];
+const BRIGHTNESS_HINTS: ControllerHint[] = [
+  { glyph: 'dpad-horizontal', label: 'Adjust' },
+  { glyph: 'circle', label: 'Back' }
+];
+const UNAVAILABLE_CONTROL_HINTS: ControllerHint[] = [
+  { glyph: 'dpad-vertical', label: 'Navigate' },
+  { glyph: 'circle', label: 'Back' }
+];
 
 const EMPTY_AUDIO: AudioStatus = {
   supported: true,
@@ -139,9 +164,8 @@ export function QuickHomeOverlay(props: {
   const [confirmClose, setConfirmClose] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [message, setMessage] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState<OverlayNotice | null>(null);
   const [forcePin, setForcePin] = useState('');
-  const [now, setNow] = useState(() => new Date());
   const [audio, setAudio] = useState<AudioStatus>(() => quickAudioSnapshot ?? EMPTY_AUDIO);
   const [displayVolume, setDisplayVolume] = useState(() => quickAudioSnapshot?.masterVolume ?? 0);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
@@ -150,6 +174,7 @@ export function QuickHomeOverlay(props: {
   const [display, setDisplay] = useState<DisplayStatus>(() => quickDisplaySnapshot ?? EMPTY_DISPLAY);
   const [displayBrightness, setDisplayBrightness] = useState(() => quickDisplaySnapshot?.brightness.level ?? 0);
   const [brightnessMessage, setBrightnessMessage] = useState('');
+  const overlayRef = useRef<HTMLElement | null>(null);
   const audioBusy = useRef(false);
   const audioRefreshActive = useRef(false);
   const audioInteractionVersion = useRef(0);
@@ -165,6 +190,8 @@ export function QuickHomeOverlay(props: {
   const brightnessFlushActive = useRef(false);
   const initialNavActionRef = useRef<HTMLButtonElement | null>(null);
   const lastSwitcherInput = useRef({ action: '', at: 0 });
+  const emergencyNavKey = useRef<string | null>(null);
+  const previousNavKey = useRef(selectedNavKey);
 
   useEffect(() => {
     if (props.activeGame.status !== 'quickOverlayOpen' && props.activeGame.status !== 'launching') return;
@@ -181,18 +208,20 @@ export function QuickHomeOverlay(props: {
 
   const navItems = useMemo<NavItem[]>(
     () => [
-      { key: 'home', label: 'Launcher Home', icon: <Home size={23} /> },
+      { key: 'home', label: 'Launcher Home', caption: 'Home', group: 'switcher', icon: <Home size={24} /> },
       ...sessions.map((session) => ({
         key: `game:${session.game.id}`,
         label: session.game.title,
+        caption: session.game.title,
+        group: 'switcher' as const,
         icon: null,
         session
       })),
-      { key: 'notifications', label: 'Notifications coming soon', icon: <Bell size={21} /> },
-      { key: 'players', label: 'Players coming soon', icon: <UsersRound size={22} /> },
-      { key: 'audio', label: 'Audio coming soon', icon: <Music2 size={22} /> },
-      { key: 'settings', label: 'Quick Settings', icon: <Settings size={22} /> },
-      { key: 'power', label: 'Protected power controls', icon: <Power size={22} /> }
+      { key: 'notifications', label: 'Notifications coming soon', caption: 'Notifications', group: 'controls', icon: <Bell size={24} />, notice: COMING_SOON_NOTICE },
+      { key: 'players', label: 'Players coming soon', caption: 'Players', group: 'controls', icon: <UsersRound size={24} />, notice: COMING_SOON_NOTICE },
+      { key: 'audio', label: 'Audio coming soon', caption: 'Audio', group: 'controls', icon: <Music2 size={24} />, notice: COMING_SOON_NOTICE },
+      { key: 'settings', label: 'Quick Settings', caption: 'Quick Settings', group: 'controls', icon: <Settings size={24} /> },
+      { key: 'power', label: 'Protected power controls', caption: 'Power', group: 'controls', icon: <Power size={24} />, notice: 'Power controls are available inside Control Room.' }
     ],
     [sessions]
   );
@@ -200,14 +229,15 @@ export function QuickHomeOverlay(props: {
   const selectedNavIndex = Math.max(0, navItems.findIndex((item) => item.key === selectedNavKey));
   const activeNavItem = navItems[selectedNavIndex];
   const selectedSession = activeNavItem?.session;
+  const selectedSessionIndex = Math.max(0, sessions.findIndex((session) => session === selectedSession));
   const activeSession = sessions.find((session) => session.isActive) ?? sessions[0];
   const resumeTargetSession = selectedSession ?? activeSession;
-  const game = selectedSession?.game;
   const gameSelected = Boolean(selectedSession);
   const closeFailed = /did not close|force close/i.test(selectedSession?.message ?? '');
   const closingSession = sessions.find((session) => session.status === 'closing');
   const isClosingGame = Boolean(closingSession);
   const disabled = pendingAction !== null || selectedSession?.status === 'closing';
+  const navFocused = focusArea === 'navbar' && !confirmClose;
   const backgroundGame = activeSession?.game;
   const backgroundImage = quickOverlayImageUrl(backgroundGame?.coverImagePath || backgroundGame?.avatarImagePath || '');
   const safeBackdropImage = props.backdrop?.kind === 'direct'
@@ -215,11 +245,6 @@ export function QuickHomeOverlay(props: {
     : props.backdrop?.imageUrl
       ? quickOverlayImageUrl(props.backdrop.imageUrl)
       : backgroundImage;
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -249,25 +274,35 @@ export function QuickHomeOverlay(props: {
   }, [navItems, sessions]);
 
   useEffect(() => {
-    if (props.emergencyCloseRequestId > 0) {
-      const activeIndex = sessions.findIndex((session) => session.isActive);
-      const selectedSession = sessions[activeIndex >= 0 ? activeIndex : 0];
-      setSelectedNavKey(selectedSession ? `game:${selectedSession.game.id}` : 'home');
-      setFocusArea('menu');
-      setMenuIndex(2);
-      setConfirmClose(true);
-    }
+    if (props.emergencyCloseRequestId <= lastHandledEmergencyRequest || sessions.length === 0) return;
+    lastHandledEmergencyRequest = props.emergencyCloseRequestId;
+    const activeIndex = sessions.findIndex((session) => session.isActive);
+    const emergencySession = sessions[activeIndex >= 0 ? activeIndex : 0];
+    const emergencyKey = `game:${emergencySession.game.id}`;
+    emergencyNavKey.current = emergencyKey;
+    setSelectedNavKey(emergencyKey);
+    setQuickSettingsOpen(false);
+    setFocusArea('menu');
+    setMenuIndex(2);
+    setConfirmClose(true);
   }, [props.emergencyCloseRequestId, sessions]);
 
   useEffect(() => {
     if (!notice) {
       return undefined;
     }
-    const timer = window.setTimeout(() => setNotice(''), 2200);
+    const timer = window.setTimeout(() => setNotice(null), 2600);
     return () => window.clearTimeout(timer);
   }, [notice]);
 
   useEffect(() => {
+    if (previousNavKey.current === selectedNavKey) return;
+    previousNavKey.current = selectedNavKey;
+    if (emergencyNavKey.current === selectedNavKey) {
+      emergencyNavKey.current = null;
+      return;
+    }
+    emergencyNavKey.current = null;
     setMessage('');
     setConfirmClose(false);
     if (selectedNavKey !== 'settings') {
@@ -348,6 +383,8 @@ export function QuickHomeOverlay(props: {
   }, []);
 
   const adjustSystemVolume = useCallback((direction: -1 | 1): void => {
+    const nextVolume = Math.max(0, Math.min(100, displayVolumeRef.current + direction * 2));
+    if (audioSupportedRef.current && nextVolume !== displayVolumeRef.current) playUiSound('move');
     setSystemVolume(displayVolumeRef.current + direction * 2);
   }, [setSystemVolume]);
 
@@ -393,6 +430,11 @@ export function QuickHomeOverlay(props: {
     void Promise.all([refreshAudio(), refreshDisplay()]);
   }, [refreshAudio, refreshDisplay]);
 
+  const closeQuickSettings = useCallback((): void => {
+    setQuickSettingsOpen(false);
+    setFocusArea('navbar');
+  }, []);
+
   const setSystemBrightness = useCallback((value: number): void => {
     if (!brightnessSupportedRef.current) return;
     brightnessInteractionVersion.current += 1;
@@ -436,6 +478,8 @@ export function QuickHomeOverlay(props: {
   }, []);
 
   const adjustSystemBrightness = useCallback((direction: -1 | 1): void => {
+    const nextBrightness = Math.max(0, Math.min(100, brightnessValueRef.current + direction * 2));
+    if (brightnessSupportedRef.current && nextBrightness !== brightnessValueRef.current) playUiSound('move');
     setSystemBrightness(brightnessValueRef.current + direction * 2);
   }, [setSystemBrightness]);
 
@@ -443,6 +487,7 @@ export function QuickHomeOverlay(props: {
     if (audioBusy.current || volumeFlushActive.current || !audio.supported) return;
     audioBusy.current = true;
     audioInteractionVersion.current += 1;
+    playUiSound('toggle');
     setAudioPending('mute');
     setAudioMessage(audio.muted ? 'Unmuting...' : 'Muting...');
     try {
@@ -469,6 +514,7 @@ export function QuickHomeOverlay(props: {
     try {
       const result = await window.nxgs.resumeActiveGame(resumeTargetSession.game.id);
       if (!result.ok) {
+        playUiSound('error');
         setMessage(result.error ?? 'NXGS could not resume the game.');
       }
     } finally {
@@ -485,6 +531,7 @@ export function QuickHomeOverlay(props: {
     try {
       const result = await window.nxgs.goToLauncherHome();
       if (!result.ok) {
+        playUiSound('error');
         setMessage(result.error ?? 'NXGS could not open Launcher Home.');
       } else {
         props.onDismiss();
@@ -503,6 +550,7 @@ export function QuickHomeOverlay(props: {
     try {
       const result = await window.nxgs.closeActiveGame(selectedSession.game.id);
       if (!result.ok) {
+        playUiSound('error');
         setMessage(result.error ?? 'NXGS could not close the game.');
       } else {
         setConfirmClose(false);
@@ -512,11 +560,26 @@ export function QuickHomeOverlay(props: {
     }
   }, [pendingAction, selectedSession]);
 
+  const forceCloseGame = useCallback(async (): Promise<void> => {
+    setPendingAction('force');
+    setMessage('');
+    try {
+      const result = await window.nxgs.forceCloseGame(forcePin, selectedSession?.game.id);
+      if (!result.ok) {
+        playUiSound('error');
+        setMessage('Invalid admin PIN.');
+      }
+    } finally {
+      setPendingAction(null);
+    }
+  }, [forcePin, selectedSession]);
+
   const selectMenuAction = useCallback(
     (index: number): void => {
       if (disabled) {
         return;
       }
+      playUiSound('select');
       if (index === 0) {
         void resumeGame();
       } else if (index === 1) {
@@ -537,27 +600,30 @@ export function QuickHomeOverlay(props: {
       }
       setSelectedNavKey(item.key);
       if (item.key === 'home') {
+        playUiSound('select');
         void goToLauncherHome();
       } else if (item.session) {
+        playUiSound('select');
         setFocusArea('menu');
       } else if (item.key === 'settings') {
         if (quickSettingsOpen) {
-          setQuickSettingsOpen(false);
-          setFocusArea('navbar');
+          playUiSound('close');
+          closeQuickSettings();
         } else {
+          playUiSound('open');
           openQuickSettings();
         }
-      } else if (item.key === 'power') {
-        setNotice('Power controls are available inside Control Room.');
       } else {
-        setNotice(item.label);
+        playUiSound('select');
+        setNotice({ key: item.key, title: item.caption, message: item.notice ?? COMING_SOON_NOTICE });
       }
     },
-    [disabled, goToLauncherHome, navItems, openQuickSettings, quickSettingsOpen]
+    [closeQuickSettings, disabled, goToLauncherHome, navItems, openQuickSettings, quickSettingsOpen]
   );
 
   const dismissOverlay = useCallback((): void => {
     if (disabled) return;
+    playUiSound('back');
     if (resumeTargetSession && props.dismissResumesGame !== false) {
       void resumeGame();
     } else {
@@ -567,16 +633,38 @@ export function QuickHomeOverlay(props: {
 
   const handleBack = useCallback((): void => {
     if (confirmClose) {
+      playUiSound('back');
       setConfirmClose(false);
       return;
     }
     if (quickSettingsOpen) {
-      setQuickSettingsOpen(false);
-      setFocusArea('navbar');
+      playUiSound('back');
+      closeQuickSettings();
       return;
     }
     dismissOverlay();
-  }, [confirmClose, dismissOverlay, quickSettingsOpen]);
+  }, [closeQuickSettings, confirmClose, dismissOverlay, quickSettingsOpen]);
+
+  const toggleCloseChoice = useCallback((): void => {
+    playUiSound('move');
+    setMenuIndex((index) => (index === 0 ? 1 : 0));
+  }, []);
+
+  const acceptCloseChoice = useCallback((): void => {
+    if (menuIndex === 0) {
+      playUiSound('select');
+      void closeGame();
+    } else {
+      playUiSound('back');
+      setConfirmClose(false);
+    }
+  }, [closeGame, menuIndex]);
+
+  const moveQuickSettingsFocus = useCallback((direction: 'up' | 'down'): void => {
+    const next: FocusArea = direction === 'down' ? 'quickBrightness' : 'quickAudio';
+    if (next !== focusArea) playUiSound('move');
+    setFocusArea(next);
+  }, [focusArea]);
 
   const claimSwitcherInput = useCallback((action: string): boolean => {
     const at = performance.now();
@@ -592,18 +680,22 @@ export function QuickHomeOverlay(props: {
       const delta = direction === 'right' ? 1 : -1;
       setSelectedNavKey(navItems[(selectedNavIndex + delta + navItems.length) % navItems.length].key);
       setFocusArea('navbar');
+      playUiSound('move');
       return;
     }
     if (direction === 'up') {
       if (focusArea === 'menu') {
+        if (menuIndex > 0) playUiSound('move');
         setMenuIndex((index) => Math.max(0, index - 1));
       } else if (focusArea === 'navbar' && gameSelected) {
         setMenuIndex(0);
         setFocusArea('menu');
+        playUiSound('move');
       }
       return;
     }
     if (focusArea === 'menu') {
+      playUiSound('move');
       if (menuIndex >= MENU_LABELS.length - 1) {
         setFocusArea('navbar');
       } else {
@@ -635,9 +727,9 @@ export function QuickHomeOverlay(props: {
         } else if (event.key === 'Enter' && focusArea === 'quickAudio') {
           void toggleSystemMute();
         } else if (event.key === 'ArrowDown') {
-          setFocusArea('quickBrightness');
+          moveQuickSettingsFocus('down');
         } else if (event.key === 'ArrowUp') {
-          setFocusArea('quickAudio');
+          moveQuickSettingsFocus('up');
         }
         return;
       }
@@ -647,13 +739,9 @@ export function QuickHomeOverlay(props: {
       }
       if (confirmClose) {
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-          setMenuIndex((index) => (index === 0 ? 1 : 0));
+          toggleCloseChoice();
         } else if (event.key === 'Enter') {
-          if (menuIndex === 0) {
-            void closeGame();
-          } else {
-            setConfirmClose(false);
-          }
+          acceptCloseChoice();
         }
         return;
       }
@@ -675,7 +763,7 @@ export function QuickHomeOverlay(props: {
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, closeGame, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, moveSwitcherDirection, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
+  }, [acceptCloseChoice, adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, moveQuickSettingsFocus, moveSwitcherDirection, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleCloseChoice, toggleSystemMute]);
 
   useEffect(() => {
     if (!quickSettingsOpen) return;
@@ -684,6 +772,17 @@ export function QuickHomeOverlay(props: {
       : '#quick-settings-audio';
     document.querySelector<HTMLInputElement>(selector)?.focus({ preventScroll: true });
   }, [focusArea, quickSettingsOpen]);
+
+  useEffect(() => {
+    const root = overlayRef.current;
+    if (!root || (focusArea !== 'navbar' && focusArea !== 'menu')) return;
+    const current = document.activeElement;
+    if (current instanceof HTMLInputElement && current.type === 'password' && root.contains(current)) return;
+    const target = root.querySelector<HTMLButtonElement>(
+      focusArea === 'menu' || confirmClose ? '.quick-game-menu button.focused' : '.quick-navbar .quick-nav-item.selected'
+    );
+    if (target && target !== current) target.focus({ preventScroll: true });
+  }, [confirmClose, focusArea, menuIndex, pendingAction, selectedNavKey]);
 
   const handleSwitcherControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
     const inputAction = event.type === 'direction' ? `Arrow${event.direction[0].toUpperCase()}${event.direction.slice(1)}` : event.type;
@@ -698,8 +797,7 @@ export function QuickHomeOverlay(props: {
       if (quickSettingsOpen && focusArea === 'quickAudio') {
         void toggleSystemMute();
       } else if (confirmClose) {
-        if (menuIndex === 0) void closeGame();
-        else setConfirmClose(false);
+        acceptCloseChoice();
       } else if (focusArea === 'menu' && gameSelected) {
         selectMenuAction(menuIndex);
       } else {
@@ -715,34 +813,49 @@ export function QuickHomeOverlay(props: {
       } else if (event.direction === 'right') {
         if (focusArea === 'quickAudio') adjustSystemVolume(1);
         else adjustSystemBrightness(1);
-      } else if (event.direction === 'down') {
-        setFocusArea('quickBrightness');
-      } else if (event.direction === 'up') {
-        setFocusArea('quickAudio');
+      } else {
+        moveQuickSettingsFocus(event.direction);
       }
       return;
     }
 
     if (confirmClose) {
       if (event.direction === 'left' || event.direction === 'right') {
-        setMenuIndex((index) => (index === 0 ? 1 : 0));
+        toggleCloseChoice();
       }
       return;
     }
 
     moveSwitcherDirection(event.direction);
-  }, [adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, closeGame, confirmClose, focusArea, gameSelected, handleBack, menuIndex, moveSwitcherDirection, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleSystemMute]);
+  }, [acceptCloseChoice, adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, confirmClose, focusArea, gameSelected, handleBack, menuIndex, moveQuickSettingsFocus, moveSwitcherDirection, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleCloseChoice, toggleSystemMute]);
 
   useControllerNavigation(!disabled, handleSwitcherControllerEvent);
 
+  const hints: ControllerHint[] = quickSettingsOpen && focusArea === 'quickAudio'
+    ? audio.supported
+      ? [
+          { glyph: 'dpad-horizontal', label: 'Adjust' },
+          { glyph: 'cross', label: audio.muted ? 'Unmute' : 'Mute' },
+          { glyph: 'circle', label: 'Back' }
+        ]
+      : UNAVAILABLE_CONTROL_HINTS
+    : quickSettingsOpen && focusArea === 'quickBrightness'
+      ? display.brightness.supported ? BRIGHTNESS_HINTS : UNAVAILABLE_CONTROL_HINTS
+      : confirmClose
+        ? CONFIRM_HINTS
+        : NAVIGATION_HINTS;
+  const noticeItem = notice ? navItems.find((item) => item.key === notice.key) : undefined;
+
   return (
     <section
-      className={`quick-home-overlay ${props.backdrop?.kind === 'direct' ? 'direct-game-backdrop' : ''} ${isClosingGame ? 'closing-game' : ''}`}
+      ref={overlayRef}
+      className={cx('quick-home-overlay', props.backdrop?.kind === 'direct' && 'direct-game-backdrop', isClosingGame && 'closing-game')}
       aria-label="NXGS quick home overlay"
+      style={{ '--qc-session-index': selectedSessionIndex } as CSSProperties}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         const target = event.target;
-        if (target instanceof Element && target.closest('.quick-navbar, .quick-game-menu')) return;
+        if (target instanceof Element && target.closest('.quick-navbar, .quick-game-menu, .quick-overlay-toast')) return;
         event.preventDefault();
         event.stopPropagation();
         dismissOverlay();
@@ -767,203 +880,100 @@ export function QuickHomeOverlay(props: {
         />
       )}
       <div className="quick-overlay-shade" />
-      {closingSession && (
-        <section className="quick-game-closing-transition" role="status" aria-live="polite">
-          <LoaderCircle size={34} className="spin" />
-          <small>NXGS Play</small>
-          <strong>Closing {closingSession.game.title}</strong>
-          <span>Returning to your game library...</span>
-        </section>
-      )}
-      <header className="quick-overlay-header">
-        <div className="quick-overlay-brand"><Gamepad2 size={18} /> NXGS Switcher</div>
-        <time dateTime={now.toISOString()}>
-          {new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(now)}
-        </time>
-      </header>
+      {closingSession && <ControlCenterClosing game={closingSession.game} />}
 
-      {gameSelected && game && (
-        <section className="quick-game-menu" aria-label={`${game.title} controls`}>
-          <div className="quick-game-heading">
-            <span className="quick-game-art"><SafeGameImage game={game} kind="avatar" alt="" fallbackSize={28} /></span>
-            <div><small>{selectedSession?.isActive ? 'Active game' : 'Running / minimized game'}</small><strong>{game.title}</strong></div>
-          </div>
-          {message && <p className="quick-overlay-error">{message}</p>}
-          {!message && selectedSession?.message && <p className="quick-overlay-status">{selectedSession.message}</p>}
-
-          {confirmClose ? (
-            <div className="quick-close-confirm">
-              <strong>Close {game.title}?</strong>
-              <span>The game will receive a normal close request.</span>
-              <div>
-                <button className={menuIndex === 0 ? 'focused' : ''} type="button" disabled={disabled} onClick={() => void closeGame()}>
-                  {pendingAction === 'close'
-                    ? <><LoaderCircle size={16} className="spin" /> Closing...</>
-                    : 'Confirm Close'}
-                </button>
-                <button className={menuIndex === 1 ? 'focused' : ''} type="button" disabled={disabled} onClick={() => setConfirmClose(false)}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <div className="quick-game-actions">
-              {MENU_LABELS.map((label, index) => (
-                <button
-                  key={label}
-                  className={focusArea === 'menu' && menuIndex === index ? 'focused' : ''}
-                  type="button"
-                  disabled={disabled}
-                  onMouseEnter={() => { setFocusArea('menu'); setMenuIndex(index); }}
-                  onClick={() => selectMenuAction(index)}
-                >
-                  {index === 0 && <Play size={18} />}
-                  {index === 1 && <Home size={18} />}
-                  {index === 2 && <X size={18} />}
-                  {pendingAction === 'resume' && index === 0
-                    ? 'Resuming...'
-                    : pendingAction === 'home' && index === 1
-                      ? 'Opening Home...'
-                      : label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {closeFailed && (
-            <div className="quick-force-close">
-              <label><span>Admin PIN for Force Close</span><input type="password" value={forcePin} onChange={(event) => setForcePin(event.target.value)} /></label>
-              <button
-                type="button"
-                disabled={disabled || pendingAction === 'force'}
-                onClick={async () => {
-                  setPendingAction('force');
-                  setMessage('');
-                  try {
-                    const result = await window.nxgs.forceCloseGame(forcePin, selectedSession?.game.id);
-                    if (!result.ok) setMessage('Invalid admin PIN.');
-                  } finally {
-                    setPendingAction(null);
-                  }
-                }}
-              >
-                <Power size={17} /> {pendingAction === 'force' ? 'Force closing...' : 'Force Close'}
-              </button>
-            </div>
-          )}
-        </section>
+      {gameSelected && selectedSession && (
+        <ControlCenterGameCard
+          session={selectedSession}
+          message={message}
+          menuFocused={focusArea === 'menu'}
+          menuIndex={menuIndex}
+          confirmClose={confirmClose}
+          pendingAction={pendingAction}
+          disabled={disabled}
+          closeFailed={closeFailed}
+          forcePin={forcePin}
+          onForcePinChange={setForcePin}
+          onForceClose={() => void forceCloseGame()}
+          onActionHover={(index) => {
+            setFocusArea('menu');
+            setMenuIndex(index);
+          }}
+          onActionSelect={selectMenuAction}
+          onConfirmClose={() => {
+            playUiSound('select');
+            void closeGame();
+          }}
+          onCancelClose={() => {
+            playUiSound('back');
+            setConfirmClose(false);
+          }}
+        />
       )}
 
       <nav className="quick-navbar" aria-label="NXGS quick navigation">
-        {navItems.map((item, index) => (
-          <div className="quick-nav-slot" key={item.key}>
-            {item.key === 'settings' && quickSettingsOpen && (
-              <section
-                className="quick-settings-panel"
-                id="quick-settings-panel"
-                aria-label="Quick Settings"
-                onBlurCapture={(event) => {
-                  const next = event.relatedTarget;
-                  if (next === null) return;
-                  if (next instanceof Node && event.currentTarget.parentElement?.contains(next)) return;
-                  setQuickSettingsOpen(false);
-                  setFocusArea('navbar');
-                }}
-              >
-                <div
-                  className={`quick-settings-control quick-settings-audio ${focusArea === 'quickAudio' ? 'selected' : ''}`}
-                  onMouseEnter={() => setFocusArea('quickAudio')}
-                >
-                  <header>
-                    <button
-                      type="button"
-                      className={audio.muted ? 'muted' : ''}
-                      disabled={audioPending !== null || !audio.supported}
-                      aria-label={audioPending === 'mute' ? 'Updating mute status' : audio.muted ? 'Unmute audio' : 'Mute audio'}
-                      onClick={() => void toggleSystemMute()}
-                    >
-                      {audioPending === 'mute'
-                        ? <LoaderCircle size={16} className="spin" />
-                        : audio.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                    </button>
-                    <strong>Audio</strong>
-                    <b>{audio.muted ? 'Muted' : `${displayVolume}%`}</b>
-                  </header>
-                  <div className="quick-settings-range" style={{ '--quick-range-value': `${displayVolume}%` } as CSSProperties}>
-                    <span className="quick-settings-range-track" aria-hidden="true">
-                      <span className="quick-settings-range-fill" />
-                    </span>
-                    <input
-                      id="quick-settings-audio"
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={displayVolume}
-                      aria-label="Quick audio volume"
-                      aria-valuetext={audio.muted ? `Muted at ${displayVolume} percent` : `${displayVolume} percent`}
-                      disabled={audioPending === 'mute' || !audio.supported}
-                      onFocus={() => setFocusArea('quickAudio')}
-                      onInput={(event) => void setSystemVolume(Number(event.currentTarget.value))}
-                    />
-                  </div>
-                  {!audio.supported && <small role="status">{audioMessage || audio.message || 'Audio control is unavailable.'}</small>}
-                </div>
-
-                <div
-                  className={`quick-settings-control quick-settings-brightness ${focusArea === 'quickBrightness' ? 'selected' : ''}`}
-                  onMouseEnter={() => setFocusArea('quickBrightness')}
-                >
-                  <header>
-                    <span aria-hidden="true"><Sun size={17} /></span>
-                    <strong>Brightness</strong>
-                    <b>{display.brightness.supported ? `${displayBrightness}%` : 'Unavailable'}</b>
-                  </header>
-                  <div className="quick-settings-range" style={{ '--quick-range-value': `${displayBrightness}%` } as CSSProperties}>
-                    <span className="quick-settings-range-track" aria-hidden="true">
-                      <span className="quick-settings-range-fill" />
-                    </span>
-                    <input
-                      id="quick-settings-brightness"
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={displayBrightness}
-                      aria-label="Quick display brightness"
-                      aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
-                      disabled={!display.brightness.supported}
-                      onFocus={() => setFocusArea('quickBrightness')}
-                      onInput={(event) => void setSystemBrightness(Number(event.currentTarget.value))}
-                    />
-                  </div>
-                  {!display.brightness.supported && (
-                    <small role="status">{brightnessMessage || display.brightness.message || 'Brightness control is unavailable for this display.'}</small>
+        {NAV_GROUPS.map((group) => (
+          <div className={`quick-nav-group quick-nav-group--${group}`} key={group}>
+            {navItems.map((item, index) => item.group === group && (
+              <div className="quick-nav-slot" key={item.key}>
+                {item.key === 'settings' && quickSettingsOpen && (
+                  <ControlCenterQuickSettings
+                    selected={focusArea === 'quickAudio' ? 'audio' : focusArea === 'quickBrightness' ? 'brightness' : null}
+                    audio={audio}
+                    volume={displayVolume}
+                    audioPending={audioPending}
+                    audioMessage={audioMessage}
+                    display={display}
+                    brightness={displayBrightness}
+                    brightnessMessage={brightnessMessage}
+                    onRequestClose={closeQuickSettings}
+                    onSelectAudio={() => setFocusArea('quickAudio')}
+                    onSelectBrightness={() => setFocusArea('quickBrightness')}
+                    onToggleMute={() => void toggleSystemMute()}
+                    onVolumeInput={setSystemVolume}
+                    onBrightnessInput={setSystemBrightness}
+                  />
+                )}
+                <button
+                  ref={item.key === initialNavKey ? initialNavActionRef : undefined}
+                  className={cx(
+                    'quick-nav-item',
+                    selectedNavIndex === index && 'selected',
+                    selectedNavIndex === index && navFocused && 'focused',
+                    item.session && 'active-game'
                   )}
-                </div>
-              </section>
-            )}
-            <button
-              ref={item.key === initialNavKey ? initialNavActionRef : undefined}
-              className={`quick-nav-item ${selectedNavIndex === index ? 'selected' : ''} ${item.session ? 'active-game' : ''}`}
-              type="button"
-              title={item.label}
-              aria-label={item.label}
-              aria-expanded={item.key === 'settings' ? quickSettingsOpen : undefined}
-              aria-controls={item.key === 'settings' ? 'quick-settings-panel' : undefined}
-              disabled={disabled}
-              onMouseEnter={() => { setSelectedNavKey(item.key); setFocusArea('navbar'); }}
-              onClick={() => selectNavAction(index)}
-            >
-              {item.session
-                ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} />
-                : item.icon}
-              {item.session && <span className={`active-dot ${item.session.isActive ? '' : 'minimized'}`} />}
-            </button>
+                  type="button"
+                  aria-label={item.label}
+                  aria-expanded={item.key === 'settings' ? quickSettingsOpen : undefined}
+                  aria-controls={item.key === 'settings' ? 'quick-settings-panel' : undefined}
+                  disabled={disabled}
+                  onMouseEnter={() => { setSelectedNavKey(item.key); setFocusArea('navbar'); }}
+                  onClick={() => selectNavAction(index)}
+                >
+                  {!item.session && <span className="quick-nav-caption" aria-hidden="true">{item.caption}</span>}
+                  <span className="quick-nav-face" aria-hidden="true">
+                    {item.session
+                      ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} />
+                      : item.icon}
+                  </span>
+                  {item.session && <span className={cx('active-dot', !item.session.isActive && 'minimized')} aria-hidden="true" />}
+                </button>
+              </div>
+            ))}
           </div>
         ))}
+        <ControlCenterStatus open={props.activeGame.status === 'quickOverlayOpen' || props.activeGame.status === 'launching'} />
       </nav>
 
-      {notice && <div className="quick-overlay-toast">{notice}</div>}
-      <div className="quick-overlay-hint">← → Navigate&nbsp;&nbsp; • &nbsp;&nbsp;A / Enter Select&nbsp;&nbsp; • &nbsp;&nbsp;B / Esc Back</div>
+      <ControllerHints className="quick-overlay-hints" hints={hints} />
+      {notice && (
+        <SystemToast
+          className="quick-overlay-toast"
+          title={notice.title}
+          message={notice.message}
+          icon={noticeItem?.icon}
+        />
+      )}
     </section>
   );
 }

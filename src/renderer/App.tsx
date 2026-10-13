@@ -3,7 +3,8 @@ import { Gamepad2 } from 'lucide-react';
 import {
   ConsoleHome,
   type ConsoleFocusSection,
-  type ConsoleTab
+  type ConsoleTab,
+  type HomePlayAccess
 } from './components/ConsoleHome';
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 import { ConsoleSettings } from './components/ConsoleSettings';
@@ -35,8 +36,9 @@ import type {
   KioskAdminAction,
   SessionState
 } from '../shared/types';
-import { requiresPaymentForLaunch } from '../shared/playAccess';
+import { isFreePlayEnabled, requiresPaymentForLaunch } from '../shared/playAccess';
 import { SystemToast } from './ui/SystemToast';
+import { playUiSound } from './ui/uiSound';
 
 type View = 'home' | 'settings' | 'admin';
 
@@ -75,6 +77,10 @@ export function App(): JSX.Element {
   const [cursorHidden, setCursorHidden] = useState(false);
   const [homeOverlayRequestId, setHomeOverlayRequestId] = useState(0);
   const [emergencyCloseRequestId, setEmergencyCloseRequestId] = useState(0);
+  // Request ids grow monotonically so consumers can tell new requests from
+  // ones they already handled, even after remounting.
+  const homeOverlaySequence = useRef(0);
+  const emergencyCloseSequence = useRef(0);
   const [quickNavOpen, setQuickNavOpen] = useState(false);
   const [adminUnlockRequest, setAdminUnlockRequest] = useState<AdminUnlockRequest | null>(null);
   const [adminOptionsOpen, setAdminOptionsOpen] = useState(false);
@@ -201,7 +207,8 @@ export function App(): JSX.Element {
     setConfirmGame(null);
     setQuickNavOpen(false);
     navigateToView('settings');
-  }, [navigateToView]);
+    if (view !== 'settings') playUiSound('open');
+  }, [navigateToView, view]);
 
   useEffect(() => {
     let mounted = true;
@@ -271,10 +278,16 @@ export function App(): JSX.Element {
       }
       setQuickNavOpen(event.openQuickNav ?? false);
       if (event.openActiveGamePanel) {
-        setHomeOverlayRequestId((value) => value + 1);
+        homeOverlaySequence.current += 1;
+        setHomeOverlayRequestId(homeOverlaySequence.current);
       }
+      // Only the Home event that carried the emergency may open the close
+      // prompt; later ordinary Home presses must not replay an old request.
       if (event.emergencyClose) {
-        setEmergencyCloseRequestId((value) => value + 1);
+        emergencyCloseSequence.current += 1;
+        setEmergencyCloseRequestId(emergencyCloseSequence.current);
+      } else {
+        setEmergencyCloseRequestId(0);
       }
     });
     const unsubscribeAdminUnlock = window.nxgs.onAdminUnlockRequested((request) => {
@@ -378,38 +391,47 @@ export function App(): JSX.Element {
           setHomeFocusSection('utilities');
         } else if (homeTab === 'media') {
           setHomeTab('games');
+        } else {
+          return;
         }
+        playUiSound('move');
         return;
       }
       if (homeFocusSection === 'utilities') {
-        setHomeUtilityIndex((index) => {
-          const next = index + delta;
-          if (next < 0) {
-            setHomeTab('media');
-            setHomeFocusSection('tabs');
-            return 0;
-          }
-          return Math.min(2, next);
-        });
+        const next = homeUtilityIndex + delta;
+        if (next < 0) {
+          setHomeUtilityIndex(0);
+          setHomeTab('media');
+          setHomeFocusSection('tabs');
+        } else if (next > 2) {
+          return;
+        } else {
+          setHomeUtilityIndex(next);
+        }
+        playUiSound('move');
         return;
       }
       if (homeFocusSection === 'games' && homeTab === 'games') {
-        setSelectedIndex((index) => {
-          const next = index + delta;
-          if (next >= enabledGames.length) {
-            setHomeUtilityIndex(0);
-            setHomeFocusSection('utilities');
-            return index;
-          }
-          return Math.max(-1, next);
-        });
+        const next = selectedIndex + delta;
+        if (next >= enabledGames.length) {
+          setHomeUtilityIndex(0);
+          setHomeFocusSection('utilities');
+        } else if (Math.max(-1, next) === selectedIndex) {
+          return;
+        } else {
+          setSelectedIndex(Math.max(-1, next));
+        }
+        playUiSound('move');
         return;
       }
       if (homeFocusSection === 'content') {
-        setHomeContentIndex((index) => Math.max(0, Math.min(3, index + delta)));
+        const next = Math.max(0, Math.min(3, homeContentIndex + delta));
+        if (next === homeContentIndex) return;
+        setHomeContentIndex(next);
+        playUiSound('move');
       }
     },
-    [confirmGame, enabledGames.length, homeFocusSection, homeTab, pinOpen, view]
+    [confirmGame, enabledGames.length, homeContentIndex, homeFocusSection, homeTab, homeUtilityIndex, pinOpen, selectedIndex, view]
   );
 
   const moveVertical = useCallback(
@@ -417,27 +439,30 @@ export function App(): JSX.Element {
       if (view !== 'home' || confirmGame || pinOpen) {
         return;
       }
-      setHomeFocusSection((current) => {
-        if (delta < 0) {
-          if (current === 'content') return homeTab === 'games' ? 'hero' : 'tabs';
-          if (current === 'hero') return 'games';
-          if (current === 'games') return 'tabs';
-          return current;
-        }
-        if (current === 'tabs' || current === 'utilities') {
-          return homeTab === 'games' ? 'games' : 'content';
-        }
-        if (current === 'games') return 'hero';
-        if (current === 'hero') return 'content';
-        return current;
-      });
+      const current = homeFocusSection;
+      let next: ConsoleFocusSection = current;
+      if (delta < 0) {
+        if (current === 'content') next = homeTab === 'games' ? 'hero' : 'tabs';
+        else if (current === 'hero') next = 'games';
+        else if (current === 'games') next = 'tabs';
+      } else if (current === 'tabs' || current === 'utilities') {
+        next = homeTab === 'games' ? 'games' : 'content';
+      } else if (current === 'games') {
+        next = 'hero';
+      } else if (current === 'hero') {
+        next = 'content';
+      }
+      if (next === current) return;
+      setHomeFocusSection(next);
+      playUiSound('move');
     },
-    [confirmGame, enabledGames.length, homeTab, pinOpen, view]
+    [confirmGame, homeFocusSection, homeTab, pinOpen, view]
   );
 
   const acceptSelection = useCallback(() => {
     if (view !== 'home' || confirmGame || pinOpen) return;
     if (homeFocusSection === 'utilities') {
+      if (homeUtilityIndex !== 1) playUiSound('select');
       document.querySelector<HTMLButtonElement>(`[data-home-utility-index="${homeUtilityIndex}"]`)?.click();
       return;
     }
@@ -446,16 +471,18 @@ export function App(): JSX.Element {
       (homeFocusSection === 'games' || homeFocusSection === 'hero') &&
       selectedGame
     ) {
+      if (!launchPendingGameId) playUiSound('select');
       void selectGame(selectedGame);
     } else if (homeTab === 'games' && homeFocusSection === 'hero' && selectedIndex === -1) {
       if (enabledGames.length > 0) {
+        playUiSound('select');
         setSelectedIndex(0);
         setHomeFocusSection('games');
       } else {
         openConsoleSettings();
       }
     }
-  }, [confirmGame, enabledGames.length, homeFocusSection, homeTab, homeUtilityIndex, openConsoleSettings, pinOpen, selectGame, selectedGame, selectedIndex, view]);
+  }, [confirmGame, enabledGames.length, homeFocusSection, homeTab, homeUtilityIndex, launchPendingGameId, openConsoleSettings, pinOpen, selectGame, selectedGame, selectedIndex, view]);
 
   const back = useCallback(() => {
     if (confirmGame) {
@@ -478,11 +505,13 @@ export function App(): JSX.Element {
       setHomeTab('games');
       setSelectedIndex(-1);
       setHomeFocusSection('games');
+      playUiSound('back');
       return;
     }
     if (homeFocusSection !== 'games' || selectedIndex !== -1) {
       setSelectedIndex(-1);
       setHomeFocusSection('games');
+      playUiSound('back');
     }
   }, [closeAdminPin, confirmGame, homeFocusSection, homeTab, navigateBack, pinOpen, returnToCustomerHome, selectedIndex, view]);
 
@@ -567,12 +596,17 @@ export function App(): JSX.Element {
     });
   }, [acceptSelection, back, moveHorizontal, moveVertical]);
 
+  // Native controller input reaches this window even while a game owns the
+  // foreground, so Home must ignore it then (mirrors main's foreground rule).
+  const gameOwnsForeground = ['launching', 'running', 'quickOverlayOpen', 'resuming', 'closing'].includes(activeGame.status);
+
   useControllerNavigation(
     view === 'home' &&
       !confirmGame &&
       !pinOpen &&
       !adminOptionsOpen &&
       !quickNavOpen &&
+      !gameOwnsForeground &&
       !shouldShowQuickGameOverlay(activeGame),
     handleHomeControllerEvent
   );
@@ -587,6 +621,9 @@ export function App(): JSX.Element {
 
   const activeGameOverlayVisible = quickNavOpen && shouldShowQuickGameOverlay(activeGame);
   const homeQuickNavVisible = quickNavOpen && !activeGameOverlayVisible;
+  const homePlayAccess: HomePlayAccess = isFreePlayEnabled(settings)
+    ? 'free'
+    : requiresPaymentForLaunch(settings, session) ? 'paid' : 'session';
 
   return (
     <main className={`app-shell ${activeGameOverlayVisible ? 'quick-overlay-shell' : ''} ${cursorHidden ? 'cursor-hidden' : ''}`}>
@@ -600,75 +637,80 @@ export function App(): JSX.Element {
             void window.nxgs.dismissQuickOverlay();
           }}
         />
-      ) : view === 'home' ? (
-        <ConsoleHome
-          games={enabledGames}
-          logoPath={settings.branding.logoPath}
-          appVersion={initialData.appVersion}
-          selectedIndex={selectedIndex}
-          selectedGame={selectedGame}
-          session={session}
-          activeGame={activeGame}
-          activeTab={homeTab}
-          focusSection={homeFocusSection}
-          utilityIndex={homeUtilityIndex}
-          contentIndex={homeContentIndex}
-          homeOverlayRequestId={homeOverlayRequestId}
-          emergencyCloseRequestId={emergencyCloseRequestId}
-          onTabChange={(tab) => {
-            setHomeTab(tab);
-            if (tab === 'games') {
-              setSelectedIndex(-1);
-              setHomeFocusSection('games');
-            } else {
-              setHomeFocusSection('tabs');
-            }
-          }}
-          onHighlightHome={() => {
-            setSelectedIndex(-1);
-            setHomeFocusSection('games');
-          }}
-          onHighlightGame={(index) => {
-            setSelectedIndex(index);
-            setHomeFocusSection('games');
-          }}
-          onUtilityFocus={(index) => {
-            setHomeUtilityIndex(index);
-            setHomeFocusSection('utilities');
-          }}
-          onContentFocus={(index) => {
-            setHomeContentIndex(index);
-            setHomeFocusSection('content');
-          }}
-          onOpenAdmin={openConsoleSettings}
-          onBrowseGames={() => {
-            if (enabledGames.length > 0) {
-              setSelectedIndex(0);
-              setHomeFocusSection('games');
-            }
-          }}
-          onSelectGame={(game) => void selectGame(game)}
-          launchPendingGameId={launchPendingGameId || (activeGame.status === 'launching' ? activeGame.game?.id ?? '' : '')}
-        />
-      ) : view === 'settings' ? (
-        <ConsoleSettings
-          inputBlocked={pinOpen || adminOptionsOpen}
-          settings={settings}
-          appVersion={initialData.appVersion}
-          onSettingsChanged={setSettings}
-          onBack={navigateBack}
-          onControlRoom={() => openAdminPin({ source: 'Control Room', message: 'Enter Admin PIN to open Control Room.' })}
-        />
       ) : (
-        <AdminScreen
-          games={games}
-          settings={settings}
-          initialData={initialData}
-          onDeviceChanged={(currentDevice) => setInitialData((current) => current ? { ...current, currentDevice } : current)}
-          onGamesChanged={setGames}
-          onSettingsChanged={setSettings}
-          onClose={returnToCustomerHome}
-        />
+        <div key={view} className={`app-screen app-screen--${view}`}>
+          {view === 'home' ? (
+            <ConsoleHome
+              games={enabledGames}
+              logoPath={settings.branding.logoPath}
+              appVersion={initialData.appVersion}
+              selectedIndex={selectedIndex}
+              selectedGame={selectedGame}
+              session={session}
+              activeGame={activeGame}
+              playAccess={homePlayAccess}
+              activeTab={homeTab}
+              focusSection={homeFocusSection}
+              utilityIndex={homeUtilityIndex}
+              contentIndex={homeContentIndex}
+              homeOverlayRequestId={homeOverlayRequestId}
+              emergencyCloseRequestId={emergencyCloseRequestId}
+              onTabChange={(tab) => {
+                setHomeTab(tab);
+                if (tab === 'games') {
+                  setSelectedIndex(-1);
+                  setHomeFocusSection('games');
+                } else {
+                  setHomeFocusSection('tabs');
+                }
+              }}
+              onHighlightHome={() => {
+                setSelectedIndex(-1);
+                setHomeFocusSection('games');
+              }}
+              onHighlightGame={(index) => {
+                setSelectedIndex(index);
+                setHomeFocusSection('games');
+              }}
+              onUtilityFocus={(index) => {
+                setHomeUtilityIndex(index);
+                setHomeFocusSection('utilities');
+              }}
+              onContentFocus={(index) => {
+                setHomeContentIndex(index);
+                setHomeFocusSection('content');
+              }}
+              onOpenAdmin={openConsoleSettings}
+              onBrowseGames={() => {
+                if (enabledGames.length > 0) {
+                  setSelectedIndex(0);
+                  setHomeFocusSection('games');
+                }
+              }}
+              onSelectGame={(game) => void selectGame(game)}
+              launchPendingGameId={launchPendingGameId || (activeGame.status === 'launching' ? activeGame.game?.id ?? '' : '')}
+            />
+          ) : view === 'settings' ? (
+            <ConsoleSettings
+              inputBlocked={pinOpen || adminOptionsOpen || quickNavOpen || extendPaymentOpen}
+              settings={settings}
+              appVersion={initialData.appVersion}
+              onSettingsChanged={setSettings}
+              onBack={navigateBack}
+              onControlRoom={() => openAdminPin({ source: 'Control Room', message: 'Enter Admin PIN to open Control Room.' })}
+            />
+          ) : (
+            <AdminScreen
+              games={games}
+              settings={settings}
+              initialData={initialData}
+              onDeviceChanged={(currentDevice) => setInitialData((current) => current ? { ...current, currentDevice } : current)}
+              onGamesChanged={setGames}
+              onSettingsChanged={setSettings}
+              onClose={returnToCustomerHome}
+            />
+          )}
+        </div>
       )}
 
       {homeQuickNavVisible && (

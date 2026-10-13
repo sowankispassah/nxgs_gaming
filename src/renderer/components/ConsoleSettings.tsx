@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Accessibility,
   Bluetooth,
   BookOpen,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -13,28 +14,32 @@ import {
   Globe2,
   HardDrive,
   Headphones,
-  Info,
   LoaderCircle,
   Lock,
   LockKeyhole,
+  Maximize2,
   Mic2,
   Minus,
   Monitor,
-  Maximize2,
   Palette,
+  Plus,
   RefreshCw,
   Scaling,
   Search,
   Settings,
+  ShieldCheck,
   Smartphone,
-  Plus,
   Trash2,
   Unplug,
   Users,
-  Wifi,
-  WifiOff,
   Volume2,
-  VolumeX
+  VolumeX,
+  Wifi,
+  WifiHigh,
+  WifiLow,
+  WifiOff,
+  WifiZero,
+  type LucideIcon
 } from 'lucide-react';
 import type {
   AppDiagnostics,
@@ -49,6 +54,12 @@ import type {
 } from '../../shared/types';
 import { isBackKeyboardEvent, shouldKeepEditing } from '../navigation';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../controllerNavigation';
+import { ConsoleClock } from '../ui/ConsoleClock';
+import { ControllerHints, type ControllerHint } from '../ui/ControllerHints';
+import { getUiPreference } from '../ui/preferences';
+import { playUiSound } from '../ui/uiSound';
+import { SettingsNotice, SettingsStatusCard, toneChipClass, type SettingsTone } from './settings/SettingsParts';
+import { AccessibilitySettingsPage, GuideSettingsPage, StorageSettingsPage, UsersSettingsPage } from './settings/SettingsInfoPages';
 
 type SettingsKey =
   | 'guide'
@@ -76,15 +87,15 @@ const settingsDataCache: {
   display?: CachedSettingsValue<DisplayStatus>;
 } = {};
 
-const SETTINGS_ITEMS: Array<{ key: SettingsKey; label: string; icon: JSX.Element }> = [
-  { key: 'guide', label: 'Guide & Tips / Info', icon: <BookOpen size={25} /> },
-  { key: 'accessibility', label: 'Accessibility', icon: <Accessibility size={25} /> },
-  { key: 'network', label: 'Network', icon: <Globe2 size={25} /> },
-  { key: 'controller', label: 'Bluetooth / Controller', icon: <Bluetooth size={25} /> },
-  { key: 'users', label: 'Users and Accounts', icon: <Users size={25} /> },
-  { key: 'system', label: 'System', icon: <Settings size={25} /> },
-  { key: 'storage', label: 'Storage', icon: <HardDrive size={25} /> },
-  { key: 'control-room', label: 'Control Room', icon: <Lock size={25} /> }
+const SETTINGS_ITEMS: Array<{ key: SettingsKey; label: string; Icon: LucideIcon; subtitle: string }> = [
+  { key: 'guide', label: 'Guide & Tips / Info', Icon: BookOpen, subtitle: 'Controls and help for this station' },
+  { key: 'accessibility', label: 'Accessibility', Icon: Accessibility, subtitle: 'Comfort options for every player' },
+  { key: 'network', label: 'Network', Icon: Globe2, subtitle: 'Switch Wi-Fi without leaving NXGS' },
+  { key: 'controller', label: 'Bluetooth / Controller', Icon: Bluetooth, subtitle: 'Find and pair devices inside NXGS' },
+  { key: 'users', label: 'Users and Accounts', Icon: Users, subtitle: 'Profiles on this station' },
+  { key: 'system', label: 'System', Icon: Settings, subtitle: 'Display and audio controls' },
+  { key: 'storage', label: 'Storage', Icon: HardDrive, subtitle: 'Games and data on this station' },
+  { key: 'control-room', label: 'Control Room', Icon: Lock, subtitle: 'Protected administrator controls' }
 ];
 
 const EMPTY_NETWORK: NetworkStatus = {
@@ -120,6 +131,28 @@ const EMPTY_DISPLAY: DisplayStatus = {
   hdr: { support: 'unknown', enabled: false, controlSupported: false, message: 'HDR status is unavailable.' }
 };
 
+const FOCUS_GROUP_SELECTOR = '[data-settings-group]';
+const CONSOLE_FOCUS_ATTRIBUTE = 'data-console-focus';
+
+/**
+ * Mirrors DOM focus as an attribute so the focus frame stays visible while the
+ * launcher window is not the OS-focused window (controller input still works).
+ */
+function markConsoleFocus(target: Element | null): void {
+  for (const element of Array.from(document.querySelectorAll(`[${CONSOLE_FOCUS_ATTRIBUTE}]`))) {
+    if (element !== target) element.removeAttribute(CONSOLE_FOCUS_ATTRIBUTE);
+  }
+  target?.setAttribute(CONSOLE_FOCUS_ATTRIBUTE, '');
+}
+
+function focusConsoleElement(target: HTMLElement | null | undefined, options?: FocusOptions): boolean {
+  if (!target) return false;
+  target.focus(options);
+  if (document.activeElement !== target) return false;
+  markConsoleFocus(target);
+  return true;
+}
+
 function focusableDetailActions(): HTMLElement[] {
   const confirmation = document.querySelector<HTMLElement>('.settings-confirmation-dialog');
   const contextMenu = document.querySelector<HTMLElement>('.wifi-context-menu');
@@ -127,6 +160,78 @@ function focusableDetailActions(): HTMLElement[] {
   if (!scope) return [];
   return Array.from(scope.querySelectorAll<HTMLElement>('[data-settings-action]'))
     .filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length > 0);
+}
+
+/** Vertical focus stops: controls laid out side by side in a [data-settings-group] count as one stop. */
+function detailFocusStops(actions: HTMLElement[]): HTMLElement[][] {
+  const stops: HTMLElement[][] = [];
+  let previousGroup: Element | null = null;
+  for (const action of actions) {
+    const group = action.closest(FOCUS_GROUP_SELECTOR);
+    if (group && group === previousGroup) stops[stops.length - 1].push(action);
+    else stops.push([action]);
+    previousGroup = group;
+  }
+  return stops;
+}
+
+function preferredFocusTarget(stop: HTMLElement[]): HTMLElement {
+  return stop.find((element) => element.matches('[data-settings-preferred], .selected')) ?? stop[0];
+}
+
+function preferredScrollBehavior(): ScrollBehavior {
+  return getUiPreference('reduceMotion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+}
+
+function focusDetailAction(target: HTMLElement): void {
+  focusConsoleElement(target, { preventScroll: true });
+  target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: preferredScrollBehavior() });
+}
+
+function focusFirstDetailAction(): boolean {
+  const firstStop = detailFocusStops(focusableDetailActions())[0];
+  return firstStop ? focusConsoleElement(preferredFocusTarget(firstStop)) : false;
+}
+
+const DETAIL_SCOPE_SELECTOR = '.console-settings-detail, .settings-confirmation-dialog, .wifi-context-menu';
+
+/**
+ * The control the player is on: DOM focus, or the marked control when focus
+ * fell to <body> because that control disabled itself while its action runs.
+ */
+function currentDetailFocus(): HTMLElement | null {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== document.body) return active;
+  return document.querySelector<HTMLElement>(`[${CONSOLE_FOCUS_ATTRIBUTE}]`);
+}
+
+function isDetailControl(element: Element | null): element is HTMLElement {
+  return element instanceof HTMLElement && element.closest(DETAIL_SCOPE_SELECTOR) !== null;
+}
+
+function isBusyDetailControl(element: Element | null): boolean {
+  return isDetailControl(element) && element.matches(':disabled');
+}
+
+/** Nearest stop above or below a control that is not a stop itself (it is disabled), without wrapping. */
+function adjacentStopIndex(stops: HTMLElement[][], control: HTMLElement, direction: number): number {
+  const anchor = control.closest(FOCUS_GROUP_SELECTOR) ?? control;
+  if (direction > 0) {
+    return stops.findIndex((stop) => !anchor.contains(stop[0]) && Boolean(anchor.compareDocumentPosition(stop[0]) & Node.DOCUMENT_POSITION_FOLLOWING));
+  }
+  let index = -1;
+  for (let position = 0; position < stops.length; position += 1) {
+    if (anchor.compareDocumentPosition(stops[position][0]) & Node.DOCUMENT_POSITION_PRECEDING) index = position;
+  }
+  return index;
+}
+
+function wifiSignalIcon(signal: string | undefined): JSX.Element {
+  const strength = Number.parseInt(signal ?? '', 10);
+  if (!Number.isFinite(strength) || strength >= 70) return <Wifi size={20} />;
+  if (strength >= 45) return <WifiHigh size={20} />;
+  if (strength >= 20) return <WifiLow size={20} />;
+  return <WifiZero size={20} />;
 }
 
 export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSettings; appVersion?: string; onSettingsChanged: (settings: AppSettings) => void; onBack: () => void; onControlRoom: () => void }): JSX.Element {
@@ -182,8 +287,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
   const selectedIndexRef = useRef(0);
   const brightnessTarget = useRef<number | null>(null);
   const brightnessFlushActive = useRef(false);
+  const dialogReturnFocus = useRef<HTMLElement | null>(null);
+  const pendingDetailFocus = useRef(false);
   const selected = SETTINGS_ITEMS[selectedIndex];
   const opened = SETTINGS_ITEMS[openedIndex];
+  const overlayOpen = Boolean(forgetWifiTarget || wifiContextMenu || removeBluetoothTarget || bluetoothPairingTarget);
 
   const commitNetwork = useCallback((next: NetworkStatus): void => {
     const updatedAt = Date.now();
@@ -446,6 +554,56 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
     };
   }, []);
 
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent): void => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.matches('[data-settings-action]')) markConsoleFocus(target);
+      else if (target.closest('.console-settings-screen')) markConsoleFocus(null);
+    };
+    const onFocusOut = (event: FocusEvent): void => {
+      if (event.target instanceof HTMLElement && event.target.matches(':disabled')) return;
+      if (event.relatedTarget === null && document.hasFocus()) markConsoleFocus(null);
+    };
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+      markConsoleFocus(null);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (props.inputBlocked) return;
+    const dialog = document.querySelector<HTMLElement>('.settings-confirmation-dialog');
+    if (dialog) {
+      if (!dialog.contains(document.activeElement)) {
+        const firstStop = detailFocusStops(focusableDetailActions())[0];
+        if (firstStop) focusConsoleElement(preferredFocusTarget(firstStop));
+      }
+      return;
+    }
+    if (!detailMode) {
+      pendingDetailFocus.current = false;
+      return;
+    }
+    if (pendingDetailFocus.current) {
+      if (focusFirstDetailAction()) pendingDetailFocus.current = false;
+      return;
+    }
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const marked = document.querySelector<HTMLElement>(`[${CONSOLE_FOCUS_ATTRIBUTE}]`);
+    if (marked && !marked.matches(':disabled')) focusConsoleElement(marked, { preventScroll: true });
+  });
+
+  useEffect(() => {
+    if (overlayOpen || props.inputBlocked) return;
+    const opener = dialogReturnFocus.current;
+    dialogReturnFocus.current = null;
+    if (opener?.isConnected && !opener.hasAttribute('disabled')) focusConsoleElement(opener, { preventScroll: true });
+  }, [overlayOpen, props.inputBlocked]);
+
   const applyMasterVolume = useCallback(async (value: number, source: 'up' | 'down' | 'slider'): Promise<void> => {
     if (audioBusy.current) return;
     const nextVolume = Math.max(0, Math.min(100, Math.round(value)));
@@ -565,21 +723,27 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
   }, [commitAudio]);
 
   const adjustFocusedSlider = useCallback((direction: -1 | 1): boolean => {
-    const active = document.activeElement;
+    const active = currentDetailFocus();
     if (!(active instanceof HTMLInputElement)) return false;
-    if (active.dataset.settingsSlider === 'volume') {
+    const slider = active.dataset.settingsSlider;
+    if (slider !== 'volume' && slider !== 'brightness') return false;
+    if (active.disabled) return true;
+    if (slider === 'volume') {
       const next = Math.max(0, Math.min(100, displayVolume + direction * 5));
+      if (next !== displayVolume && !audioBusy.current) playUiSound('move');
       void applyMasterVolume(next, direction > 0 ? 'up' : 'down');
       return true;
     }
-    if (active.dataset.settingsSlider === 'brightness') {
-      applyDisplayBrightness(displayBrightness + direction * 5);
-      return true;
-    }
-    return false;
+    const next = Math.max(0, Math.min(100, displayBrightness + direction * 5));
+    if (next !== displayBrightness) playUiSound('move');
+    applyDisplayBrightness(displayBrightness + direction * 5);
+    return true;
   }, [applyDisplayBrightness, applyMasterVolume, displayBrightness, displayVolume]);
 
   const previewSettingsIndex = useCallback((index: number): void => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest('.console-settings-detail')) active.blur();
+    markConsoleFocus(null);
     selectedIndexRef.current = index;
     setSelectedIndex(index);
     setOpenedIndex(index);
@@ -589,11 +753,24 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
   const moveSettingsPreview = useCallback((direction: -1 | 1): void => {
     const next = (selectedIndexRef.current + direction + SETTINGS_ITEMS.length) % SETTINGS_ITEMS.length;
     previewSettingsIndex(next);
+    playUiSound('move');
   }, [previewSettingsIndex]);
 
+  const rememberDialogOpener = useCallback((): void => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest('.console-settings-detail') && !active.closest('.wifi-context-menu')) {
+      dialogReturnFocus.current = active;
+    }
+  }, []);
+
   const enterDetail = useCallback((): void => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest('.console-settings-layout > nav')) active.blur();
     setDetailMode(true);
-    window.setTimeout(() => focusableDetailActions()[0]?.focus(), 0);
+    pendingDetailFocus.current = true;
+    window.setTimeout(() => {
+      if (pendingDetailFocus.current && focusFirstDetailAction()) pendingDetailFocus.current = false;
+    }, 0);
   }, []);
 
   const leaveDetail = useCallback((): void => {
@@ -617,9 +794,16 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
       return;
     }
     if (selectedWifi) {
+      const ssid = selectedWifi.ssid;
+      const focusInPanel = document.activeElement instanceof Element && Boolean(document.activeElement.closest('.wifi-selected-panel'));
       setSelectedWifi(null);
       setWifiPassword('');
       setShowWifiPassword(false);
+      if (focusInPanel) {
+        window.setTimeout(() => {
+          focusConsoleElement(Array.from(document.querySelectorAll<HTMLElement>('.wifi-network-list > button')).find((row) => row.dataset.ssid === ssid));
+        }, 0);
+      }
       return;
     }
     if (displayInfoExpanded) {
@@ -634,17 +818,75 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
   }, [bluetoothPairingStage, bluetoothPairingTarget, detailMode, displayInfoExpanded, forgetWifiTarget, leaveDetail, props, removeBluetoothTarget, selectedWifi, wifiContextMenu]);
 
   const moveDetailFocus = useCallback((direction: number): void => {
-    const actions = focusableDetailActions();
-    if (actions.length === 0) return;
-    const current = actions.indexOf(document.activeElement as HTMLElement);
-    actions[(current + direction + actions.length) % actions.length]?.focus();
+    const stops = detailFocusStops(focusableDetailActions());
+    if (stops.length === 0) return;
+    const control = currentDetailFocus();
+    const current = control ? stops.findIndex((stop) => stop.includes(control)) : -1;
+    let next: number;
+    if (current >= 0) next = (current + direction + stops.length) % stops.length;
+    else if (control && isDetailControl(control)) next = adjacentStopIndex(stops, control, direction);
+    else next = direction > 0 ? 0 : stops.length - 1;
+    if (next < 0 || next === current) return;
+    pendingDetailFocus.current = false;
+    focusDetailAction(preferredFocusTarget(stops[next]));
+    playUiSound('move');
+  }, []);
+
+  const moveDetailFocusWithinGroup = useCallback((direction: -1 | 1): boolean => {
+    const control = currentDetailFocus();
+    const group = control?.closest(FOCUS_GROUP_SELECTOR);
+    if (!control || !group) return false;
+    const members = focusableDetailActions().filter((element) => group.contains(element));
+    const index = members.indexOf(control);
+    let target: HTMLElement | undefined;
+    if (index >= 0) {
+      if (members.length < 2) return false;
+      target = members[index + direction];
+      if (!target) return direction > 0;
+    } else {
+      target = direction > 0
+        ? members.find((element) => Boolean(control.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING))
+        : [...members].reverse().find((element) => Boolean(control.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_PRECEDING));
+      if (!target) return true;
+    }
+    focusDetailAction(target);
+    playUiSound('move');
+    return true;
+  }, []);
+
+  const closeOverlaysOrLeaveDetail = useCallback((): void => {
+    if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget || bluetoothPairingTarget) {
+      if (bluetoothPairingTarget && (bluetoothPairingStage === 'pairing' || bluetoothPairingStage === 'checking-input')) return;
+      setForgetWifiTarget(null);
+      setWifiContextMenu(null);
+      setRemoveBluetoothTarget(null);
+      setBluetoothPairingTarget(null);
+    } else {
+      leaveDetail();
+    }
+    playUiSound('back');
+  }, [bluetoothPairingStage, bluetoothPairingTarget, forgetWifiTarget, leaveDetail, removeBluetoothTarget, wifiContextMenu]);
+
+  const activateFocusedAction = useCallback((): void => {
+    const control = currentDetailFocus();
+    if (!(control instanceof HTMLButtonElement) || !isDetailControl(control)) return;
+    if (control.disabled) {
+      playUiSound('error');
+      return;
+    }
+    const toggles = control.getAttribute('role') === 'switch' || Boolean(control.closest('.controller-power-options'));
+    control.click();
+    playUiSound(toggles ? 'toggle' : 'select');
   }, []);
 
   const activateSelected = useCallback((): void => {
     const index = selectedIndexRef.current;
     const key = SETTINGS_ITEMS[index].key;
-    if (key === 'control-room') props.onControlRoom();
-    else {
+    if (key === 'control-room') {
+      playUiSound('select');
+      props.onControlRoom();
+    } else {
+      playUiSound('open');
       setOpenedIndex(index);
       hydrateSettingsPage(key, true);
       enterDetail();
@@ -658,16 +900,25 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
       if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(event.key) && !backRequested) return;
       if (backRequested && shouldKeepEditing(event)) return;
       if (detailMode) {
+        const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight';
+        if (horizontal && shouldKeepEditing(event)) {
+          event.stopImmediatePropagation();
+          return;
+        }
         if (backRequested) {
           event.preventDefault();
           event.stopImmediatePropagation();
+          playUiSound('back');
           handleSettingsBack();
           return;
         }
-        if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && adjustFocusedSlider(event.key === 'ArrowRight' ? 1 : -1)) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          return;
+        if (horizontal) {
+          const direction = event.key === 'ArrowRight' ? 1 : -1;
+          if (adjustFocusedSlider(direction) || moveDetailFocusWithinGroup(direction) || isBusyDetailControl(currentDetailFocus())) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+          }
         }
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
           event.preventDefault();
@@ -676,11 +927,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
         } else if (event.key === 'ArrowLeft') {
           event.preventDefault();
           event.stopImmediatePropagation();
-          leaveDetail();
-        } else if (event.key === 'Enter' && document.activeElement instanceof HTMLButtonElement) {
+          closeOverlaysOrLeaveDetail();
+        } else if (event.key === 'Enter') {
           event.preventDefault();
           event.stopImmediatePropagation();
-          document.activeElement.click();
+          activateFocusedAction();
         }
         return;
       }
@@ -689,48 +940,40 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
       if (event.key === 'ArrowUp') moveSettingsPreview(-1);
       else if (event.key === 'ArrowDown') moveSettingsPreview(1);
       else if (event.key === 'Enter' || event.key === 'ArrowRight') activateSelected();
-      else handleSettingsBack();
+      else {
+        playUiSound('back');
+        handleSettingsBack();
+      }
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activateSelected, adjustFocusedSlider, detailMode, handleSettingsBack, leaveDetail, moveDetailFocus, moveSettingsPreview, props.inputBlocked]);
+  }, [activateFocusedAction, activateSelected, adjustFocusedSlider, closeOverlaysOrLeaveDetail, detailMode, handleSettingsBack, moveDetailFocus, moveDetailFocusWithinGroup, moveSettingsPreview, props.inputBlocked]);
 
   const handleSettingsControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
     if (event.type === 'back') {
+      playUiSound('back');
       handleSettingsBack();
       void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'Circle / B', lastNavigationAction: 'Settings: back' });
       return;
     }
     if (event.type === 'accept') {
-      if (detailMode) {
-        const active = document.activeElement;
-        if (active instanceof HTMLButtonElement) active.click();
-      } else {
-        activateSelected();
-      }
+      if (detailMode) activateFocusedAction();
+      else activateSelected();
       void window.nxgs.reportControllerState({ detected: true, name: event.pad.id, homeSupported: event.pad.buttons.length > 16 ? 'unknown' : 'no', lastButtonPressed: 'X / A', lastNavigationAction: `Settings: select ${selected.label}` });
       return;
     }
 
     if (detailMode) {
+      const control = currentDetailFocus();
       const sliderFocused =
-        document.activeElement instanceof HTMLInputElement &&
-        ['volume', 'brightness'].includes(document.activeElement.dataset.settingsSlider ?? '');
+        control instanceof HTMLInputElement &&
+        ['volume', 'brightness'].includes(control.dataset.settingsSlider ?? '');
       if (sliderFocused && event.direction === 'left') adjustFocusedSlider(-1);
       else if (sliderFocused && event.direction === 'right') adjustFocusedSlider(1);
       else if (event.direction === 'up') moveDetailFocus(-1);
       else if (event.direction === 'down') moveDetailFocus(1);
-      else if (event.direction === 'left') {
-        if (forgetWifiTarget || wifiContextMenu || removeBluetoothTarget || bluetoothPairingTarget) {
-          if (bluetoothPairingStage === 'pairing' || bluetoothPairingStage === 'checking-input') return;
-          setForgetWifiTarget(null);
-          setWifiContextMenu(null);
-          setRemoveBluetoothTarget(null);
-          setBluetoothPairingTarget(null);
-        } else {
-          leaveDetail();
-        }
-      }
+      else if (event.direction === 'right') moveDetailFocusWithinGroup(1);
+      else if (event.direction === 'left' && !moveDetailFocusWithinGroup(-1) && !isBusyDetailControl(control)) closeOverlaysOrLeaveDetail();
       return;
     }
 
@@ -741,7 +984,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
     } else if (event.direction === 'right') {
       activateSelected();
     }
-  }, [activateSelected, adjustFocusedSlider, bluetoothPairingStage, bluetoothPairingTarget, detailMode, forgetWifiTarget, handleSettingsBack, leaveDetail, moveDetailFocus, moveSettingsPreview, removeBluetoothTarget, selected.label, wifiContextMenu]);
+  }, [activateFocusedAction, activateSelected, adjustFocusedSlider, closeOverlaysOrLeaveDetail, detailMode, handleSettingsBack, moveDetailFocus, moveDetailFocusWithinGroup, moveSettingsPreview, selected.label]);
 
   useControllerNavigation(!props.inputBlocked, handleSettingsControllerEvent);
 
@@ -782,8 +1025,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
       setWifiPassword('');
       setShowWifiPassword(false);
       setNetworkFeedback({ tone: 'info', message: `${wifi.ssid} selected. Choose an action below.` });
+      window.setTimeout(() => document.querySelector<HTMLElement>('.wifi-selected-panel')?.scrollIntoView({ block: 'nearest', behavior: preferredScrollBehavior() }), 0);
     } else {
-      window.setTimeout(() => document.querySelector<HTMLElement>('#selected-wifi-primary-action')?.focus(), 0);
+      window.setTimeout(() => focusConsoleElement(document.querySelector<HTMLElement>('#selected-wifi-primary-action')), 0);
     }
   }, [selectedWifi?.ssid]);
 
@@ -796,6 +1040,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
     const y = bounds ? clientY - bounds.top + scrollTop : clientY;
     const maxX = detail ? scrollLeft + detail.clientWidth - 230 : window.innerWidth - 230;
     const maxY = detail ? scrollTop + detail.clientHeight - 90 : window.innerHeight - 90;
+    rememberDialogOpener();
     setSelectedWifi(wifi);
     setWifiPassword('');
     setWifiContextMenu({
@@ -803,8 +1048,8 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
       x: Math.max(scrollLeft + 8, Math.min(x, maxX)),
       y: Math.max(scrollTop + 8, Math.min(y, maxY))
     });
-    window.setTimeout(() => document.querySelector<HTMLButtonElement>('.wifi-context-menu [role="menuitem"]')?.focus(), 0);
-  }, []);
+    window.setTimeout(() => focusConsoleElement(document.querySelector<HTMLButtonElement>('.wifi-context-menu [role="menuitem"]')), 0);
+  }, [rememberDialogOpener]);
 
   const disconnectNetwork = useCallback(async (): Promise<void> => {
     if (networkBusy.current) return;
@@ -827,10 +1072,11 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
 
   const requestForgetWifi = useCallback((wifi: WifiNetworkSummary): void => {
     if (!wifi.saved || networkBusy.current) return;
+    rememberDialogOpener();
     setWifiContextMenu(null);
     setForgetWifiTarget(wifi);
-    window.setTimeout(() => document.querySelector<HTMLButtonElement>('#wifi-forget-cancel')?.focus(), 0);
-  }, []);
+    window.setTimeout(() => focusConsoleElement(document.querySelector<HTMLButtonElement>('#wifi-forget-cancel')), 0);
+  }, [rememberDialogOpener]);
 
   const forgetSelectedWifi = useCallback(async (): Promise<void> => {
     if (!forgetWifiTarget || networkBusy.current) return;
@@ -896,12 +1142,13 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
 
   const requestPairBluetoothDevice = useCallback((device: BluetoothDeviceSummary): void => {
     if (device.paired || bluetoothBusy.current) return;
+    rememberDialogOpener();
     setBluetoothPairingTarget(device);
     setBluetoothPairingStage('confirm');
     setBluetoothPairingMessage('Confirm pairing to connect this device with NXGS.');
     setBluetoothFeedback(null);
-    window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-pair-primary')?.focus(), 0);
-  }, []);
+    window.setTimeout(() => focusConsoleElement(document.querySelector<HTMLButtonElement>('#bluetooth-pair-primary')), 0);
+  }, [rememberDialogOpener]);
 
   const confirmPairBluetoothDevice = useCallback(async (): Promise<void> => {
     if (!bluetoothPairingTarget || bluetoothBusy.current) return;
@@ -954,16 +1201,17 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
       bluetoothBusy.current = false;
       setBluetoothPending(null);
       if (attempt === bluetoothPairingAttempt.current) {
-        window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-pair-primary')?.focus(), 0);
+        window.setTimeout(() => focusConsoleElement(document.querySelector<HTMLButtonElement>('#bluetooth-pair-primary')), 0);
       }
     }
   }, [bluetooth, bluetoothPairingStage, bluetoothPairingTarget, commitBluetooth, refreshBluetoothStatus]);
 
   const requestRemoveBluetoothDevice = useCallback((device: BluetoothDeviceSummary): void => {
     if (!device.paired || bluetoothBusy.current) return;
+    rememberDialogOpener();
     setRemoveBluetoothTarget(device);
-    window.setTimeout(() => document.querySelector<HTMLButtonElement>('#bluetooth-remove-cancel')?.focus(), 0);
-  }, []);
+    window.setTimeout(() => focusConsoleElement(document.querySelector<HTMLButtonElement>('#bluetooth-remove-cancel')), 0);
+  }, [rememberDialogOpener]);
 
   const confirmRemoveBluetoothDevice = useCallback(async (): Promise<void> => {
     if (!removeBluetoothTarget || bluetoothBusy.current) return;
@@ -989,6 +1237,13 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
   }, [commitBluetooth, removeBluetoothTarget]);
 
   const detail = useMemo(() => {
+    const PageIcon = opened.Icon;
+    const pageIcon = <PageIcon size={28} />;
+    const focusDetail = (): void => {
+      pendingDetailFocus.current = false;
+      setDetailMode(true);
+    };
+
     if (opened.key === 'network') {
       const selectedConnected = Boolean(selectedWifi && network.connected && network.ssid === selectedWifi.ssid);
       const selectedNeedsPassword = Boolean(selectedWifi?.requiresPassword && !selectedWifi.saved && !selectedConnected);
@@ -997,115 +1252,135 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
         : network.connected
           ? network.connectivity === 'internet' ? 'Connected' : 'No internet / limited connection'
           : 'Not connected';
-      return (
-        <SettingsDetail title="Network" icon={<Wifi size={34} />} subtitle="Switch Wi-Fi without leaving NXGS" onFocus={() => setDetailMode(true)}>
-          <div className={`settings-status-card ${network.connected && network.connectivity !== 'internet' ? 'warning' : ''}`}>
-            <span>{connectedLabel}</span>
-            <strong>{network.ssid ?? network.interfaceName ?? 'Wi-Fi'}</strong>
-            <small>{network.signal ? `Signal ${network.signal}` : network.message ?? 'Choose a network below.'}</small>
+      const networkTone: SettingsTone = networkPending === 'connect'
+        ? 'info'
+        : !network.supported
+          ? 'warning'
+          : network.connected
+            ? network.connectivity === 'internet' ? 'success' : 'warning'
+            : 'neutral';
+      const selectedInList = Boolean(selectedWifi && network.availableNetworks.some((item) => item.ssid === selectedWifi.ssid));
+      const selectedPanel = selectedWifi ? (
+        <div className={`wifi-selected-panel${selectedInList ? ' inline' : ''}`}>
+          {!selectedInList && (
+            <div className="wifi-selected-title">
+              <span className="settings-row-icon" aria-hidden="true">{selectedConnected ? <CheckCircle2 size={20} /> : <Wifi size={20} />}</span>
+              <span className="settings-row-text"><small>Selected network</small><strong>{selectedWifi.ssid}</strong></span>
+              <span className={toneChipClass(selectedConnected ? 'success' : 'neutral')}>{selectedConnected ? 'Connected' : selectedWifi.saved ? 'Saved' : 'Available'}</span>
+            </div>
+          )}
+          <div className="wifi-selected-details">
+            <span>Signal<strong>{selectedWifi.signal ?? 'Unknown'}</strong></span>
+            <span>Security<strong>{selectedWifi.security ?? 'Open'}</strong></span>
+            <span>Profile<strong>{selectedWifi.saved ? 'Saved' : 'Not saved'}</strong></span>
           </div>
-          {networkFeedback && <div className={`settings-feedback ${networkFeedback.tone}`} role="status">{networkFeedback.message}</div>}
+          {selectedNeedsPassword && (
+            <div className="wifi-password-panel">
+              <label htmlFor="nxgs-wifi-password">Password for {selectedWifi.ssid}</label>
+              <div className="wifi-password-input">
+                <input
+                  data-settings-action
+                  id="nxgs-wifi-password"
+                  type={showWifiPassword ? 'text' : 'password'}
+                  value={wifiPassword}
+                  disabled={networkPending !== null}
+                  autoComplete="current-password"
+                  onChange={(event) => setWifiPassword(event.target.value)}
+                />
+                <button className="settings-icon-button" data-settings-action type="button" disabled={networkPending !== null} aria-label={showWifiPassword ? 'Hide password' : 'Show password'} onClick={() => setShowWifiPassword((shown) => !shown)}>
+                  {showWifiPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="settings-action-row" data-settings-group>
+            {selectedConnected ? (
+              <button id="selected-wifi-primary-action" className="settings-pill-button" data-settings-action type="button" disabled={networkPending !== null} onClick={() => void disconnectNetwork()}>
+                {networkPending === 'disconnect' ? <LoaderCircle size={18} className="spin" /> : <WifiOff size={18} />}
+                {networkPending === 'disconnect' ? 'Disconnecting...' : 'Disconnect'}
+              </button>
+            ) : (
+              <button id="selected-wifi-primary-action" className="settings-pill-button primary" data-settings-action type="button" disabled={networkPending !== null || (selectedNeedsPassword && !wifiPassword)} onClick={() => void performWifiConnect(selectedWifi, selectedNeedsPassword ? wifiPassword : undefined)}>
+                {networkPending === 'connect' ? <LoaderCircle size={18} className="spin" /> : <Wifi size={18} />}
+                {networkPending === 'connect' ? 'Connecting...' : 'Connect'}
+              </button>
+            )}
+            {selectedWifi.saved && (
+              <button className="settings-pill-button danger" data-settings-action type="button" disabled={networkPending !== null} onClick={() => requestForgetWifi(selectedWifi)}>
+                <Trash2 size={18} /> Forget Network
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null;
+      return (
+        <SettingsDetail title={opened.label} icon={pageIcon} subtitle={opened.subtitle} onFocus={focusDetail}>
+          <SettingsStatusCard
+            tone={networkTone}
+            icon={network.connected ? wifiSignalIcon(network.signal) : <WifiOff size={30} />}
+            label={connectedLabel}
+            title={network.ssid ?? network.interfaceName ?? 'Wi-Fi'}
+            detail={network.signal ? `Signal ${network.signal}` : network.message ?? 'Choose a network below.'}
+          />
+          {networkFeedback && <SettingsNotice tone={networkFeedback.tone} message={networkFeedback.message} />}
           <div className="settings-detail-heading">
             <h3>Available networks</h3>
-            <button data-settings-action type="button" disabled={networkPending !== null} onClick={() => void refreshNetwork()}>
+            <button className="settings-pill-button" data-settings-action type="button" disabled={networkPending !== null} onClick={() => void refreshNetwork()}>
               <RefreshCw size={18} className={networkPending === 'refresh' ? 'spin' : ''} />
               {networkPending === 'refresh' ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
-          {selectedWifi && (
-            <div className="wifi-selected-panel">
-              <div className="wifi-selected-title">
-                {selectedConnected ? <CheckCircle2 size={24} /> : <Wifi size={24} />}
-                <span><small>Selected network</small><strong>{selectedWifi.ssid}</strong></span>
-                <span className={selectedConnected ? 'connected' : ''}>{selectedConnected ? 'Connected' : selectedWifi.saved ? 'Saved' : 'Available'}</span>
-              </div>
-              <div className="wifi-selected-details">
-                <span>Signal<strong>{selectedWifi.signal ?? 'Unknown'}</strong></span>
-                <span>Security<strong>{selectedWifi.security ?? 'Open'}</strong></span>
-                <span>Profile<strong>{selectedWifi.saved ? 'Saved' : 'Not saved'}</strong></span>
-              </div>
-              {selectedNeedsPassword && (
-                <div className="wifi-password-panel">
-                  <label htmlFor="nxgs-wifi-password">Password for {selectedWifi.ssid}</label>
-                  <div className="wifi-password-input">
-                    <input
-                      data-settings-action
-                      id="nxgs-wifi-password"
-                      type={showWifiPassword ? 'text' : 'password'}
-                      value={wifiPassword}
-                      disabled={networkPending !== null}
-                      autoComplete="current-password"
-                      onChange={(event) => setWifiPassword(event.target.value)}
-                    />
-                    <button data-settings-action type="button" disabled={networkPending !== null} aria-label={showWifiPassword ? 'Hide password' : 'Show password'} onClick={() => setShowWifiPassword((shown) => !shown)}>
-                      {showWifiPassword ? <EyeOff size={19} /> : <Eye size={19} />}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="settings-action-row">
-                {selectedConnected ? (
-                  <button id="selected-wifi-primary-action" data-settings-action type="button" disabled={networkPending !== null} onClick={() => void disconnectNetwork()}>
-                    {networkPending === 'disconnect' ? <LoaderCircle size={17} className="spin" /> : <WifiOff size={17} />}
-                    {networkPending === 'disconnect' ? 'Disconnecting...' : 'Disconnect'}
-                  </button>
-                ) : (
-                  <button id="selected-wifi-primary-action" data-settings-action type="button" disabled={networkPending !== null || (selectedNeedsPassword && !wifiPassword)} onClick={() => void performWifiConnect(selectedWifi, selectedNeedsPassword ? wifiPassword : undefined)}>
-                    {networkPending === 'connect' ? <LoaderCircle size={17} className="spin" /> : <Wifi size={17} />}
-                    {networkPending === 'connect' ? 'Connecting...' : 'Connect'}
-                  </button>
-                )}
-                {selectedWifi.saved && (
-                  <button className="danger" data-settings-action type="button" disabled={networkPending !== null} onClick={() => requestForgetWifi(selectedWifi)}>
-                    <Trash2 size={17} /> Forget Network
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
           <div className="wifi-network-list">
+            {!selectedInList && selectedPanel}
             {network.availableNetworks.length > 0 ? network.availableNetworks.map((item) => {
               const connected = network.connected && network.ssid === item.ssid;
               const isSelected = selectedWifi?.ssid === item.ssid;
               return (
-                <button
-                  data-settings-action
-                  key={item.ssid}
-                  type="button"
-                  disabled={networkPending !== null}
-                  aria-pressed={isSelected}
-                  aria-haspopup="menu"
-                  className={`${connected ? 'connected ' : ''}${isSelected ? 'selected' : ''}`.trim()}
-                  onClick={() => selectWifi(item)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    openWifiContextMenu(item, event.clientX, event.clientY);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
-                    event.preventDefault();
-                    const bounds = event.currentTarget.getBoundingClientRect();
-                    openWifiContextMenu(item, bounds.right - 12, bounds.bottom - 4);
-                  }}
-                >
-                  {connected ? <CheckCircle2 size={20} /> : <Wifi size={20} />}
-                  <span><strong>{item.ssid}</strong><small>{item.security ?? 'Open network'}{item.saved ? ' · Saved' : ''}</small></span>
-                  <span>{connected ? 'Connected' : item.signal ?? 'Available'}</span>
-                  {item.requiresPassword && <LockKeyhole size={16} />}
-                </button>
+                <Fragment key={item.ssid}>
+                  <button
+                    data-settings-action
+                    data-ssid={item.ssid}
+                    type="button"
+                    disabled={networkPending !== null}
+                    aria-pressed={isSelected}
+                    aria-haspopup="menu"
+                    className={`settings-row wifi-row${connected ? ' connected' : ''}${isSelected ? ' selected' : ''}`}
+                    onClick={() => selectWifi(item)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openWifiContextMenu(item, event.clientX, event.clientY);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+                      event.preventDefault();
+                      const bounds = event.currentTarget.getBoundingClientRect();
+                      openWifiContextMenu(item, bounds.right - 12, bounds.bottom - 4);
+                    }}
+                  >
+                    <span className="settings-row-icon" aria-hidden="true">{wifiSignalIcon(item.signal)}</span>
+                    <span className="settings-row-text"><strong>{item.ssid}</strong><small>{item.security ?? 'Open network'}{item.saved ? ' · Saved' : ''}</small></span>
+                    <span className="settings-row-value">
+                      {connected ? <span className="ps-chip ps-chip--success"><Check size={15} />Connected</span> : <span className="wifi-row-signal">{item.signal ?? 'Available'}</span>}
+                      {item.requiresPassword && <LockKeyhole size={18} className="wifi-row-lock" />}
+                    </span>
+                  </button>
+                  {isSelected && selectedPanel}
+                </Fragment>
               );
-            }) : <p className="settings-placeholder">No Wi-Fi networks found. Select Refresh to scan again.</p>}
+            }) : (
+              <p className="settings-empty-state"><WifiOff size={26} /><span>No Wi-Fi networks found. Select Refresh to scan again.</span></p>
+            )}
           </div>
           {wifiContextMenu && (
             <div className="wifi-context-menu" role="menu" style={{ left: wifiContextMenu.x, top: wifiContextMenu.y }}>
               <strong>{wifiContextMenu.wifi.ssid}</strong>
               <button className="danger" data-settings-action type="button" role="menuitem" disabled={!wifiContextMenu.wifi.saved || networkPending !== null} onClick={() => requestForgetWifi(wifiContextMenu.wifi)}>
-                <Trash2 size={17} /> Forget Network
+                <Trash2 size={18} /> Forget Network
               </button>
             </div>
           )}
-          {forgetWifiTarget && (
+          {forgetWifiTarget && !props.inputBlocked && createPortal(
             <div
               className="wifi-confirmation-backdrop"
               role="presentation"
@@ -1114,19 +1389,20 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
               }}
             >
               <div className="wifi-forget-confirmation settings-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="wifi-forget-title" aria-describedby="wifi-forget-description">
-                <Trash2 size={30} />
+                <span className="settings-dialog-icon tone-danger" aria-hidden="true"><Trash2 size={28} /></span>
                 <h3 id="wifi-forget-title">Forget this Wi-Fi network?</h3>
-                <strong>{forgetWifiTarget.ssid}</strong>
+                <strong className="settings-dialog-subject">{forgetWifiTarget.ssid}</strong>
                 <p id="wifi-forget-description">The saved password will be removed. You will need to enter it again next time.</p>
-                <div className="settings-action-row">
+                <div className="settings-action-row" data-settings-group>
                   <button id="wifi-forget-cancel" data-settings-action type="button" disabled={networkPending === 'forget'} onClick={() => setForgetWifiTarget(null)}>Cancel</button>
                   <button className="danger" data-settings-action type="button" disabled={networkPending === 'forget'} onClick={() => void forgetSelectedWifi()}>
-                    {networkPending === 'forget' ? <LoaderCircle size={17} className="spin" /> : <Trash2 size={17} />}
+                    {networkPending === 'forget' ? <LoaderCircle size={18} className="spin" /> : <Trash2 size={18} />}
                     {networkPending === 'forget' ? 'Forgetting...' : 'Forget Network'}
                   </button>
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
         </SettingsDetail>
       );
@@ -1156,6 +1432,14 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
               ? 'Press the controller PS / Home button once to reconnect it.'
               : 'Put the controller in pairing mode, then scan.';
       const controllerWarning = bluetooth.radioState === 'on' && !controllerDetected && pairedControllers.length > 0;
+      const radioUnavailable = !bluetooth.supported || bluetooth.radioState === 'off' || bluetooth.radioState === 'disabled' || bluetooth.radioState === 'unsupported';
+      const controllerTone: SettingsTone = bluetoothPending === 'scan'
+        ? 'info'
+        : radioUnavailable
+          ? 'warning'
+          : controllerDetected || inputReadyController
+            ? 'success'
+            : controllerWarning || linkedInputInactiveController ? 'warning' : 'neutral';
       const compatibilityStatus = diagnostics?.controllerCompatibility.status ?? 'idle';
       const compatibilityWarning = compatibilityStatus === 'error' || compatibilityStatus === 'driverRequired';
       const compatibilityTitle = diagnostics?.controllerCompatibility.xinputReady
@@ -1177,54 +1461,25 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
               ? 'Staff approval required'
               : 'Confirm pairing';
       return (
-        <SettingsDetail title="Bluetooth / Controller" icon={<Gamepad2 size={34} />} subtitle="Find and pair devices inside NXGS" onFocus={() => setDetailMode(true)}>
-          <div className={`settings-status-card ${bluetooth.radioState !== 'on' || controllerWarning ? 'warning' : ''}`}>
-            <span>{bluetoothPending === 'scan' ? 'Searching...' : radioLabel}</span>
-            <strong>{controllerTitle}</strong>
-            <small>{controllerDetail}</small>
+        <SettingsDetail title={opened.label} icon={pageIcon} subtitle={opened.subtitle} onFocus={focusDetail}>
+          <SettingsStatusCard
+            tone={controllerTone}
+            icon={<Gamepad2 size={30} />}
+            label={bluetoothPending === 'scan' ? 'Searching...' : radioLabel}
+            title={controllerTitle}
+            detail={controllerDetail}
+          />
+          <div className="settings-row settings-info-row">
+            <span className="settings-row-text">
+              <strong>Game compatibility</strong>
+              <small>{diagnostics?.controllerCompatibility.message ?? 'Starts automatically when a game launches or resumes.'}</small>
+            </span>
+            <span className={toneChipClass(compatibilityWarning ? 'warning' : diagnostics?.controllerCompatibility.xinputReady ? 'success' : 'neutral')}>{compatibilityTitle}</span>
           </div>
-          <div className={`settings-status-card ${compatibilityWarning ? 'warning' : ''}`}>
-            <span>Game compatibility</span>
-            <strong>{compatibilityTitle}</strong>
-            <small>{diagnostics?.controllerCompatibility.message ?? 'Starts automatically when a game launches or resumes.'}</small>
-          </div>
-          <section className="controller-power-settings" aria-labelledby="controller-power-title">
-            <div className="settings-detail-heading">
-              <div><h3 id="controller-power-title">Controller power</h3><small>Bluetooth DualSense controllers only</small></div>
-            </div>
-            <label>Auto turn off controller</label>
-            <div className="controller-power-options" role="group" aria-label="Auto turn off controller">
-              {([0, 5, 10, 15, 30] as const).map((minutes) => (
-                <button
-                  data-settings-action
-                  type="button"
-                  key={minutes}
-                  className={props.settings.controllerIdle.autoTurnOffMinutes === minutes ? 'selected' : ''}
-                  disabled={controllerIdlePending}
-                  onClick={() => void saveControllerIdle({ ...props.settings.controllerIdle, autoTurnOffMinutes: minutes })}
-                >
-                  {minutes === 0 ? 'Never' : `After ${minutes} minutes`}
-                </button>
-              ))}
-            </div>
-            <button
-              className={`controller-warning-toggle ${props.settings.controllerIdle.shutdownWarning ? 'enabled' : ''}`}
-              data-settings-action
-              type="button"
-              role="switch"
-              aria-checked={props.settings.controllerIdle.shutdownWarning}
-              disabled={controllerIdlePending}
-              onClick={() => void saveControllerIdle({ ...props.settings.controllerIdle, shutdownWarning: !props.settings.controllerIdle.shutdownWarning })}
-            >
-              <span><strong>Controller shutdown warning</strong><small>Show an NXGS notification 30 seconds before turn off</small></span>
-              <em>{props.settings.controllerIdle.shutdownWarning ? 'Enabled' : 'Disabled'}</em>
-            </button>
-            {controllerIdleFeedback && <div className={`settings-feedback ${controllerIdleFeedback.tone}`} role="status">{controllerIdleFeedback.message}</div>}
-          </section>
-          {bluetoothFeedback && <div className={`settings-feedback ${bluetoothFeedback.tone}`} role="status">{bluetoothFeedback.message}</div>}
+          {bluetoothFeedback && <SettingsNotice tone={bluetoothFeedback.tone} message={bluetoothFeedback.message} />}
           <div className="settings-detail-heading">
             <h3>Bluetooth devices</h3>
-            <button data-settings-action type="button" disabled={bluetoothPending !== null} onClick={() => void refreshBluetooth()}>
+            <button className="settings-pill-button" data-settings-action type="button" disabled={bluetoothPending !== null} onClick={() => void refreshBluetooth()}>
               {bluetoothPending === 'scan' ? <LoaderCircle size={18} className="spin" /> : <Search size={18} />}
               {bluetoothPending === 'scan' ? 'Searching...' : 'Scan for Devices'}
             </button>
@@ -1255,12 +1510,15 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
                               ? 'Connected'
                               : device.paired ? 'Paired / Disconnected' : 'Available'
                     );
+              const rowState = launcherInputActive || device.inputReady ? 'connected' : inputInactive ? 'input-inactive' : device.connected ? 'connected' : '';
+              const DeviceIcon = device.controller ? Gamepad2 : Bluetooth;
               return (
-                <div key={device.id} className={launcherInputActive || device.inputReady ? 'connected' : inputInactive ? 'input-inactive' : device.connected ? 'connected' : ''}>
-                  <Bluetooth size={21} />
-                  <span><strong>{device.name}</strong><small>{status}{device.address ? ` · ${device.address}` : ''}</small></span>
-                  <div className="bluetooth-device-actions">
+                <div key={device.id} className={`settings-row bluetooth-device-row${rowState ? ` ${rowState}` : ''}`}>
+                  <span className="settings-row-icon" aria-hidden="true"><DeviceIcon size={20} /></span>
+                  <span className="settings-row-text"><strong>{device.name}</strong><small><i className="settings-status-dot" aria-hidden="true" />{status}{device.address ? ` · ${device.address}` : ''}</small></span>
+                  <div className="bluetooth-device-actions" data-settings-group>
                     <button
+                      className={`settings-pill-button${device.paired ? '' : ' primary'}`}
                       data-settings-action
                       type="button"
                       disabled={bluetoothPending !== null || (!device.connectable && !device.paired)}
@@ -1268,22 +1526,66 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
                         ? void handleBluetoothDevice(device, shouldDisconnect ? 'disconnect' : 'connect')
                         : requestPairBluetoothDevice(device)}
                     >
-                      {pending && pendingAction !== 'remove' ? <LoaderCircle size={17} className="spin" /> : shouldDisconnect ? <Unplug size={17} /> : <Bluetooth size={17} />}
+                      {pending && pendingAction !== 'remove' ? <LoaderCircle size={18} className="spin" /> : shouldDisconnect ? <Unplug size={18} /> : <Bluetooth size={18} />}
                       {pendingAction === 'connect' ? inputInactive ? 'Checking...' : 'Connecting...' : pendingAction === 'disconnect' ? 'Disconnecting...' : label}
                     </button>
                     {device.paired && (
-                      <button className="danger" data-settings-action type="button" aria-label={`Remove ${device.name}`} disabled={bluetoothPending !== null} onClick={() => requestRemoveBluetoothDevice(device)}>
-                        {pendingAction === 'remove' ? <LoaderCircle size={17} className="spin" /> : <Trash2 size={17} />}
-                        Remove Device
+                      <button className="settings-icon-button danger" data-settings-action type="button" aria-label={`Remove ${device.name}`} title="Remove Device" disabled={bluetoothPending !== null} onClick={() => requestRemoveBluetoothDevice(device)}>
+                        {pendingAction === 'remove' ? <LoaderCircle size={19} className="spin" /> : <Trash2 size={19} />}
                       </button>
                     )}
                   </div>
                 </div>
               );
-            }) : <p className="settings-placeholder">No Bluetooth devices found. Put the controller in pairing mode and select Scan for Devices.</p>}
+            }) : (
+              <p className="settings-empty-state"><Bluetooth size={26} /><span>No Bluetooth devices found. Put the controller in pairing mode and select Scan for Devices.</span></p>
+            )}
           </div>
-          <p className="settings-capability-note">Disconnect keeps the device paired. Remove Device clears the saved pairing, so the device must be scanned and paired again. Some device profiles control their own final connection; NXGS will show a clear message when they cannot be disconnected here.</p>
-          {bluetoothPairingTarget && createPortal(
+          <section className="controller-power-settings" aria-labelledby="controller-power-title">
+            <div className="settings-detail-heading">
+              <h3 id="controller-power-title">Controller power</h3>
+              <small>Bluetooth DualSense controllers only</small>
+            </div>
+            <div className="controller-power-choice">
+              <span className="settings-row-text">
+                <strong>Auto turn off controller</strong>
+                <small>Turn idle controllers off to save their battery.</small>
+              </span>
+              <div className="controller-power-options" role="group" aria-label="Auto turn off controller" data-settings-group>
+                {([0, 5, 10, 15, 30] as const).map((minutes) => {
+                  const current = props.settings.controllerIdle.autoTurnOffMinutes === minutes;
+                  return (
+                    <button
+                      data-settings-action
+                      type="button"
+                      key={minutes}
+                      className={current ? 'selected' : ''}
+                      aria-pressed={current}
+                      disabled={controllerIdlePending}
+                      onClick={() => void saveControllerIdle({ ...props.settings.controllerIdle, autoTurnOffMinutes: minutes })}
+                    >
+                      {minutes === 0 ? 'Never' : `After ${minutes} minutes`}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <button
+              className={`settings-row controller-warning-toggle ${props.settings.controllerIdle.shutdownWarning ? 'enabled' : ''}`}
+              data-settings-action
+              type="button"
+              role="switch"
+              aria-checked={props.settings.controllerIdle.shutdownWarning}
+              disabled={controllerIdlePending}
+              onClick={() => void saveControllerIdle({ ...props.settings.controllerIdle, shutdownWarning: !props.settings.controllerIdle.shutdownWarning })}
+            >
+              <span className="settings-row-text"><strong>Controller shutdown warning</strong><small>Show an NXGS notification 30 seconds before turn off</small></span>
+              <span className="ps-switch" data-on={props.settings.controllerIdle.shutdownWarning} aria-hidden="true" />
+            </button>
+            {controllerIdleFeedback && <SettingsNotice tone={controllerIdleFeedback.tone} message={controllerIdleFeedback.message} />}
+          </section>
+          <p className="settings-capability-note">Disconnect keeps the device paired. Removing a device clears its saved pairing, so it must be scanned and paired again. Some device profiles control their own final connection; NXGS will show a clear message when they cannot be disconnected here.</p>
+          {bluetoothPairingTarget && !props.inputBlocked && createPortal(
             <div
               className="bluetooth-confirmation-backdrop"
               role="presentation"
@@ -1300,12 +1602,12 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
               >
                 <div className="bluetooth-pairing-icon" aria-hidden="true">
                   {bluetoothPairingStage === 'pairing' || bluetoothPairingStage === 'checking-input'
-                    ? <LoaderCircle size={34} className="spin" />
+                    ? <LoaderCircle size={30} className="spin" />
                     : bluetoothPairingStage === 'connected'
-                      ? <CheckCircle2 size={34} />
+                      ? <CheckCircle2 size={30} />
                       : bluetoothPairingStage === 'staff-approval-required'
-                        ? <LockKeyhole size={34} />
-                        : <Gamepad2 size={34} />}
+                        ? <LockKeyhole size={30} />
+                        : <Gamepad2 size={30} />}
                 </div>
                 <span className="bluetooth-pairing-eyebrow">Pairing request</span>
                 <h3 id="bluetooth-pair-title">
@@ -1316,10 +1618,10 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
                   <span><small>Device type</small><strong>{bluetoothPairingTarget.controller ? 'Wireless controller' : 'Bluetooth device'}</strong></span>
                 </div>
                 <p id="bluetooth-pair-description" role="status">{bluetoothPairingMessage}</p>
-                <div className="settings-action-row">
+                <div className="settings-action-row" data-settings-group>
                   {bluetoothPairingStage === 'connected' ? (
                     <button id="bluetooth-pair-primary" className="primary" data-settings-action type="button" onClick={() => setBluetoothPairingTarget(null)}>
-                      <CheckCircle2 size={17} />Done
+                      <CheckCircle2 size={18} />Done
                     </button>
                   ) : bluetoothPairingStage === 'staff-approval-required' ? (
                     <button id="bluetooth-pair-primary" data-settings-action type="button" onClick={() => setBluetoothPairingTarget(null)}>Cancel</button>
@@ -1338,15 +1640,16 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
                         id="bluetooth-pair-primary"
                         className="primary"
                         data-settings-action
+                        data-settings-preferred
                         type="button"
                         disabled={bluetoothPairingStage === 'pairing' || bluetoothPairingStage === 'checking-input'}
                         onClick={() => void confirmPairBluetoothDevice()}
                       >
                         {bluetoothPairingStage === 'pairing' || bluetoothPairingStage === 'checking-input'
-                          ? <LoaderCircle size={17} className="spin" />
+                          ? <LoaderCircle size={18} className="spin" />
                           : bluetoothPairingStage === 'failed'
-                            ? <RefreshCw size={17} />
-                            : <Bluetooth size={17} />}
+                            ? <RefreshCw size={18} />
+                            : <Bluetooth size={18} />}
                         {bluetoothPairingStage === 'pairing'
                           ? 'Pairing...'
                           : bluetoothPairingStage === 'checking-input'
@@ -1362,7 +1665,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
             </div>,
             document.body
           )}
-          {removeBluetoothTarget && (
+          {removeBluetoothTarget && !props.inputBlocked && createPortal(
             <div
               className="bluetooth-confirmation-backdrop"
               role="presentation"
@@ -1371,19 +1674,20 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
               }}
             >
               <div className="bluetooth-remove-confirmation settings-confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="bluetooth-remove-title" aria-describedby="bluetooth-remove-description">
-                <Trash2 size={30} />
+                <span className="settings-dialog-icon tone-danger" aria-hidden="true"><Trash2 size={28} /></span>
                 <h3 id="bluetooth-remove-title">Remove this Bluetooth device?</h3>
-                <strong>{removeBluetoothTarget.name}</strong>
+                <strong className="settings-dialog-subject">{removeBluetoothTarget.name}</strong>
                 <p id="bluetooth-remove-description">This removes the saved pairing. You will need to scan and pair the device again to use it later.</p>
-                <div className="settings-action-row">
+                <div className="settings-action-row" data-settings-group>
                   <button id="bluetooth-remove-cancel" data-settings-action type="button" disabled={bluetoothPending?.startsWith('remove:')} onClick={() => setRemoveBluetoothTarget(null)}>Cancel</button>
                   <button className="danger" data-settings-action type="button" disabled={bluetoothPending?.startsWith('remove:')} onClick={() => void confirmRemoveBluetoothDevice()}>
-                    {bluetoothPending?.startsWith('remove:') ? <LoaderCircle size={17} className="spin" /> : <Trash2 size={17} />}
+                    {bluetoothPending?.startsWith('remove:') ? <LoaderCircle size={18} className="spin" /> : <Trash2 size={18} />}
                     {bluetoothPending?.startsWith('remove:') ? 'Removing...' : 'Remove Device'}
                   </button>
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
         </SettingsDetail>
       );
@@ -1395,17 +1699,25 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
       const outputDevice = audio.outputDevices.find((device) => device.isDefault);
       const inputDevice = audio.inputDevices.find((device) => device.isDefault);
       const volumeBusy = audioPending?.startsWith('volume-') ?? false;
+      const volumeLocked = audioPending !== null && !volumeBusy;
       const systemRefreshing = displayPending === 'refresh' || audioPending === 'refresh';
-      const hdrLabel = display.hdr.enabled ? 'On' : 'Off';
       const showHdr = display.hdr.support === 'supported' && display.hdr.controlSupported;
+      const brightnessHint = display.brightness.supported
+        ? brightnessSyncing
+          ? 'Updating brightness...'
+          : `${activeDisplay?.primary ? 'Primary display' : 'Active display'}${activeDisplay?.name ? ` · ${activeDisplay.name}` : ''}`
+        : display.brightness.message ?? 'Brightness control is not supported on this display.';
+      const displaySummary = activeDisplay
+        ? [activeDisplay.resolution, activeDisplay.refreshRate ? `${activeDisplay.refreshRate} Hz` : '', `${activeDisplay.scalePercent}% scale`].filter(Boolean).join(' · ')
+        : 'Resolution, refresh rate and color output';
       return (
         <SettingsDetail
-          title="System"
-          icon={<Settings size={34} />}
-          subtitle="Display and audio controls"
-          onFocus={() => setDetailMode(true)}
+          title={opened.label}
+          icon={pageIcon}
+          subtitle={opened.subtitle}
+          onFocus={focusDetail}
           action={(
-            <button className="system-refresh-button" data-settings-action type="button" disabled={displayPending !== null || audioPending !== null} onClick={() => void refreshSystem()}>
+            <button className="settings-pill-button system-refresh-button" data-settings-action type="button" disabled={displayPending !== null || audioPending !== null} onClick={() => void refreshSystem()}>
               {systemRefreshing ? <LoaderCircle size={18} className="spin" /> : <RefreshCw size={18} />}
               {systemRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
@@ -1413,50 +1725,41 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
         >
           <div className="system-page">
             <section className="system-section" aria-labelledby="system-display-heading">
-              <div className="system-section-title">
-                <Monitor size={31} />
-                <div><span>Display controls</span><h3 id="system-display-heading">Display</h3></div>
+              <h3 className="settings-section-heading" id="system-display-heading">Display</h3>
+              {displayFeedback && <SettingsNotice tone={displayFeedback.tone} message={displayFeedback.message} />}
+              <div className={`settings-row system-slider-row${display.brightness.supported ? '' : ' unsupported'}`}>
+                <span className="settings-row-text">
+                  <strong>Brightness</strong>
+                  <small className={brightnessSyncing ? 'system-inline-status active' : 'system-inline-status'}>{brightnessHint}</small>
+                </span>
+                <span className="system-slider-control">
+                  <input
+                    data-settings-action
+                    data-settings-slider="brightness"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={displayBrightness}
+                    aria-label="Display brightness"
+                    aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
+                    disabled={!display.brightness.supported || displayPending !== null}
+                    style={{ background: `linear-gradient(90deg, var(--slider-active) 0%, var(--slider-active) ${displayBrightness}%, var(--slider-track) ${displayBrightness}%)` }}
+                    onInput={(event) => applyDisplayBrightness(Number(event.currentTarget.value))}
+                  />
+                  <strong className="system-slider-value">{display.brightness.supported ? `${displayBrightness}%` : 'Off'}</strong>
+                </span>
               </div>
-              {displayFeedback && <div className={`settings-feedback ${displayFeedback.tone}`} role="status">{displayFeedback.message}</div>}
-
-              <div className="system-primary-display">
-                <span>{activeDisplay?.primary ? 'Primary display' : 'Active display'}</span>
-                <strong>{activeDisplay?.name ?? 'Active display'}</strong>
-              </div>
-
-              <div className={`system-slider-card ${display.brightness.supported ? '' : 'unsupported'}`}>
-                <div className="system-control-label"><span>Brightness</span><strong>{display.brightness.supported ? `${displayBrightness}%` : 'Unavailable'}</strong></div>
-                <input
-                  data-settings-action
-                  data-settings-slider="brightness"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={displayBrightness}
-                  aria-label="Display brightness"
-                  aria-valuetext={display.brightness.supported ? `${displayBrightness} percent` : 'Brightness unavailable'}
-                  disabled={!display.brightness.supported || displayPending !== null}
-                  style={{ background: `linear-gradient(90deg, var(--slider-active) 0%, var(--slider-active) ${displayBrightness}%, var(--slider-track) ${displayBrightness}%)` }}
-                  onInput={(event) => applyDisplayBrightness(Number(event.currentTarget.value))}
-                />
-                <small className={brightnessSyncing ? 'system-inline-status active' : 'system-inline-status'}>
-                  {display.brightness.supported
-                    ? brightnessSyncing ? 'Updating brightness...' : 'Use left/right or drag the slider'
-                    : display.brightness.message ?? 'Brightness control is not supported on this display.'}
-                </small>
-              </div>
-
               <button
-                className="system-collapsible-heading"
+                className="settings-row system-collapsible-heading"
                 data-settings-action
                 type="button"
                 aria-expanded={displayInfoExpanded}
                 aria-controls="system-display-information"
                 onClick={() => setDisplayInfoExpanded((expanded) => !expanded)}
               >
-                <span>Display information</span>
-                <ChevronRight size={20} className={displayInfoExpanded ? 'expanded' : ''} />
+                <span className="settings-row-text"><strong>Display information</strong><small>{displaySummary}</small></span>
+                <ChevronRight size={22} className={`settings-row-chevron${displayInfoExpanded ? ' expanded' : ''}`} />
               </button>
               {displayInfoExpanded && (
                 <div className="system-information-grid" id="system-display-information">
@@ -1468,30 +1771,31 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
                   <div><span className="system-info-icon"><Palette size={20} /></span><span><small>Color output</small><strong>{activeDisplay ? `${activeDisplay.colorDepth}-bit` : 'Unavailable'}</strong></span></div>
                 </div>
               )}
-
               {showHdr && (
-                <button className="system-simple-row" data-settings-action type="button" disabled={displayPending !== null} onClick={() => void toggleHdr()}>
-                  <span><Monitor size={20} /><span><strong>HDR</strong><small>{display.hdr.message}</small></span></span>
-                  <em>{displayPending === 'hdr' ? <LoaderCircle size={18} className="spin" /> : hdrLabel}</em>
+                <button className="settings-row system-simple-row" data-settings-action type="button" role="switch" aria-checked={display.hdr.enabled} disabled={displayPending !== null} onClick={() => void toggleHdr()}>
+                  <span className="settings-row-text"><strong>HDR</strong><small>{display.hdr.message}</small></span>
+                  {displayPending === 'hdr' ? <LoaderCircle size={22} className="spin settings-row-spinner" /> : <span className="ps-switch" data-on={display.hdr.enabled} aria-hidden="true" />}
                 </button>
               )}
             </section>
 
             <section className="system-section" aria-labelledby="system-sound-heading">
-              <div className="system-section-title">
-                {audio.muted ? <VolumeX size={31} /> : <Volume2 size={31} />}
-                <div><span>Audio controls</span><h3 id="system-sound-heading">Audio</h3></div>
-              </div>
-              {audioFeedback && <div className={`settings-feedback ${audioFeedback.tone}`} role="status">{audioFeedback.message}</div>}
-
-              <div className="system-volume-card">
-                <div className="system-volume-summary"><small>Current volume</small><strong>{audio.muted ? 'Muted' : `${displayVolume}% volume`}</strong><span>{outputDevice?.name ?? audio.currentOutputName ?? 'Default output device'}</span></div>
-                <div className="system-volume-controls">
-                  <button data-settings-action type="button" aria-label="Volume down" disabled={audioPending !== null || displayVolume <= 0} onClick={() => void applyMasterVolume(displayVolume - 5, 'down')}>
+              <h3 className="settings-section-heading" id="system-sound-heading">Audio</h3>
+              {audioFeedback && <SettingsNotice tone={audioFeedback.tone} message={audioFeedback.message} />}
+              <div className="settings-row system-slider-row system-volume-row">
+                <span className="settings-row-text">
+                  <strong>Volume</strong>
+                  <small className={volumeBusy ? 'system-inline-status active' : 'system-inline-status'}>
+                    {volumeBusy ? 'Updating volume...' : audio.muted ? 'Muted' : outputDevice?.name ?? audio.currentOutputName ?? 'Default output device'}
+                  </small>
+                </span>
+                <span className="system-slider-control system-volume-controls" data-settings-group>
+                  <button className="settings-icon-button" data-settings-action type="button" aria-label="Volume down" disabled={volumeLocked || displayVolume <= 0} onClick={() => void applyMasterVolume(displayVolume - 5, 'down')}>
                     {audioPending === 'volume-down' ? <LoaderCircle size={18} className="spin" /> : <Minus size={19} />}
                   </button>
                   <input
                     data-settings-action
+                    data-settings-preferred
                     data-settings-slider="volume"
                     aria-label="Master volume"
                     type="range"
@@ -1500,7 +1804,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
                     step="1"
                     value={displayVolume}
                     style={{ background: `linear-gradient(90deg, var(--slider-active) 0%, var(--slider-active) ${displayVolume}%, var(--slider-track) ${displayVolume}%)` }}
-                    disabled={audioPending !== null || !audio.supported}
+                    disabled={volumeLocked || !audio.supported}
                     onChange={(event) => setDisplayVolume(Number(event.currentTarget.value))}
                     onPointerUp={(event) => void applyMasterVolume(Number(event.currentTarget.value), 'slider')}
                     onBlur={(event) => {
@@ -1508,25 +1812,35 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
                       if (next !== audio.masterVolume && !audioBusy.current) void applyMasterVolume(next, 'slider');
                     }}
                   />
-                  <button data-settings-action type="button" aria-label="Volume up" disabled={audioPending !== null || displayVolume >= 100} onClick={() => void applyMasterVolume(displayVolume + 5, 'up')}>
+                  <button className="settings-icon-button" data-settings-action type="button" aria-label="Volume up" disabled={volumeLocked || displayVolume >= 100} onClick={() => void applyMasterVolume(displayVolume + 5, 'up')}>
                     {audioPending === 'volume-up' ? <LoaderCircle size={18} className="spin" /> : <Plus size={19} />}
                   </button>
-                  <strong>{displayVolume}%</strong>
-                </div>
-                <button className={`system-mute-button ${audio.muted ? 'active' : ''}`} data-settings-action type="button" disabled={audioPending !== null || !audio.supported} onClick={() => void toggleMasterMute()}>
-                  {audioPending === 'mute' ? <LoaderCircle size={18} className="spin" /> : audio.muted ? <Volume2 size={18} /> : <VolumeX size={18} />}
-                  {audioPending === 'mute' ? audio.muted ? 'Unmuting...' : 'Muting...' : audio.muted ? 'Unmute' : 'Mute'}
-                </button>
-                {volumeBusy && <small className="system-inline-status active">Updating volume...</small>}
+                  <strong className="system-slider-value">{displayVolume}%</strong>
+                </span>
               </div>
+              <button
+                className={`settings-row system-mute-button ${audio.muted ? 'active' : ''}`}
+                data-settings-action
+                type="button"
+                role="switch"
+                aria-checked={audio.muted}
+                disabled={audioPending !== null || !audio.supported}
+                onClick={() => void toggleMasterMute()}
+              >
+                <span className="settings-row-text">
+                  <strong>Mute</strong>
+                  <small>{audioPending === 'mute' ? audio.muted ? 'Unmuting...' : 'Muting...' : audio.muted ? 'All sound from this station is muted' : 'Silence all sound from this station'}</small>
+                </span>
+                {audioPending === 'mute' ? <LoaderCircle size={22} className="spin settings-row-spinner" /> : <span className="ps-switch" data-on={audio.muted} aria-hidden="true" />}
+              </button>
 
               <div className="system-current-devices">
-                <div><Headphones size={21} /><span><small>Current output</small><strong>{outputDevice?.name ?? 'No active output'}</strong></span></div>
-                <div><Mic2 size={21} /><span><small>Current microphone</small><strong>{inputDevice?.name ?? 'No active microphone'}</strong><em>{inputDevice ? audio.inputMuted ? 'Muted' : `${audio.inputVolume}% level` : 'Unavailable'}</em></span></div>
+                <div><span className="settings-row-icon" aria-hidden="true">{audio.muted ? <VolumeX size={20} /> : <Volume2 size={20} />}</span><span><small>Current output</small><strong>{outputDevice?.name ?? 'No active output'}</strong></span></div>
+                <div><span className="settings-row-icon" aria-hidden="true"><Mic2 size={20} /></span><span><small>Current microphone</small><strong>{inputDevice?.name ?? 'No active microphone'}</strong><em>{inputDevice ? audio.inputMuted ? 'Muted' : `${audio.inputVolume}% level` : 'Unavailable'}</em></span></div>
               </div>
 
-              <SystemDeviceList title="Output devices" icon={<Headphones size={20} />} devices={audio.outputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
-              <SystemDeviceList title="Microphones" icon={<Mic2 size={20} />} devices={audio.inputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
+              <SystemDeviceList title="Output devices" devices={audio.outputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
+              <SystemDeviceList title="Microphones" devices={audio.inputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
               {!audio.deviceSwitchingSupported && <p className="system-capability-note">Output switching is unavailable on this device. Volume and mute remain fully functional inside NXGS.</p>}
             </section>
           </div>
@@ -1535,79 +1849,121 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
     }
     if (opened.key === 'control-room') {
       return (
-        <SettingsDetail title="Control Room" icon={<Lock size={34} />} subtitle="Protected administrator controls" onFocus={() => setDetailMode(true)}>
-          <div className="control-room-card"><Lock size={32} /><h3>Admin PIN required</h3><p>Open game management, kiosk controls, diagnostics, and updates.</p><button data-settings-action type="button" onClick={props.onControlRoom}>Enter Control Room</button></div>
+        <SettingsDetail title={opened.label} icon={pageIcon} subtitle={opened.subtitle} onFocus={focusDetail}>
+          <div className="control-room-card">
+            <span className="control-room-icon" aria-hidden="true"><ShieldCheck size={32} /></span>
+            <span className="control-room-copy">
+              <h3>Admin PIN required</h3>
+              <p>Open game management, kiosk controls, diagnostics, and updates.</p>
+            </span>
+            <button className="settings-pill-button primary" data-settings-action type="button" onClick={props.onControlRoom}>
+              <LockKeyhole size={18} />Enter Control Room
+            </button>
+          </div>
+          <p className="settings-capability-note">Staff only. Every other setting stays available without a PIN.</p>
+        </SettingsDetail>
+      );
+    }
+    if (opened.key === 'guide') {
+      return (
+        <SettingsDetail title={opened.label} icon={pageIcon} subtitle={opened.subtitle} onFocus={focusDetail}>
+          <GuideSettingsPage appVersion={props.appVersion} controllerName={diagnostics?.controller.name} controllerDetected={Boolean(diagnostics?.controller.detected)} />
         </SettingsDetail>
       );
     }
     return (
-      <SettingsDetail title={opened.label} icon={<Info size={34} />} subtitle="NXGS console settings">
-        <p className="settings-placeholder">This section is ready for its launcher-native controls.<br />It will remain inside NXGS and use the same controller-first navigation.</p>
+      <SettingsDetail title={opened.label} icon={pageIcon} subtitle={opened.subtitle} onFocus={focusDetail}>
+        {opened.key === 'accessibility' ? <AccessibilitySettingsPage /> : opened.key === 'users' ? <UsersSettingsPage /> : <StorageSettingsPage />}
       </SettingsDetail>
     );
-  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPairingMessage, bluetoothPairingStage, bluetoothPairingTarget, bluetoothPending, brightnessSyncing, confirmPairBluetoothDevice, confirmRemoveBluetoothDevice, controllerIdleFeedback, controllerIdlePending, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayInfoExpanded, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, opened, performWifiConnect, props.onControlRoom, props.settings.controllerIdle, refreshAudio, refreshBluetooth, refreshDisplay, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestPairBluetoothDevice, requestRemoveBluetoothDevice, saveControllerIdle, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
+  }, [applyDisplayBrightness, applyMasterVolume, audio, audioFeedback, audioPending, bluetooth, bluetoothDeviceStatuses, bluetoothFeedback, bluetoothPairingMessage, bluetoothPairingStage, bluetoothPairingTarget, bluetoothPending, brightnessSyncing, confirmPairBluetoothDevice, confirmRemoveBluetoothDevice, controllerIdleFeedback, controllerIdlePending, diagnostics, disconnectNetwork, display, displayBrightness, displayFeedback, displayInfoExpanded, displayPending, displayVolume, forgetSelectedWifi, forgetWifiTarget, handleBluetoothDevice, network, networkFeedback, networkPending, openWifiContextMenu, opened, performWifiConnect, props.appVersion, props.inputBlocked, props.onControlRoom, props.settings.controllerIdle, refreshBluetooth, refreshNetwork, refreshSystem, removeBluetoothTarget, requestForgetWifi, requestPairBluetoothDevice, requestRemoveBluetoothDevice, saveControllerIdle, selectedWifi, selectWifi, showWifiPassword, switchAudioEndpoint, toggleHdr, toggleMasterMute, wifiContextMenu, wifiPassword]);
+
+  const hints: ControllerHint[] = [{ glyph: 'dpad-vertical', label: detailMode ? 'Choose' : 'Navigate' }];
+  if (detailMode && opened.key === 'system') hints.push({ glyph: 'dpad-horizontal', label: 'Adjust' });
+  hints.push({ glyph: 'cross', label: 'Select' }, { glyph: 'circle', label: detailMode ? 'Categories' : 'Back' });
 
   return (
     <section className="console-settings-screen">
-      <div className="console-settings-backdrop" />
-      <header><button type="button" onClick={handleSettingsBack}><ChevronLeft size={21} />Back</button><div><span>NXGS Play</span><h1>Settings</h1></div></header>
+      <div className="console-settings-backdrop" aria-hidden="true" />
+      <header>
+        <button type="button" className="settings-back-button" aria-label="Back" onClick={handleSettingsBack}><ChevronLeft size={24} /></button>
+        <div className="settings-header-title"><Settings size={30} aria-hidden="true" /><h1>Settings</h1></div>
+        <div className="settings-header-meta"><span>NXGS Play</span><ConsoleClock /></div>
+      </header>
       <div className="console-settings-layout">
         <nav aria-label="Console settings categories">
-          {SETTINGS_ITEMS.map((item, index) => (
-            <button
-              data-index={index}
-              key={item.key}
-              type="button"
-              className={index === selectedIndex ? 'selected' : ''}
-              onMouseEnter={() => previewSettingsIndex(index)}
-              onFocus={() => {
-                if (!detailMode) previewSettingsIndex(index);
-              }}
-              onClick={() => {
-                previewSettingsIndex(index);
-                if (item.key === 'control-room') props.onControlRoom();
-                else {
-                  setOpenedIndex(index);
-                  hydrateSettingsPage(item.key, true);
-                  enterDetail();
-                }
-              }}
-            >
-              {item.icon}<span>{item.label}</span><ChevronRight size={22} />
-            </button>
-          ))}
+          {SETTINGS_ITEMS.map((item, index) => {
+            const ItemIcon = item.Icon;
+            const highlighted = index === selectedIndex;
+            return (
+              <button
+                data-index={index}
+                key={item.key}
+                type="button"
+                className={highlighted ? detailMode ? 'selected' : 'selected focused' : ''}
+                aria-current={index === openedIndex ? 'page' : undefined}
+                style={{ '--settings-nav-index': index } as CSSProperties}
+                onMouseEnter={() => previewSettingsIndex(index)}
+                onFocus={() => {
+                  if (!detailMode) previewSettingsIndex(index);
+                }}
+                onClick={() => {
+                  previewSettingsIndex(index);
+                  if (item.key === 'control-room') props.onControlRoom();
+                  else {
+                    setOpenedIndex(index);
+                    hydrateSettingsPage(item.key, true);
+                    enterDetail();
+                  }
+                }}
+              >
+                <span className="settings-nav-icon" aria-hidden="true"><ItemIcon size={22} /></span>
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
-        {detail}
+        <Fragment key={opened.key}>{detail}</Fragment>
       </div>
-      <footer>{detailMode ? opened.key === 'system' ? '↑ ↓ Choose control  ·  ← → Adjust sliders  ·  X / A Select  ·  Circle / B Categories' : '↑ ↓ Choose action  ·  X / A Select  ·  ← / Circle / B Categories' : '↑ ↓ Navigate  ·  X / A Select  ·  Circle / B Back'}</footer>
+      <footer><ControllerHints hints={hints} /></footer>
     </section>
   );
 }
 
-function SettingsDetail(props: { title: string; subtitle: string; icon: JSX.Element; children: React.ReactNode; action?: React.ReactNode; onFocus?: () => void }): JSX.Element {
-  return <article className="console-settings-detail" onFocusCapture={props.onFocus}><div className="settings-detail-title">{props.icon}<div><span>{props.subtitle}</span><h2>{props.title}</h2></div>{props.action && <div className="settings-title-action">{props.action}</div>}</div>{props.children}</article>;
+function SettingsDetail(props: { title: string; subtitle: string; icon: JSX.Element; children: ReactNode; action?: ReactNode; onFocus?: () => void }): JSX.Element {
+  return (
+    <article className="console-settings-detail" onFocusCapture={props.onFocus}>
+      <div className="settings-detail-title">
+        <span className="settings-detail-icon" aria-hidden="true">{props.icon}</span>
+        <div className="settings-detail-name"><h2>{props.title}</h2><span>{props.subtitle}</span></div>
+        {props.action && <div className="settings-title-action">{props.action}</div>}
+      </div>
+      {props.children}
+    </article>
+  );
 }
 
-function SystemDeviceList(props: { title: string; icon: JSX.Element; devices: AudioDeviceSummary[]; pending: string | null; onSelect: (device: AudioDeviceSummary) => Promise<void> }): JSX.Element {
+function SystemDeviceList(props: { title: string; devices: AudioDeviceSummary[]; pending: string | null; onSelect: (device: AudioDeviceSummary) => Promise<void> }): JSX.Element {
   return (
     <section className="system-device-section">
-      <div className="system-device-heading"><span>{props.icon}<strong>{props.title}</strong></span><em>{props.devices.length}</em></div>
+      <div className="system-device-heading"><h4>{props.title}</h4><em>{props.devices.length}</em></div>
       <div className="system-device-list">
         {props.devices.length > 0 ? props.devices.map((device) => {
           const switching = props.pending === `switch:${device.id}`;
+          const DeviceIcon = device.kind === 'output' ? Headphones : Mic2;
           return (
-            <div key={device.id} className={device.isDefault ? 'current' : ''}>
-              {device.kind === 'output' ? <Headphones size={19} /> : <Mic2 size={19} />}
-              <span><strong>{device.name}</strong><small>{device.isDefault ? device.kind === 'output' ? 'Current output' : 'Current microphone' : 'Available device'} · {device.muted ? 'Muted' : `${device.volume}%${device.kind === 'input' ? ' level' : ''}`}</small></span>
-              {device.isDefault ? <em className="system-current-badge">Current</em> : (
-                <button data-settings-action type="button" disabled={props.pending !== null} onClick={() => void props.onSelect(device)}>
-                  {switching ? <LoaderCircle size={17} className="spin" /> : device.kind === 'output' ? <Headphones size={17} /> : <Mic2 size={17} />}
+            <div key={device.id} className={`settings-row system-device-row${device.isDefault ? ' current' : ''}`}>
+              <span className="settings-row-icon" aria-hidden="true"><DeviceIcon size={20} /></span>
+              <span className="settings-row-text"><strong>{device.name}</strong><small>{device.isDefault ? device.kind === 'output' ? 'Current output' : 'Current microphone' : 'Available device'} · {device.muted ? 'Muted' : `${device.volume}%${device.kind === 'input' ? ' level' : ''}`}</small></span>
+              {device.isDefault ? <span className="ps-chip ps-chip--success system-current-badge"><Check size={15} />Current</span> : (
+                <button className="settings-pill-button" data-settings-action type="button" disabled={props.pending !== null} onClick={() => void props.onSelect(device)}>
+                  {switching ? <LoaderCircle size={18} className="spin" /> : <DeviceIcon size={18} />}
                   {switching ? 'Switching...' : device.kind === 'output' ? 'Use Output' : 'Use Input'}
                 </button>
               )}
             </div>
           );
-        }) : <p className="settings-placeholder">No audio devices were found.</p>}
+        }) : <p className="settings-empty-state"><Headphones size={26} /><span>No audio devices were found.</span></p>}
       </div>
     </section>
   );

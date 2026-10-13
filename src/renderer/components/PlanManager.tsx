@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  Globe,
   IndianRupee,
   LoaderCircle,
+  MonitorCog,
   Pencil,
   Plus,
+  ReceiptIndianRupee,
   Save,
   Trash2
 } from 'lucide-react';
 import type { DeviceRecord, PlanScope, PlayPlanInput, PlayPlanRecord } from '../../shared/types';
+import { CardHeader, EmptyState, LoadingState, Notice, revealInContent, SwitchRow } from './admin/AdminKit';
 
 type PlanForm = {
   id?: string;
@@ -49,12 +53,16 @@ function durationLabel(minutes: number): string {
   return remainder ? `${hours} hr ${remainder} min` : `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
 }
 
-function priceLabel(plan: PlayPlanRecord): string {
+function formatAmount(amount: number, currency: string): string {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: plan.currency,
+    currency,
     minimumFractionDigits: 2
-  }).format(plan.amountPaise / 100);
+  }).format(amount);
+}
+
+function priceLabel(plan: PlayPlanRecord): string {
+  return formatAmount(plan.amountPaise / 100, plan.currency);
 }
 
 export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element {
@@ -66,6 +74,7 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
   const [confirmDeleteId, setConfirmDeleteId] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const editorRef = useRef<HTMLElement>(null);
 
   const loadPlans = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -85,6 +94,13 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
 
   const update = <K extends keyof PlanForm>(key: K, value: PlanForm[K]): void => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const editPlan = (plan: PlayPlanRecord): void => {
+    setForm(formFromPlan(plan));
+    setError('');
+    setMessage('');
+    revealInContent(editorRef.current);
   };
 
   const savePlan = async (): Promise<void> => {
@@ -139,188 +155,100 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
     });
   };
 
+  const previewMinutes = Number(form.durationMinutes);
+  const previewAmount = Number(form.priceRupees);
+  const busy = saving || Boolean(busyAction);
+
   return (
-    <div className="plan-manager-grid">
-      <section className="panel plan-editor-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Customer pricing</p>
-            <h2>{form.id ? 'Edit Plan' : 'Add New Plan'}</h2>
-          </div>
-          <button
-            className="icon-button"
-            type="button"
-            title="Add new plan"
-            disabled={saving || Boolean(busyAction)}
-            onClick={() => {
-              setForm(EMPTY_FORM);
-              setError('');
-              setMessage('');
-            }}
-          >
-            <Plus size={20} />
-          </button>
-        </div>
-
-        <form
-          className="form-grid single"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void savePlan();
-          }}
-        >
-          <label>
-            Plan name <em className="required-badge">Required</em>
-            <input
-              value={form.name}
-              maxLength={80}
-              placeholder="30 Minutes"
-              onChange={(event) => update('name', event.target.value)}
-              disabled={saving}
-            />
-          </label>
-          <div className="form-grid plan-number-fields">
-            <label>
-              Duration (minutes)
-              <input
-                type="number"
-                min="1"
-                max="1440"
-                step="1"
-                value={form.durationMinutes}
-                onChange={(event) => update('durationMinutes', event.target.value)}
-                disabled={saving}
-              />
-            </label>
-            <label>
-              Price amount
-              <span className="plan-price-input">
-                <IndianRupee size={17} />
-                <input
-                  type="number"
-                  min="1"
-                  max="100000"
-                  step="0.01"
-                  value={form.priceRupees}
-                  onChange={(event) => update('priceRupees', event.target.value)}
-                  disabled={saving}
-                />
-              </span>
-            </label>
-          </div>
-          <label>
-            Currency
-            <select value={form.currency} onChange={(event) => update('currency', event.target.value)} disabled={saving}>
-              <option value="INR">₹ / INR</option>
-            </select>
-          </label>
-          <label>
-            Availability
-            <select
-              value={form.scope}
-              onChange={(event) => update('scope', event.target.value as PlanScope)}
-              disabled={saving}
-            >
-              <option value="device">This device ({props.currentDevice.name})</option>
-              <option value="global">Global plan</option>
-            </select>
-            <small className="field-note">
-              Device plans apply only here. Global plans can be shared by future synced devices.
-            </small>
-          </label>
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={form.enabled}
-              onChange={(event) => update('enabled', event.target.checked)}
-              disabled={saving}
-            />
-            Enabled on customer payment screen
-          </label>
-          <button className="primary-action wide" type="submit" disabled={saving || Boolean(busyAction)}>
-            {saving ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
-            {saving ? 'Saving...' : form.id ? 'Update Plan' : 'Add Plan'}
-          </button>
-        </form>
-        {message && <p className="success-text" role="status">{message}</p>}
-        {error && <p className="error-text" role="alert">{error}</p>}
-      </section>
-
-      <section className="panel plan-list-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Plan library</p>
-            <h2>{plans.length} saved</h2>
-          </div>
-        </div>
-        {loading && <div className="admin-loading"><LoaderCircle className="spin" /> Loading plans...</div>}
+    <div className="admin-columns admin-columns--plans plan-manager-grid">
+      <section className="admin-card plan-list-panel">
+        <CardHeader
+          eyebrow="Plan library"
+          title="Saved plans"
+          subtitle="Enabled plans are offered to customers at checkout."
+          actions={!loading && <span className="ps-chip admin-count-chip">{plans.length} saved</span>}
+        />
+        {loading && <LoadingState label="Loading plans..." />}
         {!loading && plans.length === 0 && (
-          <div className="plan-empty-state">
-            <h3>No plans saved</h3>
-            <p>Add a plan to make play-time checkout available to customers.</p>
-          </div>
+          <EmptyState icon={<ReceiptIndianRupee size={28} />} title="No plans saved">
+            Add a plan to make play-time checkout available to customers.
+          </EmptyState>
         )}
         {!loading && plans.length > 0 && (
-          <div className="plan-admin-list">
+          <ol className="plan-admin-list">
             {plans.map((plan, index) => {
+              const editing = form.id === plan.id;
+              const confirming = confirmDeleteId === plan.id;
+              const deleting = busyAction === `delete:${plan.id}`;
               return (
-                <article key={plan.id} className={`plan-admin-row ${plan.enabled ? 'enabled' : 'disabled'}`}>
+                <li
+                  key={plan.id}
+                  className={`plan-admin-row ${plan.enabled ? 'enabled' : 'disabled'}${editing ? ' selected' : ''}`}
+                >
                   <div className="plan-admin-order">
                     <button
                       className="icon-button"
                       type="button"
                       title="Move plan up"
-                      disabled={index === 0 || Boolean(busyAction) || saving}
+                      aria-label={`Move ${plan.name} up`}
+                      disabled={index === 0 || busy}
                       onClick={() => void reorder(index, -1)}
                     >
-                      {busyAction === `reorder:${plan.id}` ? <LoaderCircle className="spin" size={17} /> : <ArrowUp size={17} />}
+                      {busyAction === `reorder:${plan.id}` ? <LoaderCircle className="spin" size={16} /> : <ArrowUp size={16} />}
                     </button>
                     <button
                       className="icon-button"
                       type="button"
                       title="Move plan down"
-                      disabled={index === plans.length - 1 || Boolean(busyAction) || saving}
+                      aria-label={`Move ${plan.name} down`}
+                      disabled={index === plans.length - 1 || busy}
                       onClick={() => void reorder(index, 1)}
                     >
-                      <ArrowDown size={17} />
+                      <ArrowDown size={16} />
                     </button>
                   </div>
-                  <button className="plan-admin-summary" type="button" onClick={() => setForm(formFromPlan(plan))}>
+                  <button className="plan-admin-summary" type="button" aria-current={editing ? 'true' : undefined} onClick={() => editPlan(plan)}>
                     <strong>{plan.name}</strong>
-                    <span>{durationLabel(plan.durationMinutes)} · {priceLabel(plan)}</span>
-                    <small>
-                      {plan.scope === 'global' ? 'Global' : props.currentDevice.name} · Updated {new Date(plan.updatedAt).toLocaleDateString()}
-                    </small>
+                    <span className="plan-admin-meta">
+                      {durationLabel(plan.durationMinutes)} · Updated {new Date(plan.updatedAt).toLocaleDateString()}
+                    </span>
                   </button>
-                  <span className={`plan-status ${plan.enabled ? 'enabled' : 'disabled'}`}>
-                    {plan.enabled ? 'Enabled' : 'Disabled'}
-                  </span>
+                  <div className="plan-admin-tags">
+                    <span className={`ps-chip ${plan.scope === 'global' ? 'ps-chip--accent' : ''}`}>
+                      {plan.scope === 'global' ? <Globe size={14} /> : <MonitorCog size={14} />}
+                      {plan.scope === 'global' ? 'Global' : props.currentDevice.name}
+                    </span>
+                    <span className={`plan-status ps-chip ${plan.enabled ? 'ps-chip--success' : ''}`}>
+                      {plan.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                  <strong className="plan-admin-price">{priceLabel(plan)}</strong>
                   <div className="plan-admin-actions">
                     <button
                       className="secondary-action compact"
                       type="button"
-                      disabled={Boolean(busyAction) || saving}
-                      onClick={() => setForm(formFromPlan(plan))}
+                      disabled={busy}
+                      onClick={() => editPlan(plan)}
                     >
-                      <Pencil size={16} /> Edit
+                      <Pencil size={15} /> Edit
                     </button>
                     <button
                       className="secondary-action compact"
                       type="button"
-                      disabled={Boolean(busyAction) || saving}
+                      disabled={busy}
                       onClick={() => void runAction(`toggle:${plan.id}`, async () => {
                         const result = await window.nxgs.setPlayPlanEnabled(plan.id, !plan.enabled);
                         setMessage(plan.enabled ? 'Plan disabled.' : 'Plan enabled.');
                         return result.plans;
                       })}
                     >
-                      {busyAction === `toggle:${plan.id}` && <LoaderCircle className="spin" size={16} />}
+                      {busyAction === `toggle:${plan.id}` && <LoaderCircle className="spin" size={15} />}
                       {plan.enabled ? 'Disable' : 'Enable'}
                     </button>
                     <button
-                      className="secondary-action compact danger"
+                      className={`secondary-action compact danger${confirming ? ' confirming' : ''}`}
                       type="button"
-                      disabled={Boolean(busyAction) || saving}
+                      disabled={busy}
                       onClick={() => {
                         if (confirmDeleteId !== plan.id) {
                           setConfirmDeleteId(plan.id);
@@ -335,15 +263,145 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
                         });
                       }}
                     >
-                      {busyAction === `delete:${plan.id}` ? <LoaderCircle className="spin" size={16} /> : <Trash2 size={16} />}
-                      {busyAction === `delete:${plan.id}` ? 'Deleting...' : confirmDeleteId === plan.id ? 'Confirm' : 'Delete'}
+                      {deleting ? <LoaderCircle className="spin" size={15} /> : <Trash2 size={15} />}
+                      {deleting ? 'Deleting...' : confirming ? 'Confirm' : 'Delete'}
                     </button>
+                    {confirming && !deleting && (
+                      <button className="secondary-action compact" type="button" disabled={busy} onClick={() => setConfirmDeleteId('')}>
+                        Cancel
+                      </button>
+                    )}
                   </div>
-                </article>
+                </li>
               );
             })}
-          </div>
+          </ol>
         )}
+      </section>
+
+      <section className="admin-card plan-editor-panel" ref={editorRef}>
+        <CardHeader
+          eyebrow="Customer pricing"
+          title={form.id ? 'Edit Plan' : 'Add New Plan'}
+          subtitle={form.id ? 'Changes apply the next time a customer opens checkout.' : 'Create a play-time option for checkout.'}
+          actions={(
+            <button
+              className="secondary-action compact"
+              type="button"
+              title="Add new plan"
+              disabled={busy}
+              onClick={() => {
+                setForm(EMPTY_FORM);
+                setError('');
+                setMessage('');
+              }}
+            >
+              <Plus size={16} />
+              New
+            </button>
+          )}
+        />
+
+        <form
+          className="admin-form plan-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void savePlan();
+          }}
+        >
+          <label className="admin-field">
+            <span className="admin-field-label">
+              Plan name <em className="required-badge">Required</em>
+            </span>
+            <input
+              value={form.name}
+              maxLength={80}
+              placeholder="30 Minutes"
+              onChange={(event) => update('name', event.target.value)}
+              disabled={saving}
+            />
+          </label>
+          <div className="form-grid plan-number-fields">
+            <label className="admin-field">
+              <span className="admin-field-label">Duration</span>
+              <span className="admin-affix-input">
+                <input
+                  type="number"
+                  min="1"
+                  max="1440"
+                  step="1"
+                  value={form.durationMinutes}
+                  onChange={(event) => update('durationMinutes', event.target.value)}
+                  disabled={saving}
+                />
+                <em>min</em>
+              </span>
+            </label>
+            <label className="admin-field">
+              <span className="admin-field-label">Price amount</span>
+              <span className="admin-affix-input plan-price-input">
+                <IndianRupee size={17} aria-hidden="true" />
+                <input
+                  type="number"
+                  min="1"
+                  max="100000"
+                  step="0.01"
+                  value={form.priceRupees}
+                  onChange={(event) => update('priceRupees', event.target.value)}
+                  disabled={saving}
+                />
+              </span>
+            </label>
+          </div>
+          <label className="admin-field">
+            <span className="admin-field-label">Currency</span>
+            <select value={form.currency} onChange={(event) => update('currency', event.target.value)} disabled={saving}>
+              <option value="INR">₹ / INR</option>
+            </select>
+          </label>
+          <label className="admin-field">
+            <span className="admin-field-label">Availability</span>
+            <select
+              value={form.scope}
+              onChange={(event) => update('scope', event.target.value as PlanScope)}
+              disabled={saving}
+            >
+              <option value="device">This device ({props.currentDevice.name})</option>
+              <option value="global">Global plan</option>
+            </select>
+            <small className="field-note">
+              Device plans apply only here. Global plans can be shared by future synced devices.
+            </small>
+          </label>
+          <SwitchRow
+            label="Enabled on customer payment screen"
+            checked={form.enabled}
+            disabled={saving}
+            onChange={(checked) => update('enabled', checked)}
+          />
+
+          <div className="plan-preview" aria-label="Customer preview">
+            <span className="admin-section-title">Customer preview</span>
+            <div className="plan-preview-row">
+              <span className="plan-preview-copy">
+                <strong>{form.name.trim() || 'Plan name'}</strong>
+                <small>{Number.isFinite(previewMinutes) && previewMinutes > 0 ? durationLabel(previewMinutes) : 'Set a duration'}</small>
+              </span>
+              <strong className="plan-preview-price">
+                {Number.isFinite(previewAmount) && previewAmount > 0 ? formatAmount(previewAmount, form.currency) : '—'}
+              </strong>
+            </div>
+          </div>
+
+          <footer className="admin-card-footer admin-card-footer--stacked">
+            {message && <Notice tone="success">{message}</Notice>}
+            {error && <Notice tone="error">{error}</Notice>}
+            <button className="primary-action wide" type="submit" disabled={busy}>
+              {saving ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
+              {saving ? 'Saving...' : form.id ? 'Update Plan' : 'Add Plan'}
+            </button>
+          </footer>
+        </form>
       </section>
     </div>
   );

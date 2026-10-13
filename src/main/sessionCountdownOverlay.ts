@@ -29,13 +29,13 @@ export class SessionCountdownOverlay {
 
   private create(): void {
     const display = screen.getPrimaryDisplay();
-    const width = 320;
-    const height = 76;
+    const width = 340;
+    const height = 92;
     this.window = new BrowserWindow({
       width,
       height,
       x: Math.round(display.workArea.x + (display.workArea.width - width) / 2),
-      y: display.workArea.y + 18,
+      y: display.workArea.y + 8,
       frame: false,
       transparent: true,
       alwaysOnTop: true,
@@ -61,14 +61,20 @@ export class SessionCountdownOverlay {
       this.window?.showInactive();
     });
     const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-      html,body{margin:0;background:transparent;font-family:Segoe UI,Arial,sans-serif;overflow:hidden}
-      .timer{height:64px;margin:6px;display:flex;align-items:center;justify-content:center;gap:12px;
-        color:#fff;background:rgba(6,17,35,.94);border:2px solid #28a7ff;border-radius:18px;
-        box-shadow:0 12px 34px rgba(0,0,0,.5),0 0 22px rgba(40,167,255,.28)}
-      .dot{width:11px;height:11px;border-radius:50%;background:#ff4f70;box-shadow:0 0 14px #ff4f70}
-      .label{font-size:15px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b8c8df}
-      #seconds{font-size:30px;font-weight:900;font-variant-numeric:tabular-nums;color:#fff}
-    </style></head><body><div class="timer"><span class="dot"></span><span class="label">Play time ends in</span><span id="seconds">60s</span></div></body></html>`;
+      *{box-sizing:border-box}html,body{margin:0;height:100%;background:transparent;overflow:hidden;user-select:none;
+        font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+      body{display:grid;place-items:center}
+      .timer{display:flex;align-items:center;gap:14px;height:56px;padding:0 24px 0 22px;color:#fff;
+        border:1px solid rgba(255,255,255,.12);border-radius:999px;background:linear-gradient(180deg,rgba(48,55,72,.97),rgba(29,34,47,.97));
+        box-shadow:0 6px 14px -4px rgba(0,0,0,.6),0 0 14px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.07);
+        animation:enter .32s cubic-bezier(.22,1,.36,1) both}
+      .dot{position:relative;flex:none;width:10px;height:10px;border-radius:50%;background:#ff4f63}
+      .dot::after{content:'';position:absolute;inset:0;border-radius:50%;background:inherit;animation:pulse 1.4s ease-out infinite}
+      .label{color:rgba(232,237,247,.74);font-size:15px;font-weight:500;white-space:nowrap}
+      #seconds{min-width:50px;font-size:24px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;text-align:right}
+      @keyframes pulse{from{opacity:.7;transform:scale(1)}to{opacity:0;transform:scale(2.6)}}
+      @keyframes enter{from{opacity:0;transform:translateY(-10px)}}
+    </style></head><body><div class="timer" role="timer"><span class="dot"></span><span class="label">Play time ends in</span><span id="seconds">60s</span></div></body></html>`;
     void this.window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
   }
 

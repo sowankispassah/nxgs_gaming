@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, Building2, Gamepad2, IndianRupee, LoaderCircle, MapPin, MonitorCog, Save, Timer } from 'lucide-react';
+import {
+  Activity,
+  Building2,
+  Check,
+  Copy,
+  Gamepad2,
+  IndianRupee,
+  LoaderCircle,
+  MapPin,
+  Save,
+  Timer
+} from 'lucide-react';
 import type { DeviceInput, DeviceManagerSummary, DeviceRecord, DeviceStatus } from '../../shared/types';
+import { CardHeader, LoadingState, Notice } from './admin/AdminKit';
 
 type DeviceForm = {
   name: string;
@@ -28,6 +40,35 @@ function formFromDevice(device: DeviceRecord): DeviceForm {
 function dateTimeLabel(value?: string): string {
   if (!value) return 'Not synced yet';
   return new Date(value).toLocaleString();
+}
+
+function CopyButton(props: { value: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <button
+      className="secondary-action compact device-copy-button"
+      type="button"
+      disabled={!props.value}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(props.value);
+          setCopied(true);
+        } catch {
+          setCopied(false);
+        }
+      }}
+    >
+      {copied ? <Check size={15} /> : <Copy size={15} />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
 }
 
 export function DeviceManager(props: { onDeviceChanged: (device: DeviceRecord) => void }): JSX.Element {
@@ -80,43 +121,103 @@ export function DeviceManager(props: { onDeviceChanged: (device: DeviceRecord) =
   };
 
   if (loading) {
-    return <div className="panel admin-loading"><LoaderCircle className="spin" /> Loading device...</div>;
+    return (
+      <section className="admin-card admin-loading-card">
+        <LoadingState label="Loading device..." />
+      </section>
+    );
   }
 
+  const device = summary?.device;
+  const status = device?.status ?? 'active';
+  const place = [device?.storeName, device?.location].filter(Boolean).join(' · ');
+
   return (
-    <div className="device-manager-grid">
-      <section className="panel device-editor-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">This installation</p>
-            <h2>Device Manager</h2>
+    <div className="admin-columns admin-columns--device device-manager-grid">
+      <section className="admin-card device-overview-panel">
+        <CardHeader
+          eyebrow="Local identity"
+          title={device?.name ?? 'Current device'}
+          subtitle={place || 'Store and location not set'}
+          actions={(
+            <span className={`device-status-pill ps-chip ${status === 'active' ? 'ps-chip--success' : ''}`}>
+              {status === 'active' ? 'Active' : 'Inactive'}
+            </span>
+          )}
+        />
+
+        <div className="device-id-card">
+          <span className="device-id-label">Generated device ID</span>
+          <div className="device-id-value">
+            <code>{device?.id}</code>
+            <CopyButton value={device?.id ?? ''} />
           </div>
-          <span className={`device-status-pill ${summary?.device.status ?? 'active'}`}>
-            {summary?.device.status ?? 'active'}
-          </span>
+          <small>This stable ID links local games, plans, sessions, and future cloud records.</small>
         </div>
 
+        <div className="device-stat-grid">
+          <article>
+            <span className="device-stat-icon" aria-hidden="true"><Gamepad2 size={20} /></span>
+            <strong>{summary?.gameCount ?? 0}</strong>
+            <span>Games on device</span>
+          </article>
+          <article>
+            <span className="device-stat-icon" aria-hidden="true"><Timer size={20} /></span>
+            <strong>{summary?.activePlanCount ?? 0}</strong>
+            <span>Active plans</span>
+          </article>
+          <article>
+            <span className="device-stat-icon" aria-hidden="true"><Activity size={20} /></span>
+            <strong>{summary?.totalSessions ?? 0}</strong>
+            <span>Total sessions</span>
+          </article>
+          <article>
+            <span className="device-stat-icon" aria-hidden="true"><IndianRupee size={20} /></span>
+            <strong>₹{((summary?.totalRevenuePaise ?? 0) / 100).toLocaleString('en-IN')}</strong>
+            <span>Tracked revenue</span>
+          </article>
+        </div>
+
+        <dl className="admin-meta-list device-metadata-list">
+          <div><dt>Store / branch</dt><dd>{device?.storeName || 'Not set'}</dd></div>
+          <div><dt>Location</dt><dd>{device?.location || 'Not set'}</dd></div>
+          <div><dt>Last updated</dt><dd>{dateTimeLabel(device?.updatedAt)}</dd></div>
+          <div><dt>Last synced</dt><dd>{dateTimeLabel(device?.lastSyncedAt ?? device?.syncedAt)}</dd></div>
+          <div><dt>Sync status</dt><dd className="admin-capitalize">{device?.syncStatus ?? 'pending'}</dd></div>
+          <div><dt>Current session</dt><dd className="admin-capitalize">{summary?.currentSessionStatus ?? 'idle'}</dd></div>
+        </dl>
+      </section>
+
+      <section className="admin-card device-editor-panel">
+        <CardHeader
+          eyebrow="This installation"
+          title="Station details"
+          subtitle="Name this station and record where it is."
+        />
+
         <form
-          className="form-grid single"
+          className="admin-form device-form"
           onSubmit={(event) => {
             event.preventDefault();
             void saveDevice();
           }}
         >
-          <label>
-            Device name <em className="required-badge">Required</em>
+          <label className="admin-field">
+            <span className="admin-field-label">
+              Device name <em className="required-badge">Required</em>
+            </span>
             <input
               value={form.name}
               maxLength={80}
-              placeholder="PC 01"
+              placeholder="Station 01"
               disabled={saving}
               onChange={(event) => update('name', event.target.value)}
             />
           </label>
-          <label>
-            Store / branch name
-            <span className="device-field-with-icon">
-              <Building2 size={17} />
+          <label className="admin-field">
+            <span className="admin-field-label">Store / branch name</span>
+            <span className="admin-affix-input device-field-with-icon">
+              <Building2 size={17} aria-hidden="true" />
               <input
                 value={form.storeName}
                 maxLength={120}
@@ -126,10 +227,10 @@ export function DeviceManager(props: { onDeviceChanged: (device: DeviceRecord) =
               />
             </span>
           </label>
-          <label>
-            Device location
-            <span className="device-field-with-icon">
-              <MapPin size={17} />
+          <label className="admin-field">
+            <span className="admin-field-label">Device location</span>
+            <span className="admin-affix-input device-field-with-icon">
+              <MapPin size={17} aria-hidden="true" />
               <input
                 value={form.location}
                 maxLength={160}
@@ -139,8 +240,8 @@ export function DeviceManager(props: { onDeviceChanged: (device: DeviceRecord) =
               />
             </span>
           </label>
-          <label>
-            Device status
+          <label className="admin-field">
+            <span className="admin-field-label">Device status</span>
             <select
               value={form.status}
               disabled={saving}
@@ -150,61 +251,15 @@ export function DeviceManager(props: { onDeviceChanged: (device: DeviceRecord) =
               <option value="inactive">Inactive</option>
             </select>
           </label>
-          <button className="primary-action wide" type="submit" disabled={saving}>
-            {saving ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
-            {saving ? 'Saving...' : 'Save Device'}
-          </button>
+          <footer className="admin-card-footer admin-card-footer--stacked">
+            {message && <Notice tone="success">{message}</Notice>}
+            {error && <Notice tone="error">{error}</Notice>}
+            <button className="primary-action wide" type="submit" disabled={saving}>
+              {saving ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
+              {saving ? 'Saving...' : 'Save Device'}
+            </button>
+          </footer>
         </form>
-        {message && <p className="success-text" role="status">{message}</p>}
-        {error && <p className="error-text" role="alert">{error}</p>}
-      </section>
-
-      <section className="panel device-overview-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Local identity</p>
-            <h2>{summary?.device.name ?? 'Current device'}</h2>
-          </div>
-          <MonitorCog size={28} />
-        </div>
-
-        <div className="device-id-card">
-          <span>Generated device ID</span>
-          <code>{summary?.device.id}</code>
-          <small>This stable ID links local games, plans, sessions, and future cloud records.</small>
-        </div>
-
-        <div className="device-stat-grid">
-          <article>
-            <Gamepad2 size={21} />
-            <span>Games on device</span>
-            <strong>{summary?.gameCount ?? 0}</strong>
-          </article>
-          <article>
-            <Timer size={21} />
-            <span>Active plans</span>
-            <strong>{summary?.activePlanCount ?? 0}</strong>
-          </article>
-          <article>
-            <Activity size={21} />
-            <span>Total sessions</span>
-            <strong>{summary?.totalSessions ?? 0}</strong>
-          </article>
-          <article>
-            <IndianRupee size={21} />
-            <span>Tracked revenue</span>
-            <strong>₹{((summary?.totalRevenuePaise ?? 0) / 100).toLocaleString('en-IN')}</strong>
-          </article>
-        </div>
-
-        <dl className="device-metadata-list">
-          <div><dt>Store / branch</dt><dd>{summary?.device.storeName || 'Not set'}</dd></div>
-          <div><dt>Location</dt><dd>{summary?.device.location || 'Not set'}</dd></div>
-          <div><dt>Last updated</dt><dd>{dateTimeLabel(summary?.device.updatedAt)}</dd></div>
-          <div><dt>Last synced</dt><dd>{dateTimeLabel(summary?.device.lastSyncedAt ?? summary?.device.syncedAt)}</dd></div>
-          <div><dt>Sync status</dt><dd>{summary?.device.syncStatus ?? 'pending'}</dd></div>
-          <div><dt>Current session</dt><dd>{summary?.currentSessionStatus ?? 'idle'}</dd></div>
-        </dl>
       </section>
     </div>
   );

@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  CheckCircle2,
   Clock,
+  Gamepad2,
   LoaderCircle,
   RefreshCw,
-  Smartphone,
+  ScanLine,
   Timer,
-  X
+  Wallet,
+  X,
+  XCircle
 } from 'lucide-react';
 import type {
   GameRecord,
@@ -15,7 +19,32 @@ import type {
   PaymentPlan
 } from '../../../shared/types';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../../controllerNavigation';
-import { toFileUrl } from '../../ui/media';
+import { ControllerHints } from '../../ui/ControllerHints';
+import { playUiSound } from '../../ui/uiSound';
+import { GameArtwork } from '../system/GameArtwork';
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'Min' : 'Mins'}`;
+  const hours = minutes / 60;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} ${hours === 1 ? 'Hour' : 'Hours'}`;
+}
+
+function formatPrice(plan: PaymentPlan): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency', currency: plan.currency, minimumFractionDigits: 2
+  }).format(plan.amountPaise / 100);
+}
+
+function formatCountdown(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function badgeForPlan(plan: PaymentPlan): string {
+  if (/quick/i.test(plan.name)) return 'Quick test';
+  if (/popular/i.test(plan.name)) return 'Popular';
+  if (/best/i.test(plan.name)) return 'Best value';
+  return '';
+}
 
 export function PaymentFlow(props: {
   mode: 'launch' | 'extend';
@@ -27,6 +56,7 @@ export function PaymentFlow(props: {
   const [plans, setPlans] = useState<PaymentPlan[]>([]);
   const [planIndex, setPlanIndex] = useState(0);
   const [catalogPending, setCatalogPending] = useState(true);
+  const [catalogFailed, setCatalogFailed] = useState(false);
   const [planPendingIndex, setPlanPendingIndex] = useState<number | null>(null);
   const [checkout, setCheckout] = useState<PaymentCheckout | null>(null);
   const [paymentActionIndex, setPaymentActionIndex] = useState(0);
@@ -35,17 +65,22 @@ export function PaymentFlow(props: {
   const [error, setError] = useState('');
   const planRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const paymentActionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const retryCatalogRef = useRef<HTMLButtonElement | null>(null);
   const pollingRef = useRef(false);
   const completionStartedRef = useRef(false);
   const entitlementActivatedRef = useRef(false);
+  const announcedStatusRef = useRef<PaymentCheckoutStatus | null>(null);
 
   const loadCatalog = useCallback(async (): Promise<void> => {
     setCatalogPending(true);
+    setCatalogFailed(false);
     setError('');
     try {
       const result = await window.nxgs.getPaymentCatalog();
       if (!result.ok) {
         setError(result.error ?? 'Could not load play durations.');
+        setCatalogFailed(true);
+        playUiSound('error');
         return;
       }
       setPlans(result.plans);
@@ -53,6 +88,8 @@ export function PaymentFlow(props: {
       if (result.plans.length === 0) setError(result.error ?? 'No play plans available.');
     } catch (catalogError) {
       setError(catalogError instanceof Error ? catalogError.message : String(catalogError));
+      setCatalogFailed(true);
+      playUiSound('error');
     } finally {
       setCatalogPending(false);
     }
@@ -63,9 +100,14 @@ export function PaymentFlow(props: {
   }, [loadCatalog]);
 
   useEffect(() => {
-    if (stage === 'plans') planRefs.current[planIndex]?.focus({ preventScroll: true });
-    else paymentActionRefs.current[paymentActionIndex]?.focus({ preventScroll: true });
-  }, [paymentActionIndex, planIndex, plans.length, stage]);
+    if (stage === 'plans') {
+      const row = planRefs.current[planIndex];
+      if (row) {
+        row.focus({ preventScroll: true });
+        row.scrollIntoView({ block: 'nearest' });
+      } else if (!catalogPending && plans.length === 0) retryCatalogRef.current?.focus({ preventScroll: true });
+    } else paymentActionRefs.current[paymentActionIndex]?.focus({ preventScroll: true });
+  }, [catalogPending, paymentActionIndex, planIndex, plans.length, stage]);
 
   useEffect(() => {
     if (!checkout) return;
@@ -76,6 +118,12 @@ export function PaymentFlow(props: {
     const timer = window.setInterval(updateCountdown, 1000);
     return () => window.clearInterval(timer);
   }, [checkout]);
+
+  useEffect(() => {
+    const current = checkout?.status ?? null;
+    if (current === 'verified' && announcedStatusRef.current !== 'verified') playUiSound('notify');
+    announcedStatusRef.current = current;
+  }, [checkout?.status]);
 
   const completePayment = useCallback(async (paidCheckout: PaymentCheckout): Promise<void> => {
     if (completionStartedRef.current || pendingAction === 'launch') return;
@@ -101,6 +149,7 @@ export function PaymentFlow(props: {
       props.onCompleted();
     } catch (launchError) {
       setError(launchError instanceof Error ? launchError.message : String(launchError));
+      playUiSound('error');
     } finally {
       completionStartedRef.current = false;
       setPendingAction(null);
@@ -124,6 +173,7 @@ export function PaymentFlow(props: {
       if (result.status === 'verified') void completePayment(result.checkout);
     } catch (checkoutError) {
       setError(checkoutError instanceof Error ? checkoutError.message : String(checkoutError));
+      playUiSound('error');
     } finally {
       setPlanPendingIndex(null);
     }
@@ -140,6 +190,7 @@ export function PaymentFlow(props: {
       if (result.status === 'verified' && result.checkout) void completePayment(result.checkout);
     } catch (retryError) {
       setError(retryError instanceof Error ? retryError.message : String(retryError));
+      playUiSound('error');
     } finally {
       setPendingAction(null);
     }
@@ -165,6 +216,7 @@ export function PaymentFlow(props: {
       }
     } catch (cancelError) {
       setError(cancelError instanceof Error ? cancelError.message : String(cancelError));
+      playUiSound('error');
     } finally {
       setPendingAction(null);
     }
@@ -199,8 +251,16 @@ export function PaymentFlow(props: {
   }, [checkout, completePayment, pendingAction]);
 
   const movePlan = useCallback((delta: number): void => {
-    setPlanIndex((index) => Math.max(0, Math.min(plans.length - 1, index + delta)));
-  }, [plans.length]);
+    const next = Math.max(0, Math.min(plans.length - 1, planIndex + delta));
+    if (next === planIndex) return;
+    playUiSound('move');
+    setPlanIndex(next);
+  }, [planIndex, plans.length]);
+
+  const togglePaymentAction = useCallback((): void => {
+    playUiSound('move');
+    setPaymentActionIndex((index) => index === 0 ? 1 : 0);
+  }, []);
 
   const activatePaymentAction = useCallback((): void => {
     if (entitlementActivatedRef.current && error) void completePayment(checkout!);
@@ -210,12 +270,15 @@ export function PaymentFlow(props: {
 
   const handleLaunchControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
     if (event.type === 'back') {
+      playUiSound('back');
       if (stage === 'payment' && checkout) void cancelPayment('plans');
       else requestClose();
       return;
     }
     if (event.type === 'accept') {
-      if (stage === 'plans') void choosePlan(planIndex);
+      playUiSound('select');
+      if (stage === 'plans' && plans.length === 0) void loadCatalog();
+      else if (stage === 'plans') void choosePlan(planIndex);
       else activatePaymentAction();
       return;
     }
@@ -223,9 +286,9 @@ export function PaymentFlow(props: {
       if (event.direction === 'up') movePlan(-1);
       else if (event.direction === 'down') movePlan(1);
     } else if (event.direction === 'left' || event.direction === 'right') {
-      setPaymentActionIndex((index) => index === 0 ? 1 : 0);
+      togglePaymentAction();
     }
-  }, [activatePaymentAction, cancelPayment, checkout, choosePlan, movePlan, planIndex, requestClose, stage]);
+  }, [activatePaymentAction, cancelPayment, checkout, choosePlan, loadCatalog, movePlan, planIndex, plans.length, requestClose, stage, togglePaymentAction]);
 
   const inputPending = catalogPending || planPendingIndex !== null || Boolean(pendingAction);
   useControllerNavigation(!inputPending, handleLaunchControllerEvent);
@@ -237,20 +300,23 @@ export function PaymentFlow(props: {
       event.stopImmediatePropagation();
       if (inputPending) return;
       if (event.key === 'Escape' || event.key === 'Backspace') {
+        playUiSound('back');
         if (stage === 'payment' && checkout) void cancelPayment('plans');
         else requestClose();
       } else if (stage === 'plans' && event.key === 'ArrowUp') movePlan(-1);
       else if (stage === 'plans' && event.key === 'ArrowDown') movePlan(1);
       else if (stage === 'payment' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-        setPaymentActionIndex((index) => index === 0 ? 1 : 0);
+        togglePaymentAction();
       } else if (event.key === 'Enter') {
-        if (stage === 'plans') void choosePlan(planIndex);
+        playUiSound('select');
+        if (stage === 'plans' && plans.length === 0) void loadCatalog();
+        else if (stage === 'plans') void choosePlan(planIndex);
         else activatePaymentAction();
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [activatePaymentAction, cancelPayment, checkout, choosePlan, inputPending, movePlan, planIndex, requestClose, stage]);
+  }, [activatePaymentAction, cancelPayment, checkout, choosePlan, inputPending, loadCatalog, movePlan, planIndex, plans.length, requestClose, stage, togglePaymentAction]);
 
   const status = checkout?.status ?? 'creating';
   const statusLabel: Record<PaymentCheckoutStatus, string> = {
@@ -262,121 +328,187 @@ export function PaymentFlow(props: {
     expired: 'Payment window expired',
     failed: 'Payment failed'
   };
-  const formatDuration = (minutes: number): string => {
-    if (minutes < 60) return `${minutes} ${minutes === 1 ? 'Min' : 'Mins'}`;
-    const hours = minutes / 60;
-    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} ${hours === 1 ? 'Hour' : 'Hours'}`;
-  };
-  const formatPrice = (plan: PaymentPlan): string => new Intl.NumberFormat('en-IN', {
-    style: 'currency', currency: plan.currency, minimumFractionDigits: 2
-  }).format(plan.amountPaise / 100);
-  const formatCountdown = (seconds: number): string =>
-    `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-  const badgeForPlan = (plan: PaymentPlan): string => {
-    if (/quick/i.test(plan.name)) return 'Quick test';
-    if (/popular/i.test(plan.name)) return 'Popular';
-    if (/best/i.test(plan.name)) return 'Best value';
-    return '';
-  };
+  const recoveryNeeded = entitlementActivatedRef.current && Boolean(error);
+  const statusTone = recoveryNeeded
+    ? 'warning'
+    : status === 'verified' || status === 'consumed'
+      ? 'success'
+      : status === 'cancelled' || status === 'expired' || status === 'failed'
+        ? 'danger'
+        : 'waiting';
+  const statusIcon = pendingAction === 'launch' || status === 'creating'
+    ? <LoaderCircle size={20} className="spin" />
+    : statusTone === 'success'
+      ? <CheckCircle2 size={20} />
+      : statusTone === 'danger'
+        ? <XCircle size={20} />
+        : statusTone === 'warning'
+          ? <AlertTriangle size={20} />
+          : <span className="payment-status-pulse" />;
+  const countdownLow = status === 'created' && remainingSeconds <= 60;
+  const qrState = status === 'verified' || status === 'consumed'
+    ? 'paid'
+    : status === 'expired' || status === 'cancelled'
+      ? 'expired'
+      : '';
+  const extendMode = props.mode === 'extend';
 
   return (
     <div className="modal-backdrop payment-backdrop">
-      <section className={`modal launch-modal ${stage === 'payment' ? 'payment-modal' : 'duration-modal'}`}>
-        <button className="icon-button close-button" type="button" title="Close" onClick={requestClose} disabled={inputPending}>
-          {pendingAction === 'cancel' ? <LoaderCircle size={20} className="spin" /> : <X size={20} />}
-        </button>
+      <section
+        key={stage}
+        className={`modal launch-modal ${stage === 'payment' ? 'payment-modal' : 'duration-modal'}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payment-flow-title"
+      >
         {stage === 'plans' ? (
           <>
+            {!extendMode && props.game && (
+              <div className="checkout-hero-art" aria-hidden="true">
+                <GameArtwork game={props.game} kind="cover" />
+              </div>
+            )}
             <header className="checkout-heading">
-              <span className="checkout-game-icon">
-                {props.game?.avatarImagePath ? <img src={toFileUrl(props.game.avatarImagePath)} alt="" /> : <Timer size={25} />}
+              <span className={`checkout-game-icon ${extendMode || !props.game ? 'is-symbol' : ''}`}>
+                {extendMode || !props.game
+                  ? <Timer size={34} />
+                  : <GameArtwork game={props.game} kind="avatar" fallback={<Gamepad2 size={32} />} />}
               </span>
-              <div>
-                <p className="eyebrow">{props.mode === 'extend' ? 'Active paid session' : props.game?.title}</p>
-                <h2>{props.mode === 'extend' ? 'Extend Play Time' : 'Select Play Duration'}</h2>
+              <div className="checkout-heading-copy">
+                <p className="eyebrow">{extendMode ? 'Active paid session' : props.game?.title}</p>
+                <h2 id="payment-flow-title">{extendMode ? 'Extend Play Time' : 'Select Play Duration'}</h2>
               </div>
             </header>
-            {catalogPending && <div className="checkout-loading"><LoaderCircle className="spin" /> Loading prices...</div>}
-            {!catalogPending && plans.length > 0 && <div className="duration-list">
-              {plans.map((plan, index) => (
-            <button
-              ref={(element) => {
-                    planRefs.current[index] = element;
-              }}
-                  key={plan.id}
-              type="button"
-                  className={planIndex === index ? 'selected' : ''}
-                  aria-label={`${formatDuration(plan.durationMinutes)}, ${formatPrice(plan)}`}
-              onFocus={() => {
-                    setPlanIndex(index);
-              }}
-              onMouseEnter={() => {
-                    setPlanIndex(index);
-              }}
-                  onClick={() => void choosePlan(index)}
-                  disabled={planPendingIndex !== null}
-            >
-                  <span className="duration-clock">{planPendingIndex === index ? <LoaderCircle className="spin" size={24} /> : <Clock size={24} />}</span>
-                  <strong>{formatDuration(plan.durationMinutes)}</strong>
-                  {badgeForPlan(plan) && <em>{badgeForPlan(plan)}</em>}
-                  <span className="duration-price">{formatPrice(plan)}</span>
-            </button>
-              ))}
-            </div>}
-            {error && <div className="checkout-error" role="alert"><AlertTriangle size={18} /><span>{error}</span></div>}
-            {!catalogPending && plans.length === 0 && (
-              <button type="button" className="secondary-action wide" onClick={() => void loadCatalog()}>
-                <RefreshCw size={18} /> Try again
-              </button>
+            {catalogPending && (
+              <div className="checkout-loading" role="status" aria-live="polite">
+                <div className="duration-skeletons" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <p><LoaderCircle size={18} className="spin" /> Loading prices...</p>
+              </div>
             )}
-            <button className="duration-cancel" type="button" onClick={props.onClose} disabled={inputPending}>Cancel</button>
+            {!catalogPending && plans.length > 0 && (
+              <div className="duration-list" role="group" aria-label="Play durations">
+                {plans.map((plan, index) => {
+                  const badge = badgeForPlan(plan);
+                  return (
+                    <button
+                      ref={(element) => {
+                        planRefs.current[index] = element;
+                      }}
+                      key={plan.id}
+                      type="button"
+                      className={`duration-option ${planIndex === index ? 'selected' : ''}`}
+                      aria-label={`${formatDuration(plan.durationMinutes)}, ${formatPrice(plan)}`}
+                      onFocus={() => {
+                        setPlanIndex(index);
+                      }}
+                      onMouseEnter={() => {
+                        setPlanIndex(index);
+                      }}
+                      onClick={() => void choosePlan(index)}
+                      disabled={planPendingIndex !== null}
+                    >
+                      <span className="duration-clock">
+                        {planPendingIndex === index ? <LoaderCircle className="spin" size={24} /> : <Clock size={24} />}
+                      </span>
+                      <span className="duration-copy">
+                        <strong>{formatDuration(plan.durationMinutes)}</strong>
+                        {badge && <em className="duration-badge">{badge}</em>}
+                      </span>
+                      <span className="duration-price">{formatPrice(plan)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {!catalogPending && plans.length === 0 && (
+              <div className={`checkout-empty ${catalogFailed ? 'is-failed' : ''}`} role="alert">
+                <span className="checkout-empty-icon" aria-hidden="true">
+                  {catalogFailed ? <AlertTriangle size={30} /> : <Timer size={30} />}
+                </span>
+                <strong>{error || 'No play plans available.'}</strong>
+                <p className="muted">Please ask a staff member for help, then try again.</p>
+                <button
+                  ref={retryCatalogRef}
+                  type="button"
+                  className="secondary-action controller-focused"
+                  onClick={() => void loadCatalog()}
+                >
+                  <RefreshCw size={18} /> Try again
+                </button>
+              </div>
+            )}
+            {error && plans.length > 0 && (
+              <div className="checkout-error" role="alert"><AlertTriangle size={20} /><span>{error}</span></div>
+            )}
+            <footer className="dialog-footer">
+              <button className="dialog-text-button duration-cancel" type="button" onClick={props.onClose} disabled={inputPending}>
+                Cancel
+              </button>
+              <ControllerHints hints={[{ glyph: 'cross', label: 'Select' }, { glyph: 'circle', label: 'Back' }]} />
+            </footer>
           </>
         ) : checkout ? (
           <>
-            <header className="checkout-heading payment-heading">
-              <span className="checkout-game-icon"><Smartphone size={25} /></span>
-              <div>
-                <p className="eyebrow">Razorpay Checkout</p>
-                <h2>Pay with your phone</h2>
-              </div>
-            </header>
             <div className="payment-layout">
               <div className="payment-qr-panel">
-                <span>Razorpay Checkout</span>
-                <div className="payment-qr-frame">
-                  {checkout.qrDataUrl ? <img src={checkout.qrDataUrl} alt="Razorpay payment QR code" /> : <LoaderCircle className="spin" size={52} />}
+                <div className={`payment-qr-frame ${qrState ? `is-${qrState}` : ''}`}>
+                  {checkout.qrDataUrl
+                    ? <img src={checkout.qrDataUrl} alt="Razorpay payment QR code" />
+                    : <LoaderCircle className="spin" size={52} />}
+                  {qrState && (
+                    <span className="payment-qr-overlay" aria-hidden="true">
+                      {qrState === 'paid' ? <CheckCircle2 size={72} strokeWidth={1.75} /> : <Timer size={64} strokeWidth={1.75} />}
+                    </span>
+                  )}
                 </div>
-                <p><Smartphone size={20} /> Scan QR</p>
+                <p className="payment-qr-caption"><ScanLine size={20} /> Scan with your phone camera</p>
               </div>
               <div className="payment-summary">
-                <h3>Scan with your phone to pay</h3>
-                <p className="muted">Razorpay Checkout opens securely on your phone. This screen updates automatically after payment.</p>
+                <p className="eyebrow">Razorpay Checkout</p>
+                <h2 id="payment-flow-title">Pay with your phone</h2>
+                <p className="payment-intro">
+                  Razorpay Checkout opens securely on your phone. This screen updates automatically after payment.
+                </p>
                 <dl className="payment-details">
-                  <div><dt><Clock size={20} /> Duration</dt><dd>{formatDuration(checkout.plan.durationMinutes)}</dd></div>
-                  <div><dt><span className="detail-dot" /> Amount</dt><dd className="payment-amount">{formatPrice(checkout.plan)}</dd></div>
-                  <div><dt><Timer size={20} /> Payment window</dt><dd>{formatCountdown(remainingSeconds)}</dd></div>
+                  <div>
+                    <dt><Clock size={20} /> Duration</dt>
+                    <dd>{formatDuration(checkout.plan.durationMinutes)}</dd>
+                  </div>
+                  <div>
+                    <dt><Wallet size={20} /> Amount</dt>
+                    <dd className="payment-amount">{formatPrice(checkout.plan)}</dd>
+                  </div>
+                  <div>
+                    <dt><Timer size={20} /> Payment window</dt>
+                    <dd className={`payment-countdown ${countdownLow ? 'is-low' : ''}`}>{formatCountdown(remainingSeconds)}</dd>
+                  </div>
                 </dl>
-                <div className={`payment-status ${status}`} role="status" aria-live="polite">
-                  {pendingAction === 'launch' && <LoaderCircle size={19} className="spin" />}
-                  {entitlementActivatedRef.current && error ? 'Payment applied - action needs attention' : statusLabel[status]}
+                <div className={`payment-status ${status} tone-${statusTone}`} role="status" aria-live="polite">
+                  <span className="payment-status-icon" aria-hidden="true">{statusIcon}</span>
+                  <span>{recoveryNeeded ? 'Payment applied - action needs attention' : statusLabel[status]}</span>
                 </div>
-                {error && <div className="checkout-error" role="alert"><AlertTriangle size={18} /><span>{error}</span></div>}
+                {error && <div className="checkout-error" role="alert"><AlertTriangle size={20} /><span>{error}</span></div>}
                 <div className="payment-actions">
                   <button
                     ref={(element) => { paymentActionRefs.current[0] = element; }}
                     type="button"
-                    className={`primary-action ${paymentActionIndex === 0 ? 'controller-focused' : ''}`}
+                    className={`secondary-action ${paymentActionIndex === 0 ? 'controller-focused' : ''} ${pendingAction === 'retry' || pendingAction === 'launch' ? 'is-pending' : ''}`}
                     disabled={Boolean(pendingAction)}
                     onFocus={() => setPaymentActionIndex(0)}
                     onClick={activatePaymentAction}
                   >
                     {pendingAction === 'retry' || pendingAction === 'launch' ? <LoaderCircle size={19} className="spin" /> : <RefreshCw size={19} />}
-                    {entitlementActivatedRef.current && error ? (props.mode === 'extend' ? 'Finish Extension' : 'Retry Launch') : pendingAction === 'retry' ? 'Retrying...' : pendingAction === 'launch' ? (props.mode === 'extend' ? 'Extending...' : 'Starting...') : 'Retry Payment'}
+                    {recoveryNeeded ? (extendMode ? 'Finish Extension' : 'Retry Launch') : pendingAction === 'retry' ? 'Retrying...' : pendingAction === 'launch' ? (extendMode ? 'Extending...' : 'Starting...') : 'Retry Payment'}
                   </button>
                   <button
                     ref={(element) => { paymentActionRefs.current[1] = element; }}
                     type="button"
-                    className={`secondary-action ${paymentActionIndex === 1 ? 'controller-focused' : ''}`}
+                    className={`secondary-action ${paymentActionIndex === 1 ? 'controller-focused' : ''} ${pendingAction === 'cancel' ? 'is-pending' : ''}`}
                     disabled={Boolean(pendingAction) || entitlementActivatedRef.current}
                     onFocus={() => setPaymentActionIndex(1)}
                     onClick={() => void cancelPayment('close')}
@@ -387,9 +519,15 @@ export function PaymentFlow(props: {
                 </div>
               </div>
             </div>
-            <footer className="payment-controller-help">
-              <span><kbd>A</kbd> Select / OK</span>
-              <span><kbd>B</kbd> Back / Change Price</span>
+            <footer className="dialog-footer payment-footer">
+              {recoveryNeeded && !extendMode && (
+                // Payment is already applied, so Cancel Payment is disabled; give
+                // pointer users a way out to pick another game.
+                <button className="dialog-text-button" type="button" onClick={props.onClose} disabled={Boolean(pendingAction)}>
+                  Close
+                </button>
+              )}
+              <ControllerHints hints={[{ glyph: 'cross', label: 'Select / OK' }, { glyph: 'circle', label: 'Back / Change Price' }]} />
             </footer>
           </>
         ) : null}

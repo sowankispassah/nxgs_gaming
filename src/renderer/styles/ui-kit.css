@@ -67,7 +67,8 @@
 
 .system-toast-stack {
   position: fixed;
-  top: var(--safe-y);
+  /* Below the console top bar so the clock and session timer stay visible. */
+  top: calc(var(--safe-y) + 84px);
   right: var(--safe-x);
   z-index: 60;
   display: grid;
@@ -84,7 +85,7 @@
   gap: 14px;
   border: 1px solid var(--ps-line-strong);
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, rgba(48, 55, 72, 0.96), rgba(29, 34, 47, 0.96));
+  background: linear-gradient(180deg, #30374a, #1d222f);
   box-shadow: var(--shadow-2);
   color: var(--ps-text);
   padding: 14px 18px 14px 14px;
@@ -94,7 +95,7 @@
 
 .system-toast--floating {
   position: fixed;
-  top: var(--safe-y);
+  top: calc(var(--safe-y) + 84px);
   right: var(--safe-x);
   z-index: 60;
 }

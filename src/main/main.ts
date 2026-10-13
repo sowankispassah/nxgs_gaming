@@ -204,6 +204,11 @@ function sendToRenderer(channel: string, ...args: unknown[]): void {
 function broadcastSession(state: SessionState): void {
   sessionCountdownOverlay.update(state);
   sendToRenderer('session:state', state);
+  // The in-game quick menu shows the time left, so keep its window current too.
+  const overlay = getLiveGameplayQuickOverlayWindow();
+  if (overlay && !overlay.webContents.isDestroyed()) {
+    overlay.webContents.send('session:state', state);
+  }
 }
 
 function getLiveGameplayQuickOverlayWindow(): BrowserWindow | null {

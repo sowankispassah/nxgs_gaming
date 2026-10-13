@@ -112,10 +112,22 @@ Logs are stored in:
 
 The data layer is a simple local JSON database for MVP reliability and easy inspection. It can be replaced with SQLite later behind the same main-process IPC boundary.
 
+## Console UI
+
+The customer-facing launcher uses a console-style interface modeled on modern game consoles:
+
+- **Home**: full-screen game artwork, Games/Media tabs, a game row whose selected tile stays anchored on the left with its title beside it, a large Play button, and activity cards that rise into view with Down.
+- **Settings**: a two-column console settings layout with Guide & Tips, Accessibility (navigation sounds, reduce motion), Network, Bluetooth / Controller, System (display and audio), and the PIN-protected Control Room.
+- **Quick menu**: the in-game overlay opened with the controller Home button, `Ctrl+Shift+H` or `F10` shows a bottom control bar, a card for the running game (Resume, Go to Launcher Home, Close Game) and a Sound/Brightness card.
+- Payment, PIN, launch and boot screens share the same dialog style; on-screen controller hints show the ✕/○ buttons.
+
+Renderer styles are split per surface under `src/renderer/styles/` (`tokens.css`, `base.css` and `ui-kit.css` hold the shared design system). Shared UI pieces — controller glyphs and hints, notifications, the clock, navigation sounds and per-station UI preferences — live in `src/renderer/ui/`. The Inter typeface is bundled so the launcher renders the same offline.
+
 ## Completed MVP
 
 - Borderless full-screen Electron launcher.
 - Console-style React home screen with keyboard and controller-style navigation.
+- Console UI redesign: Home, Settings, quick menu, dialogs and Control Room with controller focus states, navigation sounds and animated transitions.
 - Local game database and admin-managed game library.
 - Manual game add/edit/delete.
 - Steam URI launch support.
@@ -139,7 +151,6 @@ The data layer is a simple local JSON database for MVP reliability and easy insp
 - Add cover-art import/picker and image cache management.
 - Add signed installer configuration and custom app icon.
 - Improve Steam/Epic process matching by resolving executable names from install metadata.
-- Add controller focus polish, sound effects, and animated transitions.
 - Add payment/session entitlement integration behind the existing timer boundary.
 - Add stronger Windows lockdown through Assigned Access, Shell Launcher, Group Policy, AppLocker or WDAC, and restricted Windows user accounts.
 - Add automated Electron smoke tests and a mock process launcher for session-flow tests.
