@@ -129,7 +129,7 @@ function focusableDetailActions(): HTMLElement[] {
     .filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length > 0);
 }
 
-export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSettings; onSettingsChanged: (settings: AppSettings) => void; onBack: () => void; onControlRoom: () => void }): JSX.Element {
+export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSettings; appVersion?: string; onSettingsChanged: (settings: AppSettings) => void; onBack: () => void; onControlRoom: () => void }): JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [openedIndex, setOpenedIndex] = useState(0);
   const [detailMode, setDetailMode] = useState(false);

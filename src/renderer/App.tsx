@@ -36,6 +36,7 @@ import type {
   SessionState
 } from '../shared/types';
 import { requiresPaymentForLaunch } from '../shared/playAccess';
+import { SystemToast } from './ui/SystemToast';
 
 type View = 'home' | 'settings' | 'admin';
 
@@ -653,6 +654,7 @@ export function App(): JSX.Element {
         <ConsoleSettings
           inputBlocked={pinOpen || adminOptionsOpen}
           settings={settings}
+          appVersion={initialData.appVersion}
           onSettingsChanged={setSettings}
           onBack={navigateBack}
           onControlRoom={() => openAdminPin({ source: 'Control Room', message: 'Enter Admin PIN to open Control Room.' })}
@@ -681,17 +683,28 @@ export function App(): JSX.Element {
         />
       )}
 
-      {controllerIdleNotification?.action === 'show' && (
-        <aside className={`controller-idle-notification ${controllerIdleNotification.kind}`} role="status" aria-live="polite">
-          <Gamepad2 size={24} />
-          <div>
-            <strong>{controllerIdleNotification.title}</strong>
-            <span>{controllerIdleNotification.message}</span>
-          </div>
-        </aside>
+      {(controllerIdleNotification?.action === 'show' || launchNotice) && (
+        <div className="system-toast-stack">
+          {controllerIdleNotification?.action === 'show' && (
+            <SystemToast
+              floating={false}
+              className="controller-idle-notification"
+              tone={controllerIdleNotification.kind === 'error' ? 'error' : 'warning'}
+              icon={<Gamepad2 size={22} />}
+              title={controllerIdleNotification.title}
+              message={controllerIdleNotification.message}
+            />
+          )}
+          {launchNotice && (
+            <SystemToast
+              floating={false}
+              className="launch-notice"
+              icon={<Gamepad2 size={22} />}
+              message={launchNotice}
+            />
+          )}
+        </div>
       )}
-
-      {launchNotice && <aside className="console-toast launch-notice" role="status">{launchNotice}</aside>}
 
       {confirmGame && (
         <PaymentFlow

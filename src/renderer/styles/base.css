@@ -1,4 +1,10 @@
-/* Document reset, global focus/hover/press states and shared primitives. */
+/*
+ * Document reset, global focus/hover/press states and shared primitives.
+ *
+ * Every surface builds on these: the white console focus frame, pill-free
+ * rounded buttons, glass inputs and the thin console slider. Surfaces may
+ * restyle their own components but should not redefine these primitives.
+ */
 
 * {
   box-sizing: border-box;
@@ -15,22 +21,20 @@ body,
   border: 0;
   outline: 0;
   overflow: hidden;
-  background: #07090d;
-}
-
-html,
-body,
-#root {
   background: transparent;
 }
 
-/*
- * :root has greater selector specificity than the generic html rule above, so
- * its launcher background otherwise wins inside the transparent quick-overlay
- * BrowserWindow and paints the live game black. Scope an explicit transparent
- * document surface to that renderer while leaving the main launcher unchanged.
- */
+body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
 
+/*
+ * :root carries the launcher background and has greater specificity than the
+ * generic html rule above, so it would otherwise paint the live game black
+ * inside the transparent quick-overlay BrowserWindow. Scope an explicit
+ * transparent document surface to that renderer.
+ */
 html.quick-overlay-document,
 html.quick-overlay-document body,
 html.quick-overlay-document #root {
@@ -39,47 +43,69 @@ html.quick-overlay-document #root {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+  letter-spacing: inherit;
 }
 
 button {
   color: inherit;
+  cursor: pointer;
   transition:
-    border-color 120ms ease,
-    background-color 120ms ease,
-    box-shadow 120ms ease,
-    color 120ms ease,
-    filter 80ms ease;
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    scale var(--dur-instant) var(--ease-out),
+    filter var(--dur-instant) var(--ease-out);
 }
 
-:where(button, input, select, textarea, a, [tabindex]):focus, :where(button, input, select, textarea, a, [tabindex]):focus-visible {
+button:disabled {
+  cursor: default;
+}
+
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* Console UI: no text selection outside editable fields. */
+.app-shell {
+  user-select: none;
+}
+
+.app-shell :is(input, textarea, [contenteditable='true']) {
+  user-select: text;
+}
+
+:where(button, input, select, textarea, a, [tabindex]):focus,
+:where(button, input, select, textarea, a, [tabindex]):focus-visible {
   outline: none;
 }
 
+/* Global interaction states. Surfaces override these for bespoke focus art. */
 button:not(:disabled):hover {
-  border-color: rgba(244, 247, 251, 0.58);
-  box-shadow: var(--hover-ring);
   filter: brightness(1.08);
 }
 
+button:not(:disabled):is(.selected, [aria-selected='true'], [aria-pressed='true']) {
+  border-color: var(--ps-line-strong);
+}
+
 button:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
-  border-color: var(--focus-accent);
   box-shadow: var(--focus-ring);
-  filter: brightness(1.1);
+  filter: none;
   outline: none;
 }
 
-button:not(:disabled):is(.selected, [aria-selected='true'], [aria-pressed='true']) {
-  border-color: rgba(181, 230, 255, 0.78);
+button:not(:disabled):active {
+  filter: brightness(0.92);
+  scale: 0.97;
 }
 
-button:not(:disabled):active {
-  box-shadow:
-    inset 0 0 0 2px rgba(8, 14, 22, 0.34),
-    0 0 0 2px rgba(139, 220, 255, 0.72);
-  filter: brightness(0.86);
-}
+/* ------------------------------------------------------------------ shell */
 
 .app-shell {
   position: fixed;
@@ -90,11 +116,12 @@ button:not(:disabled):active {
   border: 0;
   outline: 0;
   overflow: hidden;
+  isolation: isolate;
   background:
-    linear-gradient(110deg, rgba(12, 18, 25, 0.94), rgba(6, 8, 12, 0.88)),
-    radial-gradient(circle at 70% 20%, rgba(29, 168, 139, 0.28), transparent 34%),
-    radial-gradient(circle at 20% 70%, rgba(216, 56, 78, 0.18), transparent 30%),
-    #07090d;
+    radial-gradient(120% 90% at 85% -10%, rgba(32, 76, 160, 0.34), transparent 60%),
+    radial-gradient(90% 70% at -10% 110%, rgba(12, 46, 112, 0.42), transparent 60%),
+    linear-gradient(180deg, var(--ps-bg-2), var(--ps-bg-0));
+  color: var(--ps-text);
 }
 
 .app-shell.quick-overlay-shell {
@@ -102,36 +129,144 @@ button:not(:disabled):active {
   isolation: isolate;
 }
 
-.cursor-hidden {
-  cursor: none;
+.cursor-hidden,
+.cursor-hidden * {
+  cursor: none !important;
+}
+
+/* ------------------------------------------------------------ typography */
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.15;
+}
+
+p {
+  margin: 0;
 }
 
 .eyebrow {
   margin: 0 0 8px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
+  color: var(--ps-text-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
+}
+
+.muted {
+  color: var(--ps-text-2);
+}
+
+.success-text,
+.error-text {
+  min-height: 20px;
+  margin: 12px 0 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.success-text {
+  color: var(--ps-success);
+}
+
+.error-text {
+  color: var(--ps-danger);
+}
+
+.danger {
+  color: var(--ps-danger);
+}
+
+.wide {
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.primary-action,
+.secondary-action,
+.danger-action {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0 26px;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.primary-action {
+  background: linear-gradient(180deg, var(--ps-blue-bright), var(--ps-blue));
+  color: #ffffff;
+  box-shadow: 0 8px 22px rgba(0, 112, 209, 0.35);
+}
+
+.secondary-action {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ps-text);
+}
+
+.danger-action {
+  background: linear-gradient(180deg, #ff5b6e, #d22a42);
+  color: #ffffff;
+}
+
+/* Console focus: the focused action turns white with dark text. */
+.primary-action:not(:disabled):is(:focus-visible, .controller-focused, .focused),
+.secondary-action:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
+  background: #ffffff;
+  color: var(--ps-text-inverse);
+  box-shadow: var(--focus-ring);
+}
+
+.danger-action:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
+  box-shadow: var(--focus-ring);
+}
+
+.secondary-action.compact {
+  min-height: 38px;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  padding: 0 14px;
+  font-size: var(--text-xs);
+}
+
+.secondary-action.compact.danger {
+  background: var(--ps-danger-soft);
+  color: #ffb3bd;
 }
 
 .icon-button {
   display: inline-grid;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  cursor: pointer;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ps-text);
 }
 
-.icon-button:hover,
-.icon-button:focus-visible {
-  border-color: var(--focus-border);
-  background: var(--focus-bg);
-  box-shadow: var(--focus-glow);
-  outline: none;
+.icon-button:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
+  background: #ffffff;
+  color: var(--ps-text-inverse);
+}
+
+.icon-button.danger {
+  color: #ffb3bd;
 }
 
 .icon-button:disabled,
@@ -139,102 +274,254 @@ button:not(:disabled):active {
 .secondary-action:disabled,
 .danger-action:disabled {
   cursor: progress;
-  opacity: 0.65;
+  opacity: 0.5;
+  box-shadow: none;
 }
 
-.primary-action,
-.secondary-action,
-.danger-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 46px;
-  gap: 10px;
-  border: 0;
-  border-radius: 8px;
-  padding: 0 20px;
-  font-weight: 850;
+/* ----------------------------------------------------------------- inputs */
+
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
+select,
+textarea {
+  width: 100%;
+  min-height: 50px;
+  border: 1px solid var(--ps-line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ps-text);
+  padding: 0 16px;
+  font-size: var(--text-md);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+textarea {
+  padding: 12px 16px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ps-text-3);
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='range']):focus,
+select:focus,
+textarea:focus {
+  border-color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 1px #ffffff, 0 0 18px 2px rgba(255, 255, 255, 0.18);
+}
+
+select {
+  appearance: none;
+  padding-right: 44px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ps-text-2) 50%),
+    linear-gradient(135deg, var(--ps-text-2) 50%, transparent 50%);
+  background-position:
+    calc(100% - 22px) 50%,
+    calc(100% - 16px) 50%;
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
   cursor: pointer;
 }
 
-.primary-action {
-  border: 1px solid var(--focus-border);
-  background: rgba(244, 247, 251, 0.92);
-  color: #11151b;
+select option {
+  background: var(--ps-bg-3);
+  color: var(--ps-text);
 }
 
-.primary-action.controller-focused,
-.secondary-action.controller-focused {
-  border-color: var(--focus-border);
-  box-shadow: var(--focus-glow);
-  outline: none;
+input[type='checkbox'],
+input[type='radio'] {
+  appearance: none;
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 
-.secondary-action {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.08);
-  color: #f5f7fb;
+input[type='radio'] {
+  border-radius: 50%;
 }
 
-.danger-action {
-  background: #e63946;
-  color: #fff;
+input[type='checkbox']::after {
+  content: '';
+  width: 7px;
+  height: 12px;
+  margin-top: -3px;
+  border: solid var(--ps-text-inverse);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform var(--dur-fast) var(--ease-spring);
 }
 
-.wide {
+input[type='radio']::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ps-text-inverse);
+  transform: scale(0);
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+
+input[type='checkbox']:checked,
+input[type='radio']:checked {
+  border-color: #ffffff;
+  background: #ffffff;
+}
+
+input[type='checkbox']:checked::after {
+  transform: rotate(45deg) scale(1);
+}
+
+input[type='radio']:checked::after {
+  transform: scale(1);
+}
+
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  box-shadow: var(--focus-ring-tight);
+}
+
+/* Console slider: thin track, white fill, round white knob. */
+input[type='range'] {
+  appearance: none;
   width: 100%;
+  height: 6px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--slider-track);
+  cursor: pointer;
 }
 
-.muted {
-  color: #aab4c3;
+input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--slider-thumb);
+  box-shadow: 0 0 0 1px var(--slider-thumb-border), 0 2px 8px rgba(0, 0, 0, 0.45);
+  transition:
+    box-shadow var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out);
 }
 
-input,
-select {
-  width: 100%;
-  height: 42px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.22);
-  color: #fff;
-  padding: 0 12px;
+input[type='range']:focus-visible::-webkit-slider-thumb,
+input[type='range']:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35), 0 0 18px 4px rgba(255, 255, 255, 0.35);
+  scale: 1.12;
 }
 
-input:focus,
-select:focus {
-  border-color: var(--focus-border);
-  box-shadow: 0 0 0 3px rgba(244, 247, 251, 0.07);
-  outline: none;
+input[type='range']:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
-.danger {
-  color: #ff8f8f;
+/* ------------------------------------------------------------- scrolling */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
 
-.secondary-action.compact {
-  min-height: 36px;
-  gap: 6px;
-  padding: 7px 11px;
-  font-size: 12px;
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
 
-.secondary-action.compact.danger {
-  border-color: rgba(255, 101, 117, 0.28);
-  color: #ff9aa5;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.error-text { padding: 22px; background: radial-gradient(circle at 20% 85%, rgba(27,103,225,.18), transparent 32%), rgba(1,7,18,.86); }
-
-.success-text {
-  min-height: 20px;
-  margin: 12px 0 0;
-  font-weight: 700;
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.22);
+  background-clip: padding-box;
 }
 
-.error-text {
-  color: #ff8f8f;
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.34);
 }
 
-.success-text {
-  color: #81f7c4;
+/* ---------------------------------------------------------------- motion */
+
+.spin {
+  animation: nxgs-spin 0.9s linear infinite;
+}
+
+@keyframes nxgs-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes nxgs-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes nxgs-rise-in {
+  from {
+    opacity: 0;
+    translate: 0 14px;
+  }
+}
+
+@keyframes nxgs-scale-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+
+/*
+ * Reduced motion: honoured from the OS setting and from the in-launcher
+ * Accessibility preference (html[data-reduce-motion]). Spinners keep turning
+ * so pending work stays visible.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spin {
+    animation-duration: 0.9s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+html[data-reduce-motion='true'] *,
+html[data-reduce-motion='true'] *::before,
+html[data-reduce-motion='true'] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-reduce-motion='true'] .spin {
+  animation-duration: 0.9s !important;
+  animation-iteration-count: infinite !important;
 }

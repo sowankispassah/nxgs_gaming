@@ -1,9 +1,11 @@
 /*
  * NXGS Play renderer stylesheet entry. Each surface owns one module; keep
- * tokens and base first so every surface builds on the shared primitives.
+ * tokens, base and the shared UI kit first so every surface builds on the
+ * same primitives.
  */
 @import './styles/tokens.css';
 @import './styles/base.css';
+@import './styles/ui-kit.css';
 @import './styles/home.css';
 @import './styles/control-center.css';
 @import './styles/settings.css';

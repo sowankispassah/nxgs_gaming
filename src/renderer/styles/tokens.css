@@ -1,29 +1,135 @@
-/* Design tokens shared by every launcher surface. */
+/*
+ * Design tokens shared by every launcher surface.
+ *
+ * The visual language follows a modern console home UI: deep navy surfaces,
+ * full-bleed artwork, white type, soft glass panels and a bright white focus
+ * frame that tells a controller user exactly where they are. Sizes are tuned
+ * for a 1920x1080 TV/monitor and scale down gracefully to 1366x768.
+ */
 
 :root {
   color-scheme: dark;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #07090d;
-  color: #f5f7fb;
+
+  /* Type */
+  --font-ui: 'Inter Variable', Inter, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Inter Variable', Inter, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --text-2xs: 12px;
+  --text-xs: 13px;
+  --text-sm: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: clamp(26px, 1.6vw + 6px, 32px);
+  --text-3xl: clamp(32px, 2.2vw + 6px, 44px);
+  --text-display: clamp(44px, 3.6vw + 8px, 78px);
+  --tracking-tight: -0.02em;
+  --tracking-caps: 0.12em;
+
+  /* Surfaces */
+  --ps-bg-0: #03050a;
+  --ps-bg-1: #070b14;
+  --ps-bg-2: #0c1220;
+  --ps-bg-3: #131b2c;
+  --ps-navy: #0b1a33;
+  --ps-surface: rgba(30, 36, 50, 0.72);
+  --ps-surface-strong: rgba(22, 27, 39, 0.96);
+  --ps-surface-raised: rgba(44, 51, 68, 0.88);
+  --ps-surface-hover: rgba(255, 255, 255, 0.07);
+  --ps-surface-selected: rgba(255, 255, 255, 0.12);
+  --ps-scrim: rgba(3, 5, 10, 0.72);
+  --ps-line: rgba(255, 255, 255, 0.09);
+  --ps-line-strong: rgba(255, 255, 255, 0.18);
+
+  /* Text */
+  --ps-text: #ffffff;
+  --ps-text-2: rgba(232, 237, 247, 0.74);
+  --ps-text-3: rgba(232, 237, 247, 0.5);
+  --ps-text-inverse: #0b0f17;
+
+  /* Accent and status */
+  --ps-blue: #0070d1;
+  --ps-blue-bright: #2d8cff;
+  --ps-blue-soft: rgba(45, 140, 255, 0.18);
+  --ps-success: #36d68a;
+  --ps-success-soft: rgba(54, 214, 138, 0.16);
+  --ps-warning: #ffbf47;
+  --ps-warning-soft: rgba(255, 191, 71, 0.16);
+  --ps-danger: #ff4f63;
+  --ps-danger-soft: rgba(255, 79, 99, 0.16);
+
+  /* Controller face-button glyph colors */
+  --glyph-cross: #7da9ff;
+  --glyph-circle: #ff6b7d;
+  --glyph-square: #f59ad8;
+  --glyph-triangle: #43d9a3;
+
+  /* Shape */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* Focus: the console white frame with a soft halo */
+  --focus-color: #ffffff;
+  --focus-ring: 0 0 0 3px var(--focus-color), 0 0 22px 3px rgba(255, 255, 255, 0.32);
+  --focus-ring-tight: 0 0 0 2px var(--focus-color), 0 0 14px 1px rgba(255, 255, 255, 0.28);
+  --focus-ring-inset: inset 0 0 0 3px var(--focus-color);
+
+  /* Elevation */
+  --shadow-1: 0 6px 18px rgba(0, 0, 0, 0.32);
+  --shadow-2: 0 16px 44px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 28px 80px rgba(0, 0, 0, 0.6);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-instant: 90ms;
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-slow: 380ms;
+  --dur-hero: 700ms;
+
+  /* Layout: TV-safe margins */
+  --safe-x: clamp(40px, 5vw, 112px);
+  --safe-y: clamp(24px, 3.4vh, 52px);
+
+  /* Range sliders (consumed by inline gradient styles in Settings) */
+  --slider-track: rgba(255, 255, 255, 0.18);
+  --slider-active: #ffffff;
+  --slider-thumb: #ffffff;
+  --slider-thumb-border: rgba(11, 15, 23, 0.55);
+
+  /* Legacy aliases kept for surfaces that still reference the old names. */
+  --focus-border: rgba(255, 255, 255, 0.9);
+  --focus-bg: rgba(255, 255, 255, 0.1);
+  --focus-bg-strong: rgba(255, 255, 255, 0.16);
+  --focus-accent: #ffffff;
+  --focus-accent-soft: rgba(255, 255, 255, 0.24);
+  --focus-glow: var(--focus-ring);
+  --hover-ring: 0 0 0 1px rgba(255, 255, 255, 0.4);
+  --panel-bg: var(--ps-surface);
+  --panel-bg-strong: var(--ps-surface-strong);
+  --panel-border: var(--ps-line-strong);
+  --text-primary: var(--ps-text);
+  --text-secondary: var(--ps-text-2);
+
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: var(--weight-regular);
+  line-height: 1.4;
+  background: var(--ps-bg-1);
+  color: var(--ps-text);
   font-synthesis: none;
+  font-optical-sizing: auto;
   letter-spacing: 0;
-  text-rendering: geometricPrecision;
-  --focus-border: rgba(244, 247, 251, 0.62);
-  --focus-bg: rgba(244, 247, 251, 0.1);
-  --focus-bg-strong: rgba(244, 247, 251, 0.15);
-  --focus-accent: rgba(139, 220, 255, 0.96);
-  --focus-accent-soft: rgba(109, 203, 255, 0.2);
-  --focus-glow: 0 0 0 2px var(--focus-accent), 0 0 0 6px var(--focus-accent-soft), 0 12px 30px rgba(0, 0, 0, 0.34);
-  --focus-ring: 0 0 0 2px var(--focus-accent), 0 0 0 6px var(--focus-accent-soft), 0 12px 30px rgba(0, 0, 0, 0.34);
-  --hover-ring: 0 0 0 1px rgba(244, 247, 251, 0.52), 0 8px 22px rgba(0, 0, 0, 0.24);
-  --panel-bg: rgba(8, 12, 18, 0.82);
-  --panel-bg-strong: rgba(10, 14, 20, 0.94);
-  --panel-border: rgba(231, 236, 242, 0.17);
-  --text-primary: #f4f6f8;
-  --text-secondary: rgba(225, 230, 236, 0.64);
-  --slider-track: rgba(226, 231, 237, 0.18);
-  --slider-active: #d8dde3;
-  --slider-thumb: #f4f6f8;
-  --slider-thumb-border: #232932;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }

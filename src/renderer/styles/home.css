@@ -602,11 +602,6 @@
   backdrop-filter: blur(18px);
 }
 
-.launch-notice {
-  position: fixed;
-  z-index: 140;
-}
-
 .console-game-row {
   display: flex;
   width: calc(100% + 28px);
