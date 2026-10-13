@@ -1218,6 +1218,28 @@ $flags = 0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040
   await runPowerShell(script);
 }
 
+// Windows' immersive full-screen band. A Store game there renders above every
+// desktop window, and Windows cloaks it once another window takes foreground.
+const IMMERSIVE_WINDOW_BAND = 8;
+
+/**
+ * True when a game frame is in immersive full screen and not minimized, even if
+ * Windows cloaked it behind NXGS. Native Home staging reactivates such a frame
+ * and moves it out of the immersive band, so it is still a live Home target.
+ */
+export async function isRecoverableImmersiveGameWindow(window: GameWindowInfo): Promise<boolean> {
+  if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
+    return false;
+  }
+  try {
+    const result = await runWindowsControl('inspect-window', Math.trunc(window.handle));
+    const state = result.presentation;
+    return Boolean(state && state.windowBand === IMMERSIVE_WINDOW_BAND && state.isVisible && !state.isMinimized);
+  } catch {
+    return false;
+  }
+}
+
 export async function isGameWindowVisible(window: GameWindowInfo): Promise<boolean> {
   if (process.platform !== 'win32' || !Number.isFinite(window.handle) || window.handle <= 0) {
     return false;

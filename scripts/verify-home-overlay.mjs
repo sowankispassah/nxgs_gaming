@@ -71,7 +71,24 @@ assert.match(mainSource, /gameplayQuickOverlayShowPromise/);
 assert.match(mainSource, /gameplayQuickOverlayPreparePromise/);
 assert.match(mainSource, /reused prewarmed renderer/);
 assert.match(mainSource, /await gameplayQuickOverlayPreparePromise[\s\S]*preparedBackdropIsAcceptable\(\)[\s\S]*return/, 'concurrent Home requests must reuse an already-prepared direct or captured live backdrop');
-assert.match(mainSource, /performGameplayQuickOverlayShow[\s\S]*overlay\.setAlwaysOnTop\(true, 'screen-saver'\)[\s\S]*overlay\.show\(\)/);
+{
+  // Activating Home before native staging makes Windows cloak an immersive
+  // full-screen Store game before it can leave the immersive band.
+  const showBody = mainSource.slice(
+    mainSource.indexOf('async function performGameplayQuickOverlayShow('),
+    mainSource.indexOf('async function showGameplayQuickOverlay(')
+  );
+  assert.match(
+    showBody,
+    /overlay\.setAlwaysOnTop\(true, 'screen-saver'\)[\s\S]*overlay\.showInactive\(\)[\s\S]*await stageGameplayQuickOverlay\(overlay, gameId\)/
+  );
+  assert.doesNotMatch(showBody, /overlay\.show\(\)/, 'Home must not activate the overlay before native staging');
+  const stages = [...showBody.matchAll(/await stageGameplayQuickOverlay\(overlay, gameId\)/g)].map((match) => match.index);
+  const focuses = [...showBody.matchAll(/overlay\.focus\(\)/g)].map((match) => match.index);
+  assert.equal(stages.length, 2);
+  assert.equal(focuses.length, 2);
+  assert.ok(focuses.every((focus, index) => focus > stages[index]), 'Home must take foreground only after native staging');
+}
 assert.match(mainSource, /topmost restored: \$\{overlay\.isAlwaysOnTop\(\)\}/);
 assert.match(
   mainSource,
@@ -97,6 +114,54 @@ assert.match(
   windowsControlSource,
   /ShowWindowAsync\(game, 9\)[\s\S]*SetWindowPos\(game,[\s\S]*ShowWindow\(overlay, 5\)/,
   'the tracked game must remain visible while the overlay is staged immediately above it'
+);
+// Immersive full-screen Store games (window band 8) render above every desktop
+// window. Home moves them to the desktop band with Windows' own toggle.
+assert.match(
+  windowsControlSource,
+  /ReleaseHeldModifiers\(trustedInput\);\s*keybd_event\(0x10, 0, 0, UIntPtr\.Zero\);\s*keybd_event\(0x5B, 0, 0, trustedInput\);\s*keybd_event\(0x0D, 0, 0, UIntPtr\.Zero\);/,
+  'the held Home chord must be released first, or Windows sees Ctrl+Shift+Win+Enter and ignores the full-screen toggle'
+);
+assert.match(
+  windowsControlSource,
+  /LeaveImmersiveFullscreen[\s\S]*if \(ActivateForImmersiveToggle\(game\)\) \{\s*ReleaseHeldModifiers/,
+  'the toggle must reach the game even when Home already owns foreground'
+);
+assert.match(
+  windowsControlSource,
+  /result != "ok"[\s\S]*band == ImmersiveBand[\s\S]*result = StageOverlayOnce\(/,
+  'a game still in immersive full screen after a failed stage must be reactivated and staged once more'
+);
+assert.match(
+  windowsControlSource,
+  /FailedImmersiveWindowToggles\.Remove\(game\.ToInt64\(\)\);[\s\S]*boundsRestored[\s\S]*ApplyBorderlessCover\(game\);/,
+  'the game must get the borderless cover presentation after Windows finishes restoring its windowed frame'
+);
+assert.match(
+  windowsControlSource,
+  /ApplyBorderlessCover[\s\S]*& ~0x00CF0000L[\s\S]*& ~0x00060301L/,
+  'the title bar and borders Windows restores must be removed again'
+);
+assert.match(windowsControlSource, /failures >= MaxImmersiveToggleFailures/, 'one failed toggle must not disable live Home for the session');
+assert.match(windowsControlSource, /windowBand = bandRead \? \(int\)band : -1/, 'window inspection must report the z-order band');
+assert.match(
+  windowManagerSource,
+  /state\.windowBand === IMMERSIVE_WINDOW_BAND && state\.isVisible && !state\.isMinimized/,
+  'only a non-minimized immersive frame is recoverable while cloaked'
+);
+assert.match(
+  launcherSource,
+  /isRecoverableImmersiveGameWindow\(candidate\)[\s\S]*No verified visual window replaced provisional/,
+  'a cloaked immersive Store game must stay a live Home target instead of falling back to artwork'
+);
+assert.match(
+  mainSource,
+  /!overlay\.isFocused\(\) && gameplayQuickOverlayNativeStagesInFlight === 0/,
+  'loading Home must not take foreground back while native staging moves the game'
+);
+assert.match(
+  mainSource,
+  /gameplayQuickOverlayNativeStagesInFlight \+= 1;[\s\S]*finally \{\s*gameplayQuickOverlayNativeStagesInFlight -= 1;/
 );
 assert.doesNotMatch(
   windowsControlSource,
@@ -128,7 +193,7 @@ assert.match(
 );
 assert.match(
   mainSource,
-  /prepareGameplayQuickOverlayRenderer\(true\)[\s\S]*exactGameVisualPrepared[\s\S]*\['direct', 'live', 'snapshot'\]\.includes[\s\S]*if \(!exactGameVisualPrepared\)[\s\S]*return;[\s\S]*overlay\.show\(\)/,
+  /prepareGameplayQuickOverlayRenderer\(true\)[\s\S]*exactGameVisualPrepared[\s\S]*\['direct', 'live', 'snapshot'\]\.includes[\s\S]*if \(!exactGameVisualPrepared\)[\s\S]*return;[\s\S]*overlay\.showInactive\(\)/,
   'the overlay must stay hidden unless a direct game view, live capture, or real game snapshot is ready'
 );
 assert.match(mainSource, /status === 'running'[\s\S]*prepareGameplayQuickOverlayRenderer/);

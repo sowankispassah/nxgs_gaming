@@ -9,6 +9,8 @@ export interface GamePresentationSnapshot {
   isMinimized: boolean;
   isVisible: boolean;
   isCloaked?: boolean;
+  /** Windows z-order band; 8 is immersive full screen, above every desktop window. */
+  windowBand?: number;
   hasWindowChrome: boolean;
   height: number;
   monitorHeight: number;

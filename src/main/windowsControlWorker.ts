@@ -193,8 +193,15 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
     [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr64(IntPtr window, int index);
     [DllImport("user32.dll", EntryPoint="GetWindowLongW")] private static extern int GetWindowLong32(IntPtr window, int index);
+    [DllImport("user32.dll", EntryPoint="SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr64(IntPtr window, int index, IntPtr value);
+    [DllImport("user32.dll", EntryPoint="SetWindowLongW")] private static extern int SetWindowLong32(IntPtr window, int index, int value);
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
     private static long WindowStyle(IntPtr window, int index) {
         return IntPtr.Size == 8 ? GetWindowLongPtr64(window, index).ToInt64() : GetWindowLong32(window, index);
+    }
+    private static void SetWindowStyle(IntPtr window, int index, long value) {
+        if (IntPtr.Size == 8) SetWindowLongPtr64(window, index, new IntPtr(value));
+        else SetWindowLong32(window, index, unchecked((int)value));
     }
     public static object Presentation(long handle) {
         var window = new IntPtr(handle);
@@ -206,9 +213,12 @@ public static class NxgsWarningInput {
         var foreground = GetForegroundWindow();
         int cloaked;
         bool isCloaked = DwmGetWindowAttribute(window, 14, out cloaked, 4) != 0 || cloaked != 0;
+        uint band;
+        var bandRead = GetWindowBand(window, out band);
         return new {
             foregroundHandle = foreground.ToInt64(), isForeground = foreground == window,
             isVisible = IsWindowVisible(window), isMinimized = IsIconic(window), isCloaked = isCloaked,
+            windowBand = bandRead ? (int)band : -1,
             hasWindowChrome = (WindowStyle(window, -16) & 0x00CF0000L) != 0 ||
                 (WindowStyle(window, -20) & 0x00060301L) != 0,
             x = rect.Left, y = rect.Top, width = rect.Right - rect.Left, height = rect.Bottom - rect.Top,
@@ -255,12 +265,23 @@ public static class NxgsWarningInput {
     [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint parameter, ref uint value, uint flags);
     [DllImport("dwmapi.dll")] private static extern int DwmFlush();
     [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out uint value, int size);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int virtualKey);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
 
     private const uint KeyUp = 0x0002;
-    private static readonly HashSet<long> FailedImmersiveWindowToggles = new HashSet<long>();
+    private const uint ExtendedKey = 0x0001;
+    // Window band 8 is Windows' immersive full-screen band, above every
+    // desktop window including NXGS's topmost overlay.
+    private const uint ImmersiveBand = 8;
+    // Allow retries on later Home presses, but stop toggling a window that
+    // never leaves immersive full screen.
+    private const int MaxImmersiveToggleFailures = 4;
+    private static readonly Dictionary<long, int> FailedImmersiveWindowToggles = new Dictionary<long, int>();
     private const uint NoSize = 0x0001;
     private const uint NoMove = 0x0002;
+    private const uint NoZOrder = 0x0004;
     private const uint NoActivate = 0x0010;
+    private const uint FrameChanged = 0x0020;
     private const uint ShowWindowFlag = 0x0040;
     private const uint WindowClose = 0x0010;
     private const uint PreviousWindow = 3;
@@ -387,6 +408,142 @@ public static class NxgsWarningInput {
         }
     }
 
+    // Physical Home chords (Ctrl+Shift+H) are usually still held when Home
+    // stages, so Windows would see Ctrl+Shift+Win+Enter instead of its
+    // full-screen toggle. Release held modifiers before injecting it.
+    private static void ReleaseHeldModifiers(UIntPtr trustedInput) {
+        foreach (var key in new byte[] { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5 }) {
+            if ((GetAsyncKeyState(key) & 0x8000) == 0) continue;
+            keybd_event(key, 0, KeyUp | (key == 0xA3 || key == 0xA5 ? ExtendedKey : 0), UIntPtr.Zero);
+        }
+        foreach (var key in new byte[] { 0x5B, 0x5C }) {
+            if ((GetAsyncKeyState(key) & 0x8000) != 0) keybd_event(key, 0, KeyUp | ExtendedKey, trustedInput);
+        }
+    }
+
+    // Windows applies its full-screen toggle to the foreground app only. When
+    // Home already owns foreground, bring back the exact game first; activation
+    // also uncloaks an immersive frame that Windows hid behind NXGS.
+    private static bool ActivateForImmersiveToggle(IntPtr window) {
+        if (GetForegroundWindow() == window) return true;
+        var currentThread = GetCurrentThreadId();
+        uint targetProcess;
+        var targetThread = GetWindowThreadProcessId(window, out targetProcess);
+        var attached = targetThread != 0 && targetThread != currentThread &&
+            AttachThreadInput(currentThread, targetThread, true);
+        try {
+            if (IsIconic(window)) ShowWindow(window, 9);
+            SetWindowPos(window, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | ShowWindowFlag);
+            BringWindowToTop(window);
+            SetActiveWindow(window);
+            SetForegroundWindow(window);
+            SetFocus(window);
+            for (var wait = 0; wait < 25 && GetForegroundWindow() != window; wait += 1) {
+                System.Threading.Thread.Sleep(10);
+            }
+            return GetForegroundWindow() == window;
+        } finally {
+            if (attached) AttachThreadInput(currentThread, targetThread, false);
+        }
+    }
+
+    // Leaving immersive full screen makes ApplicationFrameHost restore the
+    // windowed frame: title bar styles, no topmost, maximized work-area
+    // bounds. Reapply the gameplay handoff's borderless cover presentation so
+    // no title bar or NXGS shell edge shows under Home.
+    private static void ApplyBorderlessCover(IntPtr window) {
+        var monitor = new MonitorInfo();
+        monitor.Size = Marshal.SizeOf(typeof(MonitorInfo));
+        if (!GetMonitorInfo(MonitorFromWindow(window, 2), ref monitor)) return;
+        SetWindowStyle(window, -16, (WindowStyle(window, -16) & ~0x00CF0000L) | 0x80000000L | 0x10000000L);
+        SetWindowStyle(window, -20, WindowStyle(window, -20) & ~0x00060301L);
+        var doNotRound = 1;
+        var noBorderColor = -2;
+        DwmSetWindowAttribute(window, 33, ref doNotRound, 4);
+        DwmSetWindowAttribute(window, 34, ref noBorderColor, 4);
+        uint ownerProcess;
+        GetWindowThreadProcessId(window, out ownerProcess);
+        var frameHost = false;
+        try {
+            using (var owner = System.Diagnostics.Process.GetProcessById((int)ownerProcess)) {
+                frameHost = String.Equals(owner.ProcessName, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase);
+            }
+        } catch (ArgumentException) { }
+        // Same geometry as the launch handoff: a small overscan, and the Store
+        // frame's own title bar pushed above the display.
+        const int overscan = 2;
+        var chromeOffset = frameHost
+            ? Math.Max(36, GetSystemMetrics(4) + GetSystemMetrics(33) + GetSystemMetrics(92) + 8)
+            : 0;
+        var bounds = monitor.Bounds;
+        SetWindowPos(window, IntPtr.Zero, bounds.Left - overscan, bounds.Top - overscan - chromeOffset,
+            bounds.Right - bounds.Left + overscan * 2, bounds.Bottom - bounds.Top + overscan * 2 + chromeOffset,
+            NoZOrder | NoActivate | FrameChanged | ShowWindowFlag);
+    }
+
+    // Windows' UWP full-screen toggle (Win+Shift+Enter) moves an immersive
+    // Store game into the desktop band, so it keeps rendering live underneath
+    // NXGS Home. The kiosk hook permits only this tagged injected Windows-key
+    // press; physical presses stay blocked.
+    private static bool LeaveImmersiveFullscreen(IntPtr game, UIntPtr trustedInput) {
+        uint band;
+        if (!GetWindowBand(game, out band) || band != ImmersiveBand) return true;
+        int failures;
+        FailedImmersiveWindowToggles.TryGetValue(game.ToInt64(), out failures);
+        if (failures >= MaxImmersiveToggleFailures) return false;
+        Rect immersiveRect;
+        GetWindowRect(game, out immersiveRect);
+        if (ActivateForImmersiveToggle(game)) {
+            ReleaseHeldModifiers(trustedInput);
+            keybd_event(0x10, 0, 0, UIntPtr.Zero);
+            keybd_event(0x5B, 0, 0, trustedInput);
+            keybd_event(0x0D, 0, 0, UIntPtr.Zero);
+            keybd_event(0x0D, 0, KeyUp, UIntPtr.Zero);
+            keybd_event(0x5B, 0, KeyUp, trustedInput);
+            keybd_event(0x10, 0, KeyUp, UIntPtr.Zero);
+            for (var wait = 0; wait < 50; wait += 1) {
+                if (GetWindowBand(game, out band) && band != ImmersiveBand) break;
+                System.Threading.Thread.Sleep(10);
+            }
+        }
+        if (band == ImmersiveBand) {
+            FailedImmersiveWindowToggles[game.ToInt64()] = failures + 1;
+            return false;
+        }
+        FailedImmersiveWindowToggles.Remove(game.ToInt64());
+        // ApplicationFrameHost restores the windowed frame in steps over about
+        // 50 ms after the band switch (styles, topmost, then bounds). Wait for
+        // it to settle; covering earlier would be undone by those steps.
+        Rect lastRect = immersiveRect;
+        var lastStyle = WindowStyle(game, -16);
+        var lastExStyle = WindowStyle(game, -20);
+        var boundsRestored = false;
+        var stableMs = 0;
+        for (var elapsed = 0; elapsed < 400 && stableMs < (boundsRestored ? 40 : 120); elapsed += 10) {
+            System.Threading.Thread.Sleep(10);
+            Rect rect;
+            GetWindowRect(game, out rect);
+            var style = WindowStyle(game, -16);
+            var exStyle = WindowStyle(game, -20);
+            var changed = rect.Left != lastRect.Left || rect.Top != lastRect.Top || rect.Right != lastRect.Right ||
+                rect.Bottom != lastRect.Bottom || style != lastStyle || exStyle != lastExStyle;
+            if (rect.Left != immersiveRect.Left || rect.Top != immersiveRect.Top ||
+                rect.Right != immersiveRect.Right || rect.Bottom != immersiveRect.Bottom) boundsRestored = true;
+            stableMs = changed ? 0 : stableMs + 10;
+            lastRect = rect;
+            lastStyle = style;
+            lastExStyle = exStyle;
+        }
+        ApplyBorderlessCover(game);
+        return true;
+    }
+
+    private static bool IsShownOnScreen(IntPtr window) {
+        uint cloaked = 0;
+        return window != IntPtr.Zero && IsWindow(window) && IsWindowVisible(window) && !IsIconic(window) &&
+            !(DwmGetWindowAttribute(window, 14, out cloaked, sizeof(uint)) == 0 && cloaked != 0);
+    }
+
     public static string StageOverlay(long overlayHandle, long gameHandle, bool minimizeGameAfterPaint, string trustedInputToken) {
         var overlay = new IntPtr(overlayHandle);
         var game = new IntPtr(gameHandle);
@@ -398,6 +555,7 @@ public static class NxgsWarningInput {
             var root = GetAncestor(game, 2);
             if (root != IntPtr.Zero && IsWindow(root)) game = root;
         }
+        var trustedInput = new UIntPtr(Convert.ToUInt64(trustedInputToken, 16));
 
         var currentThread = GetCurrentThreadId();
         var foregroundBefore = GetForegroundWindow();
@@ -430,29 +588,31 @@ public static class NxgsWarningInput {
             AllowSetForegroundWindow(-1);
             uint unlockedTimeout = 0;
             SystemParametersInfo(0x2001, 0, ref unlockedTimeout, 0);
+            var result = StageOverlayOnce(overlay, game, minimizeGameAfterPaint, trustedInput);
+            uint band;
+            if (result != "ok" && !minimizeGameAfterPaint && game != IntPtr.Zero && IsWindow(game) &&
+                GetWindowBand(game, out band) && band == ImmersiveBand) {
+                // Windows cloaks an immersive game once another window takes
+                // foreground. Retry once: the game is reactivated, leaves
+                // immersive full screen, and Home is staged above it again.
+                result = StageOverlayOnce(overlay, game, minimizeGameAfterPaint, trustedInput);
+            }
+            return result;
+        } finally {
+            if (foregroundLockTimeoutRead) {
+                SystemParametersInfo(0x2001, 0, ref foregroundLockTimeout, 0);
+            }
+            if (attachedOverlayToForeground) AttachThreadInput(overlayThread, foregroundThread, false);
+            if (attachedOverlay) AttachThreadInput(currentThread, overlayThread, false);
+            if (attachedForeground) AttachThreadInput(currentThread, foregroundThread, false);
+        }
+    }
+
+    private static string StageOverlayOnce(IntPtr overlay, IntPtr game, bool minimizeGameAfterPaint, UIntPtr trustedInput) {
+        try {
             if (game != IntPtr.Zero && IsWindow(game)) {
                 EnableWindow(game, true);
-                uint gameBand;
-                if (!minimizeGameAfterPaint && GetForegroundWindow() == game &&
-                    GetWindowBand(game, out gameBand) && gameBand == 8 &&
-                    !FailedImmersiveWindowToggles.Contains(game.ToInt64())) {
-                    // Windows' UWP fullscreen toggle leaves the immersive
-                    // z-order band so the game can keep rendering underneath
-                    // NXGS Home. The kiosk hook permits only this tagged
-                    // injected Windows-key press; physical presses stay blocked.
-                    var trustedInput = new UIntPtr(Convert.ToUInt64(trustedInputToken, 16));
-                    keybd_event(0x10, 0, 0, UIntPtr.Zero);
-                    keybd_event(0x5B, 0, 0, trustedInput);
-                    keybd_event(0x0D, 0, 0, UIntPtr.Zero);
-                    keybd_event(0x0D, 0, KeyUp, UIntPtr.Zero);
-                    keybd_event(0x5B, 0, KeyUp, trustedInput);
-                    keybd_event(0x10, 0, KeyUp, UIntPtr.Zero);
-                    for (var wait = 0; wait < 50; wait += 1) {
-                        if (GetWindowBand(game, out gameBand) && gameBand != 8) break;
-                        System.Threading.Thread.Sleep(10);
-                    }
-                    if (gameBand == 8) FailedImmersiveWindowToggles.Add(game.ToInt64());
-                }
+                if (!minimizeGameAfterPaint) LeaveImmersiveFullscreen(game, trustedInput);
                 if (IsIconic(game) && !minimizeGameAfterPaint) ShowWindowAsync(game, 9);
                 if (!minimizeGameAfterPaint) {
                     SetWindowPos(game, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate | ShowWindowFlag);
@@ -519,12 +679,17 @@ public static class NxgsWarningInput {
 
             var visible = IsWindowVisible(overlay);
             var foreground = GetForegroundWindow();
-            uint cloaked = 0;
-            var gameCloaked = game != IntPtr.Zero && IsWindow(game) &&
-                DwmGetWindowAttribute(game, 14, out cloaked, sizeof(uint)) == 0 && cloaked != 0;
-            var gameVisible = game != IntPtr.Zero && IsWindow(game) &&
-                IsWindowVisible(game) && !IsIconic(game) && !gameCloaked;
-            if (!minimizeGameAfterPaint && !gameVisible) return "game_not_visible_or_cloaked";
+            var gameVisible = IsShownOnScreen(game);
+            uint band = 0;
+            var bandRead = game != IntPtr.Zero && IsWindow(game) && GetWindowBand(game, out band);
+            // A frame that just left immersive full screen can stay cloaked for
+            // a few compositor frames while Windows moves it between bands.
+            for (var wait = 0; !minimizeGameAfterPaint && !gameVisible && bandRead && band != ImmersiveBand && wait < 15; wait += 1) {
+                System.Threading.Thread.Sleep(20);
+                gameVisible = IsShownOnScreen(game);
+            }
+            var bandDetail = ";band=" + (bandRead ? band.ToString() : "unknown");
+            if (!minimizeGameAfterPaint && !gameVisible) return "game_not_visible_or_cloaked" + bandDetail;
             if (visible && overlayAboveGame && (foreground == overlay || gameMinimized)) {
                 DwmFlush();
                 return "ok";
@@ -532,15 +697,9 @@ public static class NxgsWarningInput {
             return "foreground=" + foreground.ToInt64() +
                 ";visible=" + visible +
                 ";above=" + overlayAboveGame +
-                ";gameMinimized=" + gameMinimized;
+                ";gameMinimized=" + gameMinimized + bandDetail;
         } finally {
             keybd_event(0x12, 0, KeyUp, UIntPtr.Zero);
-            if (foregroundLockTimeoutRead) {
-                SystemParametersInfo(0x2001, 0, ref foregroundLockTimeout, 0);
-            }
-            if (attachedOverlayToForeground) AttachThreadInput(overlayThread, foregroundThread, false);
-            if (attachedOverlay) AttachThreadInput(currentThread, overlayThread, false);
-            if (attachedForeground) AttachThreadInput(currentThread, foregroundThread, false);
         }
     }
 

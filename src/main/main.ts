@@ -88,6 +88,7 @@ let gameplayQuickOverlayPreparedBackdropKind: QuickOverlayBackdropKind | null = 
 let gameplayQuickOverlayPreparedWindowHandle: number | null = null;
 let gameplayQuickOverlayRendererReady = false;
 let gameplayQuickOverlayNativeZOrderVerified = false;
+let gameplayQuickOverlayNativeStagesInFlight = 0;
 let lastShellHomeRequestAt = 0;
 let pendingQuickOverlayPaint: {
   requestId: number;
@@ -413,11 +414,17 @@ async function enforceGameplayQuickOverlayZOrder(
   minimizeGameAfterPaint = false
 ): Promise<boolean> {
   const overlayHandle = browserWindowNativeHandle(overlay);
-  const state = await enforceQuickOverlayZOrder(
-    overlayHandle,
-    gameplayQuickOverlayPreparedWindowHandle ?? undefined,
-    minimizeGameAfterPaint
-  );
+  gameplayQuickOverlayNativeStagesInFlight += 1;
+  let state: Awaited<ReturnType<typeof enforceQuickOverlayZOrder>>;
+  try {
+    state = await enforceQuickOverlayZOrder(
+      overlayHandle,
+      gameplayQuickOverlayPreparedWindowHandle ?? undefined,
+      minimizeGameAfterPaint
+    );
+  } finally {
+    gameplayQuickOverlayNativeStagesInFlight -= 1;
+  }
   const verified = Boolean(
     state?.overlayVisible &&
     state.overlayTopMost &&
@@ -742,10 +749,12 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     overlay.setIgnoreMouseEvents(false);
     overlay.setAlwaysOnTop(true, 'screen-saver');
     overlay.moveTop();
-    overlay.focus();
-    overlay.webContents.focus();
+    // Native staging activates the overlay itself. Taking foreground first
+    // would make Windows cloak an immersive full-screen Store game before the
+    // native stage can move it out of the immersive band.
     await stageGameplayQuickOverlay(overlay, gameId);
     if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
+    overlay.focus();
     overlay.webContents.focus();
     return;
   }
@@ -786,12 +795,13 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   // is fully painted but remains hidden behind the topmost game window.
   overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.setIgnoreMouseEvents(false);
-  overlay.show();
+  // Show without activating: native staging takes foreground only after it
+  // has moved an immersive full-screen Store game out of the immersive band.
+  overlay.showInactive();
   overlay.moveTop();
-  overlay.focus();
-  overlay.webContents.focus();
   await stageGameplayQuickOverlay(overlay, gameId);
   if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
+  overlay.focus();
   overlay.webContents.focus();
   await logLine(
     gameplayQuickOverlayRendererReady ? 'info' : 'warn',
@@ -938,7 +948,9 @@ function protectLoadingHome(overlay: BrowserWindow, gameId: string): void {
     overlay.setIgnoreMouseEvents(false);
     if (!overlay.isAlwaysOnTop()) overlay.setAlwaysOnTop(true, 'screen-saver');
     if (!overlay.isVisible()) overlay.show();
-    if (!overlay.isFocused()) {
+    // Native staging briefly activates an immersive Store game to move it out
+    // of full screen. Do not take foreground back in the middle of it.
+    if (!overlay.isFocused() && gameplayQuickOverlayNativeStagesInFlight === 0) {
       overlay.moveTop();
       overlay.focus();
       overlay.webContents.focus();

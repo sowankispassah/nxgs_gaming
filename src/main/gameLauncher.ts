@@ -37,6 +37,7 @@ import {
   isProvisionalShellHostedStoreWindow,
   isWindowsTaskbarVisible,
   isGameWindowVisible,
+  isRecoverableImmersiveGameWindow,
   hideGameWindows,
   keepGameWindowOnTop,
   type GameWindowActivationState,
@@ -234,12 +235,36 @@ export class GameLauncher {
             }
           : verifiedVisualWindow;
       } else {
+        // Windows cloaks an immersive full-screen Store game once another
+        // window takes foreground. Native Home staging reactivates that exact
+        // frame and moves it out of the immersive band, so it stays live.
+        let immersiveWindow: GameWindowInfo | null = null;
+        for (const candidate of [window, upgradedWindow]) {
+          if (
+            candidate &&
+            gameWindowMatchesGame(game, candidate, this.activeProcessId) &&
+            await isRecoverableImmersiveGameWindow(candidate)
+          ) {
+            immersiveWindow = candidate;
+            break;
+          }
+        }
+        if (!immersiveWindow) {
+          await logLine(
+            'warn',
+            `No verified visual window replaced provisional ${game.title} shell frame ${window?.handle ?? 0}; ` +
+              `foreground ${foregroundWindow?.handle ?? 0} was rejected by game identity checks.`
+          );
+          return null;
+        }
+        if (this.activeGame?.id !== game.id || this.focusGeneration !== generation) return null;
         await logLine(
-          'warn',
-          `No verified visual window replaced provisional ${game.title} shell frame ${window?.handle ?? 0}; ` +
-            `foreground ${foregroundWindow?.handle ?? 0} was rejected by game identity checks.`
+          'info',
+          `Using ${game.title} immersive full-screen window ${immersiveWindow.handle} hidden behind Home; ` +
+            'native staging restores it live.'
         );
-        return null;
+        this.activeWindow = immersiveWindow;
+        return { ...immersiveWindow };
       }
     }
     if (

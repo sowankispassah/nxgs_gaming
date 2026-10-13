@@ -231,4 +231,47 @@ function harness() {
     assert.deepEqual(calls, superseded ? [] : ['resume', 'hide']);
   }
 }
-console.log('Launch Home: discovery, handoff races, resume, live promotion, and promotion/resume serialization passed.');
+// Windows cloaks a Store game in immersive full screen once NXGS owns
+// foreground (for example after a launch-time Home press). Home must keep that
+// exact frame as its live target, because native staging restores it, while
+// any other hidden window is still rejected.
+{
+  const storeGame = { id: 'store-game', title: 'Angry Birds 2', launchType: 'microsoftStore', launchCommand: 'package!App', processName: '' };
+  const frame = { handle: 500, processId: 42, processName: 'Angry Birds 2', title: 'Angry Birds 2', hostProcessName: 'ApplicationFrameHost', className: 'ApplicationFrameWindow' };
+  for (const immersive of [true, false]) {
+    const inspected = [];
+    const mocks = {
+      electron: {},
+      './logger': { logLine: async () => {} },
+      './gameLifecycle': {},
+      './windowsProcess': {},
+      './windowsControlWorker': {},
+      './gameWindowIdentity': { gameWindowMatchesGame: () => true },
+      './gamePresentation': {},
+      './windowManagerService': {
+        isProvisionalShellHostedStoreWindow: () => false,
+        isGameWindowVisible: async () => false,
+        isRecoverableImmersiveGameWindow: async (candidate) => { inspected.push(candidate.handle); return immersive; },
+        findGameWindow: async () => frame,
+        getForegroundWindowInfo: async () => null
+      }
+    };
+    const exported = {};
+    vm.runInNewContext(compiled, {
+      exports: exported, require: (name) => mocks[name] ?? require(name),
+      setTimeout, clearTimeout, setInterval, clearInterval, process
+    });
+    const launcher = new exported.GameLauncher(() => null, {
+      onGameExited() {}, onError() {}, onGameWindowDetected() {}, onActiveGameChanged() {}
+    });
+    Object.assign(launcher, { activeGame: storeGame, activeProcessId: 42, activeWindow: frame, focusGeneration: 1 });
+    const target = await launcher.getQuickOverlayBackdropWindow();
+    assert.ok(inspected.includes(frame.handle));
+    if (immersive) {
+      assert.equal(target?.handle, frame.handle, 'a cloaked immersive game must remain the live Home target');
+    } else {
+      assert.equal(target, null, 'a hidden window outside immersive full screen must not become the Home backdrop');
+    }
+  }
+}
+console.log('Launch Home: discovery, handoff races, resume, live promotion, promotion/resume serialization, and immersive recovery passed.');
