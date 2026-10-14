@@ -969,144 +969,99 @@
 
 /* ---------------------------------------------------- game launch splash */
 
+/*
+ * Black screen with the loader in the centre while a game opens or closes,
+ * so customers can see the game is on its way.
+ */
 .game-transition-overlay {
   position: fixed;
   inset: 0;
   /* Above the launcher, below staff controls and dialogs (lock button 95,
      modals 100) so a PIN or payment prompt opened mid-launch stays visible. */
   z-index: 90;
+  display: grid;
   width: 100vw;
   height: 100dvh;
+  place-items: center;
   overflow: hidden;
-  isolation: isolate;
-  background: var(--ps-bg-0);
+  background: #000000;
   color: var(--ps-text);
   animation: nxgs-fade-in var(--dur-slow) var(--ease-out) both;
 }
 
-.game-transition-art {
-  position: absolute;
-  inset: 0;
-  z-index: -2;
+.game-transition-center {
+  display: grid;
+  max-width: min(900px, 80vw);
+  justify-items: center;
+  text-align: center;
+  animation: nxgs-rise-in 520ms 80ms var(--ease-out) both;
 }
 
-.game-transition-art > img {
-  display: block;
+.game-transition-icon {
+  display: grid;
+  width: clamp(96px, 7vw, 148px);
+  height: clamp(96px, 7vw, 148px);
+  overflow: hidden;
+  place-items: center;
+  border-radius: clamp(20px, 1.4vw, 30px);
+  background: #10151f;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.game-transition-icon > img,
+.game-transition-icon > .game-transition-logo {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  animation: transition-art-in 1600ms var(--ease-out) both;
 }
 
-.game-transition-fallback {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(70% 70% at 72% 30%, rgba(32, 76, 160, 0.42), transparent 62%),
-    radial-gradient(60% 60% at 10% 100%, rgba(12, 46, 112, 0.5), transparent 60%),
-    linear-gradient(180deg, var(--ps-bg-2), var(--ps-bg-0));
-}
-
-/* Without game art the brand logo is presented as an art card. */
-.game-transition-logo {
-  width: min(280px, 20vw, 34vh);
-  height: auto;
-  margin-top: -12vh;
-  border-radius: 28px;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
-  animation: nxgs-scale-in 900ms var(--ease-out) both;
-}
-
-.game-transition-overlay:has(.game-transition-fallback) .game-transition-scrim {
-  opacity: 0.6;
-}
-
-.game-transition-scrim {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(90deg, rgba(3, 5, 10, 0.86) 0%, rgba(3, 5, 10, 0.55) 36%, rgba(3, 5, 10, 0.12) 72%, rgba(3, 5, 10, 0.08) 100%),
-    linear-gradient(0deg, rgba(3, 5, 10, 0.94) 0%, rgba(3, 5, 10, 0.4) 36%, rgba(3, 5, 10, 0) 62%),
-    linear-gradient(180deg, rgba(3, 5, 10, 0.5) 0%, rgba(3, 5, 10, 0) 24%);
-}
-
-.game-transition-overlay.is-closing .game-transition-scrim {
-  background-color: rgba(3, 5, 10, 0.42);
-}
-
-.game-transition-copy {
-  position: absolute;
-  right: var(--safe-x);
-  bottom: calc(var(--safe-y) + clamp(92px, 12vh, 150px));
-  left: var(--safe-x);
-  max-width: min(1180px, 72vw);
-  animation: nxgs-rise-in 520ms 120ms var(--ease-out) both;
-}
-
-.game-transition-copy .eyebrow {
-  margin-bottom: 14px;
-  color: var(--ps-text-2);
-}
-
-.game-transition-copy h2 {
+.game-transition-title {
+  max-width: 100%;
+  margin-top: clamp(20px, 2.6vh, 32px);
   overflow: hidden;
-  font-size: var(--text-display);
+  font-size: clamp(28px, 2.2vw, 46px);
   font-weight: var(--weight-bold);
-  letter-spacing: -0.025em;
-  line-height: 1.08;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
   text-overflow: ellipsis;
-  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.45);
   white-space: nowrap;
 }
 
-.game-transition-message {
-  margin-top: 14px;
-  color: var(--ps-text-2);
-  font-size: var(--text-lg);
-}
-
-.launch-help {
-  position: absolute;
-  bottom: var(--safe-y);
-  left: var(--safe-x);
-  display: grid;
-  max-width: min(720px, 52vw);
-  gap: 4px;
-  color: var(--ps-text-3);
-  font-size: var(--text-xs);
-  line-height: 1.45;
-  animation: nxgs-fade-in 600ms 400ms var(--ease-out) both;
-}
-
-.game-transition-status {
-  position: absolute;
-  right: var(--safe-x);
-  bottom: var(--safe-y);
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  color: var(--ps-text);
-  font-size: var(--text-md);
-  font-weight: var(--weight-medium);
-  animation: nxgs-fade-in 600ms 250ms var(--ease-out) both;
-}
-
 .game-transition-spinner {
-  width: 26px;
-  height: 26px;
-  border: 3px solid rgba(255, 255, 255, 0.22);
+  width: clamp(48px, 3.4vw, 68px);
+  height: clamp(48px, 3.4vw, 68px);
+  margin-top: clamp(28px, 4vh, 48px);
+  border: 4px solid rgba(255, 255, 255, 0.18);
   border-top-color: #ffffff;
   border-radius: 50%;
 }
 
-@keyframes transition-art-in {
-  from {
-    opacity: 0;
-    scale: 1.06;
-  }
+.game-transition-state {
+  margin-top: clamp(16px, 2vh, 24px);
+  color: var(--ps-text);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+}
+
+.game-transition-message {
+  margin-top: 8px;
+  color: var(--ps-text-2);
+  font-size: var(--text-md);
+}
+
+.launch-help {
+  position: absolute;
+  right: var(--safe-x);
+  bottom: var(--safe-y);
+  left: var(--safe-x);
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  color: var(--ps-text-3);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  text-align: center;
+  animation: nxgs-fade-in 600ms 400ms var(--ease-out) both;
 }
 
 /* ----------------------------------------------------------------- boot */

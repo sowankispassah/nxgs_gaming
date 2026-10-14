@@ -62,6 +62,13 @@ assert.match(hook, /pressedKeys\.Contains\(VK_LWIN\) \|\| pressedKeys\.Contains\
 assert.doesNotMatch(hook, /blocked = "Windows key"/, 'the Windows key must not take the restricted-input path that raised the launcher');
 assert.match(kioskInput, /startsWith\('HOME_KEY\|'\)[\s\S]*this\.requestHome\('windows-key'\)/, 'the Windows key must take the same Home path as Ctrl+Shift+H');
 
+// A PIN prompt hidden behind a game must never disable the sequence.
+const secretGate = kioskInput.slice(kioskInput.indexOf("input.startsWith('SECRET_KEY|')"), kioskInput.indexOf('this.secretAdminSequence.observe'));
+assert.doesNotMatch(secretGate, /adminPinActive/, 'an open PIN prompt must not swallow the secret sequence');
+const secretRequest = main.slice(main.indexOf('async function requestSecretAdminAction'), main.indexOf('function handleRestrictedCustomerInput'));
+assert.doesNotMatch(secretRequest.slice(0, secretRequest.indexOf('const window')), /isAdminPinActive/, 'repeating the sequence must re-show the PIN prompt');
+assert.match(secretRequest, /await launcher\.minimizeActiveGame\(\)[\s\S]*launcher\.focusLauncher\(\);[\s\S]*activateLauncherWindow\(browserWindowNativeHandle\(window\)\)/, 'the PIN prompt must come in front of a running game');
+
 // Control Room keeps the console full screen; only Exit Full Screen windows it.
 const kioskSettings = main.slice(main.indexOf('function applyKioskSettings('), main.indexOf('let closingGamesForQuit'));
 assert.match(kioskSettings, /if \(adminWindowedPresentation\) \{[\s\S]*setFullScreen\(false\)[\s\S]*\} else \{[\s\S]*setBounds\([\s\S]*setFullScreen\(true\)/);

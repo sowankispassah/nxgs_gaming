@@ -9,9 +9,15 @@ import type {
 } from '../../shared/types';
 import { SafeGameImage } from './ConsoleHome';
 import { ControlCenterClosing } from './control-center/ControlCenterClosing';
-import { ControlCenterGameCard, MENU_LABELS, type PendingAction } from './control-center/ControlCenterGameCard';
+import {
+  CLOSE_FAILED_PATTERN,
+  ControlCenterGameCard,
+  MENU_LABELS,
+  type PendingAction
+} from './control-center/ControlCenterGameCard';
 import { ControlCenterQuickSettings } from './control-center/ControlCenterQuickSettings';
 import { ControlCenterStatus } from './control-center/ControlCenterStatus';
+import { ControlCenterSwitcher } from './control-center/ControlCenterSwitcher';
 import { cx } from './control-center/cx';
 import { isBackKeyboardEvent, shouldKeepEditing } from '../navigation';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../controllerNavigation';
@@ -19,7 +25,8 @@ import { ControllerHints, type ControllerHint } from '../ui/ControllerHints';
 import { SystemToast } from '../ui/SystemToast';
 import { playUiSound } from '../ui/uiSound';
 
-type FocusArea = 'navbar' | 'menu' | 'quickAudio' | 'quickBrightness';
+// 'switcher' is the game list above the game tile; 'menu' is one game's card.
+type FocusArea = 'navbar' | 'switcher' | 'menu' | 'quickAudio' | 'quickBrightness';
 type NavGroup = 'switcher' | 'controls';
 type NavItem = {
   key: string;
@@ -46,6 +53,12 @@ const COMING_SOON_NOTICE = 'Coming soon to NXGS Play.';
 const NAVIGATION_HINTS: ControllerHint[] = [
   { glyph: 'dpad', label: 'Navigate' },
   { glyph: 'cross', label: 'Select' },
+  { glyph: 'circle', label: 'Back' }
+];
+const SWITCHER_HINTS: ControllerHint[] = [
+  { glyph: 'dpad-vertical', label: 'Choose' },
+  { glyph: 'cross', label: 'Resume' },
+  { glyph: 'dpad-horizontal', label: 'Options' },
   { glyph: 'circle', label: 'Back' }
 ];
 const CONFIRM_HINTS: ControllerHint[] = [
@@ -154,13 +167,21 @@ export function QuickHomeOverlay(props: {
       updatedAt: props.activeGame.updatedAt
     }];
   }, [props.activeGame]);
-  const initiallyActiveIndex = Math.max(0, sessions.findIndex((session) => session.isActive));
-  const initialNavKey = sessions.length > 0 ? `game:${sessions[initiallyActiveIndex].game.id}` : 'home';
+  // Like the PS5 Switcher: the active game first, then the most recently used.
+  const switcherSessions = useMemo(
+    () => [...sessions.filter((session) => session.isActive), ...sessions.filter((session) => !session.isActive)],
+    [sessions]
+  );
+  const initialNavKey = sessions.length > 0 ? 'switcher' : 'home';
   const [selectedNavKey, setSelectedNavKey] = useState(
     initialNavKey
   );
   const [menuIndex, setMenuIndex] = useState(0);
   const [focusArea, setFocusArea] = useState<FocusArea>('navbar');
+  const [switcherIndex, setSwitcherIndex] = useState(0);
+  // The game whose card (Resume / Launcher Home / Close) is open beside the list.
+  const [optionsGameId, setOptionsGameId] = useState<string | null>(null);
+  const [resumingGameId, setResumingGameId] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [message, setMessage] = useState('');
@@ -190,19 +211,33 @@ export function QuickHomeOverlay(props: {
   const brightnessFlushActive = useRef(false);
   const initialNavActionRef = useRef<HTMLButtonElement | null>(null);
   const lastSwitcherInput = useRef({ action: '', at: 0 });
-  const emergencyNavKey = useRef<string | null>(null);
+  // A programmatic switch to this nav key keeps the open card and its message.
+  const preservedNavKey = useRef<string | null>(null);
   const previousNavKey = useRef(selectedNavKey);
+  const previousStatus = useRef(props.activeGame.status);
+  const switcherSessionsRef = useRef(switcherSessions);
+  switcherSessionsRef.current = switcherSessions;
 
   // A layout effect lands this reset in the same frame as the Home status, so
   // the frame painted before Home is raised never shows the previous menu.
   useLayoutEffect(() => {
-    if (props.activeGame.status !== 'quickOverlayOpen' && props.activeGame.status !== 'launching') return;
-    setSelectedNavKey(initialNavKey);
-    setFocusArea('navbar');
+    const status = props.activeGame.status;
+    const resumeFailed = previousStatus.current === 'resuming' && status === 'quickOverlayOpen';
+    previousStatus.current = status;
+    // A failed resume returns to Home: keep its card and error on screen.
+    if ((status !== 'quickOverlayOpen' && status !== 'launching') || resumeFailed) return;
+    // A game that ignored Close opens with its card, so staff see Force Close.
+    const stuckSession = switcherSessionsRef.current.find((session) =>
+      session.status !== 'closing' && CLOSE_FAILED_PATTERN.test(session.message ?? ''));
+    setSelectedNavKey(stuckSession ? 'switcher' : initialNavKey);
+    setFocusArea(stuckSession ? 'menu' : 'navbar');
     setMenuIndex(0);
+    setSwitcherIndex(Math.max(0, stuckSession ? switcherSessionsRef.current.indexOf(stuckSession) : 0));
+    setOptionsGameId(stuckSession?.game.id ?? null);
     setConfirmClose(false);
     setQuickSettingsOpen(false);
     setMessage('');
+    setForcePin('');
     lastSwitcherInput.current = { action: '', at: 0 };
     const frame = window.requestAnimationFrame(() => initialNavActionRef.current?.focus({ preventScroll: true }));
     return () => window.cancelAnimationFrame(frame);
@@ -211,9 +246,12 @@ export function QuickHomeOverlay(props: {
   const navItems = useMemo<NavItem[]>(
     () => [
       { key: 'home', label: 'Launcher Home', caption: 'Home', group: 'switcher', icon: <Home size={24} /> },
-      ...sessions.map((session) => ({
-        key: `game:${session.game.id}`,
-        label: session.game.title,
+      // One tile for every running game, showing the most recent one.
+      ...switcherSessions.slice(0, 1).map((session) => ({
+        key: 'switcher',
+        label: switcherSessions.length > 1
+          ? `Switcher: ${session.game.title} and ${switcherSessions.length - 1} more`
+          : `Switcher: ${session.game.title}`,
         caption: session.game.title,
         group: 'switcher' as const,
         icon: null,
@@ -225,20 +263,24 @@ export function QuickHomeOverlay(props: {
       { key: 'settings', label: 'Quick Settings', caption: 'Quick Settings', group: 'controls', icon: <Settings size={24} /> },
       { key: 'power', label: 'Protected power controls', caption: 'Power', group: 'controls', icon: <Power size={24} />, notice: 'Power controls are available inside Control Room.' }
     ],
-    [sessions]
+    [switcherSessions]
   );
 
   const selectedNavIndex = Math.max(0, navItems.findIndex((item) => item.key === selectedNavKey));
   const activeNavItem = navItems[selectedNavIndex];
-  const selectedSession = activeNavItem?.session;
-  const selectedSessionIndex = Math.max(0, sessions.findIndex((session) => session === selectedSession));
+  const switcherSelected = activeNavItem?.key === 'switcher';
+  const optionsSession = switcherSelected
+    ? switcherSessions.find((session) => session.game.id === optionsGameId)
+    : undefined;
   const activeSession = sessions.find((session) => session.isActive) ?? sessions[0];
-  const resumeTargetSession = selectedSession ?? activeSession;
-  const gameSelected = Boolean(selectedSession);
-  const closeFailed = /did not close|force close/i.test(selectedSession?.message ?? '');
+  const closeFailed = CLOSE_FAILED_PATTERN.test(optionsSession?.message ?? '');
   const closingSession = sessions.find((session) => session.status === 'closing');
   const isClosingGame = Boolean(closingSession);
-  const disabled = pendingAction !== null || selectedSession?.status === 'closing';
+  // The closing screen covers Home until the close settles; nothing behind it
+  // may take input.
+  const disabled = pendingAction !== null || isClosingGame;
+  // "Resuming..." belongs on a game's card only while that game resumes.
+  const cardPendingAction = pendingAction === 'resume' && resumingGameId !== optionsSession?.game.id ? null : pendingAction;
   const navFocused = focusArea === 'navbar' && !confirmClose;
   const backgroundGame = activeSession?.game;
   const backgroundImage = quickOverlayImageUrl(backgroundGame?.coverImagePath || backgroundGame?.avatarImagePath || '');
@@ -270,24 +312,33 @@ export function QuickHomeOverlay(props: {
       if (navItems.some((item) => item.key === current)) {
         return current;
       }
-      const activeSession = sessions.find((session) => session.isActive);
-      return activeSession ? `game:${activeSession.game.id}` : 'home';
+      return sessions.length > 0 ? 'switcher' : 'home';
     });
   }, [navItems, sessions]);
 
   useEffect(() => {
-    if (props.emergencyCloseRequestId <= lastHandledEmergencyRequest || sessions.length === 0) return;
+    // Games can exit while the list is open; keep focus on a row that exists.
+    if (switcherIndex >= switcherSessions.length) setSwitcherIndex(Math.max(0, switcherSessions.length - 1));
+    if (optionsGameId && !switcherSessions.some((session) => session.game.id === optionsGameId)) {
+      setOptionsGameId(null);
+      setConfirmClose(false);
+      setFocusArea((area) => (area === 'menu' ? (switcherSessions.length > 0 ? 'switcher' : 'navbar') : area));
+    }
+    if (switcherSessions.length === 0) setFocusArea((area) => (area === 'switcher' ? 'navbar' : area));
+  }, [optionsGameId, switcherIndex, switcherSessions]);
+
+  useEffect(() => {
+    if (props.emergencyCloseRequestId <= lastHandledEmergencyRequest || switcherSessions.length === 0) return;
     lastHandledEmergencyRequest = props.emergencyCloseRequestId;
-    const activeIndex = sessions.findIndex((session) => session.isActive);
-    const emergencySession = sessions[activeIndex >= 0 ? activeIndex : 0];
-    const emergencyKey = `game:${emergencySession.game.id}`;
-    emergencyNavKey.current = emergencyKey;
-    setSelectedNavKey(emergencyKey);
+    preservedNavKey.current = 'switcher';
+    setSelectedNavKey('switcher');
     setQuickSettingsOpen(false);
+    setSwitcherIndex(0);
+    setOptionsGameId(switcherSessions[0].game.id);
     setFocusArea('menu');
     setMenuIndex(2);
     setConfirmClose(true);
-  }, [props.emergencyCloseRequestId, sessions]);
+  }, [props.emergencyCloseRequestId, switcherSessions]);
 
   useEffect(() => {
     if (!notice) {
@@ -300,13 +351,14 @@ export function QuickHomeOverlay(props: {
   useEffect(() => {
     if (previousNavKey.current === selectedNavKey) return;
     previousNavKey.current = selectedNavKey;
-    if (emergencyNavKey.current === selectedNavKey) {
-      emergencyNavKey.current = null;
+    if (preservedNavKey.current === selectedNavKey) {
+      preservedNavKey.current = null;
       return;
     }
-    emergencyNavKey.current = null;
+    preservedNavKey.current = null;
     setMessage('');
     setConfirmClose(false);
+    setOptionsGameId(null);
     if (selectedNavKey !== 'settings') {
       setQuickSettingsOpen(false);
       setAudioMessage('');
@@ -507,22 +559,35 @@ export function QuickHomeOverlay(props: {
     }
   }, [audio.muted, audio.supported]);
 
-  const resumeGame = useCallback(async (): Promise<void> => {
-    if (pendingAction || !resumeTargetSession) {
+  const resumeGame = useCallback(async (target: TrackedGameSessionState | undefined): Promise<void> => {
+    if (pendingAction || !target || target.status === 'closing') {
       return;
     }
     setPendingAction('resume');
+    setResumingGameId(target.game.id);
     setMessage('');
     try {
-      const result = await window.nxgs.resumeActiveGame(resumeTargetSession.game.id);
+      const result = await window.nxgs.resumeActiveGame(target.game.id);
       if (!result.ok) {
         playUiSound('error');
         setMessage(result.error ?? 'NXGS could not resume the game.');
+        // Show the error on that game's card, with Resume (not a pending
+        // Close confirmation) focused.
+        if (switcherSessionsRef.current.some((session) => session.game.id === target.game.id)) {
+          preservedNavKey.current = 'switcher';
+          setSelectedNavKey('switcher');
+          setSwitcherIndex(switcherSessionsRef.current.findIndex((session) => session.game.id === target.game.id));
+          setOptionsGameId(target.game.id);
+          setConfirmClose(false);
+          setFocusArea('menu');
+          setMenuIndex(0);
+        }
       }
     } finally {
       setPendingAction(null);
+      setResumingGameId(null);
     }
-  }, [pendingAction, resumeTargetSession]);
+  }, [pendingAction]);
 
   const goToLauncherHome = useCallback(async (): Promise<void> => {
     if (pendingAction) {
@@ -544,13 +609,13 @@ export function QuickHomeOverlay(props: {
   }, [pendingAction, props]);
 
   const closeGame = useCallback(async (): Promise<void> => {
-    if (pendingAction || !selectedSession) {
+    if (pendingAction || !optionsSession) {
       return;
     }
     setPendingAction('close');
     setMessage('');
     try {
-      const result = await window.nxgs.closeActiveGame(selectedSession.game.id);
+      const result = await window.nxgs.closeActiveGame(optionsSession.game.id);
       if (!result.ok) {
         playUiSound('error');
         setMessage(result.error ?? 'NXGS could not close the game.');
@@ -560,21 +625,24 @@ export function QuickHomeOverlay(props: {
     } finally {
       setPendingAction(null);
     }
-  }, [pendingAction, selectedSession]);
+  }, [pendingAction, optionsSession]);
 
   const forceCloseGame = useCallback(async (): Promise<void> => {
     setPendingAction('force');
     setMessage('');
     try {
-      const result = await window.nxgs.forceCloseGame(forcePin, selectedSession?.game.id);
+      const result = await window.nxgs.forceCloseGame(forcePin, optionsSession?.game.id);
       if (!result.ok) {
         playUiSound('error');
         setMessage('Invalid admin PIN.');
+      } else {
+        // Never leave the admin PIN filled in for the next customer.
+        setForcePin('');
       }
     } finally {
       setPendingAction(null);
     }
-  }, [forcePin, selectedSession]);
+  }, [forcePin, optionsSession]);
 
   const selectMenuAction = useCallback(
     (index: number): void => {
@@ -583,7 +651,7 @@ export function QuickHomeOverlay(props: {
       }
       playUiSound('select');
       if (index === 0) {
-        void resumeGame();
+        void resumeGame(optionsSession);
       } else if (index === 1) {
         void goToLauncherHome();
       } else {
@@ -591,8 +659,46 @@ export function QuickHomeOverlay(props: {
         setConfirmClose(true);
       }
     },
-    [disabled, goToLauncherHome, resumeGame]
+    [disabled, goToLauncherHome, optionsSession, resumeGame]
   );
+
+  const enterSwitcher = useCallback((): void => {
+    setOptionsGameId(null);
+    setConfirmClose(false);
+    setSwitcherIndex(0);
+    setFocusArea('switcher');
+  }, []);
+
+  const resumeSwitcherRow = useCallback((index: number): void => {
+    const target = switcherSessions[index];
+    if (disabled || !target || target.status === 'closing') return;
+    playUiSound('select');
+    setSwitcherIndex(index);
+    setConfirmClose(false);
+    void resumeGame(target);
+  }, [disabled, resumeGame, switcherSessions]);
+
+  const openSwitcherOptions = useCallback((index: number): void => {
+    const target = switcherSessions[index];
+    if (disabled || !target || target.status === 'closing') return;
+    playUiSound('open');
+    setSwitcherIndex(index);
+    setMessage('');
+    setConfirmClose(false);
+    setOptionsGameId(target.game.id);
+    setMenuIndex(0);
+    setFocusArea('menu');
+  }, [disabled, switcherSessions]);
+
+  const closeSwitcherOptions = useCallback((): void => {
+    // Return to that game's row; resuming or closing can reorder the list.
+    const row = switcherSessions.findIndex((session) => session.game.id === optionsGameId);
+    if (row >= 0) setSwitcherIndex(row);
+    setOptionsGameId(null);
+    setConfirmClose(false);
+    setMessage('');
+    setFocusArea('switcher');
+  }, [optionsGameId, switcherSessions]);
 
   const selectNavAction = useCallback(
     (index: number): void => {
@@ -604,9 +710,9 @@ export function QuickHomeOverlay(props: {
       if (item.key === 'home') {
         playUiSound('select');
         void goToLauncherHome();
-      } else if (item.session) {
+      } else if (item.key === 'switcher') {
         playUiSound('select');
-        setFocusArea('menu');
+        enterSwitcher();
       } else if (item.key === 'settings') {
         if (quickSettingsOpen) {
           playUiSound('close');
@@ -620,18 +726,19 @@ export function QuickHomeOverlay(props: {
         setNotice({ key: item.key, title: item.caption, message: item.notice ?? COMING_SOON_NOTICE });
       }
     },
-    [closeQuickSettings, disabled, goToLauncherHome, navItems, openQuickSettings, quickSettingsOpen]
+    [closeQuickSettings, disabled, enterSwitcher, goToLauncherHome, navItems, openQuickSettings, quickSettingsOpen]
   );
 
   const dismissOverlay = useCallback((): void => {
     if (disabled) return;
     playUiSound('back');
-    if (resumeTargetSession && props.dismissResumesGame !== false) {
-      void resumeGame();
+    // Leaving Home returns to the game it was opened over, like the PS5.
+    if (activeSession && props.dismissResumesGame !== false) {
+      void resumeGame(activeSession);
     } else {
       props.onDismiss();
     }
-  }, [disabled, props, resumeGame, resumeTargetSession]);
+  }, [activeSession, disabled, props, resumeGame]);
 
   const handleBack = useCallback((): void => {
     if (confirmClose) {
@@ -644,8 +751,18 @@ export function QuickHomeOverlay(props: {
       closeQuickSettings();
       return;
     }
+    if (optionsSession) {
+      playUiSound('back');
+      closeSwitcherOptions();
+      return;
+    }
+    if (focusArea === 'switcher') {
+      playUiSound('back');
+      setFocusArea('navbar');
+      return;
+    }
     dismissOverlay();
-  }, [closeQuickSettings, confirmClose, dismissOverlay, quickSettingsOpen]);
+  }, [closeQuickSettings, closeSwitcherOptions, confirmClose, dismissOverlay, focusArea, optionsSession, quickSettingsOpen]);
 
   const toggleCloseChoice = useCallback((): void => {
     playUiSound('move');
@@ -678,6 +795,36 @@ export function QuickHomeOverlay(props: {
   }, []);
 
   const moveSwitcherDirection = useCallback((direction: 'left' | 'right' | 'up' | 'down'): void => {
+    if (focusArea === 'switcher') {
+      // Up/Down choose a game, Right opens its options, Left returns to the bar.
+      if (direction === 'up') {
+        if (switcherIndex > 0) playUiSound('move');
+        setSwitcherIndex((index) => Math.max(0, index - 1));
+      } else if (direction === 'down') {
+        playUiSound('move');
+        if (switcherIndex >= switcherSessions.length - 1) setFocusArea('navbar');
+        else setSwitcherIndex((index) => index + 1);
+      } else if (direction === 'right') {
+        openSwitcherOptions(switcherIndex);
+      } else {
+        playUiSound('move');
+        setFocusArea('navbar');
+      }
+      return;
+    }
+    if (focusArea === 'menu' && optionsSession) {
+      if (direction === 'left') {
+        playUiSound('back');
+        closeSwitcherOptions();
+      } else if (direction === 'up') {
+        if (menuIndex > 0) playUiSound('move');
+        setMenuIndex((index) => Math.max(0, index - 1));
+      } else if (direction === 'down') {
+        if (menuIndex < MENU_LABELS.length - 1) playUiSound('move');
+        setMenuIndex((index) => Math.min(MENU_LABELS.length - 1, index + 1));
+      }
+      return;
+    }
     if (direction === 'left' || direction === 'right') {
       const delta = direction === 'right' ? 1 : -1;
       setSelectedNavKey(navItems[(selectedNavIndex + delta + navItems.length) % navItems.length].key);
@@ -685,26 +832,22 @@ export function QuickHomeOverlay(props: {
       playUiSound('move');
       return;
     }
-    if (direction === 'up') {
-      if (focusArea === 'menu') {
-        if (menuIndex > 0) playUiSound('move');
-        setMenuIndex((index) => Math.max(0, index - 1));
-      } else if (focusArea === 'navbar' && gameSelected) {
-        setMenuIndex(0);
-        setFocusArea('menu');
-        playUiSound('move');
-      }
-      return;
-    }
-    if (focusArea === 'menu') {
+    if (direction === 'up' && focusArea === 'navbar' && switcherSelected) {
+      // Up from the game tile enters the Switcher list.
       playUiSound('move');
-      if (menuIndex >= MENU_LABELS.length - 1) {
-        setFocusArea('navbar');
-      } else {
-        setMenuIndex((index) => index + 1);
-      }
+      enterSwitcher();
     }
-  }, [focusArea, gameSelected, menuIndex, navItems, selectedNavIndex]);
+  }, [closeSwitcherOptions, enterSwitcher, focusArea, menuIndex, navItems, openSwitcherOptions, optionsSession, selectedNavIndex, switcherIndex, switcherSelected, switcherSessions.length]);
+
+  const acceptFocused = useCallback((): void => {
+    if (focusArea === 'menu' && optionsSession) {
+      selectMenuAction(menuIndex);
+    } else if (focusArea === 'switcher') {
+      resumeSwitcherRow(switcherIndex);
+    } else {
+      selectNavAction(selectedNavIndex);
+    }
+  }, [focusArea, menuIndex, optionsSession, resumeSwitcherRow, selectMenuAction, selectNavAction, selectedNavIndex, switcherIndex]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -756,16 +899,12 @@ export function QuickHomeOverlay(props: {
         return;
       }
       if (event.key === 'Enter') {
-        if (focusArea === 'menu' && gameSelected) {
-          selectMenuAction(menuIndex);
-        } else {
-          selectNavAction(selectedNavIndex);
-        }
+        acceptFocused();
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [acceptCloseChoice, adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, confirmClose, disabled, focusArea, gameSelected, handleBack, menuIndex, moveQuickSettingsFocus, moveSwitcherDirection, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleCloseChoice, toggleSystemMute]);
+  }, [acceptCloseChoice, acceptFocused, adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, confirmClose, disabled, focusArea, handleBack, moveQuickSettingsFocus, moveSwitcherDirection, quickSettingsOpen, toggleCloseChoice, toggleSystemMute]);
 
   useEffect(() => {
     if (!quickSettingsOpen) return;
@@ -777,14 +916,20 @@ export function QuickHomeOverlay(props: {
 
   useEffect(() => {
     const root = overlayRef.current;
-    if (!root || (focusArea !== 'navbar' && focusArea !== 'menu')) return;
+    if (!root || (focusArea !== 'navbar' && focusArea !== 'menu' && focusArea !== 'switcher')) return;
     const current = document.activeElement;
     if (current instanceof HTMLInputElement && current.type === 'password' && root.contains(current)) return;
     const target = root.querySelector<HTMLButtonElement>(
-      focusArea === 'menu' || confirmClose ? '.quick-game-menu button.focused' : '.quick-navbar .quick-nav-item.selected'
+      focusArea === 'menu' || confirmClose
+        ? '.quick-game-menu button.focused'
+        : focusArea === 'switcher'
+          ? '.quick-switcher-resume.focused'
+          : '.quick-navbar .quick-nav-item.selected'
     );
     if (target && target !== current) target.focus({ preventScroll: true });
-  }, [confirmClose, focusArea, menuIndex, pendingAction, selectedNavKey]);
+    // A long Switcher list scrolls; keep the chosen game in view.
+    if (target && focusArea === 'switcher') target.scrollIntoView({ block: 'nearest' });
+  }, [confirmClose, focusArea, menuIndex, pendingAction, selectedNavKey, switcherIndex]);
 
   const handleSwitcherControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
     const inputAction = event.type === 'direction' ? `Arrow${event.direction[0].toUpperCase()}${event.direction.slice(1)}` : event.type;
@@ -800,10 +945,8 @@ export function QuickHomeOverlay(props: {
         void toggleSystemMute();
       } else if (confirmClose) {
         acceptCloseChoice();
-      } else if (focusArea === 'menu' && gameSelected) {
-        selectMenuAction(menuIndex);
       } else {
-        selectNavAction(selectedNavIndex);
+        acceptFocused();
       }
       return;
     }
@@ -829,7 +972,7 @@ export function QuickHomeOverlay(props: {
     }
 
     moveSwitcherDirection(event.direction);
-  }, [acceptCloseChoice, adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, confirmClose, focusArea, gameSelected, handleBack, menuIndex, moveQuickSettingsFocus, moveSwitcherDirection, quickSettingsOpen, selectMenuAction, selectNavAction, selectedNavIndex, toggleCloseChoice, toggleSystemMute]);
+  }, [acceptCloseChoice, acceptFocused, adjustSystemBrightness, adjustSystemVolume, claimSwitcherInput, confirmClose, focusArea, handleBack, moveQuickSettingsFocus, moveSwitcherDirection, quickSettingsOpen, toggleCloseChoice, toggleSystemMute]);
 
   useControllerNavigation(!disabled, handleSwitcherControllerEvent);
 
@@ -845,7 +988,9 @@ export function QuickHomeOverlay(props: {
       ? display.brightness.supported ? BRIGHTNESS_HINTS : UNAVAILABLE_CONTROL_HINTS
       : confirmClose
         ? CONFIRM_HINTS
-        : NAVIGATION_HINTS;
+        : focusArea === 'switcher'
+          ? SWITCHER_HINTS
+          : NAVIGATION_HINTS;
   const noticeItem = notice ? navItems.find((item) => item.key === notice.key) : undefined;
 
   return (
@@ -853,11 +998,10 @@ export function QuickHomeOverlay(props: {
       ref={overlayRef}
       className={cx('quick-home-overlay', props.backdrop?.kind === 'direct' && 'direct-game-backdrop', isClosingGame && 'closing-game')}
       aria-label="NXGS quick home overlay"
-      style={{ '--qc-session-index': selectedSessionIndex } as CSSProperties}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         const target = event.target;
-        if (target instanceof Element && target.closest('.quick-navbar, .quick-game-menu, .quick-overlay-toast')) return;
+        if (target instanceof Element && target.closest('.quick-navbar, .quick-switcher, .quick-game-menu, .quick-overlay-toast')) return;
         event.preventDefault();
         event.stopPropagation();
         dismissOverlay();
@@ -884,14 +1028,34 @@ export function QuickHomeOverlay(props: {
       <div className="quick-overlay-shade" />
       {closingSession && <ControlCenterClosing game={closingSession.game} />}
 
-      {gameSelected && selectedSession && (
+      {switcherSelected && switcherSessions.length > 0 && (
+        <ControlCenterSwitcher
+          sessions={switcherSessions}
+          focusedIndex={focusArea === 'switcher' ? switcherIndex : null}
+          optionsGameId={optionsSession?.game.id ?? null}
+          resumingGameId={resumingGameId}
+          disabled={disabled}
+          onRowHover={(index) => {
+            if (optionsSession) return;
+            setSwitcherIndex(index);
+            setFocusArea('switcher');
+          }}
+          onResume={resumeSwitcherRow}
+          onOptions={(index) => {
+            if (optionsSession?.game.id === switcherSessions[index]?.game.id) closeSwitcherOptions();
+            else openSwitcherOptions(index);
+          }}
+        />
+      )}
+
+      {optionsSession && (
         <ControlCenterGameCard
-          session={selectedSession}
+          session={optionsSession}
           message={message}
           menuFocused={focusArea === 'menu'}
           menuIndex={menuIndex}
           confirmClose={confirmClose}
-          pendingAction={pendingAction}
+          pendingAction={cardPendingAction}
           disabled={disabled}
           closeFailed={closeFailed}
           forcePin={forcePin}

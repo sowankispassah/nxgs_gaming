@@ -22,6 +22,8 @@
   --qc-card-top: rgb(36, 41, 53);
   --qc-card-line: rgba(255, 255, 255, 0.08);
   --qc-row-fill: rgba(255, 255, 255, 0.1);
+  --qc-switcher-w: clamp(360px, 24vw, 520px);
+  --qc-switcher-icon: clamp(38px, 2.4vw, 50px);
   --qc-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 2px 18px rgba(0, 0, 0, 0.45);
 
   position: fixed;
@@ -440,6 +442,184 @@
 .quick-overlay-hints .button-glyph svg {
   width: 100%;
   height: 100%;
+}
+
+/* -------------------------------------------------------------- switcher */
+
+/*
+ * One game tile in the bar opens the PS5-style Switcher: the active game,
+ * then the other games still running. A game's card opens beside the list.
+ */
+.quick-switcher {
+  position: absolute;
+  bottom: var(--qc-card-bottom);
+  left: calc(var(--safe-x) + var(--qc-item) + var(--qc-home-gap));
+  z-index: 3;
+  display: flex;
+  width: var(--qc-switcher-w);
+  max-height: calc(100dvh - var(--qc-card-bottom) - var(--safe-y));
+  flex-direction: column;
+  overflow-y: auto;
+  border: 1px solid var(--qc-card-line);
+  border-radius: var(--radius-lg);
+  background: var(--qc-card-bg);
+  box-shadow: var(--shadow-3);
+  padding: clamp(14px, 1.6vh, 22px) clamp(10px, 0.7vw, 14px) clamp(10px, 1.2vh, 16px);
+  animation: qc-card-in var(--dur-base) var(--ease-out) both;
+}
+
+.quick-switcher-title {
+  margin: 0 0 clamp(6px, 0.8vh, 12px);
+  padding: 0 clamp(8px, 0.5vw, 12px);
+  color: var(--ps-text);
+  font-family: var(--font-display);
+  font-size: clamp(19px, 1.15vw, 25px);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+
+.quick-switcher-section + .quick-switcher-section {
+  margin-top: clamp(8px, 1vh, 14px);
+}
+
+.quick-switcher-section-label {
+  margin: 0 0 6px;
+  padding: 0 clamp(8px, 0.5vw, 12px);
+  color: var(--ps-text-2);
+  font-size: clamp(14px, 0.8vw, 17px);
+  font-weight: var(--weight-semibold);
+}
+
+.quick-switcher-list {
+  display: grid;
+}
+
+.quick-switcher-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Hairline between recent games, as on the PS5. */
+.quick-switcher-row + .quick-switcher-row::before {
+  position: absolute;
+  top: 0;
+  right: clamp(14px, 0.9vw, 20px);
+  left: calc(clamp(14px, 0.9vw, 20px) + var(--qc-switcher-icon) + 16px);
+  height: 1px;
+  background: var(--ps-line-strong);
+  content: '';
+}
+
+.quick-switcher-row.focused::before,
+.quick-switcher-row.focused + .quick-switcher-row::before {
+  opacity: 0;
+}
+
+.quick-switcher-resume {
+  display: flex;
+  min-width: 0;
+  min-height: clamp(56px, 6.2vh, 76px);
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 16px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ps-text);
+  padding: 0 clamp(10px, 0.6vw, 14px);
+  font-size: clamp(17px, 1vw, 22px);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  transition: background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.quick-switcher-resume.focused {
+  background: var(--qc-row-fill);
+  box-shadow: var(--focus-ring);
+}
+
+/* The game whose options card is open beside the list. */
+.quick-switcher-row.options-open .quick-switcher-resume {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.quick-switcher-resume:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.quick-switcher-icon {
+  display: grid;
+  width: var(--qc-switcher-icon);
+  height: var(--qc-switcher-icon);
+  flex: 0 0 auto;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 8px;
+  background: #141c2b;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.quick-switcher-icon > img,
+.quick-switcher-icon > .nxgs-image-placeholder {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.quick-switcher-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-switcher-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--ps-text-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.quick-switcher-status.warning {
+  color: var(--ps-warning);
+}
+
+/* Options for a game (Resume, Launcher Home, Close); D-pad Right or click. */
+.quick-switcher-options {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ps-text-2);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+
+.quick-switcher-row:is(.focused, :hover) .quick-switcher-options,
+.quick-switcher-options.open {
+  opacity: 1;
+}
+
+.quick-switcher-options:hover,
+.quick-switcher-options.open {
+  background: var(--qc-row-fill);
+  color: var(--ps-text);
+}
+
+/* A game's card opens to the right of the Switcher, like a PS5 options menu. */
+.quick-switcher ~ .quick-game-menu {
+  left: calc(var(--safe-x) + var(--qc-item) + var(--qc-home-gap) + var(--qc-switcher-w) + var(--qc-card-gap));
 }
 
 /* ------------------------------------------------------------- game card */

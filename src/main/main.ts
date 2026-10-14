@@ -34,6 +34,7 @@ import {
 } from './sessionWarningOverlay';
 import { checkForUpdates, downloadUpdate, startUpdateInstaller } from './updateService';
 import {
+  activateLauncherWindow,
   enforceQuickOverlayZOrder,
   getRootWindowHandle,
   getWindowCaptureTopInset,
@@ -1300,19 +1301,35 @@ function requestEmergencyCloseOverlay(): void {
   openHomeFromGame('emergency-close');
 }
 
-function requestSecretAdminAction(
+async function requestSecretAdminAction(
   action: Extract<KioskAdminAction, 'closeApp' | 'exitFullscreen' | 'minimize'>
-): void {
-  if (kioskInput.currentMode !== 'customer' || kioskInput.isAdminPinActive) return;
+): Promise<void> {
+  if (kioskInput.currentMode !== 'customer') return;
   const window = getLiveMainWindow();
   if (!window || window.webContents.isDestroyed()) return;
+  // Repeating the sequence re-shows a prompt that a game covered.
+  const reopened = kioskInput.isAdminPinActive;
 
   stopGameplayOverlayForManagement();
   kioskAdminActionGranted = false;
   kioskInput.setAdminPinActive(true);
   kioskInput.setAdminControlsUnlocked(false);
+  // A game in front hides the PIN prompt, completely for an immersive Store
+  // game. Send it to Launcher Home first, as the Home tile does.
+  if (launcher.hasTrackedGames &&
+      ['launching', 'running', 'resuming', 'quickOverlayOpen'].includes(launcher.activeState.status)) {
+    await launcher.minimizeActiveGame().catch((error) => {
+      void logLine('warn', `Could not move the game behind Launcher Home for the PIN prompt: ${String(error)}`);
+    });
+  }
+  if (window.isDestroyed() || window.webContents.isDestroyed()) return;
   launcher.focusLauncher();
   applyKioskSettings(store.getSettings());
+  // The sequence arrives through the keyboard guard rather than a hotkey, so
+  // Windows may refuse Electron's own focus request. Activate natively too.
+  void activateLauncherWindow(browserWindowNativeHandle(window)).catch((error) => {
+    void logLine('warn', `Could not bring the PIN prompt to the front: ${String(error)}`);
+  });
   const labels: Record<typeof action, string> = {
     closeApp: 'close NXGS',
     exitFullscreen: 'exit fullscreen',
@@ -1325,7 +1342,7 @@ function requestSecretAdminAction(
     message: `Enter Admin PIN to ${labels[action]}.`,
     requestedAt: new Date().toISOString()
   });
-  void logLine('info', `Secret ${action} sequence opened PIN verification.`);
+  void logLine('info', `Secret ${action} sequence ${reopened ? 're-opened' : 'opened'} PIN verification.`);
 }
 
 function handleRestrictedCustomerInput(input: string): void {
@@ -1412,7 +1429,7 @@ const kioskInput = new KioskInputService({
   onHome: handleShellHomeRequest,
   onRestrictedInput: handleRestrictedCustomerInput,
   onEmergencyClose: requestEmergencyCloseOverlay,
-  onSecretAdminAction: requestSecretAdminAction
+  onSecretAdminAction: (action) => void requestSecretAdminAction(action)
 });
 
 async function endPaidSession(): Promise<GameControlResult> {

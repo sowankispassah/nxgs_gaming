@@ -1,6 +1,6 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { Clapperboard, Music2, Radio, Tv, type LucideIcon } from 'lucide-react';
-import { tileSlotClass, useMeasuredWidth } from './homeUtils';
+import { tileSlotClass } from './homeUtils';
 
 const MEDIA_APPS: Array<{ key: string; label: string; icon: LucideIcon }> = [
   { key: 'tv', label: 'TV & Video', icon: Tv },
@@ -18,7 +18,6 @@ export function MediaShelf(props: {
   const tileRefs = useRef<Array<HTMLElement | null>>([]);
   const selected = Math.max(0, Math.min(MEDIA_APPS.length - 1, props.selectedIndex));
   const app = MEDIA_APPS[selected];
-  const [labelRef, labelWidth] = useMeasuredWidth<HTMLSpanElement>(app.key);
 
   useEffect(() => {
     if (!props.focused) return;
@@ -27,10 +26,7 @@ export function MediaShelf(props: {
 
   return (
     <section className="media-shelf" aria-label="TV and video">
-      <div
-        className={`console-tile-row media-tile-row ${props.focused ? 'keyboard-focus' : ''}`}
-        style={{ '--label-w': `${labelWidth}px` } as CSSProperties}
-      >
+      <div className={`console-tile-row media-tile-row ${props.focused ? 'keyboard-focus' : ''}`}>
         {MEDIA_APPS.map((item, index) => {
           const Icon = item.icon;
           const slot = index - selected;
@@ -53,7 +49,7 @@ export function MediaShelf(props: {
             </article>
           );
         })}
-        <span ref={labelRef} key={app.key} className="console-row-label" aria-hidden="true">
+        <span key={app.key} className="console-row-label" aria-hidden="true">
           <span className="console-row-label-title">{app.label}</span>
           <span className="console-row-label-sub">Coming soon</span>
         </span>

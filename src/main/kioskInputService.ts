@@ -286,7 +286,10 @@ export class KioskInputService {
       return;
     }
     if (input.startsWith('SECRET_KEY|')) {
-      if (this.mode !== 'customer' || this.adminPinActive || this.adminControlsUnlocked) {
+      // A PIN prompt that is open but hidden behind a game must not swallow
+      // the sequence; repeating it shows the prompt again. Only verified
+      // admin controls stop it.
+      if (this.mode !== 'customer' || this.adminControlsUnlocked) {
         this.secretAdminSequence.reset();
         return;
       }

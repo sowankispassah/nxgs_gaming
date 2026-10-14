@@ -125,7 +125,19 @@ assert.doesNotMatch(
 );
 assert.match(switcher, /useControllerNavigation\(/, 'Switcher and quick settings must use the shared controller hub');
 assert.match(switcher, /initialNavActionRef\.current\?\.focus\(\{ preventScroll: true \}\)/, 'the active game navbar icon must receive DOM focus on first open');
-assert.match(switcher, /focusArea === 'navbar' && gameSelected[\s\S]{0,120}setFocusArea\('menu'\)/, 'Up from the active game icon must enter the game submenu');
+// PS5-style Switcher: one game tile, a list of running games, options per game.
+assert.match(switcher, /switcherSessions\.slice\(0, 1\)\.map\(\(session\) => \(\{\s*key: 'switcher'/, 'the bar must show one tile for all running games');
+assert.match(switcher, /direction === 'up' && focusArea === 'navbar' && switcherSelected\) \{[\s\S]{0,120}enterSwitcher\(\)/, 'Up from the game tile must enter the Switcher list');
+const switcherGraph = switcher.slice(switcher.indexOf('const moveSwitcherDirection'), switcher.indexOf('const acceptFocused'));
+assert.match(switcherGraph, /if \(focusArea === 'switcher'\) \{[^]{0,800}direction === 'right'\) \{\s*openSwitcherOptions\(switcherIndex\)/, 'Right on a Switcher row must open that game\'s options');
+assert.match(switcherGraph, /if \(focusArea === 'switcher'\) \{[^]{0,800}switcherIndex >= switcherSessions\.length - 1\) setFocusArea\('navbar'\)/, 'Down from the last row must return to the bar');
+assert.match(switcher, /focusArea === 'switcher'\) \{\s*resumeSwitcherRow\(switcherIndex\)/, 'selecting a Switcher row must resume that game');
+assert.match(switcher, /if \(optionsSession\) \{\s*playUiSound\('back'\);\s*closeSwitcherOptions\(\);[^]{0,200}if \(focusArea === 'switcher'\) \{\s*playUiSound\('back'\);\s*setFocusArea\('navbar'\);/, 'Back must step from a game\'s options to the list, then to the bar');
+assert.match(switcher, /const dismissOverlay = useCallback[^]{0,400}resumeGame\(activeSession\)/, 'leaving Home must return to the game it was opened over');
+assert.match(switcher, /setOptionsGameId\(switcherSessions\[0\]\.game\.id\);\s*setFocusArea\('menu'\);\s*setMenuIndex\(2\);\s*setConfirmClose\(true\);/, 'emergency close must open the active game\'s close confirmation');
+assert.match(switcher, /if \(!result\.ok\) \{[^]{0,600}setConfirmClose\(false\);\s*setFocusArea\('menu'\);\s*setMenuIndex\(0\);/, 'a failed resume must show its error with Resume focused, never an armed Close');
+assert.match(switcher, /const disabled = pendingAction !== null \|\| isClosingGame;/, 'nothing behind the closing screen may take input');
+assert.match(switcher, /previousStatus\.current === 'resuming' && status === 'quickOverlayOpen'/, 'a failed resume must keep its card and error instead of resetting Home');
 assert.match(switcher, /SWITCHER_INPUT_DEDUPLICATION_MS/, 'duplicate keyboard and native controller events must be suppressed');
 assert.match(switcher, /moveSwitcherDirection\(event\.direction\)/, 'keyboard and controller directions must share the same switcher focus graph');
 assert.match(launcher, /releaseGameWindowTopMost[\s\S]*focusLauncherAfterGameRelease/, 'quick Home must restore launcher input focus after releasing the game topmost lock');

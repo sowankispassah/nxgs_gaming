@@ -308,7 +308,7 @@ assert.match(launcherSource, /this\.focusGeneration !== generation\) return null
 assert.match(windowManagerSource, /result\.presentation && isFullscreenGamePresentation\(result\.presentation\)/, 'fast resume must validate real native geometry');
 assert.doesNotMatch(windowManagerSource.slice(windowManagerSource.indexOf('export async function resumeGameWindowFast')), /monitorHeight: 0/, 'fast resume must not synthesize a successful native snapshot');
 assert.match(windowsControlSource, /if \(IsIconic\(game\) && !minimizeGameAfterPaint\) ShowWindowAsync/, 'Home must not restore an already visible game');
-assert.match(overlaySource, /props\.activeGame\.status !== 'quickOverlayOpen'[\s\S]*setSelectedNavKey\(initialNavKey\)/, 'every opening must select the active game');
+assert.match(overlaySource, /status !== 'quickOverlayOpen'[\s\S]*setSelectedNavKey\(stuckSession \? 'switcher' : initialNavKey\)/, 'every opening must select the game tile, or a game that ignored Close');
 assert.match(appSource, /if \(event\.resetToHome\) \{[\s\S]*resetToHome\(\)/);
 assert.match(appSource, /setQuickNavOpen\(event\.openQuickNav \?\? false\)/);
 assert.match(rendererMainSource, /isQuickOverlayWindow[\s\S]*document\.documentElement\.classList\.add\('quick-overlay-document'\)/);
@@ -341,7 +341,7 @@ assert.match(preloadSource, /onQuickOverlayBackdrop/);
 assert.match(overlayRootSource, /dismissQuickOverlay/);
 assert.match(overlaySource, /props\.dismissResumesGame !== false/);
 assert.match(overlaySource, /props\.backdrop \|\| safeBackdropImage/);
-assert.match(overlaySource, /useLayoutEffect\(\(\) => \{\s*if \(props\.activeGame\.status !== 'quickOverlayOpen'/, 'the Home reset must land in the same frame as the Home status');
+assert.match(overlaySource, /useLayoutEffect\(\(\) => \{\s*const status = props\.activeGame\.status;[^]{0,400}if \(\(status !== 'quickOverlayOpen'/, 'the Home reset must land in the same frame as the Home status');
 assert.doesNotMatch(overlayRootSource, /\.animate\(/, 'controls already on screen must not be re-animated after Home is shown');
 assert.match(overlayRootSource, /onQuickOverlayFrameSync[\s\S]*requestAnimationFrame[\s\S]*notifyQuickOverlayFrameSynced/);
 assert.match(preloadSource, /onQuickOverlayFrameSync[\s\S]*notifyQuickOverlayFrameSynced/);

@@ -1,4 +1,3 @@
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { ActiveGameState, GameRecord } from '../../../shared/types';
 
 const INACTIVE_STATUSES = new Set(['idle', 'closed', 'error']);
@@ -47,22 +46,4 @@ export function runningGameIds(activeGame: ActiveGameState): Set<string> {
     if (!INACTIVE_STATUSES.has(session.status)) ids.add(session.game.id);
   }
   return ids;
-}
-
-/** Layout width of a row caption, re-measured when its text or font changes. */
-export function useMeasuredWidth<T extends HTMLElement>(measureKey: string): [RefObject<T>, number] {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
-
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return undefined;
-    const measure = (): void => setWidth(element.offsetWidth);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [measureKey]);
-
-  return [ref, width];
 }

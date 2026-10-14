@@ -50,7 +50,6 @@
   --tile-gap: clamp(12px, 0.95vw, 22px);
   --tile-step: calc(var(--tile) + var(--tile-gap));
   --tile-radius: calc(var(--tile-lg) * 0.14);
-  --label-gap: clamp(20px, 1.6vw, 36px);
   --icon-btn: clamp(42px, 4.6vh, 56px);
   --cards-peek: clamp(78px, 13.5vh, 170px);
   --hero-bottom: calc(var(--cards-peek) + clamp(28px, 4.4vh, 60px));
@@ -432,8 +431,10 @@
   z-index: 1;
 }
 
+/* The selected tile's name sits below it, so the next tiles follow at the
+   normal gap, as on the PS5. */
 .console-tile.after {
-  --x: calc(var(--tile-lg) + var(--label-gap) * 2 + var(--label-w, 0px) + (var(--slot) - 1) * var(--tile-step));
+  --x: calc(var(--tile-lg) + var(--tile-gap) + (var(--slot) - 1) * var(--tile-step));
 }
 
 .console-tile.before {
@@ -468,42 +469,41 @@
     0 20px 44px rgba(0, 0, 0, 0.5);
 }
 
+/* The selected tile's name, just below it like the PS5 caption. */
 .console-row-label {
   position: absolute;
-  top: 0;
-  left: calc(var(--tile-lg) + var(--label-gap));
+  top: calc(var(--tile-lg) + clamp(10px, 1.3vh, 16px));
+  left: 0;
   display: flex;
-  height: var(--tile);
-  max-width: 32vw;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
+  max-width: min(40vw, 760px);
+  align-items: baseline;
+  gap: 12px;
   pointer-events: none;
-  animation: row-label-in 340ms var(--ease-out) 110ms backwards;
+  animation: row-label-in 300ms var(--ease-out) 90ms backwards;
 }
 
 .console-row-label-title {
   overflow: hidden;
-  font-size: clamp(20px, 1.46vw, 34px);
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.01em;
-  line-height: 1.2;
+  font-size: clamp(17px, 1.05vw, 24px);
+  font-weight: var(--weight-medium);
+  line-height: 1.25;
   text-overflow: ellipsis;
-  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
   white-space: nowrap;
 }
 
 .console-row-label-sub {
   color: var(--ps-text-2);
-  font-size: clamp(14px, 0.9vw, 18px);
+  font-size: clamp(14px, 0.85vw, 18px);
   font-weight: var(--weight-medium);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
   white-space: nowrap;
 }
 
 @keyframes row-label-in {
   from {
     opacity: 0;
-    translate: -10px 0;
+    translate: 0 -6px;
   }
 }
 

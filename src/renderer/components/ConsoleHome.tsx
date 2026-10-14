@@ -22,7 +22,7 @@ import { ActiveGameDock } from './home/ActiveGameDock';
 import { GameHeroBackground } from './home/GameHeroBackground';
 import { MediaShelf } from './home/MediaShelf';
 import { SafeGameImage } from './home/SafeGameImage';
-import { formatSessionTime, hasActiveGame, runningGameIds, tileSlotClass, useMeasuredWidth } from './home/homeUtils';
+import { formatSessionTime, hasActiveGame, runningGameIds, tileSlotClass } from './home/homeUtils';
 
 export { SafeGameImage };
 
@@ -216,7 +216,6 @@ function GameAvatarRow(props: {
   const selectedSlot = props.selectedIndex + 1;
   const label = props.games[props.selectedIndex]?.title ?? 'Home';
   const labelKey = `${selectedSlot}:${label}`;
-  const [labelRef, labelWidth] = useMeasuredWidth<HTMLSpanElement>(labelKey);
   const lastWheelAt = useRef(0);
 
   // Earlier tiles slide out of view, so pointer users step the selection with the wheel.
@@ -240,7 +239,6 @@ function GameAvatarRow(props: {
   return (
     <div
       className={`console-tile-row console-game-row ${props.focused ? 'keyboard-focus' : ''}`}
-      style={{ '--label-w': `${labelWidth}px` } as CSSProperties}
       aria-label="NXGS Home and game library"
       onWheel={stepWithWheel}
     >
@@ -297,7 +295,7 @@ function GameAvatarRow(props: {
           </button>
         );
       })}
-      <span ref={labelRef} key={labelKey} className="console-row-label" aria-hidden="true">
+      <span key={labelKey} className="console-row-label" aria-hidden="true">
         <span className="console-row-label-title">{label}</span>
       </span>
     </div>
