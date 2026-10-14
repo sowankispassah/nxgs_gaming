@@ -274,6 +274,13 @@ export class KioskInputService {
   }
 
   private handleNativeHookInput(input: string): void {
+    if (input.startsWith('HOME_KEY|')) {
+      // The native hook reports a lone Windows-key tap as the console Home
+      // button. It takes the same path as Ctrl+Shift+H.
+      this.secretAdminSequence.reset();
+      this.requestHome('windows-key');
+      return;
+    }
     if (input === 'SECRET_RESET') {
       this.secretAdminSequence.reset();
       return;

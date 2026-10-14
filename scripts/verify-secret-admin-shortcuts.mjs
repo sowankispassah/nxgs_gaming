@@ -33,10 +33,11 @@ sequence.observe('e', 5200);
 sequence.observe('e', 5300);
 assert.equal(sequence.observe('e', 7000), null, 'a long pause must start a new sequence');
 
-const [hook, kioskInput, main, renderer] = await Promise.all([
+const [hook, kioskInput, main, launcher, renderer] = await Promise.all([
   readFile(new URL('../build/native-kiosk-hook.ps1', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/kioskInputService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main/gameLauncher.ts', import.meta.url), 'utf8'),
   readAppShellSource()
 ]);
 
@@ -47,4 +48,38 @@ assert.match(main, /requestSecretAdminAction[\s\S]*kiosk:adminUnlockRequested/, 
 assert.match(renderer, /action: request\?\.action/, 'the PIN request must preserve its requested action');
 assert.match(renderer, /adminUnlockRequest\?\.action[\s\S]*executeAdminAction/, 'verified PIN entry must immediately run the requested action');
 
-console.log('Secret admin shortcuts: five presses, reset rules, hold protection, PIN request, and direct action routing passed.');
+assert.match(
+  hook,
+  /bool firstKeyDown = pressedKeys\.Add\(key\);\s*if \(windowsKey\) \{[^}]*if \(firstKeyDown\) windowsKeyTapPending = true;\s*return new IntPtr\(1\);\s*\}/,
+  'every physical Windows-key press must stay blocked from the shell'
+);
+assert.match(
+  hook,
+  /if \(message == WM_KEYUP \|\| message == WM_SYSKEYUP\) \{\s*pressedKeys\.Remove\(key\);\s*if \(windowsKey && windowsKeyTapPending &&[\s\S]*?Console\.WriteLine\("HOME_KEY\|Windows key"\);[\s\S]*?\}\s*return CallNextHookEx/,
+  'a lone Windows-key tap must be reported as Home on release'
+);
+assert.match(hook, /pressedKeys\.Contains\(VK_LWIN\) \|\| pressedKeys\.Contains\(VK_RWIN\)\) windowsKeyTapPending = false/, 'Win+key chords must not open Home');
+assert.doesNotMatch(hook, /blocked = "Windows key"/, 'the Windows key must not take the restricted-input path that raised the launcher');
+assert.match(kioskInput, /startsWith\('HOME_KEY\|'\)[\s\S]*this\.requestHome\('windows-key'\)/, 'the Windows key must take the same Home path as Ctrl+Shift+H');
+
+// Control Room keeps the console full screen; only Exit Full Screen windows it.
+const kioskSettings = main.slice(main.indexOf('function applyKioskSettings('), main.indexOf('let closingGamesForQuit'));
+assert.match(kioskSettings, /if \(adminWindowedPresentation\) \{[\s\S]*setFullScreen\(false\)[\s\S]*\} else \{[\s\S]*setBounds\([\s\S]*setFullScreen\(true\)/);
+assert.match(main, /adminWindowedPresentation = action === 'exitFullscreen';\s*setKioskMode\('admin'\)/);
+assert.match(main, /if \(mode === 'customer'\) \{[\s\S]*adminWindowedPresentation = false/);
+const launcherFocus = launcher.slice(launcher.indexOf('  focusLauncher(): void {'), launcher.indexOf('  private async focusLauncherAfterGameRelease('));
+const adminFocusStart = launcherFocus.indexOf('if (!this.shouldUseFullscreenPresentation()) {');
+assert.ok(adminFocusStart > 0);
+const adminFocus = launcherFocus.slice(adminFocusStart, launcherFocus.indexOf('return;', adminFocusStart));
+assert.match(adminFocus, /if \(!this\.shouldKeepAdminFullscreen\(\)\) window\.setFullScreen\(false\);/);
+assert.equal(
+  adminFocus.match(/setFullScreen\(false\)/g)?.length, 1,
+  'refocusing the launcher in Admin mode must leave fullscreen only for windowed Admin'
+);
+assert.match(main, /\(\) => kioskInput\.currentMode === 'customer',\s*\(\) => !adminWindowedPresentation\s*\);/);
+// Full-screen Admin hides the taskbar only while NXGS itself has focus.
+assert.match(main, /kioskInput\.currentMode === 'customer' \|\| \(!adminWindowedPresentation && window\?\.isFocused\(\)\)/);
+assert.match(main, /mainWindow\.on\('focus', \(\) => \{\s*if \(kioskInput\.currentMode === 'admin'\) syncTaskbarForWindowPresentation/);
+assert.match(main, /mainWindow\.on\('blur'[\s\S]*?if \(kioskInput\.currentMode === 'admin'\) syncTaskbarForWindowPresentation\('admin window lost focus'\)/);
+
+console.log('Secret admin shortcuts: five presses, reset rules, hold protection, PIN request, direct action routing, Windows-key Home, and full-screen Control Room passed.');

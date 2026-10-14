@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Bell, Home, Music2, Power, Settings, UsersRound } from 'lucide-react';
 import type {
   ActiveGameState,
@@ -193,7 +193,9 @@ export function QuickHomeOverlay(props: {
   const emergencyNavKey = useRef<string | null>(null);
   const previousNavKey = useRef(selectedNavKey);
 
-  useEffect(() => {
+  // A layout effect lands this reset in the same frame as the Home status, so
+  // the frame painted before Home is raised never shows the previous menu.
+  useLayoutEffect(() => {
     if (props.activeGame.status !== 'quickOverlayOpen' && props.activeGame.status !== 'launching') return;
     setSelectedNavKey(initialNavKey);
     setFocusArea('navbar');

@@ -19,6 +19,7 @@ import {
   hasReliableProcessIdentity,
   PROCESS_MONITOR_INTERVAL_MS
 } from './gameLifecycle';
+import type { GameAudioTarget } from './gameAudioFocus';
 import { logLine } from './logger';
 import { runWindowsControl } from './windowsControlWorker';
 import {
@@ -139,6 +140,10 @@ export class GameLauncher {
   private parkingTimer: NodeJS.Timeout | null = null;
   private parkingInFlight: Promise<void> | null = null;
   private managingGames = false;
+  // The game whose picture is on screen: full screen, or live under Home.
+  // Selecting another tracked game to close or resume it does not change this
+  // until that game is starting or running.
+  private presentedGameId: string | null = null;
   private state: ActiveGameState = {
     status: 'idle',
     updatedAt: new Date().toISOString()
@@ -147,7 +152,9 @@ export class GameLauncher {
   constructor(
     private readonly windowProvider: () => BrowserWindow | null,
     private readonly events: LauncherEvents,
-    private readonly shouldUseFullscreenPresentation: () => boolean = () => true
+    private readonly shouldUseFullscreenPresentation: () => boolean = () => true,
+    // Admin mode stays full screen unless staff chose Exit Full Screen.
+    private readonly shouldKeepAdminFullscreen: () => boolean = () => true
   ) {}
 
   get active(): GameRecord | null {
@@ -164,6 +171,39 @@ export class GameLauncher {
 
   get taskbarHidden(): boolean {
     return this.taskbarSuppressed;
+  }
+
+  /** Only the presented game may be heard; every other tracked game is muted. */
+  get audioTargets(): GameAudioTarget[] {
+    // An exited launch stub's pid can be reused by an unrelated process.
+    const livePid = (child: ChildProcessWithoutNullStreams | null) =>
+      child && child.exitCode === null && child.signalCode === null ? child.pid : undefined;
+    const processIds = (...candidates: Array<number | null | undefined>): number[] =>
+      [...new Set(candidates.filter((value): value is number => Number.isInteger(value) && Number(value) > 0))];
+    const target = (
+      game: GameRecord,
+      ids: number[]
+    ): GameAudioTarget => ({
+      gameId: game.id,
+      title: game.title,
+      processIds: ids,
+      processNames: game.processName?.trim() ? [game.processName] : [],
+      audible: game.id === this.presentedGameId && !this.parkedGameIds.has(game.id)
+    });
+    const targets = new Map<string, GameAudioTarget>();
+    for (const session of this.sessions.values()) {
+      targets.set(session.game.id, target(
+        session.game,
+        processIds(session.processId, session.window?.processId, livePid(session.child))
+      ));
+    }
+    if (this.activeGame) {
+      targets.set(this.activeGame.id, target(
+        this.activeGame,
+        processIds(this.activeProcessId, this.activeWindow?.processId, livePid(this.child))
+      ));
+    }
+    return [...targets.values()];
   }
 
   get diagnosticState(): AppDiagnostics['activeGame'] {
@@ -747,7 +787,18 @@ export class GameLauncher {
         return { ok: true };
       }
 
-      await minimizeGameWindow(window);
+      // Cover the game with Launcher Home before minimizing it. The minimize
+      // runs through a slower one-shot native command; doing it first left a
+      // pause, then played the game's minimize animation through the
+      // transparent switcher.
+      this.focusLauncher();
+      let minimized = true;
+      try {
+        await minimizeGameWindow(window);
+      } catch (error) {
+        minimized = false;
+        await logLine('warn', `Could not minimize ${game.title} behind Launcher Home: ${String(error)}`);
+      }
       if (this.operationInFlight !== 'minimize') {
         await logLine('info', `Minimize result for ${game.title} was superseded by Home.`);
         return { ok: true };
@@ -760,9 +811,9 @@ export class GameLauncher {
       this.setActiveState({
         status: 'minimizedToHome',
         game,
-        message: `${game.title} is minimized.`,
+        message: minimized ? `${game.title} is minimized.` : `${game.title} is running behind Launcher Home.`,
         windowDetected: true,
-        windowState: 'minimized'
+        windowState: minimized ? 'minimized' : 'background'
       });
       return { ok: true };
     } catch (error) {
@@ -1132,8 +1183,11 @@ export class GameLauncher {
       window.restore();
     }
     if (!this.shouldUseFullscreenPresentation()) {
+      // Admin mode: full screen for Control Room, or a desktop window after
+      // Exit Full Screen. Leaving fullscreen otherwise drops NXGS into
+      // Electron's small default window bounds.
       window.setAlwaysOnTop(false);
-      window.setFullScreen(false);
+      if (!this.shouldKeepAdminFullscreen()) window.setFullScreen(false);
       window.setMenuBarVisibility(false);
       window.show();
       window.focus();
@@ -2057,10 +2111,24 @@ export class GameLauncher {
     };
     this.storeCurrentSession();
     this.state = this.withTrackedSessions(this.state);
+    this.updatePresentedGame();
     void logLine(
       'info',
       `Active game state ${previousStatus} -> ${this.state.status}${this.state.game ? ` (${this.state.game.title})` : ''}.`
     );
     this.events.onActiveGameChanged(this.state);
+  }
+
+  private updatePresentedGame(): void {
+    const status = this.state.status;
+    const gameId = this.activeGame?.id ?? null;
+    if (gameId && (status === 'launching' || status === 'running')) {
+      this.presentedGameId = gameId;
+    } else if (
+      !gameId ||
+      (gameId === this.presentedGameId && ['minimizedToHome', 'closed', 'error', 'idle'].includes(status))
+    ) {
+      this.presentedGameId = null;
+    }
   }
 }

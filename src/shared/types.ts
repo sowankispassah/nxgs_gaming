@@ -576,6 +576,7 @@ export interface DisplayActionResult {
 export type ShellHomeReason =
   | 'global-home'
   | 'global-f10'
+  | 'windows-key'
   | 'controller-home'
   | 'controller-combo'
   | 'emergency-close'

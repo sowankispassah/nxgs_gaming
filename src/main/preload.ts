@@ -196,6 +196,16 @@ const api = {
   notifyQuickOverlayBackdropFailed: (requestId: number, reason: string) => {
     ipcRenderer.send('quickOverlay:backdropFailed', requestId, reason);
   },
+  onQuickOverlayFrameSync: (callback: (requestId: number) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, requestId: number) => callback(requestId);
+    ipcRenderer.on('quickOverlay:frameSync', listener);
+    return () => {
+      ipcRenderer.removeListener('quickOverlay:frameSync', listener);
+    };
+  },
+  notifyQuickOverlayFrameSynced: (requestId: number) => {
+    ipcRenderer.send('quickOverlay:frameSynced', requestId);
+  },
   onShellHome: (callback: (event: ShellHomeEvent) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: ShellHomeEvent) => callback(event);
     ipcRenderer.on('shell:home', listener);

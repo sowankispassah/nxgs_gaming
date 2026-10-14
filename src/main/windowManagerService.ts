@@ -1389,6 +1389,14 @@ export async function restoreGameWindow(window: GameWindowInfo, launchMode: Game
 }
 
 export async function minimizeGameWindow(window: GameWindowInfo): Promise<void> {
+  // The persistent worker answers in milliseconds; the legacy one-shot command
+  // starts PowerShell, which kept Launcher Home waiting for about a second.
+  try {
+    const result = await runWindowsControl('minimize-window', Math.trunc(window.handle));
+    if (result.ok) return;
+  } catch {
+    // Fall back to the legacy minimize command if the persistent worker restarted.
+  }
   await runWindowCommand(window.handle, 'minimize');
 }
 

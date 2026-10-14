@@ -78,9 +78,27 @@ assert.match(mainSource, /await gameplayQuickOverlayPreparePromise[\s\S]*prepare
     mainSource.indexOf('async function performGameplayQuickOverlayShow('),
     mainSource.indexOf('async function showGameplayQuickOverlay(')
   );
+  // A hidden overlay reappears with its last painted frame. Home must paint
+  // its current state underneath the game, then let native staging raise it
+  // in one step; raising it first let the game blink back above Home.
   assert.match(
     showBody,
-    /overlay\.setAlwaysOnTop\(true, 'screen-saver'\)[\s\S]*overlay\.showInactive\(\)[\s\S]*await stageGameplayQuickOverlay\(overlay, gameId\)/
+    /if \(!overlay\.isVisible\(\)\) \{\s*(?:\/\/[^\n]*\s*)*overlay\.setAlwaysOnTop\(false\);\s*overlay\.setIgnoreMouseEvents\(true\);\s*overlay\.showInactive\(\);\s*const freshFrame = await waitForQuickOverlayFreshFrame\(overlay\);/
+  );
+  const raiseStep = showBody.slice(
+    showBody.indexOf('await waitForQuickOverlayFreshFrame(overlay)'),
+    showBody.lastIndexOf('await stageGameplayQuickOverlay(overlay, gameId)')
+  );
+  assert.doesNotMatch(raiseStep, /setAlwaysOnTop\(true|moveTop\(\)/, 'Home must not be raised before native staging');
+  assert.match(
+    showBody.slice(showBody.lastIndexOf('await stageGameplayQuickOverlay(overlay, gameId)')),
+    /overlay\.setAlwaysOnTop\(true, 'screen-saver'\);\s*overlay\.moveTop\(\);\s*overlay\.focus\(\);/,
+    'topmost is synced after staging, which also raises Home if staging could not'
+  );
+  assert.match(
+    raiseStep,
+    /if \(!gameplayQuickOverlayDesiredOpen\) \{[\s\S]*if \(!overlay\.isAlwaysOnTop\(\)\) overlay\.hide\(\);/,
+    'a Home closed before it was raised must not be raised by the resume that follows'
   );
   assert.doesNotMatch(showBody, /overlay\.show\(\)/, 'Home must not activate the overlay before native staging');
   const stages = [...showBody.matchAll(/await stageGameplayQuickOverlay\(overlay, gameId\)/g)].map((match) => match.index);
@@ -309,5 +327,21 @@ assert.match(preloadSource, /onQuickOverlayBackdrop/);
 assert.match(overlayRootSource, /dismissQuickOverlay/);
 assert.match(overlaySource, /props\.dismissResumesGame !== false/);
 assert.match(overlaySource, /props\.backdrop \|\| safeBackdropImage/);
+assert.match(overlaySource, /useLayoutEffect\(\(\) => \{\s*if \(props\.activeGame\.status !== 'quickOverlayOpen'/, 'the Home reset must land in the same frame as the Home status');
+assert.doesNotMatch(overlayRootSource, /\.animate\(/, 'controls already on screen must not be re-animated after Home is shown');
+assert.match(overlayRootSource, /onQuickOverlayFrameSync[\s\S]*requestAnimationFrame[\s\S]*notifyQuickOverlayFrameSynced/);
+assert.match(preloadSource, /onQuickOverlayFrameSync[\s\S]*notifyQuickOverlayFrameSynced/);
+assert.match(mainSource, /ipcMain\.on\('quickOverlay:frameSynced'[\s\S]*event\.sender !== overlay\.webContents/, 'only the overlay renderer may confirm its own frame');
+assert.match(
+  launcherSource,
+  /this\.focusLauncher\(\);\s*let minimized = true;\s*try \{\s*await minimizeGameWindow\(window\);/,
+  'Launcher Home must cover the game before minimizing it behind the launcher'
+);
+assert.match(
+  windowManagerSource,
+  /export async function minimizeGameWindow[\s\S]*?runWindowsControl\('minimize-window'[\s\S]*?runWindowCommand\(window\.handle, 'minimize'\)/,
+  'minimizing must use the persistent worker and keep the one-shot command only as a fallback'
+);
+assert.match(windowsControlSource, /\$request\.command -eq 'minimize-window'[\s\S]*MinimizeWindow\(\$handle\)/);
 
 console.log('Home toggle, exact live game capture, clean end-session, and dismiss/resume boundaries verified.');

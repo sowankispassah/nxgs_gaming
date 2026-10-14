@@ -13,6 +13,7 @@ export type WindowsControlCommand =
   | 'find-store-window'
   | 'stage-overlay'
   | 'release-window'
+  | 'minimize-window'
   | 'close-window'
   | 'hide-game'
   | 'taskbar-visible';
@@ -710,6 +711,11 @@ public static class NxgsWarningInput {
         return SetWindowPos(window, new IntPtr(-2), 0, 0, 0, 0, NoSize | NoMove | NoActivate);
     }
 
+    public static bool MinimizeWindow(long handle) {
+        var window = new IntPtr(handle);
+        return window != IntPtr.Zero && IsWindow(window) && ShowWindowAsync(window, 6);
+    }
+
     public static bool CloseWindow(long handle) {
         var window = new IntPtr(handle);
         return window != IntPtr.Zero && IsWindow(window) &&
@@ -835,6 +841,10 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         } elseif ($request.command -eq 'hide-game') {
             $handles = [NxgsWarningInput]::HideGame([long]$request.value.handle, [int]$request.value.processId, [string]$request.value.processName, [string]$request.value.appUserModelId)
             $response = @{ id = $request.id; ok = $true; handles = @($handles); message = 'Tracked game windows hidden.' }
+        } elseif ($request.command -eq 'minimize-window') {
+            $handle = [long]$request.value
+            $minimized = [NxgsWarningInput]::MinimizeWindow($handle)
+            $response = @{ id = $request.id; ok = $minimized; value = $minimized; message = $(if ($minimized) { 'Game window minimize requested.' } else { 'Game window minimize was not accepted.' }) }
         } elseif ($request.command -eq 'close-window') {
             $handle = [long]$request.value
             $closed = [NxgsWarningInput]::CloseWindow($handle)

@@ -104,7 +104,7 @@
  * The gameplay overlay renderer is prewarmed while its window is hidden, and
  * Chromium can hold entrance animations on their first frame until it is
  * shown. Paint the shade and the bar in their final state there; the live
- * game is the transition. QuickOverlayRoot adds its own short control rise.
+ * game is the transition.
  */
 .live-gameplay-overlay .quick-overlay-shade,
 .live-gameplay-overlay .quick-navbar {

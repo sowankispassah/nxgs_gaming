@@ -60,6 +60,8 @@ public static class NxgsLockdownKeyboardHook {
   private static readonly System.Collections.Generic.HashSet<int> pressedKeys =
     new System.Collections.Generic.HashSet<int>();
   private static ulong trustedInputToken;
+  private static int homeOwnerProcessId;
+  private static bool windowsKeyTapPending;
 
   [StructLayout(LayoutKind.Sequential)] private struct KBDLLHOOKSTRUCT { public uint vkCode, scanCode, flags, time; public UIntPtr dwExtraInfo; }
   [StructLayout(LayoutKind.Sequential)] private struct POINT { public int x, y; }
@@ -67,6 +69,7 @@ public static class NxgsLockdownKeyboardHook {
   [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
   [StructLayout(LayoutKind.Sequential)] private struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
 
+  [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(int processId);
   [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int idHook, HookProc callback, IntPtr module, uint threadId);
   [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr module, WinEventProc callback, uint processId, uint threadId, uint flags);
   [DllImport("user32.dll", SetLastError = true)] private static extern bool UnhookWindowsHookEx(IntPtr hook);
@@ -89,6 +92,7 @@ public static class NxgsLockdownKeyboardHook {
 
   public static void Run(int parentProcessId, string token) {
     trustedInputToken = Convert.ToUInt64(token, 16);
+    homeOwnerProcessId = parentProcessId;
     hook = SetWindowsHookEx(WH_KEYBOARD_LL, callback, GetModuleHandle(null), 0);
     if (hook == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
     notificationShowHook = SetWinEventHook(
@@ -235,17 +239,34 @@ public static class NxgsLockdownKeyboardHook {
           data.dwExtraInfo.ToUInt64() == trustedInputToken) {
         return CallNextHookEx(hook, code, wParam, lParam);
       }
+      bool windowsKey = key == VK_LWIN || key == VK_RWIN;
       if (message == WM_KEYUP || message == WM_SYSKEYUP) {
         pressedKeys.Remove(key);
+        if (windowsKey && windowsKeyTapPending &&
+            !pressedKeys.Contains(VK_LWIN) && !pressedKeys.Contains(VK_RWIN)) {
+          // A lone Windows-key tap is the console Home button, the same as
+          // Ctrl+Shift+H. Report it on release so no physical key is still
+          // down while NXGS stages Home with its own injected shortcuts.
+          windowsKeyTapPending = false;
+          AllowSetForegroundWindow(homeOwnerProcessId);
+          Console.WriteLine("HOME_KEY|Windows key");
+          Console.Out.Flush();
+        }
         return CallNextHookEx(hook, code, wParam, lParam);
       }
       if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN) return CallNextHookEx(hook, code, wParam, lParam);
       bool firstKeyDown = pressedKeys.Add(key);
+      if (windowsKey) {
+        // Windows never sees a physical Windows-key press, so Start and every
+        // Win+key shell shortcut stay blocked.
+        if (firstKeyDown) windowsKeyTapPending = true;
+        return new IntPtr(1);
+      }
+      if (pressedKeys.Contains(VK_LWIN) || pressedKeys.Contains(VK_RWIN)) windowsKeyTapPending = false;
       bool control = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
       bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
       string blocked = null;
-      if (key == VK_LWIN || key == VK_RWIN) blocked = "Windows key";
-      else if (key == VK_ESCAPE && control) blocked = "Ctrl+Esc";
+      if (key == VK_ESCAPE && control) blocked = "Ctrl+Esc";
       else if (key == VK_TAB && control) blocked = "Ctrl+Tab";
       else if (key == VK_TAB && alt) blocked = "Alt+Tab";
       else if (key == VK_F4 && alt) blocked = "Alt+F4";

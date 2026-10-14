@@ -16,6 +16,7 @@ import { copyFile, mkdir } from 'node:fs/promises';
 import { DataStore } from './database';
 import { ControllerCompatibilityService } from './controllerCompatibilityService';
 import { ControllerIdleService } from './controllerIdleService';
+import { GameAudioFocus } from './gameAudioFocus';
 import { GameLauncher } from './gameLauncher';
 import { scanInstalledGames } from './gameScanner';
 import { KioskInputService } from './kioskInputService';
@@ -90,6 +91,8 @@ let gameplayQuickOverlayRendererReady = false;
 let gameplayQuickOverlayNativeZOrderVerified = false;
 let gameplayQuickOverlayNativeStagesInFlight = 0;
 let lastShellHomeRequestAt = 0;
+let quickOverlayFrameSyncRequestId = 0;
+const pendingQuickOverlayFrameSyncs = new Map<number, () => void>();
 let pendingQuickOverlayPaint: {
   requestId: number;
   resolve: (painted: boolean) => void;
@@ -98,6 +101,9 @@ let pendingQuickOverlayPaint: {
 let isQuitting = false;
 let taskbarHiddenByKiosk = false;
 let kioskAdminActionGranted = false;
+// Admin mode keeps the full-screen console presentation unless staff choose
+// Exit Full Screen; only that action turns NXGS into a desktop window.
+let adminWindowedPresentation = false;
 let secondInstanceFocusPending = false;
 const sessionCountdownOverlay = new SessionCountdownOverlay();
 let sessionWarningOverlay: SessionWarningOverlay | null = null;
@@ -234,6 +240,26 @@ function waitForQuickOverlayPaint(requestId: number, timeoutMs = 5000): Promise<
   return new Promise((resolve) => {
     const timeout = setTimeout(() => finishPendingQuickOverlayPaint(requestId, false), timeoutMs);
     pendingQuickOverlayPaint = { requestId, resolve, timeout };
+  });
+}
+
+/**
+ * Resolves once the visible overlay has presented a frame of its current
+ * state. A hidden Chromium window reappears with the frame it last painted,
+ * so Home is painted underneath the game before it is raised.
+ */
+function waitForQuickOverlayFreshFrame(overlay: BrowserWindow, timeoutMs = 200): Promise<boolean> {
+  if (overlay.webContents.isDestroyed()) return Promise.resolve(false);
+  const requestId = ++quickOverlayFrameSyncRequestId;
+  return new Promise((resolve) => {
+    const finish = (synced: boolean) => {
+      clearTimeout(timeout);
+      pendingQuickOverlayFrameSyncs.delete(requestId);
+      resolve(synced);
+    };
+    const timeout = setTimeout(() => finish(false), timeoutMs);
+    pendingQuickOverlayFrameSyncs.set(requestId, () => finish(true));
+    overlay.webContents.send('quickOverlay:frameSync', requestId);
   });
 }
 
@@ -790,17 +816,36 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     return;
   }
 
-  // The prewarm/hide path deliberately releases topmost. Reapply it on every
-  // show before asking Windows for focus, otherwise the transparent renderer
-  // is fully painted but remains hidden behind the topmost game window.
-  overlay.setAlwaysOnTop(true, 'screen-saver');
+  if (!overlay.isVisible()) {
+    // Show without activating and below the topmost game first: a hidden
+    // window still holds the frame it painted when Home last closed, and
+    // raising it immediately flashed that stale menu before the current one.
+    overlay.setAlwaysOnTop(false);
+    overlay.setIgnoreMouseEvents(true);
+    overlay.showInactive();
+    const freshFrame = await waitForQuickOverlayFreshFrame(overlay);
+    if (overlay.isDestroyed()) return;
+    if (!gameplayQuickOverlayDesiredOpen) {
+      // Home was closed again before it was raised. Hide it here, or the
+      // resume that follows would raise this cancelled menu over the game.
+      if (!overlay.isAlwaysOnTop()) overlay.hide();
+      return;
+    }
+    if (visibilityGeneration !== gameplayQuickOverlayVisibilityGeneration) return;
+    if (!freshFrame) await logLine('warn', 'Home overlay frame sync timed out; raising the last painted frame.');
+  }
   overlay.setIgnoreMouseEvents(false);
-  // Show without activating: native staging takes foreground only after it
-  // has moved an immersive full-screen Store game out of the immersive band.
-  overlay.showInactive();
-  overlay.moveTop();
+  // Native staging raises the painted overlay above the game in one step and
+  // takes foreground only after it has moved an immersive full-screen Store
+  // game out of the immersive band. Raising it from here first let Windows
+  // present a frame of the game back above Home while staging reordered it.
   await stageGameplayQuickOverlay(overlay, gameId);
   if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
+  // The prewarm/hide path deliberately releases topmost. Reapply it after
+  // staging so Electron's state matches, and so Home still comes up if native
+  // staging could not raise it.
+  overlay.setAlwaysOnTop(true, 'screen-saver');
+  overlay.moveTop();
   overlay.focus();
   overlay.webContents.focus();
   await logLine(
@@ -1286,6 +1331,7 @@ const launcher = new GameLauncher(
   () => mainWindow,
   {
     onGameExited: (game) => {
+      gameAudioFocus.refresh();
       if (!launcher.hasTrackedGames) {
         controllerIdleService?.setGameplayActive(false);
         controllerCompatibility.stop();
@@ -1303,6 +1349,7 @@ const launcher = new GameLauncher(
     onGameWindowDetected: () => undefined,
     onActiveGameChanged: () => {
       controllerIdleService?.setGameplayActive(launcher.hasTrackedGames);
+      gameAudioFocus.refresh();
       broadcastActiveGame();
       const status = launcher.activeState.status;
       // Prepare only after the launch handoff has committed its final HWND.
@@ -1321,8 +1368,19 @@ const launcher = new GameLauncher(
       }
     }
   },
-  () => kioskInput.currentMode === 'customer'
+  () => kioskInput.currentMode === 'customer',
+  () => !adminWindowedPresentation
 );
+
+const gameAudioFocus = new GameAudioFocus(() => {
+  // Never mute NXGS itself, even if a stale game pid was reused by one of its
+  // own processes (the renderer plays the console's UI sounds).
+  const ownProcessIds = new Set(app.getAppMetrics().map((metric) => metric.pid));
+  return launcher.audioTargets.map((target) => ({
+    ...target,
+    processIds: target.processIds.filter((processId) => !ownProcessIds.has(processId))
+  }));
+});
 
 const kioskInput = new KioskInputService({
   onHome: handleShellHomeRequest,
@@ -1404,7 +1462,7 @@ function handleShellHomeRequest(reason: ShellHomeReason): void {
       openQuickNav: launcherQuickNavOpen,
       resetToHome: false
     });
-    void logLine('info', `Handled ${reason} inside windowed Admin mode without changing presentation mode.`);
+    void logLine('info', `Handled ${reason} inside Admin mode without changing presentation mode.`);
     return;
   }
 
@@ -1421,6 +1479,7 @@ function handleShellHomeRequest(reason: ShellHomeReason): void {
 function setKioskMode(mode: KioskMode): void {
   if (mode === 'customer') {
     kioskAdminActionGranted = false;
+    adminWindowedPresentation = false;
   }
   kioskInput.setMode(mode);
   applyKioskSettings(store.getSettings());
@@ -1463,6 +1522,7 @@ async function performKioskAdminAction(action: KioskAdminAction): Promise<KioskA
   const parked = await launcher.parkAllGames();
   if (!parked.ok) return parked;
   kioskAdminActionGranted = false;
+  adminWindowedPresentation = action === 'exitFullscreen';
   setKioskMode('admin');
   kioskInput.setAdminPinActive(false);
   kioskInput.setAdminControlsUnlocked(false);
@@ -1507,8 +1567,10 @@ function setKioskTaskbarHidden(hidden: boolean, reason: string): void {
 
 function syncTaskbarForWindowPresentation(reason: string): void {
   const window = getLiveMainWindow();
+  // Full-screen Admin hides the taskbar only while NXGS has focus, so staff who
+  // switch to another app, or end NXGS from Task Manager, still get it back.
   const shouldHide = Boolean(
-    kioskInput.currentMode === 'customer' &&
+    (kioskInput.currentMode === 'customer' || (!adminWindowedPresentation && window?.isFocused())) &&
     window &&
     window.isVisible() &&
     !window.isMinimized() &&
@@ -1524,17 +1586,25 @@ function applyKioskSettings(_settings: AppSettings): void {
   }
 
   if (kioskInput.currentMode === 'admin') {
-    launcher.restoreTaskbarForAdmin();
-    setKioskTaskbarHidden(false, 'admin mode');
     window.setSkipTaskbar(false);
     window.setAlwaysOnTop(false);
-    window.setFullScreen(false);
+    if (adminWindowedPresentation) {
+      launcher.restoreTaskbarForAdmin();
+      setKioskTaskbarHidden(false, 'windowed admin mode');
+      window.setFullScreen(false);
+    } else {
+      // Control Room keeps covering the display. Leaving fullscreen restores
+      // Electron's small default bounds, not a maximized window.
+      window.setBounds(screen.getDisplayMatching(window.getBounds()).bounds);
+      window.setFullScreen(true);
+    }
     window.setResizable(true);
     window.setMaximizable(true);
     window.setMinimizable(true);
     window.setMovable(true);
     window.show();
     window.focus();
+    if (!adminWindowedPresentation) syncTaskbarForWindowPresentation('full-screen admin mode');
     return;
   }
 
@@ -1585,6 +1655,7 @@ function prepareForQuit(): void {
   controllerCompatibility.stop();
   controllerIdleService?.stop();
   controllerIdleService = null;
+  gameAudioFocus.stop();
   kioskInput.unregisterAll();
   stopWindowsControlWorker();
   taskbarHiddenByKiosk = false;
@@ -1647,6 +1718,11 @@ async function createWindow(): Promise<void> {
     if (kioskInput.currentMode === 'customer' && !kioskInput.isAdminPinActive && !gameShouldOwnForeground) {
       kioskInput.handleFocusEscape('Launcher lost focus');
     }
+    if (kioskInput.currentMode === 'admin') syncTaskbarForWindowPresentation('admin window lost focus');
+  });
+
+  mainWindow.on('focus', () => {
+    if (kioskInput.currentMode === 'admin') syncTaskbarForWindowPresentation('admin window focused');
   });
 
   mainWindow.on('app-command', (event, command) => {
@@ -1754,6 +1830,12 @@ function registerIpc(): void {
     const overlay = getLiveGameplayQuickOverlayWindow();
     if (!overlay || event.sender !== overlay.webContents || !Number.isInteger(requestId)) return;
     finishPendingQuickOverlayPaint(requestId, true);
+  });
+
+  ipcMain.on('quickOverlay:frameSynced', (event, requestId: number) => {
+    const overlay = getLiveGameplayQuickOverlayWindow();
+    if (!overlay || event.sender !== overlay.webContents || !Number.isInteger(requestId)) return;
+    pendingQuickOverlayFrameSyncs.get(requestId)?.();
   });
 
   ipcMain.on('quickOverlay:backdropFailed', (event, requestId: number, reason: string) => {
@@ -2128,6 +2210,7 @@ if (!hasSingleInstanceLock) {
     });
     controllerIdleService.start();
     warmWindowsControlWorker();
+    gameAudioFocus.warm();
     kioskInput.register();
     void controllerCompatibility.prepare();
     if (secondInstanceFocusPending) {
