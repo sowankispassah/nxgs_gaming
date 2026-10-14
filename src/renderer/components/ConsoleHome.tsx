@@ -297,7 +297,7 @@ function GameAvatarRow(props: {
         );
       })}
       <span key={labelKey} className="console-row-label" aria-hidden="true">
-        {selectedGame && <span className="console-row-label-badge">PC</span>}
+        {selectedGame && <span className="console-row-label-badge">NX</span>}
         <span className="console-row-label-title">{label}</span>
       </span>
     </div>
