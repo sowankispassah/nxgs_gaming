@@ -1,7 +1,7 @@
 {
-    "version":  "0.21.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.21.3/NXGS-Play-Setup.exe",
-    "sha256":  "03a3b5db0830f83c082d3b2950a5a4b6fc8ce270584eb0721d27389ba4b44a25",
+    "version":  "0.22.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.22.0/NXGS-Play-Setup.exe",
+    "sha256":  "7a23e11e61681b1342cb1a7728b5edb0da43a2ff4af79482ffa2551f442297cd",
     "required":  false,
-    "notes":  "Home no longer flickers on the first press in Store games such as Hill Climb Racing, and appears sooner."
+    "notes":  "PS5-style Switcher, centred launch loader, game names under icons, and the staff shortcut works over games"
 }
