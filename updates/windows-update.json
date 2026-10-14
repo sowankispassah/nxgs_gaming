@@ -1,7 +1,7 @@
 {
-    "version":  "0.21.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.21.1/NXGS-Play-Setup.exe",
-    "sha256":  "8ff27ef03644921fc3cf62dea80acdd0da9c6442731c8a2c3a5d81a8abe0c4c3",
+    "version":  "0.21.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.21.2/NXGS-Play-Setup.exe",
+    "sha256":  "afd5965b10c5d331b7f8f0e002a27b71c7a2bf27002c865dc78108d550737bcc",
     "required":  false,
-    "notes":  "Home now opens over the running game in Microsoft Store games such as Angry Birds 2, instead of showing the game cover picture."
+    "notes":  "Smoother Home over games, only the game on screen plays sound, the Windows key opens Home, and Control Room stays full screen."
 }
