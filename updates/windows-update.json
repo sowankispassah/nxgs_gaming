@@ -1,7 +1,7 @@
 {
-    "version":  "0.22.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.22.1/NXGS-Play-Setup.exe",
-    "sha256":  "9cf8a5486b5b79e64a5013745171da5891d2ae16755a2344868edf6e89895e60",
+    "version":  "0.22.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.22.2/NXGS-Play-Setup.exe",
+    "sha256":  "1e184b471407ddd1408357e9be53ab74d7b1a2c36c6ed3a7327e30286e17312e",
     "required":  false,
-    "notes":  "Home and the game tile centred in the Control Center bar, and PS5-style game names with a PC badge"
+    "notes":  "The badge before the selected game's name now says NX"
 }
