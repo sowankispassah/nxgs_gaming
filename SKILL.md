@@ -20,8 +20,9 @@ Follow these rules for every future coding change in this project:
 - Keep Windows release artifact filenames stable: `NXGS-Play-Setup.exe`, `NXGS-Play-Setup.exe.blockmap`, `NXGS-Play.exe`, and `latest.yml`.
 - Always clean generated release artifacts before a Windows package build by running `npm run clean:release` directly or through `npm run build:win`; never leave old space-named or version-named installer files in `release`.
 - For release builds, generate or verify `updates/windows-update.json` with the installer download URL and SHA-256 checksum.
-- Treat every completed packaged user-facing update as a publishable release unless the user explicitly requests a local-only or test build.
+- Treat every completed packaged user-facing update as a publishable release unless the user explicitly requests a local-only or test build. The owner has pre-authorized publishing: release each completed change without asking for confirmation.
 - Publish the matching GitHub Release and all stable artifacts after `npm run build:win` succeeds: `NXGS-Play-Setup.exe`, `NXGS-Play-Setup.exe.blockmap`, `NXGS-Play.exe`, and `latest.yml`.
+- Use `node scripts/publish-release.mjs create --notes <file>`, then `publish`, then `write-manifest --summary "<line>"` (commit and push the manifest), then `upload-manifest` and `verify`. The script follows the order below and refuses steps taken out of it.
 - Never update `windows-update.json` to a version whose GitHub Release installer is not already publicly downloadable. Publish assets first, then update and push the manifest.
 - Attach the finalized `updates/windows-update.json` to the same GitHub Release as `windows-update.json`; the installed app reads `releases/latest/download/windows-update.json`, not the repository copy alone. Upload or replace this release asset after the installer is public and the manifest checksum is final.
 - After publishing, verify the GitHub Release tag matches `package.json`, the four expected assets exist, the installer URL returns successfully, and the live raw `windows-update.json` reports the new version, URL, and checksum.
