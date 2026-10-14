@@ -1,7 +1,7 @@
 {
-    "version":  "0.21.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.21.2/NXGS-Play-Setup.exe",
-    "sha256":  "afd5965b10c5d331b7f8f0e002a27b71c7a2bf27002c865dc78108d550737bcc",
+    "version":  "0.21.3",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.21.3/NXGS-Play-Setup.exe",
+    "sha256":  "03a3b5db0830f83c082d3b2950a5a4b6fc8ce270584eb0721d27389ba4b44a25",
     "required":  false,
-    "notes":  "Smoother Home over games, only the game on screen plays sound, the Windows key opens Home, and Control Room stays full screen."
+    "notes":  "Home no longer flickers on the first press in Store games such as Hill Climb Racing, and appears sooner."
 }
