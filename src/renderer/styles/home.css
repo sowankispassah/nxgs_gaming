@@ -431,7 +431,7 @@
   z-index: 1;
 }
 
-/* The selected tile's name sits below it, so the next tiles follow at the
+/* The selected tile's name sits under the next tiles, so they follow at the
    normal gap, as on the PS5. */
 .console-tile.after {
   --x: calc(var(--tile-lg) + var(--tile-gap) + (var(--slot) - 1) * var(--tile-step));
@@ -469,23 +469,38 @@
     0 20px 44px rgba(0, 0, 0, 0.5);
 }
 
-/* The selected tile's name, just below it like the PS5 caption. */
+/* The selected tile's name, as on the PS5: right of the enlarged tile,
+   centred in the space below the smaller tiles. */
 .console-row-label {
   position: absolute;
-  top: calc(var(--tile-lg) + clamp(10px, 1.3vh, 16px));
-  left: 0;
+  top: var(--tile);
+  left: calc(var(--tile-lg) + var(--tile-gap));
   display: flex;
+  height: calc(var(--tile-lg) - var(--tile));
   max-width: min(40vw, 760px);
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   pointer-events: none;
   animation: row-label-in 300ms var(--ease-out) 90ms backwards;
 }
 
+/* Platform badge in front of a game's name, like the PS5 one. */
+.console-row-label-badge {
+  flex: 0 0 auto;
+  border: 1.5px solid rgba(255, 255, 255, 0.86);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: clamp(11px, 0.62vw, 15px);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
 .console-row-label-title {
   overflow: hidden;
-  font-size: clamp(17px, 1.05vw, 24px);
-  font-weight: var(--weight-medium);
+  font-size: clamp(16px, 0.95vw, 22px);
+  font-weight: var(--weight-regular);
   line-height: 1.25;
   text-overflow: ellipsis;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);

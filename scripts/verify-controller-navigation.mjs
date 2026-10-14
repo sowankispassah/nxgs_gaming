@@ -139,6 +139,13 @@ assert.match(switcher, /if \(!result\.ok\) \{[^]{0,600}setConfirmClose\(false\);
 assert.match(switcher, /const disabled = pendingAction !== null \|\| isClosingGame;/, 'nothing behind the closing screen may take input');
 assert.match(switcher, /previousStatus\.current === 'resuming' && status === 'quickOverlayOpen'/, 'a failed resume must keep its card and error instead of resetting Home');
 assert.match(switcher, /SWITCHER_INPUT_DEDUPLICATION_MS/, 'duplicate keyboard and native controller events must be suppressed');
+// The bar is centred, so the Switcher and card are anchored to its game tile;
+// CSS anchor positioning only resolves anchors laid out before them.
+assert.ok(switcher.indexOf('<ControlCenterSwitcher') > switcher.indexOf('</nav>'), 'the Switcher must render after the bar it is anchored to');
+assert.ok(switcher.indexOf('<ControlCenterGameCard') > switcher.indexOf('</nav>'), 'the game card must render after the bar it is anchored to');
+assert.match(styles, /\.quick-nav-item\.active-game \{[^}]*anchor-name: --qc-game-tile/, 'the game tile must be the Switcher anchor');
+assert.match(styles, /\.quick-switcher \{[^}]*position-anchor: --qc-game-tile[^}]*left: min\(anchor\(left\)/, 'the Switcher must open over the game tile');
+assert.match(home, /console-row-label-badge/, 'the selected game\'s name must carry a platform badge like the PS5 caption');
 assert.match(switcher, /moveSwitcherDirection\(event\.direction\)/, 'keyboard and controller directions must share the same switcher focus graph');
 assert.match(launcher, /releaseGameWindowTopMost[\s\S]*focusLauncherAfterGameRelease/, 'quick Home must restore launcher input focus after releasing the game topmost lock');
 assert.match(launcher, /window\.webContents\.focus\(\)/, 'launcher focus must explicitly include its web contents');

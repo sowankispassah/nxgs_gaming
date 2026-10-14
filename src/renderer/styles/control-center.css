@@ -9,7 +9,6 @@
   --qc-tile: clamp(58px, 3.75vw, 96px);
   --qc-icon: clamp(22px, 1.3vw, 32px);
   --qc-gap: clamp(14px, 1.2vw, 30px);
-  --qc-tile-gap: clamp(12px, 0.85vw, 22px);
   --qc-home-gap: clamp(18px, 1.35vw, 34px);
   --qc-caption-size: clamp(15px, 0.9vw, 22px);
   --qc-caption-gap: clamp(10px, 1.2vh, 18px);
@@ -23,6 +22,10 @@
   --qc-card-line: rgba(255, 255, 255, 0.08);
   --qc-row-fill: rgba(255, 255, 255, 0.1);
   --qc-switcher-w: clamp(360px, 24vw, 520px);
+  --qc-card-w: clamp(360px, 24vw, 540px);
+  /* The Switcher opens over the game tile but moves left when its card would
+     run off the right edge. Used in left, where 100% is the overlay width. */
+  --qc-switcher-max-left: calc(100% - var(--safe-x) - var(--qc-switcher-w) - var(--qc-card-gap) - var(--qc-card-w));
   --qc-switcher-icon: clamp(38px, 2.4vw, 50px);
   --qc-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 2px 18px rgba(0, 0, 0, 0.45);
 
@@ -198,22 +201,24 @@
   animation: qc-bar-in var(--dur-base) var(--ease-out) both;
 }
 
+/* Home and the game tile sit in the centre, just left of the other controls. */
+.quick-nav-cluster {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--qc-home-gap);
+}
+
 .quick-nav-group {
   display: flex;
   align-items: center;
 }
 
 .quick-nav-group--switcher {
-  justify-self: start;
-  gap: var(--qc-tile-gap);
-}
-
-.quick-nav-group--switcher > .quick-nav-slot:first-child {
-  margin-right: calc(var(--qc-home-gap) - var(--qc-tile-gap));
+  gap: var(--qc-home-gap);
 }
 
 .quick-nav-group--controls {
-  justify-self: center;
   gap: var(--qc-gap);
 }
 
@@ -237,6 +242,7 @@
 
 .quick-nav-item.active-game {
   width: var(--qc-tile);
+  anchor-name: --qc-game-tile;
 }
 
 .quick-home-overlay .quick-nav-item:is(:hover, :focus-visible, .focused, .selected, :active) {
@@ -347,20 +353,11 @@
     visibility 0s linear var(--dur-fast);
 }
 
-.quick-nav-group--switcher .quick-nav-caption {
-  left: 0;
-  translate: 0 6px;
-}
-
 .quick-nav-item.focused .quick-nav-caption {
   opacity: 1;
   translate: -50% 0;
   visibility: visible;
   transition-delay: 0s;
-}
-
-.quick-nav-group--switcher .quick-nav-item.focused .quick-nav-caption {
-  translate: 0 0;
 }
 
 .quick-nav-item:disabled {
@@ -374,6 +371,7 @@
 /* ------------------------------------------------------- clock and time left */
 
 .quick-nav-status {
+  grid-column: 3;
   display: flex;
   align-items: center;
   justify-self: end;
@@ -452,8 +450,9 @@
  */
 .quick-switcher {
   position: absolute;
+  position-anchor: --qc-game-tile;
   bottom: var(--qc-card-bottom);
-  left: calc(var(--safe-x) + var(--qc-item) + var(--qc-home-gap));
+  left: min(anchor(left), var(--qc-switcher-max-left));
   z-index: 3;
   display: flex;
   width: var(--qc-switcher-w);
@@ -617,23 +616,17 @@
   color: var(--ps-text);
 }
 
-/* A game's card opens to the right of the Switcher, like a PS5 options menu. */
-.quick-switcher ~ .quick-game-menu {
-  left: calc(var(--safe-x) + var(--qc-item) + var(--qc-home-gap) + var(--qc-switcher-w) + var(--qc-card-gap));
-}
-
 /* ------------------------------------------------------------- game card */
 
+/* A game's card opens to the right of the Switcher, like a PS5 options menu. */
 .quick-game-menu {
   position: absolute;
+  position-anchor: --qc-game-tile;
   bottom: var(--qc-card-bottom);
-  left: calc(
-    var(--safe-x) + var(--qc-item) + var(--qc-home-gap) +
-    var(--qc-session-index, 0) * (var(--qc-tile) + var(--qc-tile-gap))
-  );
+  left: calc(min(anchor(left), var(--qc-switcher-max-left)) + var(--qc-switcher-w) + var(--qc-card-gap));
   z-index: 3;
   display: flex;
-  width: clamp(360px, 24vw, 540px);
+  width: var(--qc-card-w);
   max-height: calc(100dvh - var(--qc-card-bottom) - var(--safe-y));
   flex-direction: column;
   border: 1px solid var(--qc-card-line);

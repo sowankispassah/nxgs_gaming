@@ -1028,6 +1028,63 @@ export function QuickHomeOverlay(props: {
       <div className="quick-overlay-shade" />
       {closingSession && <ControlCenterClosing game={closingSession.game} />}
 
+      <nav className="quick-navbar" aria-label="NXGS quick navigation">
+        <div className="quick-nav-cluster">
+          {NAV_GROUPS.map((group) => (
+            <div className={`quick-nav-group quick-nav-group--${group}`} key={group}>
+              {navItems.map((item, index) => item.group === group && (
+                <div className="quick-nav-slot" key={item.key}>
+                  {item.key === 'settings' && quickSettingsOpen && (
+                    <ControlCenterQuickSettings
+                      selected={focusArea === 'quickAudio' ? 'audio' : focusArea === 'quickBrightness' ? 'brightness' : null}
+                      audio={audio}
+                      volume={displayVolume}
+                      audioPending={audioPending}
+                      audioMessage={audioMessage}
+                      display={display}
+                      brightness={displayBrightness}
+                      brightnessMessage={brightnessMessage}
+                      onRequestClose={closeQuickSettings}
+                      onSelectAudio={() => setFocusArea('quickAudio')}
+                      onSelectBrightness={() => setFocusArea('quickBrightness')}
+                      onToggleMute={() => void toggleSystemMute()}
+                      onVolumeInput={setSystemVolume}
+                      onBrightnessInput={setSystemBrightness}
+                    />
+                  )}
+                  <button
+                    ref={item.key === initialNavKey ? initialNavActionRef : undefined}
+                    className={cx(
+                      'quick-nav-item',
+                      selectedNavIndex === index && 'selected',
+                      selectedNavIndex === index && navFocused && 'focused',
+                      item.session && 'active-game'
+                    )}
+                    type="button"
+                    aria-label={item.label}
+                    aria-expanded={item.key === 'settings' ? quickSettingsOpen : undefined}
+                    aria-controls={item.key === 'settings' ? 'quick-settings-panel' : undefined}
+                    disabled={disabled}
+                    onMouseEnter={() => { setSelectedNavKey(item.key); setFocusArea('navbar'); }}
+                    onClick={() => selectNavAction(index)}
+                  >
+                    {!item.session && <span className="quick-nav-caption" aria-hidden="true">{item.caption}</span>}
+                    <span className="quick-nav-face" aria-hidden="true">
+                      {item.session
+                        ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} />
+                        : item.icon}
+                    </span>
+                    {item.session && <span className={cx('active-dot', !item.session.isActive && 'minimized')} aria-hidden="true" />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <ControlCenterStatus open={props.activeGame.status === 'quickOverlayOpen' || props.activeGame.status === 'launching'} />
+      </nav>
+
+      {/* Rendered after the bar so CSS anchor positioning can place them over its game tile. */}
       {switcherSelected && switcherSessions.length > 0 && (
         <ControlCenterSwitcher
           sessions={switcherSessions}
@@ -1076,60 +1133,6 @@ export function QuickHomeOverlay(props: {
           }}
         />
       )}
-
-      <nav className="quick-navbar" aria-label="NXGS quick navigation">
-        {NAV_GROUPS.map((group) => (
-          <div className={`quick-nav-group quick-nav-group--${group}`} key={group}>
-            {navItems.map((item, index) => item.group === group && (
-              <div className="quick-nav-slot" key={item.key}>
-                {item.key === 'settings' && quickSettingsOpen && (
-                  <ControlCenterQuickSettings
-                    selected={focusArea === 'quickAudio' ? 'audio' : focusArea === 'quickBrightness' ? 'brightness' : null}
-                    audio={audio}
-                    volume={displayVolume}
-                    audioPending={audioPending}
-                    audioMessage={audioMessage}
-                    display={display}
-                    brightness={displayBrightness}
-                    brightnessMessage={brightnessMessage}
-                    onRequestClose={closeQuickSettings}
-                    onSelectAudio={() => setFocusArea('quickAudio')}
-                    onSelectBrightness={() => setFocusArea('quickBrightness')}
-                    onToggleMute={() => void toggleSystemMute()}
-                    onVolumeInput={setSystemVolume}
-                    onBrightnessInput={setSystemBrightness}
-                  />
-                )}
-                <button
-                  ref={item.key === initialNavKey ? initialNavActionRef : undefined}
-                  className={cx(
-                    'quick-nav-item',
-                    selectedNavIndex === index && 'selected',
-                    selectedNavIndex === index && navFocused && 'focused',
-                    item.session && 'active-game'
-                  )}
-                  type="button"
-                  aria-label={item.label}
-                  aria-expanded={item.key === 'settings' ? quickSettingsOpen : undefined}
-                  aria-controls={item.key === 'settings' ? 'quick-settings-panel' : undefined}
-                  disabled={disabled}
-                  onMouseEnter={() => { setSelectedNavKey(item.key); setFocusArea('navbar'); }}
-                  onClick={() => selectNavAction(index)}
-                >
-                  {!item.session && <span className="quick-nav-caption" aria-hidden="true">{item.caption}</span>}
-                  <span className="quick-nav-face" aria-hidden="true">
-                    {item.session
-                      ? <SafeGameImage game={item.session.game} kind="avatar" alt="" fallbackSize={25} />
-                      : item.icon}
-                  </span>
-                  {item.session && <span className={cx('active-dot', !item.session.isActive && 'minimized')} aria-hidden="true" />}
-                </button>
-              </div>
-            ))}
-          </div>
-        ))}
-        <ControlCenterStatus open={props.activeGame.status === 'quickOverlayOpen' || props.activeGame.status === 'launching'} />
-      </nav>
 
       <ControllerHints className="quick-overlay-hints" hints={hints} />
       {notice && (
