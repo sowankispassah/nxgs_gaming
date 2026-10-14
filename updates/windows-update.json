@@ -1,7 +1,7 @@
 {
-    "version":  "0.22.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.22.0/NXGS-Play-Setup.exe",
-    "sha256":  "7a23e11e61681b1342cb1a7728b5edb0da43a2ff4af79482ffa2551f442297cd",
+    "version":  "0.22.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.22.1/NXGS-Play-Setup.exe",
+    "sha256":  "9cf8a5486b5b79e64a5013745171da5891d2ae16755a2344868edf6e89895e60",
     "required":  false,
-    "notes":  "PS5-style Switcher, centred launch loader, game names under icons, and the staff shortcut works over games"
+    "notes":  "Home and the game tile centred in the Control Center bar, and PS5-style game names with a PC badge"
 }
