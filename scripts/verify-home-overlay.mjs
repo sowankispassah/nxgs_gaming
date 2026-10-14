@@ -83,17 +83,31 @@ assert.match(mainSource, /await gameplayQuickOverlayPreparePromise[\s\S]*prepare
   // in one step; raising it first let the game blink back above Home.
   assert.match(
     showBody,
-    /if \(!overlay\.isVisible\(\)\) \{\s*(?:\/\/[^\n]*\s*)*overlay\.setAlwaysOnTop\(false\);\s*overlay\.setIgnoreMouseEvents\(true\);\s*overlay\.showInactive\(\);\s*const freshFrame = await waitForQuickOverlayFreshFrame\(overlay\);/
+    /if \(!overlay\.isVisible\(\)\) \{\s*coverImmersiveExit = await isImmersiveFullscreenWindow\([\s\S]*?setQuickOverlaySolidCover\(overlay, coverImmersiveExit, false\);\s*(?:\/\/[^\n]*\s*)*overlay\.setAlwaysOnTop\(false\);\s*overlay\.setIgnoreMouseEvents\(true\);\s*overlay\.showInactive\(\);\s*const freshFrame = await waitForQuickOverlayFreshFrame\(overlay\);/,
+    'every hidden show sets the solid cover for this press before painting underneath the game'
   );
   const raiseStep = showBody.slice(
     showBody.indexOf('await waitForQuickOverlayFreshFrame(overlay)'),
     showBody.lastIndexOf('await stageGameplayQuickOverlay(overlay, gameId)')
   );
-  assert.doesNotMatch(raiseStep, /setAlwaysOnTop\(true|moveTop\(\)/, 'Home must not be raised before native staging');
+  // Only a solid Home (an immersive game leaving full screen) is raised first.
+  assert.match(raiseStep, /if \(coverImmersiveExit\) \{[^}]*overlay\.setAlwaysOnTop\(true, 'screen-saver'\);\s*overlay\.moveTop\(\);\s*\}/);
+  assert.doesNotMatch(
+    raiseStep.replace(/if \(coverImmersiveExit\) \{[^}]*\}/, ''),
+    /setAlwaysOnTop\(true|moveTop\(\)/,
+    'a see-through Home must not be raised before native staging'
+  );
+  const afterStage = showBody.slice(showBody.lastIndexOf('await stageGameplayQuickOverlay(overlay, gameId)'));
   assert.match(
-    showBody.slice(showBody.lastIndexOf('await stageGameplayQuickOverlay(overlay, gameId)')),
+    afterStage,
     /overlay\.setAlwaysOnTop\(true, 'screen-saver'\);\s*overlay\.moveTop\(\);\s*overlay\.focus\(\);/,
     'topmost is synced after staging, which also raises Home if staging could not'
+  );
+  assert.match(afterStage, /if \(coverImmersiveExit\) setQuickOverlaySolidCover\(overlay, false, true\);/, 'the cover fades only after staging');
+  assert.match(
+    mainSource,
+    /function hideGameplayQuickOverlay[\s\S]*?overlay\.hide\(\);[\s\S]*?setQuickOverlaySolidCover\(overlay, false, false\);/,
+    'a hidden Home never keeps its solid cover'
   );
   assert.match(
     raiseStep,
@@ -343,5 +357,30 @@ assert.match(
   'minimizing must use the persistent worker and keep the one-shot command only as a fallback'
 );
 assert.match(windowsControlSource, /\$request\.command -eq 'minimize-window'[\s\S]*MinimizeWindow\(\$handle\)/);
+
+// Any game in Windows' immersive full screen (not one title): Home goes up
+// solid first, is re-raised the moment the game leaves the immersive band,
+// and the game is slotted in behind it instead of being lifted above it.
+assert.match(
+  windowsControlSource,
+  /public static int RootWindowBand\(long handle\)[\s\S]*?GetAncestor\(window, 2\)[\s\S]*?GetWindowBand/,
+  'the immersive check must read the band of the game\'s top-level frame'
+);
+assert.match(windowManagerSource, /export async function isImmersiveFullscreenWindow[\s\S]*?runWindowsControl\('window-band'/);
+assert.match(
+  windowsControlSource,
+  /LeaveImmersiveFullscreen\(IntPtr game, IntPtr overlay, UIntPtr trustedInput\)[\s\S]*?var homeCovers = [\s\S]*?Thread\.Sleep\(homeCovers \? 0 : 10\)[\s\S]*?if \(homeCovers && band != ImmersiveBand\) \{\s*SetWindowPos\(overlay, new IntPtr\(-1\)/,
+  'a solid Home must be re-raised as soon as the game leaves the immersive band'
+);
+assert.match(windowsControlSource, /LeaveImmersiveFullscreen\(game, overlay, trustedInput\)/);
+assert.match(
+  windowsControlSource,
+  /var homeOnTop = [^;]*;\s*SetWindowPos\(game, homeOnTop \? overlay : new IntPtr\(-1\)[\s\S]*?if \(homeOnTop && \(WindowStyle\(game, -20\) & 0x8L\) == 0\)/,
+  'with Home already on top the game goes directly behind it, and stays above the NXGS shell'
+);
+assert.match(overlayRootSource, /onQuickOverlaySolidCover\(setSolidCover\)[\s\S]*quick-overlay-solid-cover/);
+assert.match(stylesSource, /\.quick-overlay-solid-cover\s*\{[^}]*position: fixed;[^}]*z-index: 0;[^}]*opacity: 0;/s, 'the cover sits under the Home controls');
+assert.match(stylesSource, /\.quick-overlay-solid-cover\.is-visible\s*\{\s*opacity: 1;/);
+assert.match(preloadSource, /onQuickOverlaySolidCover[\s\S]*quickOverlay:solidCover/);
 
 console.log('Home toggle, exact live game capture, clean end-session, and dismiss/resume boundaries verified.');

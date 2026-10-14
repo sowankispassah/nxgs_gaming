@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { ActiveGameState, QuickOverlayBackdrop } from '../shared/types';
 import { QuickHomeOverlay } from './components/QuickHomeOverlay';
 
@@ -24,7 +24,16 @@ export function QuickOverlayRoot(): JSX.Element {
   const [backdrop, setBackdrop] = useState<QuickOverlayBackdrop>(EMPTY_BACKDROP);
   const [backdropReadyRequestId, setBackdropReadyRequestId] = useState(0);
   const [liveBackdropStream, setLiveBackdropStream] = useState<MediaStream | null>(null);
+  const [solidCover, setSolidCover] = useState({ visible: false, fade: false });
   const readyRequestRef = useRef(0);
+  const coverArt = activeGame.game?.coverImagePath || activeGame.game?.avatarImagePath || '';
+
+  useEffect(() => {
+    // Decode the cover art early so the solid cover never shows it popping in.
+    if (!coverArt) return;
+    const image = new Image();
+    image.src = backdropImageUrl(coverArt);
+  }, [coverArt]);
 
   useEffect(() => {
     let mounted = true;
@@ -32,6 +41,7 @@ export function QuickOverlayRoot(): JSX.Element {
       if (mounted) setActiveGame(data.activeGame);
     });
     const unsubscribeActiveGame = window.nxgs.onActiveGameState(setActiveGame);
+    const unsubscribeSolidCover = window.nxgs.onQuickOverlaySolidCover(setSolidCover);
     const unsubscribeBackdrop = window.nxgs.onQuickOverlayBackdrop((request) => {
       setRenderRequestId(request.requestId);
       setBackdrop(request);
@@ -65,6 +75,7 @@ export function QuickOverlayRoot(): JSX.Element {
     return () => {
       mounted = false;
       unsubscribeActiveGame();
+      unsubscribeSolidCover();
       unsubscribeBackdrop();
       unsubscribeShellHome();
       unsubscribeFrameSync();
@@ -203,6 +214,14 @@ export function QuickOverlayRoot(): JSX.Element {
 
   return (
     <main className="app-shell quick-overlay-shell live-gameplay-overlay">
+      {/* Hides a game's restyle while it leaves Windows' immersive full screen. */}
+      <div
+        className={`quick-overlay-solid-cover${solidCover.visible ? ' is-visible' : solidCover.fade ? ' is-fading' : ''}`}
+        style={coverArt
+          ? { '--qc-cover-art': `url("${backdropImageUrl(coverArt).replace(/"/g, '%22')}")` } as CSSProperties
+          : undefined}
+        aria-hidden="true"
+      />
       <QuickHomeOverlay
         activeGame={activeGame}
         emergencyCloseRequestId={emergencyCloseRequestId}

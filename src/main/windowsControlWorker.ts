@@ -13,6 +13,7 @@ export type WindowsControlCommand =
   | 'find-store-window'
   | 'stage-overlay'
   | 'release-window'
+  | 'window-band'
   | 'minimize-window'
   | 'close-window'
   | 'hide-game'
@@ -486,7 +487,7 @@ public static class NxgsWarningInput {
     // Store game into the desktop band, so it keeps rendering live underneath
     // NXGS Home. The kiosk hook permits only this tagged injected Windows-key
     // press; physical presses stay blocked.
-    private static bool LeaveImmersiveFullscreen(IntPtr game, UIntPtr trustedInput) {
+    private static bool LeaveImmersiveFullscreen(IntPtr game, IntPtr overlay, UIntPtr trustedInput) {
         uint band;
         if (!GetWindowBand(game, out band) || band != ImmersiveBand) return true;
         int failures;
@@ -494,6 +495,9 @@ public static class NxgsWarningInput {
         if (failures >= MaxImmersiveToggleFailures) return false;
         Rect immersiveRect;
         GetWindowRect(game, out immersiveRect);
+        // NXGS raises Home as a solid cover before an immersive game leaves full
+        // screen, so the game's windowed restyle stays hidden behind it.
+        var homeCovers = overlay != IntPtr.Zero && IsWindowVisible(overlay) && (WindowStyle(overlay, -20) & 0x8L) != 0;
         if (ActivateForImmersiveToggle(game)) {
             ReleaseHeldModifiers(trustedInput);
             keybd_event(0x10, 0, 0, UIntPtr.Zero);
@@ -502,9 +506,15 @@ public static class NxgsWarningInput {
             keybd_event(0x0D, 0, KeyUp, UIntPtr.Zero);
             keybd_event(0x5B, 0, KeyUp, trustedInput);
             keybd_event(0x10, 0, KeyUp, UIntPtr.Zero);
-            for (var wait = 0; wait < 50; wait += 1) {
+            var toggleClock = System.Diagnostics.Stopwatch.StartNew();
+            while (toggleClock.ElapsedMilliseconds < 800) {
                 if (GetWindowBand(game, out band) && band != ImmersiveBand) break;
-                System.Threading.Thread.Sleep(10);
+                // With Home covering, poll continuously: Windows first places
+                // the game at the top of the desktop band, above Home.
+                System.Threading.Thread.Sleep(homeCovers ? 0 : 10);
+            }
+            if (homeCovers && band != ImmersiveBand) {
+                SetWindowPos(overlay, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate);
             }
         }
         if (band == ImmersiveBand) {
@@ -613,10 +623,19 @@ public static class NxgsWarningInput {
         try {
             if (game != IntPtr.Zero && IsWindow(game)) {
                 EnableWindow(game, true);
-                if (!minimizeGameAfterPaint) LeaveImmersiveFullscreen(game, trustedInput);
+                if (!minimizeGameAfterPaint) LeaveImmersiveFullscreen(game, overlay, trustedInput);
                 if (IsIconic(game) && !minimizeGameAfterPaint) ShowWindowAsync(game, 9);
                 if (!minimizeGameAfterPaint) {
-                    SetWindowPos(game, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate | ShowWindowFlag);
+                    // When Home already covers the display (its opaque cover over a
+                    // game leaving immersive full screen), slot the game in directly
+                    // behind it. Moving the game to the top first showed it over
+                    // Home for a frame.
+                    var homeOnTop = IsWindowVisible(overlay) && (WindowStyle(overlay, -20) & 0x8L) != 0;
+                    SetWindowPos(game, homeOnTop ? overlay : new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate | ShowWindowFlag);
+                    if (homeOnTop && (WindowStyle(game, -20) & 0x8L) == 0) {
+                        // The game must still sit above the NXGS shell cover.
+                        SetWindowPos(game, new IntPtr(-1), 0, 0, 0, 0, NoSize | NoMove | NoActivate | ShowWindowFlag);
+                    }
                 }
                 // The game is never hidden during Home. If overlay activation
                 // fails, the only surface Windows can reveal is still the game.
@@ -714,6 +733,17 @@ public static class NxgsWarningInput {
     public static bool MinimizeWindow(long handle) {
         var window = new IntPtr(handle);
         return window != IntPtr.Zero && IsWindow(window) && ShowWindowAsync(window, 6);
+    }
+
+    // Band of the game's top-level frame: a Store game's tracked CoreWindow
+    // is a child of the ApplicationFrameWindow that owns the band.
+    public static int RootWindowBand(long handle) {
+        var window = new IntPtr(handle);
+        if (window == IntPtr.Zero || !IsWindow(window)) return -1;
+        var root = GetAncestor(window, 2);
+        if (root != IntPtr.Zero && IsWindow(root)) window = root;
+        uint band;
+        return GetWindowBand(window, out band) ? (int)band : -1;
     }
 
     public static bool CloseWindow(long handle) {
@@ -841,6 +871,9 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
         } elseif ($request.command -eq 'hide-game') {
             $handles = [NxgsWarningInput]::HideGame([long]$request.value.handle, [int]$request.value.processId, [string]$request.value.processName, [string]$request.value.appUserModelId)
             $response = @{ id = $request.id; ok = $true; handles = @($handles); message = 'Tracked game windows hidden.' }
+        } elseif ($request.command -eq 'window-band') {
+            $band = [NxgsWarningInput]::RootWindowBand([long]$request.value)
+            $response = @{ id = $request.id; ok = ($band -ge 0); value = $band; message = "Window band $band." }
         } elseif ($request.command -eq 'minimize-window') {
             $handle = [long]$request.value
             $minimized = [NxgsWarningInput]::MinimizeWindow($handle)

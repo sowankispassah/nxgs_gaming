@@ -37,6 +37,7 @@ import {
   enforceQuickOverlayZOrder,
   getRootWindowHandle,
   getWindowCaptureTopInset,
+  isImmersiveFullscreenWindow,
   restoreWindowsTaskbarSync,
   setWindowsTaskbarVisible
 } from './windowManagerService';
@@ -393,6 +394,12 @@ function clearGameplayQuickOverlayPreparation(overlay: BrowserWindow): void {
   }
 }
 
+// Solid layer under the Home controls. It hides a game's restyle while the
+// game leaves Windows' immersive full screen, then fades to the live game.
+function setQuickOverlaySolidCover(overlay: BrowserWindow, visible: boolean, fade: boolean): void {
+  if (!overlay.webContents.isDestroyed()) overlay.webContents.send('quickOverlay:solidCover', { visible, fade });
+}
+
 function hideGameplayQuickOverlay(resetPreparation = false): void {
   const wasLoadingHome = Boolean(gameplayLaunchCoverGameId);
   gameplayLaunchCoverGameId = null;
@@ -409,6 +416,7 @@ function hideGameplayQuickOverlay(resetPreparation = false): void {
   overlay.setBackgroundColor('#00000000');
   overlay.setIgnoreMouseEvents(false);
   overlay.setAlwaysOnTop(false);
+  setQuickOverlaySolidCover(overlay, false, false);
   if (resetPreparation) clearGameplayQuickOverlayPreparation(overlay);
   if (wasLoadingHome && !resetPreparation && launcher.activeState.status === 'running') {
     void prepareGameplayQuickOverlayRenderer(true);
@@ -816,7 +824,18 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     return;
   }
 
+  // A game in Windows' immersive full screen must leave it before Home can sit
+  // above it, and Windows shows it as a titled window on the way out. Raise
+  // Home first with a solid cover so that restyle stays hidden behind it.
+  let coverImmersiveExit = false;
   if (!overlay.isVisible()) {
+    coverImmersiveExit = await isImmersiveFullscreenWindow(gameplayQuickOverlayPreparedWindowHandle ?? 0);
+    if (
+      !gameplayQuickOverlayDesiredOpen ||
+      visibilityGeneration !== gameplayQuickOverlayVisibilityGeneration ||
+      overlay.isDestroyed()
+    ) return;
+    setQuickOverlaySolidCover(overlay, coverImmersiveExit, false);
     // Show without activating and below the topmost game first: a hidden
     // window still holds the frame it painted when Home last closed, and
     // raising it immediately flashed that stale menu before the current one.
@@ -835,10 +854,16 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
     if (!freshFrame) await logLine('warn', 'Home overlay frame sync timed out; raising the last painted frame.');
   }
   overlay.setIgnoreMouseEvents(false);
+  if (coverImmersiveExit) {
+    // Still hidden behind the immersive game. Home appears, solid, the moment
+    // the game drops into the desktop band; native staging keeps it on top.
+    overlay.setAlwaysOnTop(true, 'screen-saver');
+    overlay.moveTop();
+  }
   // Native staging raises the painted overlay above the game in one step and
   // takes foreground only after it has moved an immersive full-screen Store
-  // game out of the immersive band. Raising it from here first let Windows
-  // present a frame of the game back above Home while staging reordered it.
+  // game out of the immersive band. Raising a see-through Home from here first
+  // let Windows present a frame of the game back above it during staging.
   await stageGameplayQuickOverlay(overlay, gameId);
   if (!gameplayQuickOverlayDesiredOpen || overlay.isDestroyed()) return;
   // The prewarm/hide path deliberately releases topmost. Reapply it after
@@ -848,6 +873,7 @@ async function performGameplayQuickOverlayShow(): Promise<void> {
   overlay.moveTop();
   overlay.focus();
   overlay.webContents.focus();
+  if (coverImmersiveExit) setQuickOverlaySolidCover(overlay, false, true);
   await logLine(
     gameplayQuickOverlayRendererReady ? 'info' : 'warn',
     `Quick overlay transition completed in ${Date.now() - transitionStartedAt}ms ` +

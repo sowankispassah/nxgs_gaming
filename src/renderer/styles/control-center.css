@@ -70,6 +70,41 @@
   background: transparent;
 }
 
+/*
+ * Solid layer under the Home controls while a game leaves Windows' immersive
+ * full screen; Windows restyles it as a titled window on the way out. It fades
+ * to the live game once the game is staged behind Home.
+ */
+.quick-overlay-solid-cover {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  background-color: #050912;
+  background-image:
+    linear-gradient(rgba(5, 9, 18, 0.55), rgba(5, 9, 18, 0.55)),
+    var(--qc-cover-art, none),
+    linear-gradient(160deg, #0d1729, #050810 72%);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.quick-overlay-solid-cover.is-visible {
+  opacity: 1;
+}
+
+.quick-overlay-solid-cover.is-fading {
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-overlay-solid-cover.is-fading {
+    transition: none;
+  }
+}
+
 .quick-overlay-shade {
   position: absolute;
   inset: 0;

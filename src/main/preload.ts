@@ -206,6 +206,13 @@ const api = {
   notifyQuickOverlayFrameSynced: (requestId: number) => {
     ipcRenderer.send('quickOverlay:frameSynced', requestId);
   },
+  onQuickOverlaySolidCover: (callback: (cover: { visible: boolean; fade: boolean }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, cover: { visible: boolean; fade: boolean }) => callback(cover);
+    ipcRenderer.on('quickOverlay:solidCover', listener);
+    return () => {
+      ipcRenderer.removeListener('quickOverlay:solidCover', listener);
+    };
+  },
   onShellHome: (callback: (event: ShellHomeEvent) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, event: ShellHomeEvent) => callback(event);
     ipcRenderer.on('shell:home', listener);

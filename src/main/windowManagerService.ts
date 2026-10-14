@@ -1222,6 +1222,17 @@ $flags = 0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040
 // desktop window, and Windows cloaks it once another window takes foreground.
 const IMMERSIVE_WINDOW_BAND = 8;
 
+/** True while the game's top-level frame is in Windows' immersive full screen. */
+export async function isImmersiveFullscreenWindow(handle: number): Promise<boolean> {
+  if (process.platform !== 'win32' || !Number.isFinite(handle) || handle <= 0) return false;
+  try {
+    const result = await runWindowsControl('window-band', Math.trunc(handle));
+    return result.ok && result.value === IMMERSIVE_WINDOW_BAND;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * True when a game frame is in immersive full screen and not minimized, even if
  * Windows cloaked it behind NXGS. Native Home staging reactivates such a frame
