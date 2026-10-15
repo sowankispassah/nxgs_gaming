@@ -1,7 +1,7 @@
 {
-    "version":  "0.22.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.22.2/NXGS-Play-Setup.exe",
-    "sha256":  "1e184b471407ddd1408357e9be53ab74d7b1a2c36c6ed3a7327e30286e17312e",
+    "version":  "0.22.3",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.22.3/NXGS-Play-Setup.exe",
+    "sha256":  "812b0fec27fd69b4b0c73e60332e4d42c1c826348a680a9205e0686e7fd2e003",
     "required":  false,
-    "notes":  "The badge before the selected game's name now says NX"
+    "notes":  "The selected game's name on Home is larger, without a badge"
 }
