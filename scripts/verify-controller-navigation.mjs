@@ -145,7 +145,6 @@ assert.ok(switcher.indexOf('<ControlCenterSwitcher') > switcher.indexOf('</nav>'
 assert.ok(switcher.indexOf('<ControlCenterGameCard') > switcher.indexOf('</nav>'), 'the game card must render after the bar it is anchored to');
 assert.match(styles, /\.quick-nav-item\.active-game \{[^}]*anchor-name: --qc-game-tile/, 'the game tile must be the Switcher anchor');
 assert.match(styles, /\.quick-switcher \{[^}]*position-anchor: --qc-game-tile[^}]*left: min\(anchor\(left\)/, 'the Switcher must open over the game tile');
-assert.match(home, /console-row-label-badge/, 'the selected game\'s name must carry a platform badge like the PS5 caption');
 assert.match(switcher, /moveSwitcherDirection\(event\.direction\)/, 'keyboard and controller directions must share the same switcher focus graph');
 assert.match(launcher, /releaseGameWindowTopMost[\s\S]*focusLauncherAfterGameRelease/, 'quick Home must restore launcher input focus after releasing the game topmost lock');
 assert.match(launcher, /window\.webContents\.focus\(\)/, 'launcher focus must explicitly include its web contents');

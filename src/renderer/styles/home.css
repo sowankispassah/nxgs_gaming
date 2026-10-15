@@ -477,31 +477,18 @@
   left: calc(var(--tile-lg) + var(--tile-gap));
   display: flex;
   height: calc(var(--tile-lg) - var(--tile));
-  max-width: min(40vw, 760px);
+  max-width: calc(100vw - 2 * var(--safe-x) - var(--tile-lg) - var(--tile-gap));
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   pointer-events: none;
   animation: row-label-in 300ms var(--ease-out) 90ms backwards;
 }
 
-/* Platform badge in front of a game's name, like the PS5 one. */
-.console-row-label-badge {
-  flex: 0 0 auto;
-  border: 1.5px solid rgba(255, 255, 255, 0.86);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: clamp(11px, 0.62vw, 15px);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.06em;
-  line-height: 1.2;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
-}
-
 .console-row-label-title {
   overflow: hidden;
-  font-size: clamp(16px, 0.95vw, 22px);
+  font-size: clamp(40px, 2.375vw, 55px);
   font-weight: var(--weight-regular);
-  line-height: 1.25;
+  line-height: 1.1;
   text-overflow: ellipsis;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
   white-space: nowrap;

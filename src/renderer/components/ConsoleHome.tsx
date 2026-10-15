@@ -214,8 +214,7 @@ function GameAvatarRow(props: {
 }): JSX.Element {
   const tileRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedSlot = props.selectedIndex + 1;
-  const selectedGame = props.games[props.selectedIndex];
-  const label = selectedGame?.title ?? 'Home';
+  const label = props.games[props.selectedIndex]?.title ?? 'Home';
   const labelKey = `${selectedSlot}:${label}`;
   const lastWheelAt = useRef(0);
 
@@ -297,7 +296,6 @@ function GameAvatarRow(props: {
         );
       })}
       <span key={labelKey} className="console-row-label" aria-hidden="true">
-        {selectedGame && <span className="console-row-label-badge">NX</span>}
         <span className="console-row-label-title">{label}</span>
       </span>
     </div>
