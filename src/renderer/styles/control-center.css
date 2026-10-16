@@ -497,7 +497,6 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
 }
 
 /* Hairline between recent games, as on the PS5. */
@@ -516,7 +515,7 @@
   opacity: 0;
 }
 
-.quick-switcher-resume {
+.quick-switcher-select {
   display: flex;
   min-width: 0;
   min-height: clamp(56px, 6.2vh, 76px);
@@ -534,17 +533,17 @@
   transition: background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
-.quick-switcher-resume.focused {
+.quick-switcher-select.focused {
   background: var(--qc-row-fill);
   box-shadow: var(--focus-ring);
 }
 
 /* The game whose options card is open beside the list. */
-.quick-switcher-row.options-open .quick-switcher-resume {
+.quick-switcher-row.options-open .quick-switcher-select {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.quick-switcher-resume:disabled {
+.quick-switcher-select:disabled {
   cursor: progress;
   opacity: 0.6;
 }
@@ -588,32 +587,6 @@
 
 .quick-switcher-status.warning {
   color: var(--ps-warning);
-}
-
-/* Options for a game (Resume, Launcher Home, Close); D-pad Right or click. */
-.quick-switcher-options {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ps-text-2);
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
-}
-
-.quick-switcher-row:is(.focused, :hover) .quick-switcher-options,
-.quick-switcher-options.open {
-  opacity: 1;
-}
-
-.quick-switcher-options:hover,
-.quick-switcher-options.open {
-  background: var(--qc-row-fill);
-  color: var(--ps-text);
 }
 
 /* ------------------------------------------------------------- game card */

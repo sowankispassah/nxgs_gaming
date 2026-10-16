@@ -31,7 +31,7 @@ assert.match(
   /aria-label=\{`NXGS Home[\s\S]*props\.games\.map/,
   'the NXGS Home tile must render before the game list'
 );
-assert.match(home, /Launcher overview/, 'NXGS Home must show launcher overview content');
+assert.match(home, /'Overview'/, 'NXGS Home must show overview content');
 assert.match(database, /branding:\s*\{\s*logoPath:\s*''/, 'the persisted settings model must include a logo path');
 assert.match(main, /dialog:selectBrandLogo[\s\S]*app\.getPath\('userData'\)[\s\S]*copyFile/, 'custom logos must be copied into NXGS app data');
 assert.match(app, /pendingAction === 'upload'[\s\S]*Updating\.\.\./, 'logo upload must expose immediate pending feedback');

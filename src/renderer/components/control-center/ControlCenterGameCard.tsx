@@ -5,7 +5,7 @@ import { cx } from './cx';
 
 export type PendingAction = 'resume' | 'home' | 'close' | 'force' | null;
 
-export const MENU_LABELS = ['Resume Game', 'Go to Launcher Home', 'Close Game'] as const;
+export const MENU_LABELS = ['Resume Game', 'Go to Home', 'Close Game'] as const;
 
 /** Main's message for a game that ignored Close; staff can Force Close it. */
 export const CLOSE_FAILED_PATTERN = /did not close|force close/i;

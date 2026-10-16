@@ -65,7 +65,7 @@ export function ActiveGameDock(props: {
       : props.activeGame.status === 'resuming'
         ? 'Resuming'
         : props.activeGame.status === 'minimizedToHome' || props.activeGame.windowState === 'minimized'
-          ? 'Minimized'
+          ? 'In background'
           : props.activeGame.status === 'quickOverlayOpen'
             ? 'Active'
             : props.activeGame.status === 'closing'
@@ -73,7 +73,7 @@ export function ActiveGameDock(props: {
               : 'Running';
   const tone: DockTone = ['launching', 'resuming', 'closing'].includes(props.activeGame.status)
     ? 'busy'
-    : statusLabel === 'Minimized' ? 'idle' : 'live';
+    : statusLabel === 'In background' ? 'idle' : 'live';
 
   const runControl = async (
     action: 'resume' | 'close',
@@ -111,7 +111,7 @@ export function ActiveGameDock(props: {
         <div className="active-game-panel">
           <div className="active-game-panel-copy">
             <p className="eyebrow">Active game</p>
-            <span>{props.activeGame.message ?? 'Running in the background.'}</span>
+            <span>{props.activeGame.message || 'Running in the background.'}</span>
           </div>
           {message && <p className="error-text">{message}</p>}
           {confirmClose ? (
@@ -140,7 +140,7 @@ export function ActiveGameDock(props: {
                 onClick={() => runControl('resume', window.nxgs.resumeActiveGame)}
               >
                 <Play size={18} fill="currentColor" />
-                {pendingAction === 'resume' ? 'Focusing...' : retryFocus ? 'Try Focus Again' : 'Resume Game'}
+                {pendingAction === 'resume' ? 'Resuming...' : retryFocus ? 'Try Again' : 'Resume Game'}
               </button>
               <button
                 className="secondary-action active-game-close"

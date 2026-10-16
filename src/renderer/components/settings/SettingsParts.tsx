@@ -19,6 +19,16 @@ export function toneChipClass(tone: SettingsTone): string {
   return 'ps-chip';
 }
 
+/**
+ * The browser's gamepad id with its technical suffix removed, e.g.
+ * "DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)"
+ * becomes "DualSense Wireless Controller".
+ */
+export function controllerDisplayName(name?: string): string | undefined {
+  const cleaned = name?.replace(/\s*\([^)]*(?:STANDARD GAMEPAD|Vendor:)[^)]*\)\s*$/i, '').trim();
+  return cleaned || undefined;
+}
+
 /** Inline status line under a settings section (progress, results, errors). */
 export function SettingsNotice(props: { tone: SettingsNoticeTone; message: string }): JSX.Element {
   return (

@@ -58,7 +58,7 @@ import { ConsoleClock } from '../ui/ConsoleClock';
 import { ControllerHints, type ControllerHint } from '../ui/ControllerHints';
 import { getUiPreference } from '../ui/preferences';
 import { playUiSound } from '../ui/uiSound';
-import { SettingsNotice, SettingsStatusCard, toneChipClass, type SettingsTone } from './settings/SettingsParts';
+import { controllerDisplayName, SettingsNotice, SettingsStatusCard, toneChipClass, type SettingsTone } from './settings/SettingsParts';
 import { AccessibilitySettingsPage, GuideSettingsPage, StorageSettingsPage, UsersSettingsPage } from './settings/SettingsInfoPages';
 
 type SettingsKey =
@@ -90,8 +90,8 @@ const settingsDataCache: {
 const SETTINGS_ITEMS: Array<{ key: SettingsKey; label: string; Icon: LucideIcon; subtitle: string }> = [
   { key: 'guide', label: 'Guide & Tips / Info', Icon: BookOpen, subtitle: 'Controls and help for this station' },
   { key: 'accessibility', label: 'Accessibility', Icon: Accessibility, subtitle: 'Comfort options for every player' },
-  { key: 'network', label: 'Network', Icon: Globe2, subtitle: 'Switch Wi-Fi without leaving NXGS' },
-  { key: 'controller', label: 'Bluetooth / Controller', Icon: Bluetooth, subtitle: 'Find and pair devices inside NXGS' },
+  { key: 'network', label: 'Network', Icon: Globe2, subtitle: 'Choose a Wi-Fi network' },
+  { key: 'controller', label: 'Bluetooth / Controller', Icon: Bluetooth, subtitle: 'Find and pair controllers and devices' },
   { key: 'users', label: 'Users and Accounts', Icon: Users, subtitle: 'Profiles on this station' },
   { key: 'system', label: 'System', Icon: Settings, subtitle: 'Display and audio controls' },
   { key: 'storage', label: 'Storage', Icon: HardDrive, subtitle: 'Games and data on this station' },
@@ -1414,7 +1414,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
       const linkedInputInactiveController = pairedControllers.find((device) => device.connected && !device.inputReady);
       const controllerDetected = Boolean(diagnostics?.controller.detected);
       const controllerTitle = controllerDetected
-        ? diagnostics?.controller.name ?? 'Controller active'
+        ? controllerDisplayName(diagnostics?.controller.name) ?? 'Controller active'
         : inputReadyController
           ? `${inputReadyController.name} ready`
           : linkedInputInactiveController
@@ -1423,9 +1423,9 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
               ? 'Controller paired / asleep'
               : 'No controller paired';
       const controllerDetail = controllerDetected
-        ? 'Controller input is active in the launcher.'
+        ? 'Your controller is connected and ready.'
         : inputReadyController
-          ? 'Controller input is ready. Press any controller button to activate launcher navigation.'
+          ? 'Press any button on the controller to start using it.'
           : linkedInputInactiveController
             ? 'Bluetooth is linked, but controller input is not active yet. Keep the controller on, press PS / Home, then select Check Input. NXGS will not disconnect it.'
             : pairedControllers.length > 0
@@ -1841,7 +1841,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
 
               <SystemDeviceList title="Output devices" devices={audio.outputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
               <SystemDeviceList title="Microphones" devices={audio.inputDevices} pending={audioPending} onSelect={switchAudioEndpoint} />
-              {!audio.deviceSwitchingSupported && <p className="system-capability-note">Output switching is unavailable on this device. Volume and mute remain fully functional inside NXGS.</p>}
+              {!audio.deviceSwitchingSupported && <p className="system-capability-note">Output switching is unavailable on this station. Volume and mute still work.</p>}
             </section>
           </div>
         </SettingsDetail>
@@ -1854,7 +1854,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
             <span className="control-room-icon" aria-hidden="true"><ShieldCheck size={32} /></span>
             <span className="control-room-copy">
               <h3>Admin PIN required</h3>
-              <p>Open game management, kiosk controls, diagnostics, and updates.</p>
+              <p>Open game management, station controls, diagnostics, and updates.</p>
             </span>
             <button className="settings-pill-button primary" data-settings-action type="button" onClick={props.onControlRoom}>
               <LockKeyhole size={18} />Enter Control Room
@@ -1867,7 +1867,7 @@ export function ConsoleSettings(props: { inputBlocked: boolean; settings: AppSet
     if (opened.key === 'guide') {
       return (
         <SettingsDetail title={opened.label} icon={pageIcon} subtitle={opened.subtitle} onFocus={focusDetail}>
-          <GuideSettingsPage appVersion={props.appVersion} controllerName={diagnostics?.controller.name} controllerDetected={Boolean(diagnostics?.controller.detected)} />
+          <GuideSettingsPage appVersion={props.appVersion} controllerName={controllerDisplayName(diagnostics?.controller.name)} controllerDetected={Boolean(diagnostics?.controller.detected)} />
         </SettingsDetail>
       );
     }

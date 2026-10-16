@@ -31,8 +31,8 @@ export function GameTransitionOverlay(props: { activeGame: ActiveGameState; logo
         {props.activeGame.message && <p className="game-transition-message">{props.activeGame.message}</p>}
       </div>
       <div className="launch-help">
-        <span>Press Ctrl + Shift + H or F10 to return to NXGS.</span>
-        <span>Press controller Home or Options + Share to open NXGS when supported by the connected controller.</span>
+        <span>Press the Home button on your controller to go to Home.</span>
+        <span>No Home button? Press Options + Share together, or F10 or Ctrl + Shift + H on a keyboard.</span>
       </div>
     </div>
   );

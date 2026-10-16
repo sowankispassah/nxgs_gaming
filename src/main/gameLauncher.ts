@@ -318,7 +318,7 @@ export class GameLauncher {
   }
 
   async launch(game: GameRecord): Promise<void> {
-    if (this.managingGames) throw new Error('NXGS is managing running games. Please wait.');
+    if (this.managingGames) throw new Error('Please wait a moment, then try again.');
     const operation = this.performLaunch(game);
     this.launchCompletion = operation;
     try {
@@ -334,7 +334,7 @@ export class GameLauncher {
     }
 
     if (this.operationInFlight) {
-      throw new Error(`Game action already in progress: ${this.operationInFlight}.`);
+      throw new Error('Please wait for the current action to finish.');
     }
 
     this.operationInFlight = 'launch';
@@ -360,7 +360,7 @@ export class GameLauncher {
       this.setActiveState({
         status: 'launching',
         game,
-        message: `Preparing ${game.title} for full-screen launch...`,
+        message: `Starting ${game.title}...`,
         windowDetected: false,
         windowState: 'unknown'
       });
@@ -402,7 +402,8 @@ export class GameLauncher {
       this.setActiveState({
         status: 'error',
         game,
-        message: error instanceof Error ? error.message : String(error),
+        // The technical reason stays in the log and diagnostics for staff.
+        message: `${game.title} couldn't start. Please try again or ask staff for help.`,
         windowDetected: Boolean(this.activeWindow),
         windowState: this.activeWindow ? 'background' : 'unknown'
       });
@@ -454,7 +455,7 @@ export class GameLauncher {
       this.setActiveState({
         status: 'closing',
         game,
-        message: `Close requested for ${game.title}. You can keep using NXGS while it finishes.`,
+        message: `Closing ${game.title}...`,
         windowDetected: Boolean(this.activeWindow),
         windowState: this.activeWindow ? 'background' : 'unknown'
       });
@@ -531,7 +532,7 @@ export class GameLauncher {
   }
 
   private async performResume(gameId?: string, requireFullHandoff = false): Promise<GameControlResult> {
-    if (this.managingGames) return { ok: false, error: 'NXGS is managing running games. Please wait.' };
+    if (this.managingGames) return { ok: false, error: 'Please wait a moment, then try again.' };
     if (
       this.quickOverlayRequestedDuringLaunch &&
       this.isLaunchInProgress
@@ -549,7 +550,7 @@ export class GameLauncher {
         await logLine('info', 'Resume superseded an in-flight Home show operation.');
       } else {
         await logLine('info', `Ignoring resume request while ${this.operationInFlight} is in progress.`);
-        return { ok: false, error: `Another game action is already in progress: ${this.operationInFlight}.` };
+        return { ok: false, error: 'Please wait for the current action to finish.' };
       }
     }
 
@@ -570,7 +571,7 @@ export class GameLauncher {
     this.setActiveState({
       status: 'resuming',
       game,
-      message: `Restoring ${game.title}...`,
+      message: `Resuming ${game.title}...`,
       windowDetected: Boolean(this.activeWindow),
       windowState: this.activeWindow ? 'background' : 'unknown'
     });
@@ -633,7 +634,7 @@ export class GameLauncher {
       this.setActiveState({
         status: 'resuming',
         game,
-        message: `Finding ${game.title}...`,
+        message: `Resuming ${game.title}...`,
         windowDetected: Boolean(this.activeWindow),
         windowState: this.activeWindow ? 'background' : 'unknown'
       });
@@ -691,7 +692,7 @@ export class GameLauncher {
 
         const message = untrackedStoreApp
           ? `${game.title} is still starting. The game remains in the switcher; try Resume Game again in a moment.`
-          : 'NXGS Play could not find the running game window. The switcher will stay open so you can retry.';
+          : `${game.title} isn't ready yet. Try Resume Game again in a moment.`;
         await logLine('warn', `Resume requested for ${game.title}, but no game window was found.`);
         this.setActiveState({
           status: 'quickOverlayOpen',
@@ -732,7 +733,7 @@ export class GameLauncher {
       return { ok: true };
     } catch (error) {
       if (error instanceof FocusOperationCanceledError || !this.isFocusOperationCurrent(focusGeneration, game)) {
-        const message = `Resume canceled because NXGS Home was opened.`;
+        const message = 'Resume was canceled.';
         this.lastResumeResult = message;
         await logLine('info', `${message} ${game.title} was not refocused.`);
         return { ok: false, error: message };
@@ -742,14 +743,16 @@ export class GameLauncher {
       this.lastResumeResult = message;
       await logLine('warn', `Native resume failed for ${game.title}: ${message}`);
       this.showLaunchShield();
+      // The technical reason stays in the log and diagnostics for staff.
+      const customerMessage = `${game.title} couldn't be resumed. Choose Resume Game to try again.`;
       this.setActiveState({
         status: 'quickOverlayOpen',
         game,
-        message,
+        message: customerMessage,
         windowDetected: Boolean(this.activeWindow),
         windowState: this.activeWindow ? 'background' : 'unknown'
       });
-      return { ok: false, error: message };
+      return { ok: false, error: customerMessage };
     } finally {
       if (this.operationInFlight === 'resume') {
         this.operationInFlight = null;
@@ -760,7 +763,7 @@ export class GameLauncher {
   async minimizeActiveGame(): Promise<GameControlResult> {
     if (this.operationInFlight) {
       await logLine('info', `Ignoring minimize request while ${this.operationInFlight} is in progress.`);
-      return { ok: false, error: `Another game action is already in progress: ${this.operationInFlight}.` };
+      return { ok: false, error: 'Please wait for the current action to finish.' };
     }
 
     const game = this.activeGame;
@@ -772,7 +775,7 @@ export class GameLauncher {
     try {
       const window = this.activeWindow ?? (await this.getActiveWindow(game));
       if (!window) {
-        const message = `${game.title} is still active but is not ready to resume yet. Returning to Launcher Home.`;
+        const message = `${game.title} isn't ready to resume yet.`;
         this.gameInForeground = false;
         this.clearReinforcementTimers();
         this.focusLauncher();
@@ -811,7 +814,7 @@ export class GameLauncher {
       this.setActiveState({
         status: 'minimizedToHome',
         game,
-        message: minimized ? `${game.title} is minimized.` : `${game.title} is running behind Launcher Home.`,
+        message: `${game.title} is running in the background.`,
         windowDetected: true,
         windowState: minimized ? 'minimized' : 'background'
       });
@@ -819,7 +822,7 @@ export class GameLauncher {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await logLine('warn', `Minimize failed for ${game.title}: ${message}`);
-      return { ok: false, error: message };
+      return { ok: false, error: "Couldn't go to Home. Please try again." };
     } finally {
       if (this.operationInFlight === 'minimize') {
         this.operationInFlight = null;
@@ -828,7 +831,7 @@ export class GameLauncher {
   }
 
   async openQuickOverlay(options: { focusLauncher?: boolean } = {}): Promise<GameControlResult> {
-    if (this.managingGames) return { ok: false, error: 'NXGS is managing running games. Please wait.' };
+    if (this.managingGames) return { ok: false, error: 'Please wait a moment, then try again.' };
     const focusLauncher = options.focusLauncher ?? true;
     if (this.operationInFlight === 'launch') {
       this.quickOverlayRequestedDuringLaunch = true;
@@ -873,7 +876,7 @@ export class GameLauncher {
         this.setActiveState({
           status: 'quickOverlayOpen',
           game,
-          message: `${game.title} is still running behind the NXGS quick overlay.`,
+          message: '',
           windowDetected: Boolean(this.activeWindow),
           windowState: this.activeWindow ? 'background' : 'unknown'
         });
@@ -1002,7 +1005,7 @@ export class GameLauncher {
       if (this.activeGame) {
         this.setActiveState({
           status: 'minimizedToHome', game: this.activeGame,
-          message: 'Game kept inside NXGS. Use Resume Game to return to fullscreen.',
+          message: `${this.activeGame.title} is running in the background.`,
           windowDetected: Boolean(this.activeWindow), windowState: 'background'
         });
       }
@@ -1278,8 +1281,8 @@ export class GameLauncher {
       }
 
       const message = storeLaunchMayStillBePending
-        ? `${game.title} is still starting. Choose Resume Game once its window appears.`
-        : `${game.title} started but the window could not be focused. Try Focus Game Again, Return Home, or Close Game.`;
+        ? `${game.title} is still starting. Choose Resume Game in a moment.`
+        : `${game.title} started but isn't ready yet. Choose Resume Game to try again, or Close Game.`;
       this.lastHandoffError = message;
       await logLine(
         'warn',
@@ -1310,7 +1313,7 @@ export class GameLauncher {
     this.setActiveState({
       status: 'launching',
       game,
-      message: `${game.title} is running. Finishing window handoff...`,
+      message: `Starting ${game.title}...`,
       windowDetected: true,
       windowState: 'background'
     });
@@ -1351,7 +1354,7 @@ export class GameLauncher {
       this.setActiveState({
         status: 'quickOverlayOpen',
         game,
-        message: `${game.title} started but NXGS Play could not focus its window. Try Focus Game Again.`,
+        message: `${game.title} started but isn't ready yet. Choose Resume Game to try again.`,
         windowDetected: Boolean(currentWindow),
         windowState: currentWindow ? 'background' : 'unknown'
       });
@@ -1420,8 +1423,8 @@ export class GameLauncher {
       status: 'quickOverlayOpen',
       game,
       message: this.activeWindow
-        ? `${game.title} is ready. Choose Resume Game to enter fullscreen.`
-        : `${game.title} is still starting. Choose Resume Game once its window appears.`,
+        ? `${game.title} is ready. Choose Resume Game to play.`
+        : `${game.title} is still starting. Choose Resume Game in a moment.`,
       windowDetected: Boolean(this.activeWindow),
       windowState: 'background'
     });
@@ -1726,8 +1729,8 @@ export class GameLauncher {
       status: 'minimizedToHome',
       game,
       message: probeFailed
-        ? `Close was requested, but NXGS could not confirm that ${game.title} exited. You can keep using the launcher or use Admin force close.`
-        : `${game.title} did not close yet. You can keep using the launcher; Admin force close is available if needed.`,
+        ? `${game.title} may not have closed. Staff can use Force Close if needed.`
+        : `${game.title} did not close yet. Staff can use Force Close if needed.`,
       windowDetected: Boolean(window),
       windowState: window ? 'background' : 'unknown'
     });
@@ -1977,7 +1980,7 @@ export class GameLauncher {
           this.setActiveState({
             status: 'quickOverlayOpen',
             game,
-            message: `Fullscreen presentation was interrupted (${failures}). Choose Resume Game to retry.`,
+            message: `${game.title} was interrupted. Choose Resume Game to keep playing.`,
             windowDetected: true,
             windowState: 'background'
           });

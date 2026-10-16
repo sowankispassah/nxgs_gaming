@@ -30,7 +30,7 @@ export function GuideSettingsPage(props: { appVersion?: string; controllerName?:
       <div className="settings-list">
         <SettingsInfoRow
           label="NXGS Play"
-          description="Game launcher for this station"
+          description="System software for this station"
           value={props.appVersion ? `Version ${props.appVersion}` : 'Installed'}
         />
         <SettingsInfoRow

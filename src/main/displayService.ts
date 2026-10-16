@@ -35,7 +35,8 @@ function safeMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/invalid class|not found|not supported/i.test(message)) return 'Brightness control is not supported on this display.';
   if (/access.+denied/i.test(message)) return 'Access to brightness control was denied.';
-  return message || 'The display action failed.';
+  // Raw command output never reaches the customer's Quick Settings.
+  return 'This display setting is unavailable right now.';
 }
 
 async function readBrightness(): Promise<DisplayStatus['brightness']> {

@@ -57,8 +57,7 @@ const NAVIGATION_HINTS: ControllerHint[] = [
 ];
 const SWITCHER_HINTS: ControllerHint[] = [
   { glyph: 'dpad-vertical', label: 'Choose' },
-  { glyph: 'cross', label: 'Resume' },
-  { glyph: 'dpad-horizontal', label: 'Options' },
+  { glyph: 'cross', label: 'Select' },
   { glyph: 'circle', label: 'Back' }
 ];
 const CONFIRM_HINTS: ControllerHint[] = [
@@ -179,7 +178,7 @@ export function QuickHomeOverlay(props: {
   const [menuIndex, setMenuIndex] = useState(0);
   const [focusArea, setFocusArea] = useState<FocusArea>('navbar');
   const [switcherIndex, setSwitcherIndex] = useState(0);
-  // The game whose card (Resume / Launcher Home / Close) is open beside the list.
+  // The game whose card (Resume / Home / Close) is open beside the list.
   const [optionsGameId, setOptionsGameId] = useState<string | null>(null);
   const [resumingGameId, setResumingGameId] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -245,7 +244,7 @@ export function QuickHomeOverlay(props: {
 
   const navItems = useMemo<NavItem[]>(
     () => [
-      { key: 'home', label: 'Launcher Home', caption: 'Home', group: 'switcher', icon: <Home size={24} /> },
+      { key: 'home', label: 'Home', caption: 'Home', group: 'switcher', icon: <Home size={24} /> },
       // One tile for every running game, showing the most recent one.
       ...switcherSessions.slice(0, 1).map((session) => ({
         key: 'switcher',
@@ -261,7 +260,7 @@ export function QuickHomeOverlay(props: {
       { key: 'players', label: 'Players coming soon', caption: 'Players', group: 'controls', icon: <UsersRound size={24} />, notice: COMING_SOON_NOTICE },
       { key: 'audio', label: 'Audio coming soon', caption: 'Audio', group: 'controls', icon: <Music2 size={24} />, notice: COMING_SOON_NOTICE },
       { key: 'settings', label: 'Quick Settings', caption: 'Quick Settings', group: 'controls', icon: <Settings size={24} /> },
-      { key: 'power', label: 'Protected power controls', caption: 'Power', group: 'controls', icon: <Power size={24} />, notice: 'Power controls are available inside Control Room.' }
+      { key: 'power', label: 'Power', caption: 'Power', group: 'controls', icon: <Power size={24} />, notice: 'Ask a staff member to restart or turn off this station.' }
     ],
     [switcherSessions]
   );
@@ -570,7 +569,7 @@ export function QuickHomeOverlay(props: {
       const result = await window.nxgs.resumeActiveGame(target.game.id);
       if (!result.ok) {
         playUiSound('error');
-        setMessage(result.error ?? 'NXGS could not resume the game.');
+        setMessage(result.error ?? "Couldn't resume the game. Please try again.");
         // Show the error on that game's card, with Resume (not a pending
         // Close confirmation) focused.
         if (switcherSessionsRef.current.some((session) => session.game.id === target.game.id)) {
@@ -599,7 +598,7 @@ export function QuickHomeOverlay(props: {
       const result = await window.nxgs.goToLauncherHome();
       if (!result.ok) {
         playUiSound('error');
-        setMessage(result.error ?? 'NXGS could not open Launcher Home.');
+        setMessage(result.error ?? "Couldn't go to Home. Please try again.");
       } else {
         props.onDismiss();
       }
@@ -618,7 +617,7 @@ export function QuickHomeOverlay(props: {
       const result = await window.nxgs.closeActiveGame(optionsSession.game.id);
       if (!result.ok) {
         playUiSound('error');
-        setMessage(result.error ?? 'NXGS could not close the game.');
+        setMessage(result.error ?? "Couldn't close the game. Please try again.");
       } else {
         setConfirmClose(false);
       }
@@ -668,15 +667,6 @@ export function QuickHomeOverlay(props: {
     setSwitcherIndex(0);
     setFocusArea('switcher');
   }, []);
-
-  const resumeSwitcherRow = useCallback((index: number): void => {
-    const target = switcherSessions[index];
-    if (disabled || !target || target.status === 'closing') return;
-    playUiSound('select');
-    setSwitcherIndex(index);
-    setConfirmClose(false);
-    void resumeGame(target);
-  }, [disabled, resumeGame, switcherSessions]);
 
   const openSwitcherOptions = useCallback((index: number): void => {
     const target = switcherSessions[index];
@@ -796,7 +786,7 @@ export function QuickHomeOverlay(props: {
 
   const moveSwitcherDirection = useCallback((direction: 'left' | 'right' | 'up' | 'down'): void => {
     if (focusArea === 'switcher') {
-      // Up/Down choose a game, Right opens its options, Left returns to the bar.
+      // Up/Down choose a game, Right (like Cross) opens its options, Left returns to the bar.
       if (direction === 'up') {
         if (switcherIndex > 0) playUiSound('move');
         setSwitcherIndex((index) => Math.max(0, index - 1));
@@ -843,11 +833,12 @@ export function QuickHomeOverlay(props: {
     if (focusArea === 'menu' && optionsSession) {
       selectMenuAction(menuIndex);
     } else if (focusArea === 'switcher') {
-      resumeSwitcherRow(switcherIndex);
+      // Selecting a game opens its options card; Resume is the first action there.
+      openSwitcherOptions(switcherIndex);
     } else {
       selectNavAction(selectedNavIndex);
     }
-  }, [focusArea, menuIndex, optionsSession, resumeSwitcherRow, selectMenuAction, selectNavAction, selectedNavIndex, switcherIndex]);
+  }, [focusArea, menuIndex, openSwitcherOptions, optionsSession, selectMenuAction, selectNavAction, selectedNavIndex, switcherIndex]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -923,7 +914,7 @@ export function QuickHomeOverlay(props: {
       focusArea === 'menu' || confirmClose
         ? '.quick-game-menu button.focused'
         : focusArea === 'switcher'
-          ? '.quick-switcher-resume.focused'
+          ? '.quick-switcher-select.focused'
           : '.quick-navbar .quick-nav-item.selected'
     );
     if (target && target !== current) target.focus({ preventScroll: true });
@@ -997,7 +988,7 @@ export function QuickHomeOverlay(props: {
     <section
       ref={overlayRef}
       className={cx('quick-home-overlay', props.backdrop?.kind === 'direct' && 'direct-game-backdrop', isClosingGame && 'closing-game')}
-      aria-label="NXGS quick home overlay"
+      aria-label="Control Center"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         const target = event.target;
@@ -1028,7 +1019,7 @@ export function QuickHomeOverlay(props: {
       <div className="quick-overlay-shade" />
       {closingSession && <ControlCenterClosing game={closingSession.game} />}
 
-      <nav className="quick-navbar" aria-label="NXGS quick navigation">
+      <nav className="quick-navbar" aria-label="Control Center controls">
         <div className="quick-nav-cluster">
           {NAV_GROUPS.map((group) => (
             <div className={`quick-nav-group quick-nav-group--${group}`} key={group}>
@@ -1097,8 +1088,7 @@ export function QuickHomeOverlay(props: {
             setSwitcherIndex(index);
             setFocusArea('switcher');
           }}
-          onResume={resumeSwitcherRow}
-          onOptions={(index) => {
+          onSelect={(index) => {
             if (optionsSession?.game.id === switcherSessions[index]?.game.id) closeSwitcherOptions();
             else openSwitcherOptions(index);
           }}

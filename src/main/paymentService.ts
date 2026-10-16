@@ -145,7 +145,7 @@ export class PaymentService {
   ): Promise<PaymentFunctionResponse> {
     const config = await this.config();
     if (!config.functionBaseUrl || !config.publishableKey) {
-      throw new Error('Payment service is not configured on this PC.');
+      throw new Error("Payments aren't available right now. Please ask staff for help.");
     }
     const attempts = retryTransient ? 3 : 1;
     for (let attempt = 0; attempt < attempts; attempt += 1) {

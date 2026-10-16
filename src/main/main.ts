@@ -1142,7 +1142,7 @@ async function performGameplayQuickOverlayTransition(
     // after the resume handoff has succeeded.
     await loadingHomePromotion?.catch(() => undefined);
     if (transitionGeneration !== gameplayQuickOverlayTransitionGeneration || gameplayQuickOverlayDesiredOpen) {
-      return { ok: false, error: 'Resume was superseded by a newer Home request.' };
+      return { ok: false, error: 'Resume was canceled.' };
     }
     // A game discovered behind Home has never been sized for gameplay. Avoid
     // focusing its small startup window before the full handoff applies styles.
@@ -1195,7 +1195,7 @@ function transitionGameplayQuickOverlay(
   reason: ShellHomeReason,
   gameId?: string
 ): Promise<GameControlResult> {
-  if (launcher.isManagingGames) return Promise.resolve({ ok: false, error: 'NXGS is managing running games. Please wait.' });
+  if (launcher.isManagingGames) return Promise.resolve({ ok: false, error: 'Please wait a moment, then try again.' });
   const transitionGeneration = ++gameplayQuickOverlayTransitionGeneration;
   gameplayQuickOverlayDesiredOpen = shouldOpen;
   launcherQuickNavOpen = false;
@@ -2075,7 +2075,7 @@ function registerIpc(): void {
       if (requiresPaymentForLaunch(store.getSettings(), sessionTimer.current)) {
         throw new Error('Paid play time is required before launching a game.');
       }
-      if (launcher.isManagingGames) return { ok: false, error: 'NXGS is managing running games. Please wait.' };
+      if (launcher.isManagingGames) return { ok: false, error: 'Please wait a moment, then try again.' };
       if (kioskInput.currentMode === 'admin') returnToLockedMode();
       if (launcher.activeState.sessions?.some((session) => session.game.id === game.id)) {
         return transitionGameplayQuickOverlay(false, 'renderer-request', game.id);
@@ -2108,7 +2108,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('game:resumeActive', async (_event, gameId?: string): Promise<GameControlResult> => {
-    if (launcher.isManagingGames) return { ok: false, error: 'NXGS is managing running games. Please wait.' };
+    if (launcher.isManagingGames) return { ok: false, error: 'Please wait a moment, then try again.' };
     if (kioskInput.currentMode === 'admin') returnToLockedMode();
     const game = gameId
       ? launcher.activeState.sessions?.find((session) => session.game.id === gameId)?.game ?? launcher.active

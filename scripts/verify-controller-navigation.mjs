@@ -97,11 +97,12 @@ engine.update(pad, 1010);
 pad.buttons[0].pressed = true;
 assert.equal(engine.update(pad, 1020).navigation.filter((event) => event.type === 'accept').length, 1);
 
-const [app, home, settings, switcher, styles, launcher, windowManager] = await Promise.all([
+const [app, home, settings, switcher, switcherRow, styles, launcher, windowManager] = await Promise.all([
   readAppShellSource(),
   readFile(new URL('../src/renderer/components/ConsoleHome.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/ConsoleSettings.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/QuickHomeOverlay.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/renderer/components/control-center/ControlCenterSwitcher.tsx', import.meta.url), 'utf8'),
   readRendererStyles(),
   readFile(new URL('../src/main/gameLauncher.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/main/windowManagerService.ts', import.meta.url), 'utf8')
@@ -131,7 +132,8 @@ assert.match(switcher, /direction === 'up' && focusArea === 'navbar' && switcher
 const switcherGraph = switcher.slice(switcher.indexOf('const moveSwitcherDirection'), switcher.indexOf('const acceptFocused'));
 assert.match(switcherGraph, /if \(focusArea === 'switcher'\) \{[^]{0,800}direction === 'right'\) \{\s*openSwitcherOptions\(switcherIndex\)/, 'Right on a Switcher row must open that game\'s options');
 assert.match(switcherGraph, /if \(focusArea === 'switcher'\) \{[^]{0,800}switcherIndex >= switcherSessions\.length - 1\) setFocusArea\('navbar'\)/, 'Down from the last row must return to the bar');
-assert.match(switcher, /focusArea === 'switcher'\) \{\s*resumeSwitcherRow\(switcherIndex\)/, 'selecting a Switcher row must resume that game');
+assert.match(switcher, /focusArea === 'switcher'\) \{\s*\/\/[^\n]*\n\s*openSwitcherOptions\(switcherIndex\)/, 'selecting a Switcher row must open that game\'s options, not resume it directly');
+assert.doesNotMatch(switcherRow, /quick-switcher-options|MoreHorizontal/, 'Switcher rows must not have a separate options button');
 assert.match(switcher, /if \(optionsSession\) \{\s*playUiSound\('back'\);\s*closeSwitcherOptions\(\);[^]{0,200}if \(focusArea === 'switcher'\) \{\s*playUiSound\('back'\);\s*setFocusArea\('navbar'\);/, 'Back must step from a game\'s options to the list, then to the bar');
 assert.match(switcher, /const dismissOverlay = useCallback[^]{0,400}resumeGame\(activeSession\)/, 'leaving Home must return to the game it was opened over');
 assert.match(switcher, /setOptionsGameId\(switcherSessions\[0\]\.game\.id\);\s*setFocusArea\('menu'\);\s*setMenuIndex\(2\);\s*setConfirmClose\(true\);/, 'emergency close must open the active game\'s close confirmation');

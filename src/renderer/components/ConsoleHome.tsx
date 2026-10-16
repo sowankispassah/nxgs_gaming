@@ -350,7 +350,7 @@ function DashboardContentRow(props: {
       },
       {
         icon: Layers3,
-        label: 'Launcher',
+        label: 'System',
         value: `NXGS Play ${props.appVersion}`
       }
     ];
@@ -364,7 +364,7 @@ function DashboardContentRow(props: {
     <section className={`dashboard-content ${props.focused ? 'keyboard-focus' : ''}`} aria-label="Dashboard content">
       <div className="content-heading">
         <span className="eyebrow">{props.game ? 'Game hub' : 'NXGS Play'}</span>
-        <h2>{props.game ? props.game.title : 'Launcher overview'}</h2>
+        <h2>{props.game ? props.game.title : 'Overview'}</h2>
       </div>
       <div className="content-card-row">
         {cards.map((card, index) => {
@@ -531,7 +531,7 @@ export function ConsoleHome(props: {
                 ) : (
                   <p className="console-hero-subtitle">
                     {props.games.length > 0
-                      ? 'Your launcher, library, and current session at a glance.'
+                      ? 'Your games, play time, and current session at a glance.'
                       : 'Your library is empty. Add games from Settings to get started.'}
                   </p>
                 )}

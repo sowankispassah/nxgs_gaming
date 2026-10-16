@@ -1,4 +1,4 @@
-import { LoaderCircle, MoreHorizontal } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import type { TrackedGameSessionState } from '../../../shared/types';
 import { SafeGameImage } from '../ConsoleHome';
 import { CLOSE_FAILED_PATTERN } from './ControlCenterGameCard';
@@ -7,7 +7,7 @@ import { cx } from './cx';
 /**
  * The PS5-style Switcher above the single game tile: the active game first,
  * then every other game still running in the background. Selecting a row
- * resumes that game; its options open the game card beside the list.
+ * opens that game's card beside the list, where Resume is the first action.
  */
 export function ControlCenterSwitcher(props: {
   sessions: TrackedGameSessionState[];
@@ -16,8 +16,7 @@ export function ControlCenterSwitcher(props: {
   resumingGameId: string | null;
   disabled: boolean;
   onRowHover: (index: number) => void;
-  onResume: (index: number) => void;
-  onOptions: (index: number) => void;
+  onSelect: (index: number) => void;
 }): JSX.Element {
   const activeFirst = props.sessions[0]?.isActive ?? false;
   const sections = [
@@ -47,12 +46,13 @@ export function ControlCenterSwitcher(props: {
                   key={game.id}
                 >
                   <button
-                    className={cx('quick-switcher-resume', focused && 'focused')}
+                    className={cx('quick-switcher-select', focused && 'focused')}
                     type="button"
-                    aria-label={`Resume ${game.title}`}
+                    aria-label={`${game.title} options`}
+                    aria-expanded={optionsOpen}
                     disabled={props.disabled || closing}
                     onMouseEnter={() => props.onRowHover(index)}
-                    onClick={() => props.onResume(index)}
+                    onClick={() => props.onSelect(index)}
                   >
                     <span className="quick-switcher-icon" aria-hidden="true">
                       <SafeGameImage game={game} kind="avatar" alt="" fallbackSize={22} />
@@ -67,18 +67,6 @@ export function ControlCenterSwitcher(props: {
                     {closeFailed && !resuming && (
                       <span className="quick-switcher-status warning">Didn&apos;t close</span>
                     )}
-                  </button>
-                  <button
-                    className={cx('quick-switcher-options', optionsOpen && 'open')}
-                    type="button"
-                    tabIndex={-1}
-                    aria-label={`${game.title} options`}
-                    aria-expanded={optionsOpen}
-                    disabled={props.disabled || closing}
-                    onMouseEnter={() => props.onRowHover(index)}
-                    onClick={() => props.onOptions(index)}
-                  >
-                    <MoreHorizontal size={20} aria-hidden="true" />
                   </button>
                 </div>
               );
