@@ -1,7 +1,7 @@
 {
-    "version":  "0.23.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.23.0/NXGS-Play-Setup.exe",
-    "sha256":  "79379df2b0da62e712c19499afd3f8d50059c47b3d6cafbfdf22858b56ca822d",
+    "version":  "0.23.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.23.1/NXGS-Play-Setup.exe",
+    "sha256":  "1b1321f57eb7de4316146890304ea06773a72741b9d68a8f758b13a81901e2a3",
     "required":  false,
-    "notes":  "New PS5-style menu sounds, console wording everywhere, and selecting a game in the Switcher opens its options"
+    "notes":  "Plain payment error messages for players; payment failures are logged for staff"
 }
