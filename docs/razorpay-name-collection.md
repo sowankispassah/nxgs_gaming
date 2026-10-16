@@ -26,6 +26,27 @@ A simulated checkout was opened with synthetic customer details. Browser
 automation could read the embedded Razorpay payment window but could not click
 its payment controls. No successful payment or capture has been verified.
 
+The owner subsequently reported that the phone page keeps loading, then finishes
+as a blank page. This was
+reproduced in Chrome: the published short URL resolves to the correct long URL,
+but the form container stays empty. The dashboard confirms Active / No Expiry.
+Republishing with the basic Light theme did not resolve the Chrome failure.
+The same public page still renders in the in-app browser, and an existing
+cancelled Payment Link displays its expected inactive message in Chrome.
+The exact cause is not established; this preview is not ready for customer use.
+
+If the owner confirms the official short URL also hangs when opened directly in
+the phone's Chrome/Safari, the following diagnostic can be sent to Razorpay
+support by the owner (no support request has been sent automatically):
+
+> Test Payment Page `pl_ToeSRsdyPnPROc` is Active with No Expiry. Its published
+> short link `https://rzp.io/rzp/RYNDBXiE` resolves to
+> `https://pages.razorpay.com/pl_ToeSRsdyPnPROc/view`, but the customer form
+> remains blank in desktop Chrome and on the owner's phone after loading. It
+> renders in a separate in-app browser. Republishing with the Light theme did
+> not resolve it. Existing Payment Links render in Chrome. Please investigate
+> the hosted Payment Page loading failure and advise what diagnostics you need.
+
 The station QR still uses the existing Payment Link flow. The published test
 page is a preview, not a completed backend integration. Before switching QR
 codes, verify a captured test payment's custom fields and implement provider-side
