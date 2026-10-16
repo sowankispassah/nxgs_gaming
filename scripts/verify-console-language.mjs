@@ -56,5 +56,11 @@ for (const match of launcher.matchAll(/\b(?:message|error|customerMessage)\s*[:=
   }
 }
 
+// Payment failures (such as net::ERR_NAME_NOT_RESOLVED or the payment
+// function's error codes) are logged; customers get a plain message.
+const payment = await read('../src/main/paymentService.ts');
+assert.match(payment, /error: CUSTOMER_PAYMENT_MESSAGES\[reason\] \?\? PAYMENTS_UNAVAILABLE/, 'payment errors must be translated for customers');
+assert.doesNotMatch(payment, /error: error instanceof Error \? error\.message/, 'raw payment errors must never reach the checkout screen');
+
 assert.deepEqual(offenders, [], `customer-facing text must read like a console, not a launcher:\n${offenders.join('\n')}`);
 console.log(`Console language verified across ${CUSTOMER_SCREENS.length} customer screens and game status messages.`);

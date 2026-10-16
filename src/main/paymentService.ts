@@ -11,6 +11,7 @@ import type {
   PaymentPlan,
   PlayPlanRecord
 } from '../shared/types';
+import { logLine } from './logger';
 
 interface PaymentClientConfig {
   supabaseUrl: string;
@@ -26,6 +27,24 @@ type PaymentPlanSource = {
 };
 
 const transientPaymentStatuses = new Set([429, 500, 502, 503, 504, 520, 522, 524, 540]);
+
+const PAYMENTS_UNAVAILABLE = "Payments aren't available right now. Please ask staff for help.";
+const PAYMENT_EXPIRED = 'This payment has expired. Please start again.';
+const PAYMENT_NOT_RECEIVED = "This payment hasn't been received yet.";
+
+// What a customer sees for the payment function's error codes. Anything else
+// (network failures, server or Razorpay errors) reads as PAYMENTS_UNAVAILABLE;
+// the technical reason goes to the log for staff.
+const CUSTOMER_PAYMENT_MESSAGES: Record<string, string> = {
+  checkout_not_found: PAYMENT_EXPIRED,
+  unauthorized_checkout: PAYMENT_EXPIRED,
+  payment_link_mismatch: PAYMENT_EXPIRED,
+  payment_not_verified: PAYMENT_NOT_RECEIVED,
+  payment_not_captured: PAYMENT_NOT_RECEIVED,
+  captured_payment_not_found: PAYMENT_NOT_RECEIVED,
+  payment_entitlement_already_used: 'This payment has already been used.',
+  payment_attempt_limit_reached: 'Too many payment attempts. Please ask staff for help.'
+};
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -145,7 +164,7 @@ export class PaymentService {
   ): Promise<PaymentFunctionResponse> {
     const config = await this.config();
     if (!config.functionBaseUrl || !config.publishableKey) {
-      throw new Error("Payments aren't available right now. Please ask staff for help.");
+      throw new Error('The payment backend is not set in nxgs-client.ini.');
     }
     const attempts = retryTransient ? 3 : 1;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -262,7 +281,10 @@ export class PaymentService {
         entitlement: result.entitlement as PaymentCheckoutResult['entitlement']
       };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      const reason = error instanceof Error ? error.message : String(error);
+      const backend = await this.config().then((config) => config.functionBaseUrl || 'no backend configured', () => 'unreadable config');
+      await logLine('warn', `Payment ${action} failed (${backend}): ${reason}`);
+      return { ok: false, error: CUSTOMER_PAYMENT_MESSAGES[reason] ?? PAYMENTS_UNAVAILABLE };
     }
   }
 }
