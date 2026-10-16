@@ -1,6 +1,6 @@
 {
   "name": "nxgs-play",
-  "version": "0.24.0",
+  "version": "0.24.1",
   "description": "Windows-only PC gaming launcher and kiosk MVP.",
   "private": true,
   "main": "out/main/main.js",
@@ -33,7 +33,6 @@
     "test:pin-enter": "node scripts/verify-pin-enter.mjs",
     "test:secret-admin-shortcuts": "node --experimental-strip-types scripts/verify-secret-admin-shortcuts.mjs",
     "test:paid-session": "node --experimental-strip-types scripts/verify-paid-session.mjs",
-    "test:mobile-checkout": "node --experimental-strip-types scripts/verify-mobile-checkout.mjs",
     "test:warning-escape": "node --experimental-strip-types scripts/verify-warning-escape.mjs",
     "test:home-overlay": "node scripts/verify-home-overlay.mjs && node --experimental-strip-types scripts/verify-game-window-identity.mjs",
     "test:game-audio-focus": "node scripts/verify-game-audio-focus.mjs",
