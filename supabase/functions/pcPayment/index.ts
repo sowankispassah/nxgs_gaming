@@ -1,5 +1,6 @@
 import QRCode from "npm:qrcode@1.5.4";
 import { createClient } from "npm:@supabase/supabase-js@2.49.8";
+import { customerDetails, DEFAULT_CHECKOUT_PAGE_URL, mobileToken, paymentUrl } from "./mobileCheckout.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,7 +18,7 @@ type AdminClient = ReturnType<typeof createClient>;
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 }
 
@@ -33,7 +34,7 @@ function failure(error: unknown): Response {
   const message = safeMessage(error);
   const status = message.includes("unauthorized") ? 401
     : message.includes("not_found") ? 404
-    : message.includes("already_used") || message.includes("expired") || message.includes("attempt_limit") ? 409
+    : message.includes("already_used") || message.includes("expired") || message.includes("attempt_limit") || message.includes("already_completed") ? 409
     : message.includes("invalid") || message.includes("mismatch") || message.includes("captured") ? 400
     : 500;
   return json({ error: true, message }, status);
@@ -182,14 +183,68 @@ function publicPlan(row: Row): Row {
 }
 
 async function publicCheckout(row: Row, clientToken: string): Promise<Row> {
+  let url = text(row.razorpay_payment_link_url);
+  if (row.customer_details_required) {
+    const page = new URL(Deno.env.get("NXGS_PC_CHECKOUT_PAGE_URL") || DEFAULT_CHECKOUT_PAGE_URL);
+    page.hash = new URLSearchParams({ checkout: String(row.id), token: await mobileToken(row, mobileSecret()) }).toString();
+    url = page.href;
+  }
   return {
     id: String(row.id),
     clientToken,
     status: String(row.status),
     plan: publicPlan(row),
-    qrDataUrl: row.razorpay_payment_link_url ? await qrDataUrl(String(row.razorpay_payment_link_url)) : "",
+    qrDataUrl: url ? await qrDataUrl(url) : "",
     expiresAt: String(row.expires_at),
   };
+}
+
+function mobileSecret(): string {
+  const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!secret) throw new Error("missing_supabase_service_configuration");
+  return secret;
+}
+
+async function requireMobileCheckout(supabase: AdminClient, body: Row): Promise<Row> {
+  const id = text(body.checkout_id);
+  const token = text(body.mobile_token);
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !/^[0-9a-f]{64}$/.test(token)) throw new Error("unauthorized_checkout");
+  const { data, error } = await supabase.from("pc_checkouts").select("*").eq("id", id).maybeSingle();
+  if (error || !data || !data.customer_details_required
+    || !constantTimeEqual(token, await mobileToken(data, mobileSecret()))) throw new Error("unauthorized_checkout");
+  return data;
+}
+
+function requireMobileOpen(row: Row): void {
+  if (["verified", "consumed"].includes(row.status)) throw new Error("payment_already_completed");
+  if (Date.now() >= new Date(row.expires_at).getTime()) throw new Error("checkout_expired");
+  if (row.status !== "created") throw new Error("checkout_expired");
+}
+
+async function mobileCheckout(supabase: AdminClient, body: Row, action: string): Promise<Response> {
+  const checkout = await requireMobileCheckout(supabase, body);
+  if (action === "mobile_view") {
+    if (["verified", "consumed"].includes(checkout.status)) return json({ status: "paid", plan: publicPlan(checkout) });
+    requireMobileOpen(checkout);
+    return json({ status: "created", plan: publicPlan(checkout), expiresAt: checkout.expires_at,
+      detailsSubmitted: Boolean(checkout.razorpay_payment_link_id) });
+  }
+  requireMobileOpen(checkout);
+  // A repeated tap or a reopened page resumes the same provider link.
+  if (checkout.razorpay_payment_link_id) return json({ paymentUrl: paymentUrl(checkout.razorpay_payment_link_url) });
+  const customer = customerDetails(body.customer_name, body.customer_phone);
+  const { data, error } = await supabase.from("pc_checkouts").update({
+    customer_name: customer.name,
+    customer_phone: customer.phone,
+    customer_details_at: new Date().toISOString(),
+    provider_status: "creating_link",
+  }).eq("id", checkout.id).eq("status", "created").eq("provider_status", "awaiting_details")
+    .eq("razorpay_payment_link_reference", checkout.razorpay_payment_link_reference)
+    .gt("expires_at", new Date().toISOString()).is("razorpay_payment_link_id", null).select().maybeSingle();
+  if (error) throw error;
+  if (!data) return json({ error: true, message: "payment_in_progress" }, 409);
+  const completed = await saveProviderLink(supabase, data);
+  return json({ paymentUrl: paymentUrl(completed.razorpay_payment_link_url) });
 }
 
 async function requireCheckout(supabase: AdminClient, body: Row): Promise<{ checkout: Row; token: string }> {
@@ -216,6 +271,8 @@ async function createProviderLink(row: Row): Promise<Row> {
       expire_by: Math.floor(Date.now() / 1000) + PROVIDER_EXPIRY_SECONDS,
       reminder_enable: false,
       notify: { sms: false, email: false },
+      customer: { name: String(row.customer_name), contact: String(row.customer_phone) },
+      options: { checkout: { prefill: { name: String(row.customer_name), contact: String(row.customer_phone) } } },
       notes: {
         pc_checkout_id: String(row.id),
         entitlement_scope: "station",
@@ -229,21 +286,27 @@ async function createProviderLink(row: Row): Promise<Row> {
 async function saveProviderLink(supabase: AdminClient, row: Row): Promise<Row> {
   try {
     const link = await createProviderLink(row);
+    const url = paymentUrl(link.short_url);
     const { data, error } = await supabase.from("pc_checkouts").update({
       status: "created",
       provider_status: String(link.status),
       razorpay_payment_link_id: String(link.id),
-      razorpay_payment_link_url: String(link.short_url),
+      razorpay_payment_link_url: url,
       last_provider_check_at: new Date().toISOString(),
-    }).eq("id", row.id).select().single();
-    if (error || !data) throw error ?? new Error("payment_link_save_failed");
+    }).eq("id", row.id).eq("razorpay_payment_link_reference", row.razorpay_payment_link_reference)
+      .in("status", ["creating", "created"]).gt("expires_at", new Date().toISOString()).select().maybeSingle();
+    if (error || !data) {
+      await razorpay(`/payment_links/${encodeURIComponent(String(link.id))}/cancel`, { method: "POST" });
+      throw error ?? new Error("checkout_expired");
+    }
     return { ...data, plan_name: row.plan_name };
   } catch (error) {
     await supabase.from("pc_checkouts").update({
       status: "failed",
       provider_status: "failed",
       terminal_reason: safeMessage(error),
-    }).eq("id", row.id);
+    }).eq("id", row.id).eq("razorpay_payment_link_reference", row.razorpay_payment_link_reference)
+      .in("status", ["creating", "created"]);
     throw error;
   }
 }
@@ -287,7 +350,21 @@ async function reconcilePaid(supabase: AdminClient, checkout: Row, link: Row): P
 
 async function refreshStatus(supabase: AdminClient, checkout: Row, force = false): Promise<Row> {
   if (checkout.status !== "created" && checkout.status !== "creating") return checkout;
-  if (!checkout.razorpay_payment_link_id) return checkout;
+  if (!checkout.razorpay_payment_link_id) {
+    if (Date.now() < new Date(checkout.expires_at).getTime()) return checkout;
+    const { data, error } = await supabase.from("pc_checkouts").update({
+      status: "expired", terminal_reason: "payment_window_expired",
+    }).eq("id", checkout.id).eq("razorpay_payment_link_reference", checkout.razorpay_payment_link_reference)
+      .in("status", ["creating", "created"]).is("razorpay_payment_link_id", null).select().maybeSingle();
+    if (error) throw error;
+    // A provider link may have finished creating while expiry was checked.
+    if (!data) {
+      const { data: current, error: currentError } = await supabase.from("pc_checkouts").select("*").eq("id", checkout.id).single();
+      if (currentError) throw currentError;
+      return await refreshStatus(supabase, current, force);
+    }
+    return data;
+  }
   const lastCheck = checkout.last_provider_check_at ? new Date(checkout.last_provider_check_at).getTime() : 0;
   if (!force && Date.now() - lastCheck < PROVIDER_POLL_INTERVAL_MS) return checkout;
   let link = await razorpay(`/payment_links/${encodeURIComponent(checkout.razorpay_payment_link_id)}`);
@@ -352,14 +429,14 @@ async function createCheckout(supabase: AdminClient, body: Row): Promise<Respons
     duration_minutes: plan.durationMinutes,
     amount_paise: plan.amountPaise,
     currency: plan.currency,
-    status: "creating",
-    provider_status: "creating",
+    status: "created",
+    provider_status: "awaiting_details",
+    customer_details_required: true,
     razorpay_payment_link_reference: reference,
     expires_at: new Date(Date.now() + LOCAL_EXPIRY_SECONDS * 1000).toISOString(),
   }).select().single();
   if (error || !data) throw error ?? new Error("checkout_create_failed");
-  const completed = await saveProviderLink(supabase, { ...data, plan_name: plan.name });
-  return json({ status: completed.status, checkout: await publicCheckout(completed, clientToken) });
+  return json({ status: data.status, checkout: await publicCheckout(data, clientToken) });
 }
 
 async function statusCheckout(supabase: AdminClient, body: Row): Promise<Response> {
@@ -380,8 +457,12 @@ async function retryCheckout(supabase: AdminClient, body: Row): Promise<Response
   }
   const reference = `nxgspc_${crypto.randomUUID().replaceAll("-", "")}`;
   const { data, error } = await supabase.from("pc_checkouts").update({
-    status: "creating",
-    provider_status: "creating",
+    status: "created",
+    provider_status: "awaiting_details",
+    customer_details_required: true,
+    customer_name: null,
+    customer_phone: null,
+    customer_details_at: null,
     razorpay_payment_link_id: null,
     razorpay_payment_link_url: null,
     razorpay_payment_link_reference: reference,
@@ -390,10 +471,10 @@ async function retryCheckout(supabase: AdminClient, body: Row): Promise<Response
     expires_at: new Date(Date.now() + LOCAL_EXPIRY_SECONDS * 1000).toISOString(),
     terminal_reason: null,
     last_provider_check_at: null,
-  }).eq("id", current.id).neq("status", "consumed").select().single();
+  }).eq("id", current.id).eq("razorpay_payment_link_reference", current.razorpay_payment_link_reference)
+    .in("status", ["creating", "created", "failed", "expired", "cancelled"]).select().single();
   if (error || !data) throw error ?? new Error("checkout_retry_failed");
-  const completed = await saveProviderLink(supabase, { ...data, plan_name: data.plan_name });
-  return json({ status: completed.status, checkout: await publicCheckout(completed, access.token) });
+  return json({ status: data.status, checkout: await publicCheckout(data, access.token) });
 }
 
 async function cancelCheckout(supabase: AdminClient, body: Row): Promise<Response> {
@@ -436,11 +517,13 @@ async function consumeCheckout(supabase: AdminClient, body: Row): Promise<Respon
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: true, message: "method_not_allowed" }, 405);
-  if (!authorized(req)) return json({ error: true, message: "unauthorized_client" }, 401);
   try {
     const body = await req.json().catch(() => ({})) as Row;
     const action = text(body.action).toLowerCase();
+    const isMobile = action === "mobile_view" || action === "mobile_pay";
+    if (!isMobile && !authorized(req)) return json({ error: true, message: "unauthorized_client" }, 401);
     const supabase = admin();
+    if (isMobile) return await mobileCheckout(supabase, body, action);
     if (action === "pricing") {
       const result = await catalog(supabase);
       return json({ plans: result.plans.map(({ storeId: _storeId, ...plan }) => plan) });

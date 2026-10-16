@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070b14">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Enter your details and pay securely for your NXGS Play session.">
+  <title>Your play session · NXGS Play</title>
+  <link rel="stylesheet" href="/checkout.css">
+  <script src="/checkout.js" type="module"></script>
+</head>
+<body>
+  <main class="checkout">
+    <header class="brand"><span class="brand-mark" aria-hidden="true">N</span><span>NXGS <span class="brand-light">PLAY</span></span></header>
+    <div class="steps" aria-label="Checkout progress"><span class="current">01 Details</span><span class="step-line"></span><span>02 Payment</span><span class="step-line"></span><span>03 Play</span></div>
+    <section class="card" aria-labelledby="heading">
+      <p class="eyebrow">YOUR NEXT SESSION</p>
+      <h1 id="heading">A little detail.<br>Then, game on.</h1>
+      <p id="intro" class="intro">Add your name and mobile number to continue to secure payment.</p>
+      <div id="plan" class="plan" hidden><div><span class="plan-label">PLAY TIME</span><strong id="duration"></strong><span id="plan-name"></span></div><strong id="amount" class="amount"></strong></div>
+      <p id="loading" class="message" role="status">Getting your session ready…</p>
+      <p id="error" class="message error" role="alert" hidden></p>
+      <p id="success" class="message success" role="status" hidden></p>
+      <form id="details-form" hidden>
+        <fieldset id="fields">
+          <label for="customer-name">Your name</label>
+          <input id="customer-name" name="name" type="text" autocomplete="name" enterkeyhint="next" maxlength="80" placeholder="Enter your name" required>
+          <label for="customer-phone">Mobile number</label>
+          <div class="phone-input"><span aria-hidden="true">+91</span><input id="customer-phone" name="tel" type="tel" inputmode="tel" autocomplete="tel-national" enterkeyhint="go" maxlength="24" placeholder="10-digit mobile number" aria-describedby="phone-help" required></div>
+          <p id="phone-help" class="field-help">Use your Indian mobile number.</p>
+        </fieldset>
+        <p class="privacy">Your name and number will be saved with this session and shared with Razorpay to process your payment.</p>
+        <button id="submit" type="submit"><span id="button-label">Continue to payment</span><span aria-hidden="true">↗</span></button>
+      </form>
+      <p id="expiry" class="expiry" hidden></p>
+    </section>
+    <footer>Secure payments through <strong>Razorpay</strong><span>Play time starts after payment is confirmed.</span></footer>
+    <noscript><p class="message error">Please enable JavaScript in your browser to continue.</p></noscript>
+  </main>
+</body>
+</html>
