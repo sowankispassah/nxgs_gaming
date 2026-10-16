@@ -1,7 +1,7 @@
 {
-    "version":  "0.22.3",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.22.3/NXGS-Play-Setup.exe",
-    "sha256":  "812b0fec27fd69b4b0c73e60332e4d42c1c826348a680a9205e0686e7fd2e003",
+    "version":  "0.23.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.23.0/NXGS-Play-Setup.exe",
+    "sha256":  "79379df2b0da62e712c19499afd3f8d50059c47b3d6cafbfdf22858b56ca822d",
     "required":  false,
-    "notes":  "The selected game's name on Home is larger, without a badge"
+    "notes":  "New PS5-style menu sounds, console wording everywhere, and selecting a game in the Switcher opens its options"
 }
