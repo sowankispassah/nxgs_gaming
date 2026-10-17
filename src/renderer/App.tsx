@@ -85,6 +85,8 @@ export function App(): JSX.Element {
   const [adminUnlockRequest, setAdminUnlockRequest] = useState<AdminUnlockRequest | null>(null);
   const [adminOptionsOpen, setAdminOptionsOpen] = useState(false);
   const [adminControlsActive, setAdminControlsActive] = useState(false);
+  // Who unlocked the Control Room: the station admin or a moderator. Cleared whenever admin mode ends.
+  const [adminRole, setAdminRole] = useState<'admin' | 'moderator' | null>(null);
   const [windowedAdminMode, setWindowedAdminMode] = useState(false);
   const [adminModeTransitionPending, setAdminModeTransitionPending] = useState(false);
   const [adminModeError, setAdminModeError] = useState('');
@@ -125,6 +127,7 @@ export function App(): JSX.Element {
     setPinOpen(false);
     setAdminUnlockRequest(null);
     setAdminControlsActive(false);
+    setAdminRole(null);
     setWindowedAdminMode(false);
     setAdminModeError('');
     void window.nxgs.performKioskAdminAction('returnLocked');
@@ -135,6 +138,7 @@ export function App(): JSX.Element {
     setQuickNavOpen(false);
     setAdminOptionsOpen(false);
     setAdminControlsActive(false);
+    setAdminRole(null);
     setWindowedAdminMode(false);
     setAdminModeError('');
     void (async () => {
@@ -159,6 +163,7 @@ export function App(): JSX.Element {
         throw new Error(result.error ?? 'Could not return NXGS to locked mode.');
       }
       setAdminControlsActive(false);
+      setAdminRole(null);
       setWindowedAdminMode(false);
       const data = await window.nxgs.getInitialData();
       setActiveGame(data.activeGame);
@@ -273,6 +278,7 @@ export function App(): JSX.Element {
         setAdminModeError('');
       } else {
         setAdminControlsActive(false);
+        setAdminRole(null);
         setWindowedAdminMode(false);
         setAdminModeError('');
       }
@@ -295,6 +301,11 @@ export function App(): JSX.Element {
       setQuickNavOpen(false);
       openAdminPin(request);
     });
+    // A cloud sync applied main admin edits (device details, games turned on/off) to this station.
+    const unsubscribeFleetLocalData = window.nxgs.onFleetLocalDataChanged((change) => {
+      setInitialData((current) => current ? { ...current, currentDevice: change.device } : current);
+      setGames(change.games);
+    });
     const unsubscribeControllerIdle = window.nxgs.onControllerIdleNotification((notification) => {
       setControllerIdleNotification((current) => notification.action === 'clear'
         ? current?.controllerId === notification.controllerId ? null : current
@@ -307,6 +318,7 @@ export function App(): JSX.Element {
       unsubscribeActiveGame();
       unsubscribeShellHome();
       unsubscribeAdminUnlock();
+      unsubscribeFleetLocalData();
       unsubscribeControllerIdle();
     };
   }, [openAdminPin, resetToHome]);
@@ -707,6 +719,7 @@ export function App(): JSX.Element {
               onDeviceChanged={(currentDevice) => setInitialData((current) => current ? { ...current, currentDevice } : current)}
               onGamesChanged={setGames}
               onSettingsChanged={setSettings}
+              adminRole={adminRole ?? 'moderator'}
               onClose={returnToCustomerHome}
             />
           )}
@@ -788,11 +801,13 @@ export function App(): JSX.Element {
           onSubmit={async (pin) => {
             const result = await window.nxgs.unlockKioskAdminActions(pin);
             if (!result.ok) {
+              setAdminRole(null);
               setPinOpen(false);
               setAdminUnlockRequest(null);
               await window.nxgs.performKioskAdminAction('returnLocked');
               return true;
             }
+            setAdminRole(result.role ?? 'admin');
             if (adminUnlockRequest?.action) {
               await executeAdminAction(adminUnlockRequest.action);
               setPinOpen(false);

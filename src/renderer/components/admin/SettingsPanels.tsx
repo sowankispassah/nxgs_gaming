@@ -125,10 +125,13 @@ export function BrandingSettingsPanel(props: {
 
 export function SessionSettings(props: {
   settings: AppSettings;
+  /** Moderators unlock with their own PIN and must not see or change the station admin PIN. */
+  adminRole?: 'admin' | 'moderator';
   onSettingsChanged: (settings: AppSettings) => void;
   onOpenPlans?: () => void;
 }): JSX.Element {
-  const [pin, setPin] = useState(props.settings.adminPin);
+  const isModerator = props.adminRole === 'moderator';
+  const [pin, setPin] = useState(isModerator ? '' : props.settings.adminPin);
   const [playAccessMode, setPlayAccessMode] = useState(props.settings.playAccessMode);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
@@ -184,10 +187,17 @@ export function SessionSettings(props: {
           title="Admin PIN"
           subtitle="Unlocks the Control Room and other staff-only actions on this station."
         />
-        <label className="admin-field admin-pin-field">
-          <span className="admin-field-label">Admin PIN</span>
-          <input value={pin} autoComplete="off" onChange={(event) => setPin(event.target.value)} />
-        </label>
+        {isModerator ? (
+          <div className="admin-inline-note">
+            <Info size={18} aria-hidden="true" />
+            <p className="field-note">Only the station admin can see or change the admin PIN.</p>
+          </div>
+        ) : (
+          <label className="admin-field admin-pin-field">
+            <span className="admin-field-label">Admin PIN</span>
+            <input value={pin} autoComplete="off" onChange={(event) => setPin(event.target.value)} />
+          </label>
+        )}
       </section>
 
       <div className="admin-save-bar">
@@ -202,7 +212,8 @@ export function SessionSettings(props: {
             try {
               const next: AppSettings = {
                 ...props.settings,
-                adminPin: pin,
+                // A moderator saves the existing PIN unchanged (main ignores it for moderators too).
+                adminPin: isModerator ? props.settings.adminPin : pin,
                 playAccessMode
               };
               props.onSettingsChanged(await window.nxgs.updateSettings(next));

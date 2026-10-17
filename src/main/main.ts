@@ -7,13 +7,16 @@ import {
   screen,
   type NativeImage,
   type OpenDialogOptions,
-  type OpenDialogReturnValue
+  type OpenDialogReturnValue,
+  type SaveDialogOptions
 } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { DataStore } from './database';
+import { FleetService } from './fleetService';
+import { earningsReportToCsv } from '../shared/earnings';
 import { ControllerCompatibilityService } from './controllerCompatibilityService';
 import { ControllerIdleService } from './controllerIdleService';
 import { GameAudioFocus } from './gameAudioFocus';
@@ -54,7 +57,10 @@ import type {
   CreatePaymentCheckoutRequest,
   DeviceInput,
   DisplayDeviceInfo,
+  EarningsExportResult,
+  EarningsQuery,
   FilePickerResult,
+  FleetStationInput,
   GameControlResult,
   GameImageKind,
   GameInput,
@@ -63,6 +69,7 @@ import type {
   KioskAdminActionResult,
   KioskMode,
   LaunchRequest,
+  ModeratorInput,
   PaymentCheckoutAccess,
   PlayPlanInput,
   QuickOverlayBackdrop,
@@ -127,7 +134,13 @@ const controllerCompatibility = new ControllerCompatibilityService();
 const paymentService = new PaymentService({
   listEnabled: () => store.listPlans(true),
   getById: (id) => store.getPlan(id)
-});
+}, () => store.getCurrentDevice().id);
+// Created once the data store is loaded; Device Management cloud sync and main admin calls.
+let fleetService: FleetService | null = null;
+// Games last seen tracked by the launcher, for the paid session's game list.
+let sessionPlayGameIds = new Set<string>();
+// Who unlocked the Control Room; a moderator may not read or change the admin PIN.
+let controlRoomRole: 'admin' | 'moderator' | null = null;
 let controllerIdleService: ControllerIdleService | null = null;
 
 function getAppIconPath(): string {
@@ -917,6 +930,42 @@ function broadcastActiveGame(): void {
   }
 }
 
+function requestFleetSync(reason: string): void {
+  fleetService?.requestSync(reason);
+}
+
+/** Games the launcher is tracking: the presented game and every game kept in the switcher. */
+function trackedGamesForSession(): GameRecord[] {
+  const state = launcher.activeState;
+  const games = new Map<string, GameRecord>();
+  for (const session of state.sessions ?? []) games.set(session.game.id, session.game);
+  if (state.game && !['idle', 'closed', 'error'].includes(state.status)) games.set(state.game.id, state.game);
+  return [...games.values()];
+}
+
+/**
+ * Keeps the active paid session's game list in step with the launcher: a game
+ * that appears is recorded as played, one that disappears gets its end time.
+ * The store mutates synchronously on each call, so calls never interleave.
+ */
+function recordSessionGamePlays(): void {
+  const running = trackedGamesForSession();
+  const runningIds = new Set(running.map((game) => game.id));
+  const closed = [...sessionPlayGameIds].some((id) => !runningIds.has(id));
+  const opened = running.filter((game) => !sessionPlayGameIds.has(game.id));
+  sessionPlayGameIds = runningIds;
+  if (!closed && opened.length === 0) return;
+  const updates = [
+    ...(closed ? [store.recordSessionGameEnd([...runningIds])] : []),
+    ...opened.map((game) => store.recordSessionGameStart(game))
+  ];
+  void Promise.all(updates).then((changes) => {
+    if (changes.some(Boolean)) requestFleetSync('session games changed');
+  }).catch((error) => {
+    void logLine('warn', `Could not record the paid session's games: ${String(error)}`);
+  });
+}
+
 function clearPendingSessionExtension(): void {
   for (const timer of sessionExtensionDeliveryTimers) clearTimeout(timer);
   sessionExtensionDeliveryTimers = [];
@@ -1394,6 +1443,7 @@ const launcher = new GameLauncher(
       controllerIdleService?.setGameplayActive(launcher.hasTrackedGames);
       gameAudioFocus.refresh();
       broadcastActiveGame();
+      recordSessionGamePlays();
       const status = launcher.activeState.status;
       // Prepare only after the launch handoff has committed its final HWND.
       // Store games can replace their splash frame during launch; capturing it
@@ -1440,6 +1490,7 @@ async function endPaidSession(): Promise<GameControlResult> {
     await launcher.closeAllGames();
     sessionTimer.stop('idle');
     await store.finishActiveSession(endedAfterExpiry ? 'expired' : 'completed');
+    requestFleetSync('paid session finished');
     clearPendingSessionExtension();
     sessionWarningOverlay?.close();
     controllerIdleService?.setGameplayActive(false);
@@ -1523,6 +1574,9 @@ function setKioskMode(mode: KioskMode): void {
   if (mode === 'customer') {
     kioskAdminActionGranted = false;
     adminWindowedPresentation = false;
+    // The main admin's Device Management session never outlives the Control Room.
+    fleetService?.clearOwnerSession('returned to customer mode');
+    controlRoomRole = null;
   }
   kioskInput.setMode(mode);
   applyKioskSettings(store.getSettings());
@@ -1842,14 +1896,21 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('kiosk:unlockAdminActions', (_event, pin: string) => {
-    const ok = store.verifyPin(pin);
+    // Moderator PINs cached from Device Management unlock the Control Room too.
+    const identity = store.identifyPin(pin);
+    const ok = identity.ok;
+    const role = ok ? identity.role ?? 'admin' : undefined;
+    if (role === 'moderator') {
+      void logLine('info', `Control Room unlocked by moderator ${identity.moderatorName ?? 'unknown'}.`);
+    }
     kioskAdminActionGranted = ok;
     kioskInput.setAdminPinActive(ok);
     kioskInput.setAdminControlsUnlocked(ok);
     if (!ok) {
       returnToLockedMode();
     }
-    return { ok };
+    controlRoomRole = role ?? null;
+    return role ? { ok, role } : { ok };
   });
 
   ipcMain.handle('kiosk:performAdminAction', (_event, action: KioskAdminAction) =>
@@ -1909,15 +1970,21 @@ function registerIpc(): void {
   ipcMain.handle('auth:verifyPin', (_event, pin: string) => ({ ok: store.verifyPin(pin) }));
 
   ipcMain.handle('device:getCurrent', () => store.getDeviceManagerSummary());
-  ipcMain.handle('device:updateCurrent', async (_event, input: DeviceInput) => store.updateCurrentDevice(input));
+  ipcMain.handle('device:updateCurrent', async (_event, input: DeviceInput) => {
+    const summary = await store.updateCurrentDevice(input);
+    requestFleetSync('device edited');
+    return summary;
+  });
 
   ipcMain.handle('games:save', async (_event, input: GameInput) => {
     const saved = await store.saveGame(input);
+    requestFleetSync('game saved');
     return { game: saved, games: store.listGames() };
   });
 
   ipcMain.handle('games:delete', async (_event, id: string) => {
     await store.deleteGame(id);
+    requestFleetSync('game deleted');
     return { games: store.listGames() };
   });
 
@@ -1941,7 +2008,10 @@ function registerIpc(): void {
   }));
 
   ipcMain.handle('settings:update', async (_event, settings: AppSettings) => {
-    const updated = await store.updateSettings(settings);
+    // Moderators may change other settings but never the station admin PIN.
+    const updated = await store.updateSettings(
+      controlRoomRole === 'moderator' ? { ...settings, adminPin: store.getSettings().adminPin } : settings
+    );
     applyKioskSettings(updated);
     controllerIdleService?.updateSettings(updated.controllerIdle);
     return updated;
@@ -2051,7 +2121,8 @@ function registerIpc(): void {
       ? sessionTimer.extend(result.entitlement.durationMinutes)
       : sessionTimer.start(result.entitlement.durationMinutes);
     if (state.expiresAt) {
-      await store.recordPaidSession(result.entitlement, state.expiresAt, extending);
+      await store.recordPaidSession(result.entitlement, state.expiresAt, extending, trackedGamesForSession());
+      requestFleetSync('paid session recorded');
     }
     await logLine(
       'info',
@@ -2082,6 +2153,11 @@ function registerIpc(): void {
       }
       controllerIdleService?.setGameplayActive(true);
       const launch = launcher.launch(game);
+      void store.recordSessionGameStart(game).then((changed) => {
+        if (changed) requestFleetSync('game played');
+      }).catch((error) => {
+        void logLine('warn', `Could not record ${game.title} in the paid session: ${String(error)}`);
+      });
       void controllerCompatibility.ensureReadyForGame(game).then((compatibility) => {
         if (compatibility.status !== 'ready') {
           void logLine('warn', `Launching ${game.title} without ready controller compatibility: ${compatibility.message ?? compatibility.status}`);
@@ -2092,6 +2168,8 @@ function registerIpc(): void {
       void launch.catch(async (error) => {
         const message = error instanceof Error ? error.message : String(error);
         await logLine('error', `Background launch request failed for ${game.title}: ${message}`);
+        // A launch refused before the launcher tracked the game must not stay open in the session.
+        void store.recordSessionGameEnd(trackedGamesForSession().map((tracked) => tracked.id)).catch(() => undefined);
         if (!launcher.hasTrackedGames) controllerIdleService?.setGameplayActive(false);
         launcher.focusLauncher();
         applyKioskSettings(store.getSettings());
@@ -2226,6 +2304,98 @@ function registerIpc(): void {
     app.quit();
     return { ok: true };
   });
+
+  registerAccountsIpc();
+}
+
+function requireFleetService(): FleetService {
+  if (!fleetService) throw new Error('Device Management is still starting. Try again in a moment.');
+  return fleetService;
+}
+
+function earningsExportFileName(query: EarningsQuery): string {
+  const now = new Date();
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const deviceName = store.getCurrentDevice().name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  return `nxgs-earnings-${query?.scope === 'all' ? 'all-devices' : deviceName || 'device'}-${date}.csv`;
+}
+
+const CONTROL_ROOM_REQUIRED = 'Open the Control Room first.';
+
+function inControlRoom(): boolean {
+  return kioskInput.currentMode === 'admin';
+}
+
+/** FleetResult-shaped refusal for Accounts and Device Management calls made outside the Control Room. */
+function controlRoomOnly<T>(run: () => Promise<T>): Promise<T | { ok: false; code: 'failed'; error: string }> {
+  return inControlRoom() ? run() : Promise.resolve({ ok: false, code: 'failed', error: CONTROL_ROOM_REQUIRED });
+}
+
+function requireControlRoom(): void {
+  if (!inControlRoom()) throw new Error(CONTROL_ROOM_REQUIRED);
+}
+
+// Accounts (earnings) and Device Management. Cloud work runs in FleetService;
+// the renderer never sees a token or the cloud's address. Everything except
+// owner:lock answers only while the kiosk is in the Control Room (admin mode).
+function registerAccountsIpc(): void {
+  ipcMain.handle('accounts:getEarnings', (_event, query: EarningsQuery) =>
+    controlRoomOnly(() => requireFleetService().getEarnings(query)));
+  ipcMain.handle('accounts:exportCsv', async (_event, query: EarningsQuery): Promise<EarningsExportResult> => {
+    if (!inControlRoom()) return { ok: false, error: CONTROL_ROOM_REQUIRED };
+    const report = await requireFleetService().getEarnings(query);
+    if (!report.ok || !report.data) return { ok: false, error: report.error ?? "Couldn't load the earnings to export." };
+    const options: SaveDialogOptions = {
+      title: 'Export earnings',
+      defaultPath: join(app.getPath('documents'), earningsExportFileName(query)),
+      filters: [{ name: 'CSV spreadsheet', extensions: ['csv'] }]
+    };
+    const window = getLiveMainWindow();
+    const choice = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+    if (choice.canceled || !choice.filePath) return { ok: false, canceled: true };
+    const path = extname(choice.filePath).toLowerCase() === '.csv' ? choice.filePath : `${choice.filePath}.csv`;
+    try {
+      // The byte-order mark lets Excel read names and the rupee data as UTF-8.
+      await writeFile(path, `﻿${earningsReportToCsv(report.data)}`, 'utf8');
+      await logLine('info', `Exported ${report.data.sessionCount} ${report.data.scope === 'all' ? 'all-device' : 'device'} earnings row(s) to ${path}.`);
+      return { ok: true, path };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await logLine('warn', `Earnings export to ${path} failed: ${message}`);
+      return { ok: false, error: `Couldn't save the file: ${message}` };
+    }
+  });
+
+  ipcMain.handle('owner:getSession', () =>
+    inControlRoom() ? requireFleetService().ownerSession() : { unlocked: false });
+  ipcMain.handle('owner:unlock', (_event, pin: string) => controlRoomOnly(() => requireFleetService().unlockOwner(pin)));
+  ipcMain.handle('owner:lock', () => requireFleetService().lockOwner());
+  ipcMain.handle('owner:changePin', (_event, currentPin: string, nextPin: string) =>
+    controlRoomOnly(() => requireFleetService().changeOwnerPin(currentPin, nextPin)));
+
+  ipcMain.handle('fleet:listStations', () => controlRoomOnly(() => requireFleetService().listStations()));
+  ipcMain.handle('fleet:getStation', (_event, stationId: string) =>
+    controlRoomOnly(() => requireFleetService().getStation(stationId)));
+  ipcMain.handle('fleet:updateStation', (_event, stationId: string, input: FleetStationInput) =>
+    controlRoomOnly(() => requireFleetService().updateStation(stationId, input)));
+  ipcMain.handle('fleet:removeStation', (_event, stationId: string) =>
+    controlRoomOnly(() => requireFleetService().removeStation(stationId)));
+  ipcMain.handle('fleet:setGameEnabled', (_event, stationId: string, gameId: string, enabled: boolean) =>
+    controlRoomOnly(() => requireFleetService().setGameEnabled(stationId, gameId, enabled)));
+  ipcMain.handle('fleet:listModerators', () => controlRoomOnly(() => requireFleetService().listModerators()));
+  ipcMain.handle('fleet:saveModerator', (_event, input: ModeratorInput) =>
+    controlRoomOnly(() => requireFleetService().saveModerator(input)));
+  ipcMain.handle('fleet:deleteModerator', (_event, id: string) =>
+    controlRoomOnly(() => requireFleetService().deleteModerator(id)));
+  ipcMain.handle('fleet:getSyncStatus', () => {
+    requireControlRoom();
+    return requireFleetService().status();
+  });
+  ipcMain.handle('fleet:syncNow', () => {
+    requireControlRoom();
+    return requireFleetService().syncNow();
+  });
+  ipcMain.handle('fleet:rejoin', () => controlRoomOnly(() => requireFleetService().rejoin()));
 }
 
 app.setAppUserModelId('com.nxgs.play');
@@ -2241,6 +2411,12 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     await store.init();
+    fleetService = new FleetService({
+      store,
+      appVersion: app.getVersion(),
+      onLocalDataChanged: (change) => sendToRenderer('fleet:localDataChanged', change)
+    });
+    fleetService.start();
     await disableXboxGameBarControllerShortcut();
     registerIpc();
     await createWindow();

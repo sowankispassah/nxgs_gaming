@@ -5,10 +5,12 @@ import {
   Image as ImageIcon,
   IndianRupee,
   MonitorCog,
+  Network,
   RefreshCw,
   ScanSearch,
   ShieldCheck,
-  Timer
+  Timer,
+  Wallet
 } from 'lucide-react';
 import type { AppSettings, DeviceRecord, GameRecord, InitialData } from '../../../shared/types';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../../controllerNavigation';
@@ -17,13 +19,16 @@ import { playUiSound } from '../../ui/uiSound';
 import { BrandLogo } from '../BrandLogo';
 import { DeviceManager } from '../DeviceManager';
 import { PlanManager } from '../PlanManager';
+import { AccountsPanel, DEFAULT_ACCOUNTS_VIEW, type AccountsView } from './AccountsPanel';
+import { DeviceManagementPanel } from './DeviceManagementPanel';
 import { GameManager, ScanPanel } from './GameLibraryPanels';
 import { BrandingSettingsPanel, KioskSettingsPanel, SessionSettings } from './SettingsPanels';
 import { UpdatePanel } from './UpdatePanel';
+import { OwnerSessionChip, useOwnerSession } from './useOwnerSession';
 
-type AdminTab = 'games' | 'scan' | 'sessions' | 'branding' | 'kiosk' | 'updates' | 'plans' | 'device';
+type AdminTab = 'games' | 'scan' | 'sessions' | 'branding' | 'kiosk' | 'updates' | 'plans' | 'device' | 'accounts' | 'fleet';
 
-const ADMIN_TABS: AdminTab[] = ['games', 'scan', 'sessions', 'branding', 'kiosk', 'updates', 'plans', 'device'];
+const ADMIN_TABS: AdminTab[] = ['games', 'scan', 'sessions', 'branding', 'kiosk', 'updates', 'plans', 'device', 'accounts', 'fleet'];
 
 const SINGLE_COLUMN_TABS: AdminTab[] = ['scan', 'sessions', 'branding', 'updates'];
 
@@ -59,8 +64,19 @@ const PAGE_COPY: Record<AdminTab, { title: string; description: string }> = {
   device: {
     title: 'Device Manager',
     description: 'Identity, location and activity for this station.'
+  },
+  accounts: {
+    title: 'Accounts',
+    description: 'Income from paid sessions and the games played in each.'
+  },
+  fleet: {
+    title: 'Device Management',
+    description: 'Main admin tools for every device: details, games and moderators.'
   }
 };
+
+/** Arrow keys inside these regions (such as the earnings table) stay with the region instead of switching sections. */
+const LOCAL_KEYS_SELECTOR = '[data-admin-local-keys]';
 
 export function AdminScreen(props: {
   games: GameRecord[];
@@ -69,9 +85,13 @@ export function AdminScreen(props: {
   onGamesChanged: (games: GameRecord[]) => void;
   onDeviceChanged: (device: DeviceRecord) => void;
   onSettingsChanged: (settings: AppSettings) => void;
+  /** Who unlocked the Control Room; moderators cannot see or change the station admin PIN. */
+  adminRole?: 'admin' | 'moderator';
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<AdminTab>('games');
+  const [accountsView, setAccountsView] = useState<AccountsView>(DEFAULT_ACCOUNTS_VIEW);
+  const owner = useOwnerSession();
   const [navFocused, setNavFocused] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -94,6 +114,7 @@ export function AdminScreen(props: {
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Escape', 'b', 'B'].includes(event.key)) return;
       if (event.ctrlKey || event.altKey || event.metaKey) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
+      if (event.key.startsWith('Arrow') && event.target instanceof Element && event.target.closest(LOCAL_KEYS_SELECTOR)) return;
       event.preventDefault();
       if (event.key === 'Escape' || event.key.toLowerCase() === 'b') closeAdmin();
       else moveAdminTab(event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1);
@@ -116,6 +137,23 @@ export function AdminScreen(props: {
     contentRef.current?.scrollTo({ top: 0 });
   }, [tab]);
 
+  // The main admin session never outlives the Control Room.
+  useEffect(() => () => {
+    void window.nxgs.lockOwner().catch(() => undefined);
+  }, []);
+
+  // Locked (or the PIN prompt was cancelled): every-device earnings go back to this device.
+  useEffect(() => {
+    if (!owner.unlocked && !owner.prompting && accountsView.scope === 'all') {
+      setAccountsView((current) => ({ ...current, scope: 'device', stationId: '' }));
+    }
+  }, [accountsView.scope, owner.prompting, owner.unlocked]);
+
+  const viewStationEarnings = useCallback((stationId: string): void => {
+    setAccountsView((current) => ({ ...current, scope: 'all', stationId }));
+    setTab('accounts');
+  }, []);
+
   useEffect(() => {
     if (!navFocused) return;
     navRef.current?.querySelector<HTMLButtonElement>(`[data-admin-tab="${tab}"]`)?.focus({ preventScroll: true });
@@ -123,6 +161,8 @@ export function AdminScreen(props: {
 
   const page = PAGE_COPY[tab];
   const tabFocus = (id: AdminTab): boolean => navFocused && tab === id;
+  // Main admin pages cover every device, so the "this station" chip would mislead there.
+  const ownerView = tab === 'fleet' || (tab === 'accounts' && accountsView.scope === 'all');
 
   return (
     <section className="admin-screen" spellCheck={false} onPointerDown={() => setNavFocused(false)}>
@@ -143,6 +183,8 @@ export function AdminScreen(props: {
           <TabButton id="updates" active={tab === 'updates'} focused={tabFocus('updates')} icon={<RefreshCw size={19} />} label="Updates" onClick={() => setTab('updates')} />
           <TabButton id="plans" active={tab === 'plans'} focused={tabFocus('plans')} icon={<IndianRupee size={19} />} label="Plan Manager" onClick={() => setTab('plans')} />
           <TabButton id="device" active={tab === 'device'} focused={tabFocus('device')} icon={<MonitorCog size={19} />} label="Device Manager" onClick={() => setTab('device')} />
+          <TabButton id="accounts" active={tab === 'accounts'} focused={tabFocus('accounts')} icon={<Wallet size={19} />} label="Accounts" onClick={() => setTab('accounts')} />
+          <TabButton id="fleet" active={tab === 'fleet'} focused={tabFocus('fleet')} icon={<Network size={19} />} label="All Devices" onClick={() => setTab('fleet')} />
         </nav>
         <div className="admin-sidebar-footer">
           <ControllerHints
@@ -166,10 +208,17 @@ export function AdminScreen(props: {
               <h1>{page.title}</h1>
               <p className="admin-page-description">{page.description}</p>
             </div>
-            <span className="admin-station-chip" title="Changes on this page apply to this station">
-              <MonitorCog size={17} aria-hidden="true" />
-              <span>{props.initialData.currentDevice.name}</span>
-            </span>
+            {ownerView ? (
+              owner.unlocked && <OwnerSessionChip onLock={() => void owner.lock()} />
+            ) : (
+              <span
+                className="admin-station-chip"
+                title={tab === 'accounts' ? 'Earnings on this page are from this station' : 'Changes on this page apply to this station'}
+              >
+                <MonitorCog size={17} aria-hidden="true" />
+                <span>{props.initialData.currentDevice.name}</span>
+              </span>
+            )}
           </header>
 
           {tab === 'games' && <GameManager currentDevice={props.initialData.currentDevice} games={props.games} onGamesChanged={props.onGamesChanged} />}
@@ -177,6 +226,7 @@ export function AdminScreen(props: {
           {tab === 'sessions' && (
             <SessionSettings
               settings={props.settings}
+              adminRole={props.adminRole ?? 'admin'}
               onSettingsChanged={props.onSettingsChanged}
               onOpenPlans={() => setTab('plans')}
             />
@@ -193,9 +243,19 @@ export function AdminScreen(props: {
           )}
           {tab === 'updates' && <UpdatePanel initialData={props.initialData} />}
           {tab === 'plans' && <PlanManager currentDevice={props.initialData.currentDevice} />}
-          {tab === 'device' && <DeviceManager onDeviceChanged={props.onDeviceChanged} />}
+          {tab === 'device' && <DeviceManager onDeviceChanged={props.onDeviceChanged} owner={owner} />}
+          {tab === 'accounts' && (
+            <AccountsPanel
+              view={accountsView}
+              onViewChange={setAccountsView}
+              owner={owner}
+              currentDevice={props.initialData.currentDevice}
+            />
+          )}
+          {tab === 'fleet' && <DeviceManagementPanel owner={owner} onViewEarnings={viewStationEarnings} />}
         </div>
       </div>
+      {owner.dialog}
     </section>
   );
 }

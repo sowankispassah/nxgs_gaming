@@ -19,7 +19,7 @@ assert.match(types, /displayOrder: number/);
 assert.match(types, /createdAt: string/);
 assert.match(types, /updatedAt: string/);
 
-assert.match(database, /const SCHEMA_VERSION = 5/);
+assert.match(database, /const SCHEMA_VERSION = 7/);
 assert.match(database, /name: '30 Minutes', durationMinutes: 30, amountPaise: 5000/);
 assert.match(database, /name: '1 Hour', durationMinutes: 60, amountPaise: 10000/);
 assert.match(database, /name: '1 Hour 30 Minutes', durationMinutes: 90, amountPaise: 15000/);

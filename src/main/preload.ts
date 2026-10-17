@@ -17,7 +17,17 @@ import type {
   DeviceManagerSummary,
   DisplayActionResult,
   DisplayStatus,
+  EarningsExportResult,
+  EarningsQuery,
+  EarningsReport,
   FilePickerResult,
+  FleetLocalDataChange,
+  FleetResult,
+  FleetStation,
+  FleetStationDetail,
+  FleetStationGame,
+  FleetStationInput,
+  FleetSyncStatus,
   GameControlResult,
   GameImageKind,
   GameInput,
@@ -28,6 +38,10 @@ import type {
   NetworkStatus,
   LaunchRequest,
   LaunchResult,
+  ModeratorInput,
+  ModeratorRecord,
+  OwnerSessionState,
+  OwnerUnlockResult,
   PaymentCatalogResult,
   PaymentCheckoutAccess,
   PaymentCheckoutResult,
@@ -89,6 +103,35 @@ const api = {
   getCurrentDevice: (): Promise<DeviceManagerSummary> => ipcRenderer.invoke('device:getCurrent'),
   updateCurrentDevice: (device: DeviceInput): Promise<DeviceManagerSummary> =>
     ipcRenderer.invoke('device:updateCurrent', device),
+  getEarnings: (query: EarningsQuery): Promise<FleetResult<EarningsReport>> => ipcRenderer.invoke('accounts:getEarnings', query),
+  exportEarningsCsv: (query: EarningsQuery): Promise<EarningsExportResult> => ipcRenderer.invoke('accounts:exportCsv', query),
+  getOwnerSession: (): Promise<OwnerSessionState> => ipcRenderer.invoke('owner:getSession'),
+  unlockOwner: (pin: string): Promise<OwnerUnlockResult> => ipcRenderer.invoke('owner:unlock', pin),
+  lockOwner: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('owner:lock'),
+  changeOwnerPin: (currentPin: string, nextPin: string): Promise<FleetResult<{ changed: true }>> =>
+    ipcRenderer.invoke('owner:changePin', currentPin, nextPin),
+  listFleetStations: (): Promise<FleetResult<FleetStation[]>> => ipcRenderer.invoke('fleet:listStations'),
+  getFleetStation: (stationId: string): Promise<FleetResult<FleetStationDetail>> =>
+    ipcRenderer.invoke('fleet:getStation', stationId),
+  updateFleetStation: (stationId: string, input: FleetStationInput): Promise<FleetResult<FleetStation>> =>
+    ipcRenderer.invoke('fleet:updateStation', stationId, input),
+  removeFleetStation: (stationId: string): Promise<FleetResult<{ removed: true }>> =>
+    ipcRenderer.invoke('fleet:removeStation', stationId),
+  setFleetGameEnabled: (stationId: string, gameId: string, enabled: boolean): Promise<FleetResult<FleetStationGame>> =>
+    ipcRenderer.invoke('fleet:setGameEnabled', stationId, gameId, enabled),
+  listModerators: (): Promise<FleetResult<ModeratorRecord[]>> => ipcRenderer.invoke('fleet:listModerators'),
+  saveModerator: (input: ModeratorInput): Promise<FleetResult<ModeratorRecord>> => ipcRenderer.invoke('fleet:saveModerator', input),
+  deleteModerator: (id: string): Promise<FleetResult<{ deleted: true }>> => ipcRenderer.invoke('fleet:deleteModerator', id),
+  getFleetSyncStatus: (): Promise<FleetSyncStatus> => ipcRenderer.invoke('fleet:getSyncStatus'),
+  syncFleetNow: (): Promise<FleetSyncStatus> => ipcRenderer.invoke('fleet:syncNow'),
+  rejoinFleet: (): Promise<FleetResult<FleetSyncStatus>> => ipcRenderer.invoke('fleet:rejoin'),
+  onFleetLocalDataChanged: (callback: (change: FleetLocalDataChange) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, change: FleetLocalDataChange) => callback(change);
+    ipcRenderer.on('fleet:localDataChanged', listener);
+    return () => {
+      ipcRenderer.removeListener('fleet:localDataChanged', listener);
+    };
+  },
   saveGame: (game: GameInput) => ipcRenderer.invoke('games:save', game),
   deleteGame: (id: string) => ipcRenderer.invoke('games:delete', id),
   scanInstalledGames: () => ipcRenderer.invoke('games:scanInstalled'),

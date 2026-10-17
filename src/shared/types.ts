@@ -142,9 +142,39 @@ export interface AppDatabase {
   games: GameRecord[];
   plans: PlayPlanRecord[];
   sessions: LocalSessionRecord[];
+  cloud: StationCloudState;
 }
 
 export type LocalSessionStatus = 'active' | 'completed' | 'expired' | 'interrupted';
+
+/**
+ * Who paid for a checkout, as far as Razorpay knows. Every field is optional:
+ * Payment Links usually give a phone number and method but rarely a name, and
+ * Razorpay's placeholder email (`void@razorpay.com`) is dropped.
+ */
+export interface PaymentPayerDetails {
+  checkoutId: string;
+  razorpayPaymentId?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  /** Razorpay method: `upi`, `card`, `netbanking`, `wallet`, `emi`, `paylater`, ... */
+  method?: string;
+  upiId?: string;
+  bank?: string;
+  wallet?: string;
+  cardNetwork?: string;
+  cardLast4?: string;
+  paidAt?: string;
+}
+
+/** One game launched during a paid session. A game relaunched after closing gets a new entry. */
+export interface SessionGamePlay {
+  gameId: string;
+  title: string;
+  startedAt: string;
+  endedAt?: string;
+}
 
 export interface LocalSessionRecord {
   id: string;
@@ -152,6 +182,10 @@ export interface LocalSessionRecord {
   status: LocalSessionStatus;
   planIds: string[];
   checkoutIds: string[];
+  /** Games played in this session, oldest first. Empty for sessions recorded before 0.25.0. */
+  games: SessionGamePlay[];
+  /** Razorpay payer details per checkout, filled at consume time or later from the cloud. */
+  payers: PaymentPayerDetails[];
   durationMinutes: number;
   amountPaise: number;
   currency: string;
@@ -163,6 +197,222 @@ export interface LocalSessionRecord {
   syncedAt?: string;
   deletedAt?: string;
   syncStatus: SyncStatus;
+}
+
+/** A moderator PIN this station accepts as an admin PIN, cached from the cloud so it works offline. */
+export interface CachedModeratorCredential {
+  id: string;
+  name: string;
+  /** `pbkdf2-sha256$<iterations>$<saltHex>$<hashHex>` */
+  pinHash: string;
+}
+
+/** This station's link to the cloud Device Management service. */
+export interface StationCloudState {
+  /** Secret issued by `register`; never leaves the main process. */
+  stationToken?: string;
+  registeredAt?: string;
+  lastSyncAt?: string;
+  lastSyncError?: string;
+  /** The main admin removed this station; automatic sync is paused until it rejoins. */
+  removedByOwner: boolean;
+  moderators: CachedModeratorCredential[];
+}
+
+// ---------------------------------------------------------------------------
+// Accounts (earnings) and Device Management (main admin / fleet)
+// ---------------------------------------------------------------------------
+
+/** `device` reads this station's local records; `all` reads every station from the cloud and needs the main admin PIN. */
+export type EarningsScope = 'device' | 'all';
+
+export interface EarningsQuery {
+  scope: EarningsScope;
+  /** Inclusive ISO timestamp; omitted means from the beginning. Matched against session `startedAt`. */
+  from?: string;
+  /** Exclusive ISO timestamp; omitted means up to now. */
+  to?: string;
+  /** Only for scope `all`: limit to one station. */
+  stationId?: string;
+}
+
+export interface EarningsSessionRow {
+  id: string;
+  stationId: string;
+  stationName: string;
+  status: LocalSessionStatus;
+  startedAt: string;
+  endedAt?: string;
+  /** When the paid time runs out; caps the play time of games left open by a session that never ended cleanly. */
+  expiresAt?: string;
+  durationMinutes: number;
+  amountPaise: number;
+  currency: string;
+  planNames: string[];
+  checkoutIds: string[];
+  games: SessionGamePlay[];
+  /** One entry per checkout whose payer details are known; empty when none are. */
+  payers: PaymentPayerDetails[];
+  /** Scope `all` only: every checkout id matches a consumed Razorpay checkout in the cloud. */
+  paymentVerified?: boolean;
+}
+
+export interface EarningsStationTotal {
+  stationId: string;
+  stationName: string;
+  sessionCount: number;
+  amountPaise: number;
+}
+
+export interface EarningsGameTotal {
+  gameId: string;
+  title: string;
+  /** Sessions in which this game was played at least once. */
+  sessionCount: number;
+  /** Sum of play time across entries; open entries count up to the session end (or now). */
+  playMinutes: number;
+}
+
+export interface EarningsReport {
+  scope: EarningsScope;
+  generatedAt: string;
+  from?: string;
+  to?: string;
+  currency: string;
+  totalPaise: number;
+  sessionCount: number;
+  paidMinutes: number;
+  /** Newest first. */
+  rows: EarningsSessionRow[];
+  /** Highest amount first. */
+  byStation: EarningsStationTotal[];
+  /** Most played first. */
+  byGame: EarningsGameTotal[];
+  /** The cloud returned its maximum number of rows; totals cover only those rows. */
+  truncated?: boolean;
+}
+
+export type FleetErrorCode =
+  | 'owner_pin_required'
+  | 'invalid_owner_pin'
+  | 'owner_locked'
+  | 'offline'
+  | 'not_configured'
+  | 'not_deployed'
+  | 'not_found'
+  | 'invalid_input'
+  | 'failed';
+
+export interface FleetResult<T> {
+  ok: boolean;
+  data?: T;
+  /** Staff-readable message when `ok` is false. */
+  error?: string;
+  code?: FleetErrorCode;
+}
+
+export interface OwnerSessionState {
+  unlocked: boolean;
+  expiresAt?: string;
+}
+
+export interface OwnerUnlockResult {
+  ok: boolean;
+  expiresAt?: string;
+  error?: string;
+  code?: FleetErrorCode;
+  /** Set when too many wrong PINs locked the main admin login. */
+  lockedUntil?: string;
+}
+
+export interface FleetStation {
+  /** The station's local device ID. */
+  id: string;
+  name: string;
+  storeName: string;
+  location: string;
+  status: DeviceStatus;
+  appVersion: string;
+  registeredAt: string;
+  lastSeenAt?: string;
+  /** Removed by the main admin; kept so its earnings history stays visible. */
+  removedAt?: string;
+  gameCount: number;
+  sessionCount: number;
+  totalRevenuePaise: number;
+  /** Computed by the main process: this is the station running the app. */
+  isCurrentDevice: boolean;
+}
+
+export interface FleetStationGame {
+  id: string;
+  title: string;
+  enabled: boolean;
+  launchType: LaunchType;
+  source: string;
+  availabilityStatus: AvailabilityStatus;
+  updatedAt: string;
+  /** The main admin changed `enabled` and the station has not applied it yet. */
+  pendingOwnerChange: boolean;
+}
+
+export interface ModeratorRecord {
+  id: string;
+  name: string;
+  /** Stations where this moderator's PIN unlocks the Control Room. */
+  stationIds: string[];
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModeratorInput {
+  id?: string;
+  name: string;
+  /** 4-12 digits. Required when creating; omit to keep the current PIN when editing. */
+  pin?: string;
+  stationIds: string[];
+  active: boolean;
+}
+
+export interface FleetStationDetail {
+  station: FleetStation;
+  games: FleetStationGame[];
+  moderators: ModeratorRecord[];
+}
+
+export interface FleetStationInput {
+  name: string;
+  storeName: string;
+  location: string;
+  status: DeviceStatus;
+}
+
+export interface FleetSyncStatus {
+  /** nxgs-client.ini has a backend configured. */
+  configured: boolean;
+  registered: boolean;
+  syncing: boolean;
+  removedByOwner: boolean;
+  lastSyncAt?: string;
+  lastSyncError?: string;
+  /** Local sessions not yet accepted by the cloud. */
+  pendingSessions: number;
+  /** Sync is stopped until the main admin rejoins this device (removed, or registered with a lost token). */
+  needsRejoin: boolean;
+}
+
+/** Sent by the main process when a cloud sync changed this station's device record or games. */
+export interface FleetLocalDataChange {
+  device: DeviceRecord;
+  games: GameRecord[];
+}
+
+export interface EarningsExportResult {
+  ok: boolean;
+  canceled?: boolean;
+  path?: string;
+  error?: string;
 }
 
 export interface InitialData {
@@ -274,6 +524,8 @@ export interface PaymentEntitlement {
   amountPaise?: number;
   currency?: string;
   sessionExpiresAt?: string;
+  /** Razorpay payer details for this checkout, when the payment function returned them. */
+  payer?: PaymentPayerDetails;
 }
 
 export interface PaymentCheckoutResult {
@@ -616,6 +868,8 @@ export interface AdminUnlockRequest {
 
 export interface VerifyPinResult {
   ok: boolean;
+  /** Who unlocked: the station's own admin PIN or a moderator PIN from Device Management. */
+  role?: 'admin' | 'moderator';
 }
 
 export interface FilePickerResult {

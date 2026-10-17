@@ -1,7 +1,4 @@
-import { app, net } from 'electron';
-import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { net } from 'electron';
 import type {
   CreatePaymentCheckoutRequest,
   PaymentCatalogResult,
@@ -11,13 +8,11 @@ import type {
   PaymentPlan,
   PlayPlanRecord
 } from '../shared/types';
+import { normalizePayerDetails } from '../shared/earnings';
+import { readBackendConfig, type BackendConfig } from './backendConfig';
 import { logLine } from './logger';
 
-interface PaymentClientConfig {
-  supabaseUrl: string;
-  functionBaseUrl: string;
-  publishableKey: string;
-}
+type PaymentClientConfig = BackendConfig;
 
 type PaymentFunctionResponse = Record<string, unknown>;
 
@@ -59,62 +54,6 @@ function numberValue(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parseIni(source: string): Map<string, string> {
-  const values = new Map<string, string>();
-  let section = '';
-  for (const sourceLine of source.split(/\r?\n/)) {
-    const line = sourceLine.trim();
-    if (!line || line.startsWith(';') || line.startsWith('#')) continue;
-    const sectionMatch = /^\[([^\]]+)\]$/.exec(line);
-    if (sectionMatch) {
-      section = sectionMatch[1].trim().toLowerCase();
-      continue;
-    }
-    const separator = line.indexOf('=');
-    if (separator <= 0) continue;
-    const key = line.slice(0, separator).trim().toLowerCase();
-    values.set(`${section}/${key}`, line.slice(separator + 1).trim());
-  }
-  return values;
-}
-
-async function readClientConfig(): Promise<PaymentClientConfig> {
-  let supabaseUrl = '';
-  let functionBaseUrl = '';
-  let publishableKey = '';
-  const candidates = [
-    join(process.cwd(), 'nxgs-client.ini'),
-    join(app.getAppPath(), 'nxgs-client.ini'),
-    join(process.resourcesPath, 'nxgs-client.ini'),
-    join(dirname(process.execPath), 'nxgs-client.ini')
-  ];
-
-  for (const path of [...new Set(candidates)]) {
-    if (!existsSync(path)) continue;
-    const values = parseIni(await readFile(path, 'utf8'));
-    functionBaseUrl ||= values.get('backend/function_base_url') ?? '';
-    publishableKey ||= values.get('backend/supabase_anon_key') ?? '';
-    supabaseUrl ||= values.get('backend/supabase_url') ?? '';
-    if (!functionBaseUrl && supabaseUrl) {
-      functionBaseUrl = `${supabaseUrl.replace(/\/+$/, '')}/functions/v1`;
-    }
-    if (supabaseUrl && functionBaseUrl && publishableKey) break;
-  }
-
-  supabaseUrl ||= process.env.NXGS_SUPABASE_URL?.trim() ?? '';
-  functionBaseUrl ||= process.env.NXGS_RENTAL_FUNCTION_BASE_URL?.trim() ?? '';
-  publishableKey ||= process.env.NXGS_SUPABASE_ANON_KEY?.trim() ?? '';
-  if (!functionBaseUrl && supabaseUrl) {
-    functionBaseUrl = `${supabaseUrl.replace(/\/+$/, '')}/functions/v1`;
-  }
-
-  return {
-    supabaseUrl: supabaseUrl.replace(/\/+$/, ''),
-    functionBaseUrl: functionBaseUrl.replace(/\/+$/, ''),
-    publishableKey
-  };
-}
-
 function normalizePlan(value: unknown): PaymentPlan | null {
   if (!value || typeof value !== 'object') return null;
   const row = value as Record<string, unknown>;
@@ -146,14 +85,30 @@ function normalizeCheckout(value: unknown): PaymentCheckout | undefined {
   };
 }
 
+// The payment function sends Razorpay payer details snake_cased; the rest of
+// the entitlement is already camelCase.
+function normalizeEntitlement(value: unknown): PaymentCheckoutResult['entitlement'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const { payer, ...entitlement } = value as Record<string, unknown>;
+  const details = normalizePayerDetails(payer, stringValue(entitlement.checkoutId));
+  return {
+    ...entitlement,
+    ...(details ? { payer: details } : {})
+  } as PaymentCheckoutResult['entitlement'];
+}
+
 export class PaymentService {
   private configPromise: Promise<PaymentClientConfig> | null = null;
   private readonly checkoutPlans = new Map<string, PaymentPlan>();
 
-  constructor(private readonly plans: PaymentPlanSource) {}
+  constructor(
+    private readonly plans: PaymentPlanSource,
+    // This PC's device ID; consume binds the checkout to it in the cloud.
+    private readonly currentStationId: () => string = () => ''
+  ) {}
 
   private config(): Promise<PaymentClientConfig> {
-    this.configPromise ??= readClientConfig();
+    this.configPromise ??= readBackendConfig();
     return this.configPromise;
   }
 
@@ -253,7 +208,7 @@ export class PaymentService {
   }
 
   async consume(access: PaymentCheckoutAccess): Promise<PaymentCheckoutResult> {
-    const result = await this.run('consume', this.accessBody(access));
+    const result = await this.run('consume', { ...this.accessBody(access), ...this.stationBody() });
     const plan = this.checkoutPlans.get(access.checkoutId);
     if (result.ok && result.entitlement && plan) {
       result.entitlement = {
@@ -267,6 +222,17 @@ export class PaymentService {
     return result;
   }
 
+  /** Optional: a consume never fails because the station ID is unknown. */
+  private stationBody(): Record<string, unknown> {
+    let stationId = '';
+    try {
+      stationId = this.currentStationId();
+    } catch {
+      stationId = '';
+    }
+    return /^[A-Za-z0-9_-]{3,80}$/.test(stationId) ? { station_id: stationId } : {};
+  }
+
   private accessBody(access: PaymentCheckoutAccess): Record<string, unknown> {
     return { checkout_id: access.checkoutId, client_token: access.clientToken };
   }
@@ -278,7 +244,7 @@ export class PaymentService {
         ok: true,
         status: stringValue(result.status) as PaymentCheckoutResult['status'],
         checkout: normalizeCheckout(result.checkout),
-        entitlement: result.entitlement as PaymentCheckoutResult['entitlement']
+        entitlement: normalizeEntitlement(result.entitlement)
       };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

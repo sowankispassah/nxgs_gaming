@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity,
   Building2,
@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import type { DeviceInput, DeviceManagerSummary, DeviceRecord, DeviceStatus } from '../../shared/types';
 import { CardHeader, LoadingState, Notice } from './admin/AdminKit';
+import { FleetSyncCard } from './admin/FleetSyncCard';
+import type { OwnerSession } from './admin/useOwnerSession';
 
 type DeviceForm = {
   name: string;
@@ -71,7 +73,11 @@ function CopyButton(props: { value: string }): JSX.Element {
   );
 }
 
-export function DeviceManager(props: { onDeviceChanged: (device: DeviceRecord) => void }): JSX.Element {
+export function DeviceManager(props: {
+  onDeviceChanged: (device: DeviceRecord) => void;
+  /** Main admin PIN gate, used by Rejoin in the Cloud sync card. */
+  owner?: OwnerSession;
+}): JSX.Element {
   const [summary, setSummary] = useState<DeviceManagerSummary | null>(null);
   const [form, setForm] = useState<DeviceForm>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
@@ -96,6 +102,26 @@ export function DeviceManager(props: { onDeviceChanged: (device: DeviceRecord) =
   useEffect(() => {
     void loadDevice();
   }, [loadDevice]);
+
+  // After a sync the main admin's edits may have reached this device: refresh the
+  // summary, and the form too unless someone is mid-edit.
+  const summaryRef = useRef(summary);
+  summaryRef.current = summary;
+  const refreshAfterSync = useCallback(async (): Promise<void> => {
+    try {
+      const previous = summaryRef.current;
+      const next = await window.nxgs.getCurrentDevice();
+      const saved = previous ? formFromDevice(previous.device) : null;
+      setForm((current) => (
+        saved && (Object.keys(saved) as Array<keyof DeviceForm>).every((key) => current[key] === saved[key])
+          ? formFromDevice(next.device)
+          : current
+      ));
+      setSummary(next);
+    } catch {
+      // The sync card already reports sync problems.
+    }
+  }, []);
 
   const update = <K extends keyof DeviceForm>(key: K, value: DeviceForm[K]): void => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -188,79 +214,83 @@ export function DeviceManager(props: { onDeviceChanged: (device: DeviceRecord) =
         </dl>
       </section>
 
-      <section className="admin-card device-editor-panel">
-        <CardHeader
-          eyebrow="This installation"
-          title="Station details"
-          subtitle="Name this station and record where it is."
-        />
+      <div className="admin-stack device-side-stack">
+        <section className="admin-card device-editor-panel">
+          <CardHeader
+            eyebrow="This installation"
+            title="Station details"
+            subtitle="Name this station and record where it is."
+          />
 
-        <form
-          className="admin-form device-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void saveDevice();
-          }}
-        >
-          <label className="admin-field">
-            <span className="admin-field-label">
-              Device name <em className="required-badge">Required</em>
-            </span>
-            <input
-              value={form.name}
-              maxLength={80}
-              placeholder="Station 01"
-              disabled={saving}
-              onChange={(event) => update('name', event.target.value)}
-            />
-          </label>
-          <label className="admin-field">
-            <span className="admin-field-label">Store / branch name</span>
-            <span className="admin-affix-input device-field-with-icon">
-              <Building2 size={17} aria-hidden="true" />
+          <form
+            className="admin-form device-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveDevice();
+            }}
+          >
+            <label className="admin-field">
+              <span className="admin-field-label">
+                Device name <em className="required-badge">Required</em>
+              </span>
               <input
-                value={form.storeName}
-                maxLength={120}
-                placeholder="Main Store"
+                value={form.name}
+                maxLength={80}
+                placeholder="Station 01"
                 disabled={saving}
-                onChange={(event) => update('storeName', event.target.value)}
+                onChange={(event) => update('name', event.target.value)}
               />
-            </span>
-          </label>
-          <label className="admin-field">
-            <span className="admin-field-label">Device location</span>
-            <span className="admin-affix-input device-field-with-icon">
-              <MapPin size={17} aria-hidden="true" />
-              <input
-                value={form.location}
-                maxLength={160}
-                placeholder="Front Desk / Cabin 1 / Room 2"
+            </label>
+            <label className="admin-field">
+              <span className="admin-field-label">Store / branch name</span>
+              <span className="admin-affix-input device-field-with-icon">
+                <Building2 size={17} aria-hidden="true" />
+                <input
+                  value={form.storeName}
+                  maxLength={120}
+                  placeholder="Main Store"
+                  disabled={saving}
+                  onChange={(event) => update('storeName', event.target.value)}
+                />
+              </span>
+            </label>
+            <label className="admin-field">
+              <span className="admin-field-label">Device location</span>
+              <span className="admin-affix-input device-field-with-icon">
+                <MapPin size={17} aria-hidden="true" />
+                <input
+                  value={form.location}
+                  maxLength={160}
+                  placeholder="Front Desk / Cabin 1 / Room 2"
+                  disabled={saving}
+                  onChange={(event) => update('location', event.target.value)}
+                />
+              </span>
+            </label>
+            <label className="admin-field">
+              <span className="admin-field-label">Device status</span>
+              <select
+                value={form.status}
                 disabled={saving}
-                onChange={(event) => update('location', event.target.value)}
-              />
-            </span>
-          </label>
-          <label className="admin-field">
-            <span className="admin-field-label">Device status</span>
-            <select
-              value={form.status}
-              disabled={saving}
-              onChange={(event) => update('status', event.target.value as DeviceStatus)}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </label>
-          <footer className="admin-card-footer admin-card-footer--stacked">
-            {message && <Notice tone="success">{message}</Notice>}
-            {error && <Notice tone="error">{error}</Notice>}
-            <button className="primary-action wide" type="submit" disabled={saving}>
-              {saving ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
-              {saving ? 'Saving...' : 'Save Device'}
-            </button>
-          </footer>
-        </form>
-      </section>
+                onChange={(event) => update('status', event.target.value as DeviceStatus)}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+            <footer className="admin-card-footer admin-card-footer--stacked">
+              {message && <Notice tone="success">{message}</Notice>}
+              {error && <Notice tone="error">{error}</Notice>}
+              <button className="primary-action wide" type="submit" disabled={saving}>
+                {saving ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
+                {saving ? 'Saving...' : 'Save Device'}
+              </button>
+            </footer>
+          </form>
+        </section>
+
+        <FleetSyncCard owner={props.owner} className="device-sync-panel" onSynced={() => void refreshAfterSync()} />
+      </div>
     </div>
   );
 }

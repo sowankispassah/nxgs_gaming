@@ -22,7 +22,7 @@ assert.match(types, /interface LocalSessionRecord/);
 assert.match(types, /syncStatus: SyncStatus/);
 assert.match(types, /deletedAt\?: string/);
 
-assert.match(database, /const SCHEMA_VERSION = 5/);
+assert.match(database, /const SCHEMA_VERSION = 7/);
 assert.match(database, /function createDefaultDevice/);
 assert.match(database, /game\.deviceId \|\| currentDevice\.id/);
 assert.match(database, /plan\.deviceId \|\| currentDevice\.id/);

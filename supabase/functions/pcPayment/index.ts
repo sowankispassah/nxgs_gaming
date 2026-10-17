@@ -1,5 +1,6 @@
 import QRCode from "npm:qrcode@1.5.4";
 import { createClient } from "npm:@supabase/supabase-js@2.49.8";
+import { payerColumnsFromPayment, payerDetailsKnown, payerWireFromCheckout } from "../_shared/razorpayPayer.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -248,6 +249,37 @@ async function saveProviderLink(supabase: AdminClient, row: Row): Promise<Row> {
   }
 }
 
+async function fetchPayment(paymentId: string): Promise<Row> {
+  const path = `/payments/${encodeURIComponent(paymentId)}`;
+  try {
+    return await razorpay(`${path}?expand[]=card`);
+  } catch {
+    // Card expansion only adds payer details; verification must not depend on it.
+    return await razorpay(path);
+  }
+}
+
+function payerDetails(payment: Row, checkout: Row): Row {
+  try {
+    return { ...payerColumnsFromPayment(payment, checkout.customer_name), payer_details_fetched_at: new Date().toISOString() };
+  } catch {
+    return {};
+  }
+}
+
+function entitlementPayer(row: Row): Row | null {
+  try {
+    return payerDetailsKnown(row) ? payerWireFromCheckout(row) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Optional station binding sent with consume; anything unexpected is ignored, never an error.
+function consumingStationId(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{3,80}$/.test(value) ? value : null;
+}
+
 function capturedPaymentId(link: Row): string {
   const payments = Array.isArray(link.payments) ? link.payments : [];
   const captured = payments.find((item: Row) => item?.status === "captured") ?? payments[0];
@@ -265,19 +297,27 @@ async function reconcilePaid(supabase: AdminClient, checkout: Row, link: Row): P
   }
   const paymentId = capturedPaymentId(link);
   if (!paymentId) throw new Error("captured_payment_not_found");
-  const payment = await razorpay(`/payments/${encodeURIComponent(paymentId)}`);
+  const payment = await fetchPayment(paymentId);
   if (String(payment.status) !== "captured"
       || Number(payment.amount) !== Number(checkout.amount_paise)
       || String(payment.currency).toUpperCase() !== String(checkout.currency).toUpperCase()) {
     throw new Error("payment_not_captured");
   }
-  const { data, error } = await supabase.from("pc_checkouts").update({
+  const verifiedFields = {
     status: "verified",
     provider_status: "paid",
     razorpay_payment_id: paymentId,
     verified_at: new Date().toISOString(),
     last_provider_check_at: new Date().toISOString(),
-  }).eq("id", checkout.id).in("status", ["creating", "created"]).select().maybeSingle();
+  };
+  const payer = payerDetails(payment, checkout);
+  let { data, error } = await supabase.from("pc_checkouts").update({ ...verifiedFields, ...payer })
+    .eq("id", checkout.id).in("status", ["creating", "created"]).select().maybeSingle();
+  if (error && Object.keys(payer).length > 0) {
+    // Payer columns are optional extras (stationFleet backfills them later); never block verification.
+    ({ data, error } = await supabase.from("pc_checkouts").update(verifiedFields)
+      .eq("id", checkout.id).in("status", ["creating", "created"]).select().maybeSingle());
+  }
   if (error) throw error;
   if (data) return data;
   const { data: current, error: currentError } = await supabase.from("pc_checkouts").select("*").eq("id", checkout.id).single();
@@ -419,16 +459,25 @@ async function consumeCheckout(supabase: AdminClient, body: Row): Promise<Respon
   const current = await refreshStatus(supabase, access.checkout, true);
   if (current.status === "consumed") throw new Error("payment_entitlement_already_used");
   if (current.status !== "verified") throw new Error("payment_not_verified");
-  const { data, error } = await supabase.from("pc_checkouts").update({
-    status: "consumed", consumed_at: new Date().toISOString(),
-  }).eq("id", current.id).eq("status", "verified").select().maybeSingle();
+  const consumedFields = { status: "consumed", consumed_at: new Date().toISOString() };
+  const stationId = consumingStationId(body.station_id);
+  let { data, error } = await supabase.from("pc_checkouts")
+    .update(stationId ? { ...consumedFields, consumed_by_station_id: stationId } : consumedFields)
+    .eq("id", current.id).eq("status", "verified").select().maybeSingle();
+  if (error && stationId) {
+    // consumed_by_station_id is an optional extra; never fail a consume because of it.
+    ({ data, error } = await supabase.from("pc_checkouts").update(consumedFields)
+      .eq("id", current.id).eq("status", "verified").select().maybeSingle());
+  }
   if (error) throw error;
   if (!data) throw new Error("payment_entitlement_already_used");
+  const payer = entitlementPayer(data);
   return json({
     status: "consumed",
     entitlement: {
       checkoutId: String(data.id),
       durationMinutes: Number(data.duration_minutes),
+      ...(payer ? { payer } : {}),
     },
   });
 }
