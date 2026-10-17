@@ -1,7 +1,7 @@
 {
-    "version":  "0.23.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.23.1/NXGS-Play-Setup.exe",
-    "sha256":  "1b1321f57eb7de4316146890304ea06773a72741b9d68a8f758b13a81901e2a3",
+    "version":  "0.25.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.25.0/NXGS-Play-Setup.exe",
+    "sha256":  "4cdd4e52d57bb2f9bf3e9d0ba48c97253c787afc6c532256a743c20e23c1694e",
     "required":  false,
-    "notes":  "Plain payment error messages for players; payment failures are logged for staff"
+    "notes":  "Accounts (earnings, games played and payer details per paid session) and All Devices management for the main admin"
 }
