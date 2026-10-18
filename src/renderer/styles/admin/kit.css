@@ -9,7 +9,8 @@
  *
  * Contents: base elements, type helpers, layout, panel, buttons, forms,
  * switch, segmented, toggle chips, badge, status text, stat row, table,
- * notice, empty and loading, facts list, list rows, popover and pickers, modal.
+ * notice, empty and loading, facts list, list rows, popover and pickers, modal,
+ * reduced motion.
  */
 
 /* ============================================================ base elements */
@@ -77,13 +78,19 @@
   scrollbar-color: var(--a-switch-off) transparent;
 }
 
-/* Buttons: no console brighten, press-scale or glow inside the Control Room. */
+/*
+ * Buttons: no console brighten or glow inside the Control Room. Colour,
+ * background and shadow ease over 120ms; a pressed kit control (.admin-btn,
+ * segments, chips, filter buttons) scales to 0.98 (see buttons).
+ */
 .admin-screen button {
   transition:
     background-color var(--a-dur) var(--a-ease),
     border-color var(--a-dur) var(--a-ease),
     color var(--a-dur) var(--a-ease),
-    opacity var(--a-dur) var(--a-ease);
+    box-shadow var(--a-dur) var(--a-ease),
+    opacity var(--a-dur) var(--a-ease),
+    scale var(--a-dur-press) var(--a-ease);
 }
 
 .admin-screen button:not(:disabled):is(:hover, :active) {
@@ -92,8 +99,10 @@
 }
 
 /*
- * Focus: one 2px outline for keyboard and controller focus (.controller-focused)
- * on everything focusable. No glow, no box-shadow ring.
+ * Focus: the soft ring for keyboard and controller focus (.controller-focused)
+ * on everything focusable: a 1px accent line (outline at offset 0) and 3px of
+ * soft accent outside it (box-shadow). A control's own shadow (the primary
+ * button's top highlight, the chosen segment's lift) rides along in --btn-shadow.
  *
  * Kept as low as each element allows, so a page can give an element its own
  * focus treatment without stacking a second ring on top:
@@ -105,17 +114,16 @@
  */
 :where(.admin-screen) button:not(:disabled):is(:focus-visible, .controller-focused, .focused),
 :where(.admin-screen) :where(a[href], summary, [tabindex]):is(:focus-visible, .controller-focused, .focused) {
-  outline: var(--a-focus);
-  outline-offset: var(--a-focus-offset);
-  box-shadow: none;
+  outline: var(--a-focus-line);
+  outline-offset: 0;
+  box-shadow: var(--a-focus-halo), var(--btn-shadow, 0 0 0 0 transparent);
 }
 
-/* Text fields: filled, a subtle border that is heavier at the bottom, accent on focus. */
+/* Text fields: filled, a 1px border all round, 10px radius; focus turns the border accent and adds the soft ring. */
 .admin-screen :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea) {
   min-height: var(--a-input);
   border: 1px solid var(--a-field-line);
-  border-bottom-color: var(--a-field-line-bottom);
-  border-radius: var(--a-radius-sm);
+  border-radius: var(--a-radius-control);
   background-color: var(--a-field);
   box-shadow: none;
   color: var(--a-text);
@@ -123,7 +131,8 @@
   font-size: var(--a-size-input);
   transition:
     border-color var(--a-dur) var(--a-ease),
-    background-color var(--a-dur) var(--a-ease);
+    background-color var(--a-dur) var(--a-ease),
+    box-shadow var(--a-dur) var(--a-ease);
 }
 
 .admin-screen textarea {
@@ -146,15 +155,16 @@
 }
 
 .admin-screen :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea):hover:not(:focus):not(:disabled) {
+  border-color: var(--a-field-line-hover);
   background-color: var(--a-field-hover);
 }
 
 .admin-screen :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea):focus {
   border-color: var(--a-accent);
   background-color: var(--a-field);
-  box-shadow: none;
-  outline: var(--a-focus);
-  outline-offset: var(--a-focus-offset);
+  box-shadow: var(--a-focus-halo-field);
+  outline: 1px solid transparent;
+  outline-offset: 0;
 }
 
 .admin-screen :is(input, select, textarea):disabled {
@@ -182,8 +192,12 @@
   width: var(--a-check);
   height: var(--a-check);
   border: 1px solid var(--a-control-border);
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-badge);
   background: transparent;
+  transition:
+    background-color var(--a-dur) var(--a-ease),
+    border-color var(--a-dur) var(--a-ease),
+    box-shadow var(--a-dur) var(--a-ease);
 }
 
 .admin-screen input[type='radio'] {
@@ -212,9 +226,9 @@
 
 /* Matches the console's checkbox focus rule (0,2,1) and wins by order; a row that shows focus itself overrides it with one class. */
 :where(.admin-screen) :is(input[type='checkbox'], input[type='radio']):focus-visible {
-  box-shadow: none;
-  outline: var(--a-focus);
-  outline-offset: var(--a-focus-offset);
+  box-shadow: var(--a-focus-halo);
+  outline: var(--a-focus-line);
+  outline-offset: 0;
 }
 
 /* ============================================================== type helpers */
@@ -269,7 +283,7 @@
   height: 26px;
   place-items: center;
   border: 1px solid transparent;
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-badge);
   background: var(--a-tonal);
   color: var(--a-text-2);
   padding: 0 7px;
@@ -390,31 +404,61 @@
 /* ===================================================================== panel */
 
 /*
- * Panel: the one raised surface, separated from the page by tone, not by an
- * outline (the transparent border keeps the 0.27 geometry). Never nest panels.
+ * Panel: the raised surface. 14px radius, the panel tone, a subtle 1px edge
+ * and soft depth (a faint drop shadow in light, an inner top highlight in
+ * dark). Never nest panels. Every grouped container (tables, stat rows,
+ * standalone facts lists) shares this look through the same tokens.
  */
 .admin-panel {
   position: relative;
   min-width: 0;
-  border: 1px solid transparent;
-  border-radius: var(--a-radius);
+  border: 1px solid var(--a-edge);
+  border-radius: var(--a-radius-panel);
   background: var(--a-panel);
-  box-shadow: none;
+  box-shadow: var(--a-shadow-panel);
   padding: var(--a-panel-pad);
 }
 
-/* Edge to edge content (tables, hairline lists). */
+/* Edge to edge content (tables, hairline lists); the radius still clips it. */
 .admin-panel--flush {
+  overflow: clip;
   padding: 0;
 }
 
-/* A panel of hairline rows (settings rows, facts): the rows bring their own vertical padding. */
+/*
+ * A grouped inset list (settings rows, value rows, a facts list). Separators
+ * are inset hairlines: they start and end at the rows' text, not at the
+ * panel edge. Kit rows (switch and value rows) reach to 4px inside the panel
+ * so a row's hover or focus highlight is a 10px rounded shape, concentric with
+ * the panel; the first and last rows therefore follow the panel's corners.
+ */
 .admin-panel--rows {
   padding: 4px var(--a-panel-pad);
 }
 
-.admin-panel--rows > :is(.admin-value-row, .admin-switch-row) + :is(.admin-value-row, .admin-switch-row) {
-  border-top: 1px solid var(--a-line);
+.admin-panel--rows > :is(.admin-value-row, .admin-switch-row),
+.admin-panel--rows > .admin-switch-list > :is(.admin-value-row, .admin-switch-row) {
+  margin-inline: calc(var(--a-row-inset) - var(--a-panel-pad));
+  border-radius: var(--a-radius-control);
+  padding-inline: calc(var(--a-panel-pad) - var(--a-row-inset));
+}
+
+/* Inset hairline above every row after the first, hidden next to a highlighted row. */
+.admin-panel--rows > :is(.admin-value-row, .admin-switch-row) + :is(.admin-value-row, .admin-switch-row)::before,
+.admin-panel--rows > .admin-switch-list > * + :is(.admin-value-row, .admin-switch-row)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(var(--a-panel-pad) - var(--a-row-inset));
+  right: calc(var(--a-panel-pad) - var(--a-row-inset));
+  height: 1px;
+  background: var(--a-line);
+  transition: opacity var(--a-dur) var(--a-ease);
+}
+
+.admin-panel--rows .admin-switch-row:not(.is-disabled):is(:hover, :has(.admin-switch-input:focus-visible))::before,
+.admin-panel--rows .admin-switch-row:not(.is-disabled):is(:hover, :has(.admin-switch-input:focus-visible)) + *::before {
+  opacity: 0;
 }
 
 .admin-panel--rows > .admin-meta-list > div {
@@ -422,8 +466,9 @@
 }
 
 /*
- * Panel footer: a full-width strip under a hairline, feedback on the left and
- * the save button on the right. Every form panel ends with one.
+ * Panel footer: a full-width strip under a hairline on a slightly different
+ * tone, feedback on the left and the save button on the right. Every form
+ * panel ends with one; its bottom corners follow the panel.
  */
 .admin-panel-footer {
   display: flex;
@@ -433,7 +478,9 @@
   gap: 12px 20px;
   margin: var(--a-panel-pad) calc(-1 * var(--a-panel-pad)) calc(-1 * var(--a-panel-pad));
   border-top: 1px solid var(--a-line);
-  padding: 16px var(--a-panel-pad);
+  border-radius: 0 0 calc(var(--a-radius-panel) - 1px) calc(var(--a-radius-panel) - 1px);
+  background: var(--a-panel-footer);
+  padding: 14px var(--a-panel-pad);
 }
 
 /* In a form the grid gap already separates it from the fields. */
@@ -462,12 +509,16 @@
 /* =================================================================== buttons */
 
 /*
- * .admin-btn + one variant: --primary (accent fill), --secondary (default:
- * tonal fill, no outline), --ghost (text only), --danger (red text on a red
- * tint); sizes --sm (40px) and --icon (square). Page headers and form footers
- * use the 48px size, section headers, tables and toolbars the 40px one. Text buttons carry
- * no icon; icon-only buttons (row delete, copy, expand, close) need an
- * aria-label. The border stays transparent so every variant keeps one size.
+ * .admin-btn + one variant: --primary (accent fill with a 1px darker edge and
+ * a faint top highlight), --secondary (the default: tonal fill), --ghost
+ * (text only, tonal on hover), --danger (red text on a red tint); sizes --sm
+ * (40px) and --icon (square). 10px radius. A press scales the button to 0.98.
+ * Page headers and form footers use the 48px size, section headers, tables
+ * and toolbars the 40px one. Text buttons are text only except the standard
+ * actions (see the icon policy in docs/admin-design.md): a leading 20px icon
+ * (18px in a compact button) for Add/New (Plus), Refresh (RefreshCw) and
+ * Export (Download), a trailing one for an external link (ArrowUpRight).
+ * Icon-only buttons (row delete, copy, expand, close) need an aria-label.
  */
 .admin-screen .admin-btn {
   --btn-bg: var(--a-tonal);
@@ -476,6 +527,7 @@
   --btn-bg-hover: var(--a-tonal-hover);
   --btn-fg-hover: var(--btn-fg);
   --btn-border-hover: var(--btn-border);
+  --btn-shadow: 0 0 0 0 transparent;
 
   position: relative;
   display: inline-flex;
@@ -484,9 +536,9 @@
   gap: 8px;
   min-height: var(--a-control);
   border: 1px solid var(--btn-border);
-  border-radius: var(--a-radius-sm);
+  border-radius: var(--a-radius-control);
   background: var(--btn-bg);
-  box-shadow: none;
+  box-shadow: var(--btn-shadow);
   color: var(--btn-fg);
   padding: 0 var(--a-btn-pad-x);
   font-family: var(--a-font);
@@ -497,11 +549,13 @@
   white-space: nowrap;
 }
 
-/* Primary: the accent fill with on-accent text (never white), strong weight. */
+/* Primary: the accent fill with on-accent text (never white), strong weight, a darker edge and a faint top highlight. */
 .admin-screen .admin-btn--primary {
   --btn-bg: var(--a-accent);
   --btn-fg: var(--a-on-accent);
+  --btn-border: var(--a-accent-edge);
   --btn-bg-hover: var(--a-accent-strong);
+  --btn-shadow: inset 0 1px 0 var(--a-highlight);
 
   font-weight: var(--a-weight-strong);
 }
@@ -532,12 +586,18 @@
   --btn-fg: var(--a-inverse);
   --btn-bg-hover: var(--a-red-strong);
   --btn-fg-hover: var(--a-inverse);
+  --btn-shadow: inset 0 1px 0 var(--a-highlight);
 }
 
 .admin-screen .admin-btn:not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused) {
   border-color: var(--btn-border-hover);
   background: var(--btn-bg-hover);
   color: var(--btn-fg-hover);
+}
+
+/* Press feedback: a quick 0.98 scale (off under reduced motion). */
+.admin-screen .admin-btn:not(:disabled):active {
+  scale: var(--a-press-scale);
 }
 
 .admin-screen .admin-btn:disabled {
@@ -566,7 +626,7 @@
   padding: 0;
 }
 
-/* Only icon-only buttons hold an icon (or a spinner in its place while busy): 20px, 18px in a compact button. */
+/* Icons in buttons: 20px, 18px in a compact button; never in a circle or tile. */
 .admin-screen .admin-btn > svg {
   flex: 0 0 auto;
   width: var(--a-icon);
@@ -576,6 +636,23 @@
 .admin-screen .admin-btn--sm > svg {
   width: var(--a-icon-sm);
   height: var(--a-icon-sm);
+}
+
+/* A text button with a leading icon sits 4px tighter on the icon side, so icon and text read as one centred unit. */
+.admin-screen .admin-btn:not(.admin-btn--icon):has(> svg:first-child) {
+  padding-left: calc(var(--a-btn-pad-x) - 4px);
+}
+
+.admin-screen .admin-btn--sm:not(.admin-btn--icon):has(> svg:first-child) {
+  padding-left: calc(var(--a-btn-pad-x-sm) - 3px);
+}
+
+.admin-screen .admin-btn:not(.admin-btn--icon):has(> svg:last-child:not(:first-child)) {
+  padding-right: calc(var(--a-btn-pad-x) - 4px);
+}
+
+.admin-screen .admin-btn--sm:not(.admin-btn--icon):has(> svg:last-child:not(:first-child)) {
+  padding-right: calc(var(--a-btn-pad-x-sm) - 3px);
 }
 
 /* ===================================================================== forms */
@@ -657,35 +734,36 @@
   min-width: 0;
 }
 
-/* Affix input: a field with a leading icon or a trailing unit ("min", "sec"). */
+/* Affix input: a field with a leading icon or a trailing unit ("min", "sec"). The wrapper is the field. */
 .admin-affix-input {
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: var(--a-input);
   border: 1px solid var(--a-field-line);
-  border-bottom-color: var(--a-field-line-bottom);
-  border-radius: var(--a-radius-sm);
+  border-radius: var(--a-radius-control);
   background: var(--a-field);
   box-shadow: none;
   color: var(--a-text-3);
   padding: 0 var(--a-field-pad-x);
   transition:
     border-color var(--a-dur) var(--a-ease),
-    background-color var(--a-dur) var(--a-ease);
+    background-color var(--a-dur) var(--a-ease),
+    box-shadow var(--a-dur) var(--a-ease);
 }
 
 .admin-affix-input:hover {
+  border-color: var(--a-field-line-hover);
   background: var(--a-field-hover);
 }
 
 .admin-affix-input:focus-within {
   border-color: var(--a-accent);
   background: var(--a-field);
-  box-shadow: none;
+  box-shadow: var(--a-focus-halo-field);
   color: var(--a-text-2);
-  outline: var(--a-focus);
-  outline-offset: var(--a-focus-offset);
+  outline: 1px solid transparent;
+  outline-offset: 0;
 }
 
 .admin-affix-input:has(:is(input, select):disabled) {
@@ -728,24 +806,24 @@
 
 /* ==================================================================== switch */
 
-/* 40x24, the only rounded-full element. Driven by data-on. */
+/* 46x28 with a 24px knob (iOS proportions), the only rounded-full element. Driven by data-on. */
 .admin-screen .ps-switch {
-  width: 40px;
-  height: 24px;
+  width: var(--a-switch-w);
+  height: var(--a-switch-h);
   border-radius: 999px;
   background: var(--a-switch-off);
   transition: background-color var(--a-dur) var(--a-ease);
 }
 
 .admin-screen .ps-switch::after {
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
+  top: 2px;
+  left: 2px;
+  width: calc(var(--a-switch-h) - 4px);
+  height: calc(var(--a-switch-h) - 4px);
   background: var(--a-switch-knob);
-  box-shadow: none;
+  box-shadow: var(--a-knob-shadow);
   transition:
-    translate var(--a-dur) var(--a-ease),
+    translate var(--a-dur-enter) var(--a-ease),
     background-color var(--a-dur) var(--a-ease);
 }
 
@@ -755,10 +833,13 @@
 }
 
 .admin-screen .ps-switch[data-on='true']::after {
-  translate: 16px 0;
+  translate: calc(var(--a-switch-w) - var(--a-switch-h)) 0;
 }
 
-/* SwitchRow: copy left, switch right. Inside .admin-switch-list rows get hairlines. */
+/*
+ * SwitchRow: copy left, switch right. In .admin-switch-list rows get
+ * hairlines; inside a rows panel they become a grouped inset list (see panel).
+ */
 .admin-switch-list {
   display: grid;
   gap: 0;
@@ -766,6 +847,11 @@
 
 .admin-switch-list > * + * {
   border-top: 1px solid var(--a-line);
+}
+
+/* In a rows panel the hairlines are the inset ::before lines instead. */
+.admin-panel--rows > .admin-switch-list > * + * {
+  border-top: 0;
 }
 
 .admin-switch-row,
@@ -780,6 +866,7 @@
   background: transparent;
   box-shadow: none;
   padding: 12px 0;
+  transition: background-color var(--a-dur) var(--a-ease);
 }
 
 .admin-switch-row {
@@ -790,12 +877,24 @@
   background: var(--a-switch-off-hover);
 }
 
+/* In a grouped list the whole row highlights on hover (a rounded shape inset from the panel edge). */
+.admin-panel--rows .admin-switch-row:not(.is-disabled):hover {
+  background: var(--a-panel-2);
+}
+
+/* Keyboard and controller focus outline the whole row. */
 .admin-switch-row:has(.admin-switch-input:focus-visible) {
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-control);
   background: transparent;
   box-shadow: none;
   outline: var(--a-focus);
   outline-offset: 4px;
+}
+
+/* In a grouped list the outline sits inside the row, on its highlight, so the panel never clips it. */
+.admin-panel--rows .admin-switch-row:has(.admin-switch-input:focus-visible) {
+  background: var(--a-panel-2);
+  outline-offset: -2px;
 }
 
 .admin-switch-row.is-disabled {
@@ -841,7 +940,7 @@
   gap: 10px;
 }
 
-/* Danger zone: destructive actions (Exit NXGS Play, Remove device) in a rows panel with a red hairline. No fill. */
+/* Danger zone: destructive actions (Exit NXGS Play, Remove device) in a rows panel with a red hairline edge. No fill. */
 .admin-panel.admin-danger-zone {
   border-color: var(--a-red-line);
 }
@@ -856,7 +955,7 @@
   align-items: center;
   gap: 10px;
   min-height: var(--a-control-sm);
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-badge);
   color: var(--a-text-3);
   vertical-align: middle;
   white-space: nowrap;
@@ -873,9 +972,11 @@
   pointer-events: none;
 }
 
+/* The soft ring around the switch and its label. */
 .admin-inline-switch:has(> input:focus-visible) {
-  outline: var(--a-focus);
-  outline-offset: var(--a-focus-offset);
+  outline: var(--a-focus-line);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--a-focus-soft);
 }
 
 .admin-inline-switch:hover .ps-switch:not([data-on='true']) {
@@ -907,9 +1008,11 @@
 /* ================================================================= segmented */
 
 /*
- * One choice out of a few: a tonal track (no outline); the chosen segment gets
- * the accent tint and accent text. Buttons carry aria-pressed (or role=radio
- * with aria-checked, like the theme switch).
+ * One choice out of a few: a rounded tonal track (10px) as tall as an input;
+ * the chosen segment (8px) is raised above it (--a-segment-on with a soft
+ * shadow, --a-text at the strong weight), not tinted: the accent stays for
+ * primary actions, the active nav item, selected chips and focus. Buttons
+ * carry aria-pressed (or role=radio with aria-checked, like the theme switch).
  */
 .admin-segmented {
   display: inline-flex;
@@ -917,7 +1020,7 @@
   align-items: center;
   gap: 2px;
   border: 1px solid transparent;
-  border-radius: var(--a-radius);
+  border-radius: var(--a-radius-control);
   background: var(--a-tonal);
   box-shadow: none;
   padding: 3px;
@@ -925,14 +1028,16 @@
 
 /* The track is as tall as an input: a 1px edge and 3px padding around 40px segments. */
 .admin-segmented button {
+  --btn-shadow: 0 0 0 0 transparent;
+
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-height: calc(var(--a-input) - 8px);
   border: 0;
-  border-radius: var(--a-radius-inner);
+  border-radius: var(--a-radius-segment);
   background: transparent;
-  box-shadow: none;
+  box-shadow: var(--btn-shadow);
   color: var(--a-text-2);
   padding: 0 var(--a-btn-pad-x-sm);
   font-size: var(--a-size-button-sm);
@@ -945,16 +1050,17 @@
   color: var(--a-text);
 }
 
-.admin-screen .admin-segmented button:is([aria-pressed='true'], [aria-checked='true']),
-.admin-screen .admin-segmented button:is([aria-pressed='true'], [aria-checked='true']):not(:disabled):hover {
-  background: var(--a-accent-tint);
-  box-shadow: inset 0 0 0 1px var(--a-accent-line);
-  color: var(--a-accent-strong);
-  font-weight: var(--a-weight-strong);
+.admin-screen .admin-segmented button:not(:disabled):active {
+  scale: var(--a-press-scale);
 }
 
-.admin-segmented button:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
-  outline-offset: 1px;
+.admin-screen .admin-segmented button:is([aria-pressed='true'], [aria-checked='true']),
+.admin-screen .admin-segmented button:is([aria-pressed='true'], [aria-checked='true']):not(:disabled):hover {
+  --btn-shadow: var(--a-segment-shadow);
+
+  background: var(--a-segment-on);
+  color: var(--a-text);
+  font-weight: var(--a-weight-strong);
 }
 
 .admin-segmented button:disabled {
@@ -964,7 +1070,7 @@
 
 /* ============================================================== toggle chips */
 
-/* On/off filter chips: tonal fill. Selected: accent tint, accent text and border, and a leading check. */
+/* On/off filter chips (8px radius): tonal fill. Selected: accent tint, accent text and edge, and a leading check. */
 .admin-chip-toggles {
   display: flex;
   flex-wrap: wrap;
@@ -978,7 +1084,7 @@
   gap: 8px;
   min-height: var(--a-control-sm);
   border: 1px solid transparent;
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-chip);
   background: var(--a-tonal);
   box-shadow: none;
   color: var(--a-text-2);
@@ -991,6 +1097,11 @@
 .admin-chip-toggle:not(:disabled):hover {
   background: var(--a-tonal-hover);
   color: var(--a-text);
+}
+
+/* Press feedback for every small kit control. */
+.admin-screen :is(.admin-chip-toggle, .admin-popover-trigger, .admin-active-chip):not(:disabled):active {
+  scale: var(--a-press-scale);
 }
 
 /* .admin-screen beats the console's generic button[aria-pressed] border. */
@@ -1028,7 +1139,7 @@
   gap: 5px;
   min-height: 26px;
   border: 1px solid transparent;
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-badge);
   background: var(--a-tonal);
   color: var(--a-text-2);
   padding: 0 8px;
@@ -1123,7 +1234,7 @@
 /* ================================================================== stat row */
 
 /*
- * One panel split into equal cells by hairlines (no outer outline). The cells
+ * One panel (the panel surface, edge and depth) split into equal cells by hairlines. The cells
  * draw their own left/top hairline as a 1px shadow; the panel clips the ones
  * on its outer edge, so wrapped rows stay clean.
  */
@@ -1132,9 +1243,10 @@
   flex-wrap: wrap;
   margin: 0;
   overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: var(--a-radius);
+  border: 1px solid var(--a-edge);
+  border-radius: var(--a-radius-panel);
   background: var(--a-panel);
+  box-shadow: var(--a-shadow-panel);
 }
 
 .admin-stat {
@@ -1201,13 +1313,22 @@
 
 /* ===================================================================== table */
 
-/* Wrap the table in .admin-table-scroll: the panel (set off by tone, no outline) and the scroller. Hairlines only between rows. */
+/*
+ * Wrap the table in .admin-table-scroll: the rounded container (the panel
+ * surface, edge and depth) and the scroller. Rows sit 4px inside it
+ * (--a-row-inset) so a hovered or selected row is a 10px rounded highlight,
+ * concentric with the container; separators are inset hairlines that start
+ * and end at the first and last cell's text. The header is sticky on a
+ * translucent, blurred band. No zebra.
+ */
 .admin-table-scroll {
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid transparent;
-  border-radius: var(--a-radius);
+  border: 1px solid var(--a-edge);
+  border-radius: var(--a-radius-panel);
   background: var(--a-panel);
+  box-shadow: var(--a-shadow-panel);
+  padding: 0 var(--a-row-inset) var(--a-row-inset);
 }
 
 .admin-table {
@@ -1224,7 +1345,9 @@
   z-index: 1;
   height: var(--a-header-row);
   border-bottom: 1px solid var(--a-line);
-  background: var(--a-panel);
+  background: var(--a-table-head);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
   color: var(--a-text-2);
   padding: 0 var(--a-cell-pad-x);
   font-size: var(--a-size-caption);
@@ -1236,40 +1359,79 @@
 }
 
 .admin-table td {
+  position: relative;
   height: var(--a-row);
-  border-bottom: 1px solid var(--a-line);
   color: var(--a-text);
   padding: 10px var(--a-cell-pad-x);
   vertical-align: middle;
   transition: background-color var(--a-dur) var(--a-ease);
 }
 
-/* 20px from the panel edge on both sides; the cells between keep 14px. */
+/* Inset hairline under every row but the last, from the first cell's text to the last cell's. */
+.admin-table tbody td::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: var(--a-line);
+  pointer-events: none;
+  transition: opacity var(--a-dur) var(--a-ease);
+}
+
+.admin-table tbody td:first-child::after {
+  left: calc(var(--a-cell-pad-edge) - var(--a-row-inset));
+}
+
+.admin-table tbody td:last-child::after {
+  right: calc(var(--a-cell-pad-edge) - var(--a-row-inset));
+}
+
+.admin-table tbody tr:last-child td::after,
+.admin-table tbody tr:is(:hover, .is-selected, .admin-table-detail) td::after,
+.admin-table tbody tr:has(+ tr:is(:hover, .is-selected, .admin-table-detail)) td::after {
+  opacity: 0;
+}
+
+/* 20px from the container edge on both sides (the row inset plus the cell's own padding); the cells between keep 14px. */
 .admin-table :is(th, td):first-child {
-  padding-left: var(--a-cell-pad-edge);
+  padding-left: calc(var(--a-cell-pad-edge) - var(--a-row-inset));
 }
 
 .admin-table :is(th, td):last-child {
-  padding-right: var(--a-cell-pad-edge);
+  padding-right: calc(var(--a-cell-pad-edge) - var(--a-row-inset));
 }
 
-.admin-table tbody tr:last-child td {
-  border-bottom: 0;
+/* Row highlight: rounded at both ends (the first and last cell carry the corners). */
+.admin-table tbody td:first-child {
+  border-radius: var(--a-radius-control) 0 0 var(--a-radius-control);
 }
 
-.admin-table tbody tr:hover td,
-.admin-table tbody tr.is-selected td {
+.admin-table tbody td:last-child {
+  border-radius: 0 var(--a-radius-control) var(--a-radius-control) 0;
+}
+
+.admin-table tbody td:only-child {
+  border-radius: var(--a-radius-control);
+}
+
+.admin-table tbody tr:hover td {
   background: var(--a-panel-2);
+}
+
+/* Selected row (being edited, or picked as a filter): the accent tint, no bar. */
+.admin-table tbody tr.is-selected td {
+  background: var(--a-accent-tint-faint);
+}
+
+.admin-table tbody tr.is-selected:hover td {
+  background: var(--a-accent-tint);
 }
 
 /* Rows that open, expand or pick something on click (the row also holds a real button for keyboard and controller). */
 .admin-table tbody tr.is-clickable {
   cursor: pointer;
-}
-
-/* Selected row (being edited, or picked as a filter): the fill plus a 2px accent bar on the left edge, like the nav. */
-.admin-table tbody tr.is-selected td:first-child {
-  box-shadow: inset 2px 0 0 var(--a-accent);
 }
 
 .admin-table :is(th, td).admin-num {
@@ -1278,12 +1440,14 @@
 }
 
 /*
- * Expanded row area. The padding rule has no :hover twin, so a page sets its
- * own padding with a selector of the same weight (tbody tr.x td) and the row
- * never shifts under the pointer; only the inset fill needs to beat the hover.
+ * Expanded row area: an inset well joined to the row above it (the row keeps
+ * its top corners, the well its bottom ones). The padding rule has no :hover
+ * twin, so a page sets its own padding with a selector of the same weight
+ * (tbody tr.x td) and the row never shifts under the pointer; only the inset
+ * fill needs to beat the hover.
  */
 .admin-table tbody tr.admin-table-detail td {
-  padding: 20px var(--a-cell-pad-edge);
+  padding: 20px calc(var(--a-cell-pad-edge) - var(--a-row-inset));
 }
 
 .admin-table tbody tr.admin-table-detail td,
@@ -1291,9 +1455,30 @@
   background: var(--a-inset);
 }
 
+/* The well's content fades in as it opens. */
+.admin-table tbody tr.admin-table-detail > td > * {
+  animation: admin-fade-in var(--a-dur-enter) var(--a-ease) backwards;
+}
+
+.admin-table tbody tr:has(+ tr.admin-table-detail) td:first-child {
+  border-bottom-left-radius: 0;
+}
+
+.admin-table tbody tr:has(+ tr.admin-table-detail) td:last-child {
+  border-bottom-right-radius: 0;
+}
+
+.admin-table tbody tr.admin-table-detail td:first-child {
+  border-top-left-radius: 0;
+}
+
+.admin-table tbody tr.admin-table-detail td:last-child {
+  border-top-right-radius: 0;
+}
+
 /* ==================================================================== notice */
 
-/* 2px left rule in the semantic colour on its tint. */
+/* A rounded (10px) tint of the semantic colour with a faint edge of it, and the icon in that colour. */
 .admin-notice {
   --notice-color: var(--a-text-3);
   --notice-tint: var(--a-neutral-tint);
@@ -1302,8 +1487,8 @@
   align-items: flex-start;
   gap: 10px;
   margin: 0;
-  border-left: 2px solid var(--notice-color);
-  border-radius: 0 var(--a-radius-xs) var(--a-radius-xs) 0;
+  border: 1px solid color-mix(in srgb, var(--notice-color) 22%, transparent);
+  border-radius: var(--a-radius-control);
   background: var(--notice-tint);
   color: var(--a-text);
   padding: 12px 16px;
@@ -1360,8 +1545,26 @@
   padding: 0;
 }
 
-:is(.admin-table-scroll, .admin-panel--flush) > :is(.admin-empty, .admin-loading) {
-  padding: 20px var(--a-cell-pad-edge);
+:is(.admin-panel--flush) > :is(.admin-empty, .admin-loading) {
+  padding: 24px var(--a-cell-pad-edge);
+}
+
+/* The scroller already insets its content by the row inset. */
+.admin-table-scroll > :is(.admin-empty, .admin-loading) {
+  padding: 24px calc(var(--a-cell-pad-edge) - var(--a-row-inset)) 20px;
+}
+
+/* Optional 32px outline icon above the title: the icon alone, never in a circle or tile. */
+.admin-empty-icon {
+  display: grid;
+  margin-bottom: 6px;
+  color: var(--a-text-3);
+}
+
+.admin-empty-icon svg {
+  width: var(--a-icon-empty);
+  height: var(--a-icon-empty);
+  stroke-width: 1.5;
 }
 
 .admin-empty strong,
@@ -1373,6 +1576,7 @@
 
 .admin-empty p {
   max-width: 640px;
+  margin: 0;
   color: var(--a-text-2);
   font-size: var(--a-size-small);
   line-height: 1.5;
@@ -1403,12 +1607,15 @@
 
 /*
  * <dl class="admin-meta-list"><div><dt/><dd/></div>...</dl>: label/value rows
- * with hairlines between them. One rule for alignment:
+ * with inset hairlines between them. One rule for alignment:
  *   default  label left, value right. Short facts in a side column.
  *   --left   a fixed label column and left-aligned values. Anywhere wider
  *            (inside a main-column panel) or when a value can be long: paths,
  *            IDs, errors, release notes.
- * Rows align on the text baseline; StatusText and badges sit on it too.
+ * A facts list on its own (not inside a panel, table or modal) is its own
+ * grouped container: the panel surface, 14px radius, edge and depth. Inside a
+ * panel it is just the rows. Rows align on the text baseline; StatusText and
+ * badges sit on it too.
  */
 .admin-meta-list {
   display: grid;
@@ -1418,7 +1625,8 @@
 
 .admin-meta-list > div {
   display: grid;
-  grid-template-columns: minmax(140px, 0.6fr) minmax(0, 1fr);
+  /* Label as wide as it needs (values are right aligned, so columns need not line up), value the rest. */
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
   align-items: baseline;
   gap: 20px;
   border-bottom: 1px solid var(--a-line);
@@ -1427,6 +1635,14 @@
 
 .admin-meta-list > div:last-child {
   border-bottom: 0;
+}
+
+:where(.admin-meta-list):not(:is(.admin-panel, .admin-table, .admin-table-scroll, .modal, .admin-popover-panel) .admin-meta-list) {
+  border: 1px solid var(--a-edge);
+  border-radius: var(--a-radius-panel);
+  background: var(--a-panel);
+  box-shadow: var(--a-shadow-panel);
+  padding: 4px var(--a-panel-pad);
 }
 
 .admin-meta-list dt {
@@ -1458,12 +1674,17 @@
 
 /* ================================================================= list rows */
 
-/* Hairline list inside a flush panel (the Games library): .admin-list > .admin-list-row > .row-main. Use a table for data. */
+/*
+ * A grouped list inside a flush panel (the Games library):
+ * .admin-list > .admin-list-row > .row-main. Rows sit 4px inside the panel, so
+ * hover and the selected row are 10px rounded highlights; separators are inset
+ * hairlines. Selected: the accent tint (no bar). Use a table for data.
+ */
 .admin-list {
   display: grid;
   gap: 0;
   margin: 0;
-  padding: 0;
+  padding: var(--a-row-inset);
   list-style: none;
 }
 
@@ -1473,34 +1694,41 @@
   align-items: center;
   gap: 10px;
   min-height: var(--a-list-row);
-  border-bottom: 1px solid var(--a-line);
-  border-radius: 0;
+  border-radius: var(--a-radius-control);
   background: transparent;
   padding: 8px 10px 8px 12px;
   transition: background-color var(--a-dur) var(--a-ease);
 }
 
-.admin-list-row:last-child {
-  border-bottom: 0;
+.admin-list-row + .admin-list-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 12px;
+  height: 1px;
+  background: var(--a-line);
+  transition: opacity var(--a-dur) var(--a-ease);
+}
+
+.admin-list-row:is(:hover, .selected, :has(> .row-main:focus-visible))::before,
+.admin-list-row:is(:hover, .selected, :has(> .row-main:focus-visible)) + .admin-list-row::before {
+  opacity: 0;
 }
 
 .admin-list-row:hover,
-.admin-list-row.selected,
 .admin-list-row:has(> .row-main:focus-visible) {
   background: var(--a-panel-2);
   box-shadow: none;
 }
 
-.admin-list-row.selected::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 2px;
-  border-radius: 0;
-  background: var(--a-accent);
+.admin-list-row.selected {
+  background: var(--a-accent-tint-faint);
   box-shadow: none;
+}
+
+.admin-list-row.selected:hover {
+  background: var(--a-accent-tint);
 }
 
 .row-main {
@@ -1510,7 +1738,7 @@
   min-width: 0;
   gap: 14px;
   border: 0;
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-badge);
   background: transparent;
   color: var(--a-text);
   padding: 4px;
@@ -1522,15 +1750,26 @@
 /*
  * FilterPopover (components/admin/FilterPopover.tsx): a filter button that
  * opens a panel under it, and the pickers that go inside (a search, a status
- * line with Select all / Clear, grouped checkbox rows). The panel is the one
- * place besides modals with a shadow.
+ * line with Select all / Clear, grouped checkbox rows). The panel floats: a
+ * translucent raised surface with a background blur, a faint edge and a soft
+ * larger shadow, 14px radius; it fades in from 0.98 over 140ms.
  */
 .admin-screen .admin-popover-panel {
-  border: 1px solid var(--a-line-strong);
-  border-radius: var(--a-radius);
-  background: var(--a-panel);
+  border: 1px solid var(--a-edge-strong);
+  border-radius: var(--a-radius-panel);
+  background: var(--a-raised-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
   box-shadow: var(--a-shadow-pop);
-  animation: none;
+  transform-origin: top left;
+  animation: admin-pop-in var(--a-dur-pop) var(--a-ease) backwards;
+}
+
+@keyframes admin-pop-in {
+  from {
+    opacity: 0;
+    scale: 0.98;
+  }
 }
 
 /* Filter button: a toggle chip with a chevron; "Games | Forza Horizon 5" once a filter is on. */
@@ -1547,7 +1786,7 @@
   max-width: 360px;
   min-height: var(--a-control-sm);
   border: 1px solid transparent;
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-chip);
   background: var(--a-tonal);
   color: var(--a-text-2);
   padding: 0 10px 0 var(--a-btn-pad-x-sm);
@@ -1561,6 +1800,11 @@
   width: var(--a-icon-sm);
   height: var(--a-icon-sm);
   color: var(--a-text-3);
+  transition: rotate var(--a-dur) var(--a-ease);
+}
+
+.admin-popover.is-open .admin-popover-trigger > svg:last-child {
+  rotate: 180deg;
 }
 
 .admin-popover-label {
@@ -1632,7 +1876,7 @@
   flex: 0 0 auto;
   gap: 8px;
   border-bottom: 1px solid var(--a-line);
-  padding: 10px 10px 8px;
+  padding: 12px 12px 8px;
 }
 
 .admin-screen .admin-picker-search {
@@ -1703,7 +1947,7 @@
   align-items: center;
   gap: 12px;
   min-height: var(--a-control);
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-chip);
   padding: 0 10px;
   cursor: pointer;
   transition: background-color var(--a-dur) var(--a-ease);
@@ -1715,6 +1959,7 @@
 
 /* Keyboard and controller focus outline the whole row, not just the checkbox. */
 .admin-picker-option input[type='checkbox']:focus-visible {
+  box-shadow: none;
   outline: none;
 }
 
@@ -1768,7 +2013,7 @@
   max-width: 380px;
   min-height: var(--a-control-sm);
   border: 1px solid transparent;
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-chip);
   background: var(--a-tonal);
   color: var(--a-text);
   padding: 0 10px 0 var(--a-btn-pad-x-sm);
@@ -1804,30 +2049,47 @@
   color: var(--a-text);
 }
 
+/* Tertiary text never sits on a hover fill: the kind label steps up to secondary. */
+.admin-active-chip:not(:disabled):hover .admin-active-chip-kind {
+  color: var(--a-text-2);
+}
+
 /* ===================================================================== modal */
 
-/* Control Room modals reuse .modal-backdrop > .modal from dialogs.css, flattened here. */
+/*
+ * Control Room modals reuse .modal-backdrop > .modal from dialogs.css, themed
+ * here: the scrim, then the same floating surface as popovers (translucent,
+ * blurred, faint edge, soft larger shadow, 14px radius), fading in from 0.98.
+ */
 .admin-screen .modal-backdrop {
   background: var(--a-scrim);
   backdrop-filter: none;
-  animation: none;
+  animation: admin-fade-in var(--a-dur-pop) var(--a-ease) backwards;
+}
+
+@keyframes admin-fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .admin-screen .modal {
-  border: 1px solid var(--a-line-strong);
-  border-radius: var(--a-radius);
-  background: var(--a-panel);
+  border: 1px solid var(--a-edge-strong);
+  border-radius: var(--a-radius-panel);
+  background: var(--a-raised-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
   box-shadow: var(--a-shadow-pop);
   color: var(--a-text);
   padding: var(--a-modal-pad);
-  animation: none;
+  animation: admin-pop-in var(--a-dur-pop) var(--a-ease) backwards;
 }
 
 .admin-screen .modal h2 {
   font-family: var(--a-font-display);
   font-size: var(--a-size-modal-title);
-  font-weight: var(--a-weight-display);
-  letter-spacing: -0.015em;
+  font-weight: var(--a-weight-title);
+  letter-spacing: -0.02em;
   line-height: 1.2;
 }
 
@@ -1847,4 +2109,23 @@
   z-index: 2;
   width: var(--a-control);
   height: var(--a-control);
+}
+
+/* ============================================================ reduced motion */
+
+/* No press scale, entrances or knob slide when the system asks for less motion; state changes stay instant. */
+@media (prefers-reduced-motion: reduce) {
+  .admin-screen :is(.admin-btn, .admin-segmented button, .admin-chip-toggle, .admin-popover-trigger, .admin-active-chip):not(:disabled):active {
+    scale: none;
+  }
+
+  .admin-screen :is(.admin-popover-panel, .modal, .modal-backdrop),
+  .admin-table tbody tr.admin-table-detail > td > * {
+    animation: none;
+  }
+
+  .admin-screen :is(.ps-switch, .admin-popover-trigger > svg),
+  .admin-screen .ps-switch::after {
+    transition: none;
+  }
 }

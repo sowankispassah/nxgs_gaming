@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type SetStateAction
 } from 'react';
-import { Check, ChevronRight } from 'lucide-react';
+import { Check, ChevronRight, Download, RefreshCw } from 'lucide-react';
 import type {
   DeviceRecord,
   EarningsReport,
@@ -279,9 +279,11 @@ export function AccountsPanel(props: {
     <div className={`accounts-page${report && loading ? ' is-busy' : ''}`} aria-busy={loading}>
       <PageActions>
         <button className="admin-btn" type="button" disabled={busy} onClick={refresh}>
+          <RefreshCw aria-hidden="true" />
           {loading ? 'Refreshing...' : 'Refresh'}
         </button>
         <button className="admin-btn" type="button" disabled={exporting || Boolean(invalidRange)} onClick={() => void exportCsv()}>
+          <Download aria-hidden="true" />
           {exporting ? 'Saving...' : 'Export CSV'}
         </button>
       </PageActions>
@@ -409,8 +411,9 @@ export function AccountsPanel(props: {
           <div className={`accounts-breakdown${allScope ? '' : ' accounts-breakdown--single'}`}>
             {allScope && (
               <PageSection title="By device" description="Select a device to show only its sessions.">
+                {/* An empty breakdown keeps its container, so it lines up with the table beside it. */}
                 {report.byStation.length === 0 ? (
-                  <p className="accounts-note">No device earned in this period.</p>
+                  <Panel><p className="accounts-note">No device earned in this period.</p></Panel>
                 ) : (
                   <div className="admin-table-scroll accounts-rank-table">
                     <table className="admin-table">
@@ -450,7 +453,7 @@ export function AccountsPanel(props: {
               )}
             >
               {report.byGame.length === 0 ? (
-                <p className="accounts-note">No games recorded in this period. Sessions from before version 0.25.0 did not record games.</p>
+                <Panel><p className="accounts-note">No games recorded in this period. Sessions from before version 0.25.0 did not record games.</p></Panel>
               ) : (
                 <div className="admin-table-scroll accounts-rank-table accounts-rank-table--games">
                   <table className="admin-table">

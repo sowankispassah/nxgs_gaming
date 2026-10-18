@@ -39,10 +39,9 @@
 
 /* ------------------------------------------------------------ locked */
 
-/* Starts where a first section heading would. */
+/* A panel where the first section would start, as wide as its line of text needs. */
 .fleet-locked {
-  max-width: 640px;
-  padding-top: 0;
+  max-width: 720px;
 }
 
 /* ------------------------------------------------------- devices list */
@@ -128,6 +127,12 @@
   background: var(--a-panel-2);
 }
 
+/* Like a hovered row, the focused one hides the inset hairlines next to it. */
+.fleet-table tbody tr:has(.fleet-row-open:is(:focus-visible, .controller-focused, .focused)) td::after,
+.fleet-table tbody tr:has(+ tr .fleet-row-open:is(:focus-visible, .controller-focused, .focused)) td::after {
+  opacity: 0;
+}
+
 .fleet-table tr.is-removed .fleet-device-name strong,
 .fleet-table tr.is-removed .admin-num {
   color: var(--a-text-2);
@@ -194,11 +199,13 @@
   cursor: default;
 }
 
+/* As wide as Cancel + Delete, so the columns never shift when a row asks to confirm its delete. */
 .fleet-moderator-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+  min-width: 176px;
 }
 
 /* Editor: fields on the left, devices on the right, separated by space, not a line. */
@@ -260,7 +267,7 @@
   min-width: 0;
   min-height: var(--a-control);
   margin: 0 -8px;
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-chip);
   padding: 0 8px;
   cursor: pointer;
   transition: background-color var(--a-dur) var(--a-ease);
@@ -341,6 +348,11 @@
   align-content: start;
   min-width: 0;
   gap: 16px;
+}
+
+/* Its longest label ("Sessions waiting") needs about 130px; the default 210px column would wrap the last sync at 1366. */
+.fleet-sync-meta {
+  --a-meta-label: 160px;
 }
 
 .fleet-sync-error {
@@ -455,6 +467,20 @@
   font-size: var(--a-size-small);
 }
 
+/* Danger zone: when the main column is narrow (1366), the buttons drop under the copy instead of squeezing it. */
+.fleet-remove .admin-value-row {
+  flex-wrap: wrap;
+  row-gap: 14px;
+}
+
+.fleet-remove .admin-switch-copy {
+  flex: 1 1 360px;
+}
+
+.fleet-remove .admin-row-actions {
+  margin-left: auto;
+}
+
 /* The split's sections sit 40px apart; StatRow above keeps the 24px detail rhythm. */
 .fleet-detail-layout {
   margin-top: 16px;
@@ -500,12 +526,32 @@
   height: var(--a-icon-sm);
 }
 
-/* Side column: assigned moderators, hairline rows exactly like the facts list above it. */
+/*
+ * Side column: assigned moderators, a grouped container exactly like the
+ * standalone facts list above it (the panel surface, 14px radius, edge, depth,
+ * and hairlines inset by the panel padding). With no moderators the note sits
+ * in the same container.
+ */
+.fleet-assigned-list,
+.fleet-assigned-empty {
+  margin: 0;
+  border: 1px solid var(--a-edge);
+  border-radius: var(--a-radius-panel);
+  background: var(--a-panel);
+  box-shadow: var(--a-shadow-panel);
+}
+
 .fleet-assigned-list {
   display: grid;
-  margin: 0;
-  padding: 0;
+  padding: 4px var(--a-panel-pad);
   list-style: none;
+}
+
+.fleet-assigned-empty {
+  color: var(--a-text-2);
+  padding: 17px var(--a-panel-pad);
+  font-size: var(--a-size-small);
+  line-height: 1.45;
 }
 
 .fleet-assigned-list li {

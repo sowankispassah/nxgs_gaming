@@ -34,13 +34,19 @@ function toneClass(prefix: string, tone: Tone | undefined): string | false {
   return Boolean(tone) && tone !== 'neutral' && `${prefix}--${tone}`;
 }
 
-/** Scrolls an editor card into view inside the Control Room content pane when its top is off screen. */
+/**
+ * Scrolls an editor card into view inside the Control Room content pane when
+ * its top is off screen or under the sticky page bar. The pane's
+ * scroll-padding keeps it clear of the bar.
+ */
 export function revealInContent(element: HTMLElement | null): void {
   const scroller = element?.closest('.admin-content');
   if (!element || !scroller) return;
   const top = element.getBoundingClientRect().top;
   const bounds = scroller.getBoundingClientRect();
-  if (top < bounds.top || top > bounds.bottom - 120) {
+  const bar = scroller.querySelector('.admin-page-header');
+  const visibleTop = bar ? bar.getBoundingClientRect().bottom : bounds.top;
+  if (top < visibleTop || top > bounds.bottom - 120) {
     element.scrollIntoView({ block: 'start' });
   }
 }
@@ -96,7 +102,11 @@ export interface PanelProps extends HTMLAttributes<HTMLElement> {
   padding?: 'default' | 'none' | 'rows';
 }
 
-/** The one bordered surface: holds a table, a grouped form or a list. Never nest panels. */
+/**
+ * The raised surface (14px radius, subtle edge, soft depth): holds a table, a
+ * grouped form or a list. Never nest panels. `rows` makes it a grouped inset
+ * list: rows with inset hairlines whose highlight follows the panel's radius.
+ */
 export const Panel = forwardRef<HTMLElement, PanelProps>(function Panel({ as = 'div', padding = 'default', className, ...rest }, ref) {
   const Element = as as 'div';
   return (
@@ -167,7 +177,7 @@ export function Stat(props: {
 }
 
 /**
- * A state in words with a 6px dot: Completed, Active, Pending, Failed... The
+ * A state in words with an 8px dot: Completed, Active, Pending, Failed... The
  * tone follows the one status mapping in docs/admin-design.md. `icon` replaces
  * the dot where a mark says more (the verified check in Accounts).
  */
@@ -322,7 +332,7 @@ export function SwitchRow(props: {
 }
 
 /**
- * The bare 30x18 switch for table cells and toolbars, with an optional label
+ * The bare 46x28 switch for table cells and toolbars, with an optional label
  * after it. SwitchRow is the settings-row version (copy left, switch right).
  */
 export function InlineSwitch(props: {
@@ -380,10 +390,13 @@ export function EmptyState(props: {
   children?: ReactNode;
   /** Optional next step, usually one button. */
   action?: ReactNode;
+  /** Optional 32px outline icon above the title (a lucide icon, no circle or tile behind it). */
+  icon?: ReactNode;
   className?: string;
 }): JSX.Element {
   return (
     <div className={classNames('admin-empty', props.className)}>
+      {props.icon && <span className="admin-empty-icon" aria-hidden="true">{props.icon}</span>}
       <strong className="admin-empty-title">{props.title}</strong>
       {props.children && <p>{props.children}</p>}
       {props.action && <div className="admin-empty-action">{props.action}</div>}

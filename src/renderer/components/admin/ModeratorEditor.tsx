@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import type { FleetStation, ModeratorInput, ModeratorRecord } from '../../../shared/types';
 import {
   Badge,
@@ -303,6 +303,7 @@ export function ModeratorsSection(props: {
                 setNotice(null);
               }}
             >
+              <Plus aria-hidden="true" />
               New moderator
             </button>
           )}

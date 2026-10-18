@@ -1,4 +1,18 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import {
+  CircleArrowDown,
+  Gamepad2,
+  House,
+  Monitor,
+  Network,
+  Palette,
+  ScanSearch,
+  Settings,
+  Ticket,
+  Timer,
+  Wallet,
+  type LucideIcon
+} from 'lucide-react';
 import type { AppSettings, DeviceRecord, GameRecord, InitialData } from '../../../shared/types';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../../controllerNavigation';
 import { ControllerHints } from '../../ui/ControllerHints';
@@ -21,7 +35,7 @@ type AdminTab = 'games' | 'scan' | 'sessions' | 'plans' | 'device' | 'branding' 
 /** Sidebar order (Library, This device, Business); arrow keys and the D-pad cycle through it. */
 const ADMIN_TABS: AdminTab[] = ['games', 'scan', 'sessions', 'plans', 'device', 'branding', 'kiosk', 'updates', 'accounts', 'fleet'];
 
-/** Data pages get the wide (1600px) container; every other page is a 1120px form page. */
+/** Data pages get the wide (1760px) container; every other page is a 1240px form page. */
 const DATA_TABS: AdminTab[] = ['games', 'accounts', 'fleet'];
 
 const PAGE_COPY: Record<AdminTab, { title: string; description: string }> = {
@@ -49,8 +63,9 @@ const PAGE_COPY: Record<AdminTab, { title: string; description: string }> = {
     title: 'Branding',
     description: 'Set the logo shown across NXGS Play.'
   },
+  // Shown as "System" (the internal id stays `kiosk`: tests, preferences and the settings page use it).
   kiosk: {
-    title: 'Kiosk and diagnostics',
+    title: 'System',
     description: 'Lockdown behavior, live diagnostics, local storage and exit.'
   },
   updates: {
@@ -197,26 +212,27 @@ export function AdminScreen(props: {
         </div>
         <nav ref={navRef} aria-label="Control Room sections">
           <NavGroup label="Library">
-            <TabButton {...tabProps('games')} label="Games" />
-            <TabButton {...tabProps('scan')} label="Scan" />
+            <TabButton {...tabProps('games')} label="Games" icon={Gamepad2} />
+            <TabButton {...tabProps('scan')} label="Scan" icon={ScanSearch} />
           </NavGroup>
           <NavGroup label="This device">
-            <TabButton {...tabProps('sessions')} label="Sessions" />
-            <TabButton {...tabProps('plans')} label="Plans" />
-            <TabButton {...tabProps('device')} label="Details" />
-            <TabButton {...tabProps('branding')} label="Branding" />
-            <TabButton {...tabProps('kiosk')} label="Kiosk" />
-            <TabButton {...tabProps('updates')} label="Updates" />
+            <TabButton {...tabProps('sessions')} label="Sessions" icon={Timer} />
+            <TabButton {...tabProps('plans')} label="Plans" icon={Ticket} />
+            <TabButton {...tabProps('device')} label="Details" icon={Monitor} />
+            <TabButton {...tabProps('branding')} label="Branding" icon={Palette} />
+            <TabButton {...tabProps('kiosk')} label="System" icon={Settings} />
+            <TabButton {...tabProps('updates')} label="Updates" icon={CircleArrowDown} />
           </NavGroup>
           <NavGroup label="Business">
-            <TabButton {...tabProps('accounts')} label="Accounts" />
-            <TabButton {...tabProps('fleet')} label="All devices" />
+            <TabButton {...tabProps('accounts')} label="Accounts" icon={Wallet} />
+            <TabButton {...tabProps('fleet')} label="All devices" icon={Network} />
           </NavGroup>
         </nav>
         <div className="admin-sidebar-footer" onFocus={() => setNavFocused(false)}>
           <AdminThemeSwitch value={themePreference} onChange={setThemePreference} />
-          <button className="admin-btn admin-btn--ghost admin-home-button" type="button" onClick={props.onClose}>
-            Back to Home
+          <button className="admin-home-button" type="button" onClick={props.onClose}>
+            <House className="admin-nav-icon" aria-hidden="true" />
+            <span className="admin-nav-label">Back to Home</span>
           </button>
           <ControllerHints
             className="admin-hints"
@@ -229,18 +245,14 @@ export function AdminScreen(props: {
       </aside>
 
       <div className="admin-content" ref={contentRef} onFocus={() => setNavFocused(false)}>
-        {/* The header stays mounted across tabs so <PageActions> always has the same slot. */}
+        {/*
+          * The header stays mounted across tabs so <PageActions> always has the same slot.
+          * Its first row (title + actions) is the sticky page bar; the description and
+          * scope note scroll away under it.
+          */}
         <div className={`admin-page${DATA_TABS.includes(tab) ? ' admin-page--data' : ''}`}>
           <header className="admin-page-header">
-            <div className="admin-page-heading">
-              <h1>{page.title}</h1>
-              <p className="admin-page-description">{page.description}</p>
-              <p className="admin-page-scope">
-                {ownerView
-                  ? tab === 'accounts' ? 'Earnings from every device' : 'Covers every device'
-                  : tab === 'accounts' ? `Earnings from ${stationName}` : `Applies to ${stationName}`}
-              </p>
-            </div>
+            <h1>{page.title}</h1>
             <div className="admin-page-actions">
               <div className="admin-page-actions-slot" ref={setPageActionsTarget} />
               {ownerView ? (
@@ -248,41 +260,52 @@ export function AdminScreen(props: {
               ) : null}
             </div>
           </header>
+          <div className="admin-page-intro">
+            <p className="admin-page-description">{page.description}</p>
+            <p className="admin-page-scope">
+              {ownerView
+                ? tab === 'accounts' ? 'Earnings from every device' : 'Covers every device'
+                : tab === 'accounts' ? `Earnings from ${stationName}` : `Applies to ${stationName}`}
+            </p>
+          </div>
 
-          <PageActionsProvider value={pageActionsTarget}>
-            {tab === 'games' && <GameManager currentDevice={props.initialData.currentDevice} games={props.games} onGamesChanged={props.onGamesChanged} />}
-            {tab === 'scan' && <ScanPanel currentDevice={props.initialData.currentDevice} onGamesChanged={props.onGamesChanged} />}
-            {tab === 'sessions' && (
-              <SessionSettings
-                settings={props.settings}
-                adminRole={props.adminRole ?? 'admin'}
-                onSettingsChanged={props.onSettingsChanged}
-                onOpenPlans={() => setTab('plans')}
-              />
-            )}
-            {tab === 'plans' && <PlanManager currentDevice={props.initialData.currentDevice} />}
-            {tab === 'device' && <DeviceManager onDeviceChanged={props.onDeviceChanged} owner={owner} />}
-            {tab === 'branding' && (
-              <BrandingSettingsPanel settings={props.settings} onSettingsChanged={props.onSettingsChanged} />
-            )}
-            {tab === 'kiosk' && (
-              <KioskSettingsPanel
-                settings={props.settings}
-                initialData={props.initialData}
-                onSettingsChanged={props.onSettingsChanged}
-              />
-            )}
-            {tab === 'updates' && <UpdatePanel initialData={props.initialData} />}
-            {tab === 'accounts' && (
-              <AccountsPanel
-                view={accountsView}
-                onViewChange={setAccountsView}
-                owner={owner}
-                currentDevice={props.initialData.currentDevice}
-              />
-            )}
-            {tab === 'fleet' && <DeviceManagementPanel owner={owner} onViewEarnings={viewStationEarnings} />}
-          </PageActionsProvider>
+          {/* Keyed by tab so each section fades in when it opens. */}
+          <div className="admin-page-body" key={tab}>
+            <PageActionsProvider value={pageActionsTarget}>
+              {tab === 'games' && <GameManager currentDevice={props.initialData.currentDevice} games={props.games} onGamesChanged={props.onGamesChanged} />}
+              {tab === 'scan' && <ScanPanel currentDevice={props.initialData.currentDevice} onGamesChanged={props.onGamesChanged} />}
+              {tab === 'sessions' && (
+                <SessionSettings
+                  settings={props.settings}
+                  adminRole={props.adminRole ?? 'admin'}
+                  onSettingsChanged={props.onSettingsChanged}
+                  onOpenPlans={() => setTab('plans')}
+                />
+              )}
+              {tab === 'plans' && <PlanManager currentDevice={props.initialData.currentDevice} />}
+              {tab === 'device' && <DeviceManager onDeviceChanged={props.onDeviceChanged} owner={owner} />}
+              {tab === 'branding' && (
+                <BrandingSettingsPanel settings={props.settings} onSettingsChanged={props.onSettingsChanged} />
+              )}
+              {tab === 'kiosk' && (
+                <KioskSettingsPanel
+                  settings={props.settings}
+                  initialData={props.initialData}
+                  onSettingsChanged={props.onSettingsChanged}
+                />
+              )}
+              {tab === 'updates' && <UpdatePanel initialData={props.initialData} />}
+              {tab === 'accounts' && (
+                <AccountsPanel
+                  view={accountsView}
+                  onViewChange={setAccountsView}
+                  owner={owner}
+                  currentDevice={props.initialData.currentDevice}
+                />
+              )}
+              {tab === 'fleet' && <DeviceManagementPanel owner={owner} onViewEarnings={viewStationEarnings} />}
+            </PageActionsProvider>
+          </div>
         </div>
       </div>
       {owner.dialog}
@@ -290,6 +313,10 @@ export function AdminScreen(props: {
   );
 }
 
+/**
+ * A sidebar group: a non-interactive section label (small uppercase caption,
+ * not focusable, no hover) above its nav items. Items carry icons; labels do not.
+ */
 function NavGroup(props: { label: string; children: ReactNode }): JSX.Element {
   const labelId = useId();
   return (
@@ -305,9 +332,11 @@ function TabButton(props: {
   active: boolean;
   focused: boolean;
   label: string;
+  icon: LucideIcon;
   onClick: () => void;
 }): JSX.Element {
   const classes = [props.active ? 'active' : '', props.focused ? 'controller-focused' : ''].filter(Boolean).join(' ');
+  const Icon = props.icon;
   return (
     <button
       className={classes || undefined}
@@ -316,6 +345,7 @@ function TabButton(props: {
       aria-current={props.active ? 'page' : undefined}
       onClick={props.onClick}
     >
+      <Icon className="admin-nav-icon" aria-hidden="true" />
       <span className="admin-nav-label">{props.label}</span>
     </button>
   );

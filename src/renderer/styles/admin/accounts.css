@@ -208,18 +208,20 @@
 /* ================================================================== figures */
 
 /*
- * One panel: the hero figure on the left, three quieter figures after it,
- * hairlines between them. Everything sits on one bottom line, so the sub
- * lines share a baseline. The accent marks only the hero's label.
+ * One panel (the panel surface, 14px radius, edge and depth): the hero figure
+ * on the left, three quieter figures after it, hairlines between them.
+ * Everything sits on one bottom line, so the sub lines share a baseline. The
+ * accent marks only the hero's label.
  */
 .accounts-figures {
   display: grid;
   grid-template-columns: minmax(320px, 1.3fr) repeat(3, minmax(0, 1fr));
   align-items: end;
   margin: 0;
-  border: 1px solid transparent;
-  border-radius: var(--a-radius);
+  border: 1px solid var(--a-edge);
+  border-radius: var(--a-radius-panel);
   background: var(--a-panel);
+  box-shadow: var(--a-shadow-panel);
   padding: 24px 0;
 }
 
@@ -260,7 +262,7 @@
   flex: 0 0 auto;
   width: 2px;
   height: 16px;
-  border-radius: 1px;
+  border-radius: var(--a-radius-inner);
   background: var(--a-accent);
 }
 
@@ -346,7 +348,7 @@
   height: var(--a-control-sm);
   place-items: center;
   border: 0;
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-control);
   background: transparent;
   color: var(--a-text-3);
 }
@@ -359,18 +361,26 @@
 .accounts-row-toggle svg {
   width: var(--a-icon);
   height: var(--a-icon);
+  transition: rotate var(--a-dur) var(--a-ease);
 }
 
 .accounts-row-toggle[aria-expanded='true'] svg {
   rotate: 90deg;
 }
 
-.accounts-table tbody tr.accounts-row:is(.is-open, :has(.accounts-row-toggle:focus-visible)) td {
+.accounts-table tbody tr.accounts-row:is(.is-open, :has(.accounts-row-toggle:is(:focus-visible, .controller-focused))) td {
   background: var(--a-panel-2);
 }
 
 .accounts-table tbody tr.accounts-row.is-open td {
   border-bottom-color: transparent;
+}
+
+/* Like a hovered row, an open or focused row hides the inset hairlines next to it. */
+.accounts-table tbody tr.accounts-row:has(.accounts-row-toggle:is(:focus-visible, .controller-focused)) td::after,
+.accounts-table tbody tr:has(+ tr.accounts-row.is-open) td::after,
+.accounts-table tbody tr:has(+ tr.accounts-row .accounts-row-toggle:is(:focus-visible, .controller-focused)) td::after {
+  opacity: 0;
 }
 
 /* Two-line cells: primary text, then a caption line. */
@@ -635,7 +645,7 @@
   background: var(--a-line);
 }
 
-.accounts-strip-piece.is-game:is(:hover, .is-active, :focus-visible)::before {
+.accounts-strip-piece.is-game:is(:hover, .is-active, :focus-visible, .controller-focused)::before {
   background: var(--a-text);
 }
 
@@ -660,7 +670,7 @@
   bottom: -4px;
   width: 2px;
   margin-left: -1px;
-  border-radius: 1px;
+  border-radius: var(--a-radius-inner);
   background: var(--a-text);
   pointer-events: none;
 }
@@ -729,7 +739,9 @@
 
 /*
  * Hover/focus readout for a chart mark (timeline pieces, share bars): fixed so
- * table scrollers never clip it. The value is the strong part.
+ * table scrollers never clip it. A small floating surface (the popover glass,
+ * blurred, with the stronger edge and the soft larger shadow) at the control
+ * radius, since it is far smaller than a popover. The value is the strong part.
  */
 .accounts-tip {
   position: fixed;
@@ -737,9 +749,11 @@
   display: grid;
   gap: 3px;
   max-width: 380px;
-  border: 1px solid var(--a-line-strong);
-  border-radius: var(--a-radius);
-  background: var(--a-panel);
+  border: 1px solid var(--a-edge-strong);
+  border-radius: var(--a-radius-control);
+  background: var(--a-raised-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
   box-shadow: var(--a-shadow-pop);
   color: var(--a-text-2);
   padding: 10px 14px;
@@ -871,7 +885,7 @@
 }
 
 .accounts-meter:hover .accounts-meter-fill,
-.accounts-rank-row:has(.accounts-row-pick:focus-visible) .accounts-meter-fill {
+.accounts-rank-row:has(.accounts-row-pick:is(:focus-visible, .controller-focused)) .accounts-meter-fill {
   background: var(--a-text-2);
 }
 
@@ -891,6 +905,15 @@
 @media (max-width: 1599px) {
   .accounts-breakdown {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Stacked, each table has the full width, so the bars get room to read. */
+  .accounts-meter {
+    --meter-width: 260px;
+  }
+
+  .accounts-rank-table--games .accounts-meter {
+    --meter-width: 320px;
   }
 }
 
@@ -915,5 +938,11 @@
 
   .accounts-results-meta {
     margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accounts-row-toggle svg {
+    transition: none;
   }
 }

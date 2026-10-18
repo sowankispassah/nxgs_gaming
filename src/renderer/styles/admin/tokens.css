@@ -7,7 +7,7 @@
  * in the two theme blocks below; component CSS never uses a literal colour,
  * so every rule works in both themes. Neutrals lean faintly violet toward the
  * NXGS magenta accent, which is used sparingly (primary button, active nav
- * marker, focus, selected chip/segment, links, switch on).
+ * item, focus, selected chip, links, switch on).
  *
  * The last block re-points the global console tokens (--ps-*, --radius-*,
  * --text-*, --focus-ring, ...) inside the Control Room only, so the shared
@@ -27,28 +27,50 @@
 .admin-screen[data-admin-theme='dark'] {
   color-scheme: dark;
 
-  /* Surfaces: flat, separated by tone */
+  /*
+   * Surfaces, layered: page bg < sidebar < panel < raised (popovers, modals).
+   * In the dark theme depth comes from surface lightness plus a 1px edge and
+   * an inner top highlight; shadows only for floating surfaces.
+   */
   --a-bg: #111015;
   --a-sidebar: #151419;
-  --a-panel: #19181e;
-  --a-panel-2: #211f27;
-  --a-inset: #0e0d12;
-  --a-tonal: #24222b;
-  --a-tonal-hover: #2e2b36;
-  --a-nav-hover: #1e1c24;
+  --a-panel: #1a191f;
+  --a-panel-2: #232129;
+  --a-raised: #222028;
+  --a-raised-glass: rgba(34, 32, 40, 0.86);
+  --a-inset: #131217;
+  --a-panel-footer: #17161c;
+  --a-tonal: #26242d;
+  --a-tonal-hover: #302d38;
+  --a-nav-hover: #1f1d25;
   --a-logo-tile: #0e0d12;
+  /* The sticky page bar and table headers: the surface under them at ~80%, blurred */
+  --a-bar: rgba(17, 16, 21, 0.8);
+  --a-table-head: rgba(26, 25, 31, 0.82);
 
-  /* Fields: filled, subtle bottom-weighted border */
-  --a-field: #0e0d12;
+  /* Edges and depth */
+  --a-edge: rgba(255, 255, 255, 0.06);
+  --a-edge-strong: rgba(255, 255, 255, 0.1);
+  --a-shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  --a-highlight: rgba(255, 255, 255, 0.16);
+
+  /* Fields: filled wells with a 1px border all round */
+  --a-field: #111015;
   --a-field-hover: #15141a;
-  --a-field-line: #34313c;
+  --a-field-line: #3a3743;
+  --a-field-line-hover: #4a4654;
   --a-field-line-bottom: #6a6675;
   --a-control-border: #6a6675;
+
+  /* Segmented: the chosen segment is raised above the track */
+  --a-segment-on: #3a3744;
+  --a-segment-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.07);
 
   /* Switch */
   --a-switch-off: #3d3a46;
   --a-switch-off-hover: #4a4654;
   --a-switch-knob: #efedf3;
+  --a-knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 
   /* Lines */
   --a-line: #2a2830;
@@ -63,10 +85,13 @@
   /* NXGS magenta: one accent, used sparingly */
   --a-accent: #ff4fa3;
   --a-accent-strong: #ff79b9;
+  --a-accent-edge: #e23d8d;
   --a-on-accent: #1a0710;
   --a-accent-tint: rgba(255, 79, 163, 0.14);
-  --a-accent-tint-faint: rgba(255, 79, 163, 0.07);
+  --a-accent-tint-faint: rgba(255, 79, 163, 0.08);
   --a-accent-line: rgba(255, 79, 163, 0.5);
+  /* The soft half of the focus ring (1px accent + 3px of this) */
+  --a-focus-soft: rgba(255, 79, 163, 0.35);
 
   /* Colour only carries meaning */
   --a-green: #3ecf8e;
@@ -94,10 +119,11 @@
   --a-weight-medium: 500;
   --a-weight-strong: 600;
   --a-weight-display: 600;
+  --a-weight-title: 600;
 
-  /* Elevation: popovers and modals only */
+  /* Floating surfaces: popovers and modals */
   --a-scrim: rgba(8, 7, 11, 0.62);
-  --a-shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --a-shadow-pop: 0 18px 48px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* -------------------------------------------------------------------- light */
@@ -108,23 +134,38 @@
   --a-bg: #f5f4f7;
   --a-sidebar: #efedf2;
   --a-panel: #ffffff;
-  --a-panel-2: #f1eff4;
-  --a-inset: #faf9fb;
+  --a-panel-2: #f2f0f5;
+  --a-raised: #ffffff;
+  --a-raised-glass: rgba(255, 255, 255, 0.88);
+  --a-inset: #f8f7fa;
+  --a-panel-footer: #faf9fc;
   --a-tonal: #e9e6ee;
   --a-tonal-hover: #dfdbe5;
-  --a-nav-hover: #e5e2ea;
+  --a-nav-hover: #e4e1e9;
   /* The logo art is dark: it keeps a dark tile in the light theme too. */
   --a-logo-tile: #18161d;
+  --a-bar: rgba(245, 244, 247, 0.8);
+  --a-table-head: rgba(255, 255, 255, 0.84);
+
+  --a-edge: rgba(24, 22, 29, 0.08);
+  --a-edge-strong: rgba(24, 22, 29, 0.12);
+  --a-shadow-panel: 0 1px 2px rgba(24, 22, 29, 0.06), 0 1px 1px rgba(24, 22, 29, 0.04);
+  --a-highlight: rgba(255, 255, 255, 0.18);
 
   --a-field: #ffffff;
-  --a-field-hover: #faf9fb;
-  --a-field-line: #dcd8e2;
+  --a-field-hover: #fbfafc;
+  --a-field-line: #d5d1db;
+  --a-field-line-hover: #bdb8c5;
   --a-field-line-bottom: #8f8a99;
   --a-control-border: #8a8693;
+
+  --a-segment-on: #ffffff;
+  --a-segment-shadow: 0 1px 2px rgba(24, 22, 29, 0.14), 0 1px 1px rgba(24, 22, 29, 0.06);
 
   --a-switch-off: #c4bfcc;
   --a-switch-off-hover: #b3adbc;
   --a-switch-knob: #ffffff;
+  --a-knob-shadow: 0 1px 3px rgba(24, 22, 29, 0.28);
 
   --a-line: #e3e0e8;
   --a-line-strong: #cfcbd6;
@@ -136,10 +177,12 @@
 
   --a-accent: #c2185b;
   --a-accent-strong: #a3134c;
+  --a-accent-edge: #9c1149;
   --a-on-accent: #ffffff;
   --a-accent-tint: rgba(194, 24, 91, 0.12);
   --a-accent-tint-faint: rgba(194, 24, 91, 0.07);
   --a-accent-line: rgba(194, 24, 91, 0.45);
+  --a-focus-soft: rgba(194, 24, 91, 0.3);
 
   --a-green: #137246;
   --a-amber: #945300;
@@ -157,19 +200,32 @@
   --a-weight-medium: 600;
   --a-weight-strong: 700;
   --a-weight-display: 700;
+  --a-weight-title: 650;
 
   --a-scrim: rgba(24, 22, 29, 0.36);
-  --a-shadow-pop: 0 12px 32px rgba(24, 22, 29, 0.14), 0 2px 6px rgba(24, 22, 29, 0.06);
+  --a-shadow-pop: 0 18px 48px rgba(24, 22, 29, 0.16), 0 2px 8px rgba(24, 22, 29, 0.08);
 }
 
 /* --------------------------------------------------------- theme independent */
 
 .admin-screen {
-  /* Shape: 4px everywhere; switches are the only rounded-full element */
-  --a-radius: 4px;
-  --a-radius-sm: 4px;
-  --a-radius-xs: 4px;
-  --a-radius-inner: 2px;
+  /*
+   * Shape: radius by role. Concentric where one sits inside another (a row
+   * highlight 4px inside a 14px panel is 10px). Switches are the only
+   * rounded-full element. --a-radius / -sm / -xs are the role names pages
+   * already use: panel, control and small.
+   */
+  --a-radius-panel: 14px; /* panels, grouped lists, tables, stat rows, popovers, modals */
+  --a-radius-control: 10px; /* buttons, inputs, selects, segmented track, nav items, row highlights */
+  --a-radius-segment: 8px; /* segments inside a track */
+  --a-radius-chip: 8px; /* toggle chips, filter buttons, active-filter chips, picker rows */
+  --a-radius-badge: 6px; /* badges, key caps, checkboxes, thumbnails, small inline buttons */
+  --a-radius: var(--a-radius-panel);
+  --a-radius-sm: var(--a-radius-control);
+  --a-radius-xs: var(--a-radius-badge);
+  --a-radius-inner: 2px; /* thin bars: timeline strip pieces, share bars */
+  /* Row highlights in grouped lists and tables sit this far inside the container (14 - 4 = 10px, concentric). */
+  --a-row-inset: 4px;
 
   /* Type: Red Hat Display for titles, headings and figures; Red Hat Text for UI; Red Hat Mono for IDs */
   --a-font: 'Red Hat Text Variable', 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
@@ -217,14 +273,32 @@
   /* Red Hat Mono */
   --a-size-mono: calc(15px * var(--a-x-match-mono)); /* IDs, payment IDs, paths */
 
-  /* Focus: one crisp accent outline, never a glow */
+  /*
+   * Focus. Controls (buttons, fields, segments, chips, nav items) get the soft
+   * ring: a 1px accent line (--a-focus-line, an outline at offset 0, or the
+   * field's own border) plus 3px of accent at ~35% outside it
+   * (--a-focus-halo, a box-shadow). Whole rows inside a clipped container
+   * (switch rows, radio rows, picker rows) draw --a-focus, a 2px accent
+   * outline inside the row. Never a blurred glow.
+   */
   --a-focus-color: var(--a-accent);
+  --a-focus-line: 1px solid var(--a-focus-color);
+  --a-focus-halo: 0 0 0 4px var(--a-focus-soft);
+  --a-focus-halo-field: 0 0 0 3px var(--a-focus-soft);
   --a-focus: 2px solid var(--a-focus-color);
   --a-focus-offset: 2px;
 
-  /* Motion: colour and background only */
+  /*
+   * Motion (all of it off under prefers-reduced-motion): colour, background
+   * and shadow 120ms; a pressed control scales to 0.98; tab content fades in
+   * and rises 4px over 160ms; popovers and modals fade in from 0.98 over 140ms.
+   */
   --a-dur: 120ms;
+  --a-dur-press: 90ms;
+  --a-dur-enter: 160ms;
+  --a-dur-pop: 140ms;
   --a-ease: cubic-bezier(0.2, 0, 0, 1);
+  --a-press-scale: 0.98;
 
   /*
    * Heights, sized for the text above (the 0.26.0 controls were 50px inputs,
@@ -240,9 +314,12 @@
   --a-nav-item: clamp(40px, 5.2vh, 54px);
   --a-brand-logo: clamp(36px, 4.2vh, 46px);
   --a-thumb: 44px; /* game artwork square in lists and tables */
-  --a-icon: 20px; /* icons in default buttons, glyphs in hints */
+  --a-icon: 20px; /* icons in default buttons, nav items, glyphs in hints */
   --a-icon-sm: 18px; /* icons in compact buttons, fields, notices */
+  --a-icon-empty: 32px; /* the outline icon above an empty or locked state's title */
   --a-check: 20px; /* checkboxes and radios */
+  --a-switch-w: 46px; /* iOS proportions: 46x28 track, 24px knob */
+  --a-switch-h: 28px;
 
   /* Paddings around text */
   --a-btn-pad-x: 20px;
@@ -263,6 +340,14 @@
   --a-side-column: clamp(360px, 24vw, 440px);
   --a-section-gap: 40px;
   --a-gap: 20px;
+  /*
+   * The sticky page bar (title + header actions). Its height is what a page's
+   * own sticky element must clear: use top: var(--a-sticky-top) (sticky
+   * offsets are measured inside .admin-content's top padding).
+   */
+  --a-page-bar-pad-y: 14px;
+  --a-page-bar-height: calc(max(var(--a-control), var(--a-size-title) * 1.15) + 2 * var(--a-page-bar-pad-y));
+  --a-sticky-top: calc(var(--a-page-bar-height) - var(--a-page-pad-top) + 16px);
 
   /* ---------------------------------------------------- legacy bridge */
 
@@ -317,8 +402,8 @@
   --tracking-tight: -0.01em;
   --tracking-caps: 0;
   --focus-color: var(--a-focus-color);
-  --focus-ring: 0 0 0 2px var(--a-focus-color);
-  --focus-ring-tight: 0 0 0 2px var(--a-focus-color);
+  --focus-ring: 0 0 0 1px var(--a-focus-color), var(--a-focus-halo);
+  --focus-ring-tight: 0 0 0 1px var(--a-focus-color), var(--a-focus-halo);
   --focus-ring-inset: inset 0 0 0 2px var(--a-focus-color);
   --focus-glow: var(--focus-ring);
   --focus-border: var(--a-focus-color);

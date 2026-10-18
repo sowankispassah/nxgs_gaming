@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronRight, Search } from 'lucide-react';
+import { ChevronRight, Lock, RefreshCw, Search } from 'lucide-react';
 import type { FleetStation, ModeratorRecord } from '../../../shared/types';
 import {
   Badge,
@@ -118,17 +118,20 @@ export function DeviceManagementPanel(props: {
 
   if (access === 'locked') {
     return (
-      <EmptyState
-        className="fleet-locked"
-        title="Main admin PIN needed"
-        action={(
-          <button className="admin-btn admin-btn--primary" type="button" disabled={owner.prompting} onClick={() => void unlock()}>
-            Unlock
-          </button>
-        )}
-      >
-        This page shows every device, its games and moderators. Enter the main admin PIN to continue.
-      </EmptyState>
+      // The same shape as every empty state on this page: a panel in the content's place, the outline lock above the title.
+      <Panel className="fleet-locked">
+        <EmptyState
+          icon={<Lock />}
+          title="Main admin PIN needed"
+          action={(
+            <button className="admin-btn admin-btn--primary" type="button" disabled={owner.prompting} onClick={() => void unlock()}>
+              Unlock
+            </button>
+          )}
+        >
+          This page shows every device, its games and moderators. Enter the main admin PIN to continue.
+        </EmptyState>
+      </Panel>
     );
   }
 
@@ -176,6 +179,7 @@ export function DeviceManagementPanel(props: {
         <div ref={listRef} className="fleet-list-anchor">
           <PageActions>
             <button className="admin-btn" type="button" disabled={loading} onClick={() => void loadAll()}>
+              <RefreshCw aria-hidden="true" />
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
           </PageActions>

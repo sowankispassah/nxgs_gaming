@@ -1,6 +1,7 @@
 /*
  * Control Room settings pages for this device: Sessions (play access, admin
- * PIN), Branding, Kiosk (behavior, diagnostics, storage, exit) and Updates.
+ * PIN), Branding, System (the `kiosk` tab: lockdown, diagnostics, storage,
+ * exit) and Updates.
  *
  * Every page is a stack of PageSections. A section holds one panel of
  * hairline rows (kit .admin-panel--rows) whose rows are kit rows
@@ -66,7 +67,13 @@
 
 /* ------------------------------------------------------------ play access */
 
-/* Radio rows: radio, then label and description. The row shows keyboard focus. */
+/*
+ * Radio rows in a grouped inset list (kit row geometry): each row reaches to
+ * 4px inside the rows panel (--a-row-inset) with its text at the panel
+ * padding, so hover and focus are a 10px rounded highlight concentric with
+ * the panel. Inset hairlines start at the label (past the radio) and hide
+ * next to a highlighted row. Keyboard focus draws --a-focus inside the row.
+ */
 .settings-choices {
   display: grid;
   min-width: 0;
@@ -76,16 +83,36 @@
 }
 
 .settings-choice {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 14px;
   min-height: var(--a-setting-row);
-  padding: 16px 0;
+  margin-inline: calc(var(--a-row-inset) - var(--a-panel-pad));
+  border-radius: var(--a-radius-control);
+  padding: 16px calc(var(--a-panel-pad) - var(--a-row-inset));
   cursor: pointer;
+  transition: background-color var(--a-dur) var(--a-ease);
 }
 
-.settings-choice + .settings-choice {
-  border-top: 1px solid var(--a-line);
+.settings-choice + .settings-choice::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: calc(var(--a-panel-pad) - var(--a-row-inset));
+  left: calc(var(--a-panel-pad) - var(--a-row-inset) + var(--a-check) + 14px);
+  height: 1px;
+  background: var(--a-line);
+  transition: opacity var(--a-dur) var(--a-ease);
+}
+
+.settings-choice:is(:hover, :has(> input:focus-visible))::before,
+.settings-choice:is(:hover, :has(> input:focus-visible)) + .settings-choice::before {
+  opacity: 0;
+}
+
+.settings-choice:hover {
+  background: var(--a-panel-2);
 }
 
 .settings-choice > input[type='radio'] {
@@ -93,14 +120,16 @@
   margin: 2px 0 0;
 }
 
+/* One class out-ranks the kit's (0,2,1) radio focus rule: the row shows focus instead. */
 .settings-choice > input[type='radio']:focus-visible {
+  box-shadow: none;
   outline: none;
 }
 
 .settings-choice:has(> input:focus-visible) {
-  border-radius: var(--a-radius-xs);
+  background: var(--a-panel-2);
   outline: var(--a-focus);
-  outline-offset: 4px;
+  outline-offset: -2px;
 }
 
 .settings-choice:hover > input[type='radio']:not(:checked) {
@@ -123,7 +152,7 @@
   height: 136px;
   place-items: center;
   overflow: hidden;
-  border-radius: var(--a-radius);
+  border-radius: var(--a-radius-control);
   background: var(--a-logo-tile);
 }
 
@@ -181,7 +210,7 @@
   gap: 10px;
 }
 
-/* Two columns of key/value groups with a hairline between them. */
+/* Two columns of key/value groups with an inset hairline between them (it stops at the panel padding, like every separator in a grouped container). */
 .admin-panel.diagnostics-panel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -189,15 +218,23 @@
 }
 
 .diagnostics-column {
+  position: relative;
   display: grid;
   align-content: start;
   min-width: 0;
   gap: 24px;
-  padding: 20px var(--a-panel-pad) 16px;
+  /* The last row's own 8px padding completes the bottom inset. */
+  padding: var(--a-panel-pad) var(--a-panel-pad) calc(var(--a-panel-pad) - 8px);
 }
 
-.diagnostics-column + .diagnostics-column {
-  border-left: 1px solid var(--a-line);
+.diagnostics-column + .diagnostics-column::before {
+  content: '';
+  position: absolute;
+  top: var(--a-panel-pad);
+  bottom: var(--a-panel-pad);
+  left: 0;
+  width: 1px;
+  background: var(--a-line);
 }
 
 .diagnostics-group {
@@ -338,7 +375,7 @@
 .update-progress-track {
   height: 6px;
   overflow: hidden;
-  border-radius: 3px;
+  border-radius: var(--a-radius-inner);
   background: var(--a-line-strong);
 }
 
@@ -445,9 +482,13 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .diagnostics-column + .diagnostics-column {
-    border-top: 1px solid var(--a-line);
-    border-left: 0;
+  .diagnostics-column + .diagnostics-column::before {
+    top: 0;
+    right: var(--a-panel-pad);
+    bottom: auto;
+    left: var(--a-panel-pad);
+    width: auto;
+    height: 1px;
   }
 }
 

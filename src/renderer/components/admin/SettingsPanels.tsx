@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { RefreshCw } from 'lucide-react';
 import type { AppDiagnostics, AppSettings, InitialData, KioskSettings } from '../../../shared/types';
 import { BrandLogo } from '../BrandLogo';
 import { Badge, Notice, PageSection, Panel, StatusText, SwitchRow, type Tone } from './AdminKit';
 
 /*
- * This device's settings pages (Sessions, Branding, Kiosk). Each page is a
- * stack of PageSections; a section holds one panel of hairline rows
- * (Panel padding="rows") whose rows put the label and description on the left
- * and the control on the right (kit SwitchRow / .admin-value-row).
+ * This device's settings pages (Sessions, Branding, System: the `kiosk` tab).
+ * Each page is a stack of PageSections; a section holds one grouped inset
+ * list (Panel padding="rows") whose rows put the label and description on the
+ * left and the control on the right (kit SwitchRow / .admin-value-row).
  */
 
 /** A settings row with a non-switch control: copy on the left, the control on the right. */
@@ -295,7 +296,7 @@ export function KioskSettingsPanel(props: {
     setMessage('');
     try {
       props.onSettingsChanged(await window.nxgs.updateSettings(settings));
-      setMessage('Saved kiosk settings.');
+      setMessage('Saved lockdown settings.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -324,7 +325,7 @@ export function KioskSettingsPanel(props: {
 
   return (
     <div className="admin-stack">
-      <PageSection title="Kiosk behavior" description="How NXGS Play holds the screen while customers use this device.">
+      <PageSection title="Lockdown" description="How NXGS Play holds the screen while customers use this device.">
         <Panel padding="rows">
           <div className="admin-switch-list">
             <SwitchRow
@@ -363,7 +364,7 @@ export function KioskSettingsPanel(props: {
           </div>
           <SaveBar message={message} ok={message.startsWith('Saved')}>
             <button className="admin-btn admin-btn--primary" type="button" disabled={pending} onClick={() => void saveKiosk()}>
-              {pending ? 'Saving...' : 'Save kiosk settings'}
+              {pending ? 'Saving...' : 'Save lockdown settings'}
             </button>
           </SaveBar>
         </Panel>
@@ -379,6 +380,7 @@ export function KioskSettingsPanel(props: {
         )}
         actions={(
           <button className="admin-btn admin-btn--sm" type="button" disabled={pendingDiagnostics} onClick={() => void refreshDiagnostics()}>
+            <RefreshCw aria-hidden="true" />
             {pendingDiagnostics ? 'Refreshing...' : 'Refresh'}
           </button>
         )}
@@ -392,7 +394,7 @@ export function KioskSettingsPanel(props: {
         )}
         <Panel className="diagnostics-panel">
           <div className="diagnostics-column">
-            <DiagnosticGroup title="Kiosk">
+            <DiagnosticGroup title="Lockdown">
               <DiagnosticItem label="Current mode" value={code(kiosk.mode)} />
               <DiagnosticItem label="NXGS visible" value={flag(kiosk.launcherVisible, 'warning')} />
               <DiagnosticItem label="System bar hidden" value={flag(kiosk.taskbarHidden, lockdownTone)} />

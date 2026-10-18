@@ -45,6 +45,10 @@ assert.match(
   'Accounts and All devices must follow the station sections (Device included) in the tab cycle'
 );
 assert.match(admin, /label="Details"[\s\S]*label="Business">[\s\S]*label="Accounts"[\s\S]*label="All devices"/, 'sidebar must list Accounts then All devices, in the Business group after Details');
+// v3 modern: the Kiosk section is shown as "System" (internal id stays `kiosk`), and every nav item carries an icon.
+assert.match(admin, /tabProps\('kiosk'\)\} label="System"/, 'the kiosk section must be labelled System in the sidebar');
+assert.match(admin, /kiosk: \{[^}]*title: 'System'/, 'the kiosk page title must read System');
+assert.doesNotMatch(admin, /<TabButton(?![^>]*icon=)[^>]*\/>/, 'every sidebar nav item must carry an icon');
 assert.match(admin, /accounts: \{\s*title: 'Accounts'/);
 assert.match(admin, /fleet: \{\s*title: 'All devices'/);
 assert.match(admin, /tab === 'accounts' && \(\s*<AccountsPanel/);
@@ -117,15 +121,36 @@ assert.match(fleetPanel, /Main admin PIN needed/);
 assert.match(stationPanel, /Waiting for device/);
 assert.match(stationPanel, /View earnings/);
 assert.match(stationPanel, /This is the device you are using now\./);
-// Control Room v2 icon policy: text buttons (Refresh, Sync now, Rejoin, Unlock, Edit, View earnings, back to All devices...)
-// and plain fields carry no icon; icon-only row actions (delete, copy) and the search field's magnifier stay.
-for (const [name, source] of Object.entries({ fleetPanel, stationPanel, moderators, syncCard, deviceManager })) {
+// Control Room v3 icon policy: text buttons (Rejoin, Unlock, Edit, View earnings, back to All devices...) and plain
+// fields carry no icon, except the standard actions modern apps mark with one: Add/New a leading Plus, Refresh a
+// leading RefreshCw ("Refresh", "Sync now"), Export a leading Download. Icon-only row actions (delete, copy), the
+// search field's magnifier and the locked state's outline icon stay.
+for (const [name, source] of Object.entries({ fleetPanel, stationPanel, moderators, syncCard, deviceManager, accounts })) {
   assert.doesNotMatch(
     source,
-    /import \{[^}]*\b(RefreshCw|LogIn|Pencil|Plus|ReceiptIndianRupee|LockKeyhole|ArrowLeft|Building2|MapPin|Store)\b[^}]*\} from 'lucide-react'/,
+    /import \{[^}]*\b(LogIn|Pencil|ReceiptIndianRupee|LockKeyhole|ArrowLeft|Building2|MapPin|Store)\b[^}]*\} from 'lucide-react'/,
     `${name}: text buttons and plain fields must not carry decorative icons`
   );
 }
+const refreshButton = /<RefreshCw aria-hidden="true" \/>\s*\{loading \? 'Refreshing\.\.\.' : 'Refresh'\}/;
+assert.match(fleetPanel, refreshButton, 'Refresh leads with the standard RefreshCw icon');
+assert.match(stationPanel, refreshButton, 'Refresh leads with the standard RefreshCw icon');
+assert.match(accounts, refreshButton, 'Refresh leads with the standard RefreshCw icon');
+assert.match(syncCard, /<RefreshCw aria-hidden="true" \/>\s*\{action === 'sync' \|\| status\?\.syncing \? 'Syncing\.\.\.' : 'Sync now'\}/, 'Sync now leads with RefreshCw');
+assert.match(moderators, /<Plus aria-hidden="true" \/>\s*New moderator/, 'New moderator leads with Plus');
+assert.match(accounts, /<Download aria-hidden="true" \/>\s*\{exporting \? 'Saving\.\.\.' : 'Export CSV'\}/, 'Export CSV leads with Download');
+// The standard icons appear only on those buttons, never as decoration elsewhere on these pages.
+for (const [name, source, icon, count] of [
+  ['fleetPanel', fleetPanel, 'RefreshCw', 1],
+  ['stationPanel', stationPanel, 'RefreshCw', 1],
+  ['syncCard', syncCard, 'RefreshCw', 1],
+  ['accounts', accounts, 'RefreshCw', 1],
+  ['accounts', accounts, 'Download', 1],
+  ['moderators', moderators, 'Plus', 1]
+]) {
+  assert.equal((source.match(new RegExp(`<${icon}\\b`, 'g')) ?? []).length, count, `${name}: ${icon} only on its standard action`);
+}
+assert.match(fleetPanel, /className="fleet-locked">\s*<EmptyState\s+icon=\{<Lock \/>\}/, 'the locked page shows the outline lock above its title');
 assert.match(stationPanel, /className="fleet-detail-back" type="button" onClick=\{props\.onBack\}>All devices<\/button>/, 'the device detail keeps a real back button');
 assert.match(moderators, /A moderator's PIN unlocks the Control Room on the devices you pick\./);
 assert.match(moderators, /Leave blank to keep the current PIN/);

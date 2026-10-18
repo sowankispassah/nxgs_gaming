@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LoaderCircle } from 'lucide-react';
+import { LoaderCircle, RefreshCw } from 'lucide-react';
 import type {
   DeviceStatus,
   FleetStation,
@@ -202,6 +202,7 @@ export function FleetStationPanel(props: {
     <div className="fleet-detail">
       <PageActions>
         <button className="admin-btn" type="button" disabled={loading} onClick={() => void loadDetail()}>
+          <RefreshCw aria-hidden="true" />
           {loading ? 'Refreshing...' : 'Refresh'}
         </button>
       </PageActions>
@@ -274,9 +275,11 @@ export function FleetStationPanel(props: {
                 {gameError && <Notice tone="error">{gameError}</Notice>}
                 {!detail && loading && <LoadingState label="Loading games..." />}
                 {detail && games.length === 0 && (
-                  <EmptyState title="No games synced">
-                    Games added on this device appear here after it syncs.
-                  </EmptyState>
+                  <Panel>
+                    <EmptyState title="No games synced">
+                      Games added on this device appear here after it syncs.
+                    </EmptyState>
+                  </Panel>
                 )}
                 {games.length > 0 && (
                   <div className="admin-table-scroll fleet-games-scroll">
@@ -454,8 +457,9 @@ export function FleetStationPanel(props: {
                 description="People whose PIN unlocks the Control Room on this device."
                 className="fleet-assigned"
               >
+                {/* A grouped container like the Device facts above it, empty or not. */}
                 {assigned.length === 0 ? (
-                  <p className="admin-field-help">No moderators for this device. Only its own admin PIN unlocks it.</p>
+                  <p className="fleet-assigned-empty">No moderators for this device. Only its own admin PIN unlocks it.</p>
                 ) : (
                   <ul className="fleet-assigned-list">
                     {assigned.map((moderator) => (

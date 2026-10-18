@@ -1,15 +1,18 @@
 # Control Room design system
 
 The Control Room (`src/renderer/components/admin/AdminScreen.tsx` and every page
-it renders) is a quiet operator console for a gaming café: dense and
-typographic, in a dark or a light theme. Hierarchy comes from type, alignment
-and tone, not from boxes or outlines. One brand accent, NXGS magenta, marks
-what is chosen or actionable; other colour only carries meaning (status,
-verified money, errors). Text is set at the size staff knew from 0.26.0 (see
-Rules: type), with generous controls around it: inputs and buttons are 48px
-high (only the compact controls the kit defines, small buttons, segments,
-toggle chips, filter buttons and the inline switch, are 40px), and focus is
-always a visible accent outline, because staff may drive it with a controller.
+it renders) is a calm, modern operator console for a gaming café, in a dark or
+a light theme, in the idiom of current system settings apps (macOS / iOS
+System Settings, Raycast, Linear): layered surfaces, grouped inset lists in
+rounded containers, radius by role, a sticky translucent page bar, quiet
+motion. Hierarchy comes from type first, then from those surfaces; never from
+decoration. One brand accent, NXGS magenta, marks what is chosen or
+actionable; other colour only carries meaning (status, verified money,
+errors). Text is set at the size staff knew from 0.26.0 (see Rules: type),
+with generous controls around it: inputs and buttons are 48px high (only the
+compact controls the kit defines, small buttons, segments, toggle chips,
+filter buttons and the inline switch, are 40px), and focus is always a
+visible accent ring, because staff may drive it with a controller.
 
 Customer surfaces (Home, Settings, the quick menu, PinDialog,
 AdminOptionsDialog...) are out of scope: they keep Inter and the console look.
@@ -22,10 +25,12 @@ What makes it NXGS rather than a default component theme:
 - **One accent, NXGS magenta** (from the logo's neon; the logo runs cyan to
   magenta, but the Control Room uses magenta only, never both and never a
   gradient). It is used sparingly and only for: the primary button fill, the
-  active nav marker, the focus outline, selected segments and chips (tint +
-  accent text), checked boxes and radios, links, the switch "on" track, the
-  selected-row bar, and the hero figure's small marker in Accounts. Text on an
-  accent tint uses `--a-accent-strong`; text on the accent fill uses
+  active nav item (tint + icon), the focus ring, selected toggle chips and
+  active filters (tint + accent text), checked boxes and radios, links, the
+  switch "on" track, the selected row's faint tint, and the hero figure's
+  small marker in Accounts. A chosen segment is *not* accent: it is raised
+  above its track. Text on an accent tint uses `--a-accent-strong` (or
+  `--a-text`, as the active nav item does); text on the accent fill uses
   `--a-on-accent` (never white in the dark theme, never black in the light one).
 - **Neutrals lean faintly violet** (hue about 300, very low chroma) toward the
   accent. Not zinc, not blue.
@@ -37,27 +42,51 @@ What makes it NXGS rather than a default component theme:
   - Red Hat Text (`--a-font`): all other UI text. Tabular figures stay on for
     columns (set on `.admin-screen`).
   - Red Hat Mono (`--a-font-mono`): IDs, payment IDs, paths and key names.
-- **Shape and lines: fewer outlines, crisper corners.** Radius 4px for panels,
-  controls, badges, popovers and modals (segments inside a track 2px); the
-  switch track is the only rounded-full element. Separate by tone before
-  lines: tables, stat rows and grouped forms sit on `--a-panel` with no outer
-  border, hairlines only between rows. Inputs are filled with a subtle border
-  that is heavier at the bottom and turns accent on focus. Secondary buttons,
-  chips, badges and filter buttons are tonal fills; ghost buttons are text.
-  Outlines remain only where they mean something: the danger zone's red
-  hairline, the selected chip's accent edge, floating surfaces (popover,
-  modal) and the focus outline.
-- **Icons only where they carry meaning.** No icons in the sidebar nav, in
-  text buttons ("Refresh", "Export CSV", "Save device", "New game", "Whole
-  store"), in segments, in header actions, in field labels or in headings.
-  What stays, each because it is the only carrier of its meaning:
-  icon-only buttons for row actions (delete, copy, reorder, close, clear
-  search) with an `aria-label` (and a `title` where the action is not
-  obvious); the leading magnifier of a search field; the dropdown chevron of
-  a filter button; the row-expand chevron (Accounts) and row-open chevron
-  (All devices); the external-link arrow after "View GitHub release"; the x
-  of a removable filter chip; Notice icons; status dots and the verified
-  check. Units in a field are words ("min", "sec", "₹"), not icons.
+- **Shape: radius by role, concentric when nested.** Panels, grouped lists,
+  tables, stat rows, standalone facts lists, popovers and modals 14px
+  (`--a-radius-panel`); buttons, inputs, selects, the segmented track, nav
+  items, notices and row highlights 10px (`--a-radius-control`); segments
+  inside a track 8px (`--a-radius-segment`); toggle chips, filter buttons,
+  active-filter chips and picker rows 8px (`--a-radius-chip`); badges, key
+  caps, checkboxes and thumbnails 6px (`--a-radius-badge`); thin bars (the
+  timeline strip, share bars) 2px. A row highlight sits 4px inside its 14px
+  container (`--a-row-inset`), so its 10px corners run parallel to the
+  container's. The switch track is the only rounded-full element.
+- **Grouped inset lists (the core pattern).** Settings rows, facts lists,
+  tables and forms sit in rounded containers on the raised panel surface.
+  Separators are inset hairlines that start and end at the rows' text, never
+  edge to edge; a hovered, focused or selected row is a rounded highlight 4px
+  inside the container (so the first and last rows follow its corners), and
+  the hairlines next to it hide.
+- **Depth: layered surfaces.** Page `--a-bg` < `--a-sidebar` < `--a-panel` <
+  `--a-raised` (popovers, modals). Every container has a 1px `--a-edge`
+  (the line colour at low alpha) and `--a-shadow-panel`: a very soft drop
+  shadow in light, a 1px inner top highlight in dark (where depth comes from
+  surface lightness). Floating surfaces are translucent (`--a-raised-glass`)
+  over a 20px backdrop blur, with `--a-edge-strong` and the larger, softer
+  `--a-shadow-pop`. Inputs are filled with a 1px border all round. Secondary
+  buttons, chips, badges, the segmented track and filter buttons are tonal
+  fills; ghost buttons are text. Coloured edges remain only where they mean
+  something: the danger zone's red hairline, the selected chip's accent edge,
+  a notice's faint edge in its own colour, and the focus ring.
+- **Icons: the nav, standard actions and meaning carriers.** Every nav item
+  (and Back to Home) has a 20px outline lucide icon; group labels never do.
+  Text buttons stay text-only except the standard actions that modern apps
+  mark with an icon, the same icon everywhere, 20px (18px in a compact
+  button), never in a circle or tile: **Add / New** a leading `Plus`
+  ("New game", "New plan", "Add moderator"), **Refresh** a leading
+  `RefreshCw` ("Refresh", "Sync now"), **Export** a leading `Download`
+  ("Export CSV"), and an **external link** a trailing `ArrowUpRight` ("View
+  GitHub release"). Nothing else: no icons on Save, Cancel, Check for
+  updates, Scan, Browse, Edit, Lock, segments, field labels or headings.
+  Meaning carriers also keep theirs: icon-only buttons for row actions
+  (delete, copy, reorder, close, clear search) with an `aria-label` (and a
+  `title` where the action is not obvious); the leading magnifier of a search
+  field; the dropdown chevron of a filter button; the row-expand chevron
+  (Accounts) and row-open chevron (All devices); the x of a removable filter
+  chip; Notice icons; status dots and the verified check; and the optional
+  32px outline icon above an empty or locked state's title. Units in a field
+  are words ("min", "sec", "₹"), not icons.
 - **One signature element (the only bold move): the session timeline strip in
   Accounts.** A thin strip whose full width is the session's paid time,
   showing how it was used: one segment per game played (start/end relative to
@@ -91,8 +120,8 @@ What makes it NXGS rather than a default component theme:
 
 ## Themes
 
-- **Choice:** *Dark · Light · System*, a three-way radio group (a compact
-  segmented track, three equal segments) at the top of the sidebar footer,
+- **Choice:** *Dark · Light · System*, a three-way radio group (the kit's
+  segmented track, three equal segments, the chosen one raised) at the top of the sidebar footer,
   above "Back to Home" and the controller hints (`AdminThemeSwitch` in
   `AdminScreen.tsx`). Default Dark. System follows `prefers-color-scheme`
   live, which Electron takes from the Windows app theme. Tab reaches the
@@ -131,19 +160,25 @@ What makes it NXGS rather than a default component theme:
   `admin-screen` token scope or keep it console-styled like the PIN dialog.
 - **Contrast:** body, secondary and tertiary text, accent text and every
   status colour reach 4.5:1 on the surfaces they sit on in both themes (bg,
-  sidebar, panel, panel-2, inset, and their tints); the focus outline, the
-  switch "on" track, checkbox borders and the field bottom line reach 3:1.
-  Re-check with a contrast script when a token changes.
+  sidebar, panel, panel-2, inset, tonal, raised, panel footer, field, the
+  translucent page bar, table header and popover glass composited over what
+  they float on, the chosen segment, the active nav tint and the selected-row
+  tints); the focus line, the switch "on" track, checkbox borders, nav icons
+  and the active nav icon reach 3:1. Tertiary text never sits on a hover fill
+  (`--a-nav-hover`, `--a-tonal-hover`): the kit steps it up to `--a-text-2`
+  there. Fields are identified by fill plus a 1px border (about 1.5:1) and
+  their label; the focus state is the accent border and ring. Re-check with a
+  contrast script when a token changes.
 
 ## Files
 
 | File | Owns |
 | --- | --- |
-| `src/renderer/styles/admin/tokens.css` | The Red Hat font imports; the `--a-*` colour and weight tokens for the dark and light themes (with `color-scheme`); the theme-independent tokens (shape, type, sizes, layout, motion); and the bridge that re-points the global console tokens inside the Control Room (below) |
-| `src/renderer/styles/admin/shell.css` | Screen grid, sidebar (brand tile, text nav, theme switch, footer), page container (1240 / 1760px), page header, scope note, header actions and the main admin chip |
-| `src/renderer/styles/admin/kit.css` | Base elements inside `.admin-screen` and every shared primitive: panels and footers, buttons, fields, switch rows, inline switches, danger zone, segmented, toggle chips, badges, status text, stat row, tables (clickable and selected rows), notices, empty and loading, facts lists, list rows, FilterPopover with its pickers and active-filter chips, modals |
+| `src/renderer/styles/admin/tokens.css` | The Red Hat font imports; the `--a-*` colour, depth and weight tokens for the dark and light themes (with `color-scheme`); the theme-independent tokens (radius by role, type, sizes, focus ring, motion, layout, the page bar); and the bridge that re-points the global console tokens inside the Control Room (below) |
+| `src/renderer/styles/admin/shell.css` | Screen grid, sidebar (brand tile, section labels, nav items with icons, theme switch, Back to Home, hints), page container (1240 / 1760px), the sticky page bar (title + header actions), the intro (description, scope note), the tab content's entrance and the main admin chip |
+| `src/renderer/styles/admin/kit.css` | Base elements inside `.admin-screen` (focus ring, fields, checks) and every shared primitive: panels, grouped inset rows and footers, buttons (icons, press), fields, switch rows, inline switches, danger zone, segmented, toggle chips, badges, status text, stat row, tables (inset rows, sticky translucent header, clickable, selected and expanded rows), notices, empty and loading, facts lists, list rows, FilterPopover with its pickers and active-filter chips, modals, and the reduced-motion rules |
 | `src/renderer/styles/admin/library.css` | Games (library list, editor groups, artwork, sticky save bar), the installed game picker modal (edge-to-edge list), Scan (results table, confidence bars) |
-| `src/renderer/styles/admin/settings.css` | Sessions (play access choices, page save bar), Branding, Kiosk (diagnostics columns, exit PIN width), Updates (summary, progress, restart modal) |
+| `src/renderer/styles/admin/settings.css` | Sessions (play access choices, page save bar), Branding, System (the `kiosk` tab: diagnostics columns, exit PIN width), Updates (summary, progress, restart modal) |
 | `src/renderer/styles/admin/plans.css` | Plans: table column widths and the editor's customer preview |
 | `src/renderer/styles/admin/device.css` | Device: the device ID cell with its copy button |
 | `src/renderer/styles/admin/accounts.css` | Accounts: filter bar layout, result line, sessions table columns and expanded row, the session timeline strip, By device / Top games share bars |
@@ -160,11 +195,15 @@ them; anything a second page needs goes into the kit.
 
 ## Rules
 
-- **Surfaces are flat and separated by tone.** `--a-bg` page, `--a-sidebar`,
-  `--a-panel` for tables, stat rows and grouped forms (no outer border),
-  `--a-tonal` for secondary buttons, chips, badges and filter buttons. No
-  gradients, no glows, no card shadows. Only popovers and modals get a shadow
-  (`--a-shadow-pop`) and a 1px `--a-line-strong` edge, because they float.
+- **Surfaces are layered, not decorated.** `--a-bg` page, `--a-sidebar`,
+  `--a-panel` for every grouped container (tables, stat rows, grouped lists,
+  forms, standalone facts lists) with its 1px `--a-edge` and
+  `--a-shadow-panel`, `--a-raised-glass` for popovers and modals with
+  `--a-edge-strong` and `--a-shadow-pop`, `--a-tonal` for secondary buttons,
+  chips, badges, filter buttons and the segmented track. Page CSS that draws
+  its own container uses the same three tokens (`--a-edge`,
+  `--a-shadow-panel`, `--a-radius-panel`). No gradients, no glows, no
+  coloured shadows, no heavy drop shadows.
 - **A panel holds a table, a grouped form or a list. Never nest panels.** The
   heading goes above the panel (`PageSection`), never inside it. A form panel
   ends in a full-width `.admin-panel-footer` (feedback left, button right).
@@ -230,14 +269,16 @@ them; anything a second page needs goes into the kit.
   | Token | Dark / light | For |
   | --- | --- | --- |
   | `--a-weight-medium` | 500 / 600 | Field and row labels, column headers, buttons, segments, chips, badges, status words, stat and filter labels, nav group labels |
-  | `--a-weight-strong` | 600 / 700 | Group titles (h3/h4, `.admin-subheading`: "Details", "Kiosk", "Games played"), the primary button, the chosen segment, the active nav item |
-  | `--a-weight-display` | 600 / 700 | Red Hat Display: page, section, modal and sub-page titles, figures |
+  | `--a-weight-strong` | 600 / 700 | Group titles (h3/h4, `.admin-subheading`: "Details", "Lockdown", "Games played"), the primary button, the chosen segment, the active nav item |
+  | `--a-weight-display` | 600 / 700 | Red Hat Display: section and sub-page titles, figures |
+  | `--a-weight-title` | 600 / 650 | Red Hat Display large titles: the page title, modal titles, the sidebar "Control Room" (with -0.02em tracking) |
 
   The step matters most where a group title sits beside labels of the same
   size and colour (the Games editor's "Details" next to "Game title"): strong
   is always one notch above medium, in both themes.
 - **Sentence case everywhere.** No uppercase and no letter-spacing, except
-  keyboard key names (`.admin-kbd`).
+  keyboard key names (`.admin-kbd`) and the sidebar's group labels (uppercase,
+  +0.08em), which must read as section labels, never as tabs.
 - **Numbers are tabular in columns** (set on `.admin-screen`), proportional in
   big standalone figures (`.admin-stat-value`). Money and counts in tables are
   right aligned (`.admin-num`). Dates and times come from `fleetFormat`
@@ -250,19 +291,25 @@ them; anything a second page needs goes into the kit.
   facts in a side column; anywhere wider, or when a value can be long (paths,
   IDs, errors, notes), the label column is fixed and values are left aligned
   (`.admin-meta-list--left`).
-- **Focus:** `outline: 2px solid var(--a-accent); outline-offset: 2px`
-  (`--a-focus`, `--a-focus-offset`) on everything focusable, for
-  `:focus-visible` and `.controller-focused`, in both themes, including the
-  controller-focused nav item. Fields also turn their border accent. No glow,
-  no box-shadow ring. Hidden-checkbox controls (switch rows, inline switches,
-  radio rows, picker options) outline the whole row or label. An element
-  with its own focus look replaces the kit outline instead of adding a
-  second ring (the timeline segments outline only the drawn bar, the game
-  picker rows draw it inset, the device detail's back link sits at offset
-  0); see Specificity for how.
-- **Pending buttons, one rule for every page.** A text button never shows an
-  icon or a spinner. While its action runs it is disabled and its label
-  becomes the "-ing" form with three dots: "Saving...", "Checking...",
+- **Focus: the soft ring**, for `:focus-visible` and `.controller-focused`,
+  in both themes, including the controller-focused nav item: a 1px accent
+  line (`outline: var(--a-focus-line)` at offset 0) plus 3px of accent at
+  ~35% outside it (`box-shadow: var(--a-focus-halo)`; the soft colour is
+  `--a-focus-soft`). A control's own shadow (the primary button's top
+  highlight, the chosen segment's lift) rides along through `--btn-shadow`,
+  so it is never lost on focus. Fields turn their border accent and add the
+  3px ring (`--a-focus-halo-field`). Never a blurred glow. Whole rows inside
+  a clipped container (switch rows in a grouped list, radio rows, picker
+  options, the game picker rows) draw `--a-focus` (2px solid accent) inside
+  the row (`outline-offset: -2px`) on the row's highlight; a switch row in an
+  ordinary form outlines at offset 4px. An element with its own focus look
+  replaces the kit ring instead of adding a second one (the timeline
+  segments outline only the drawn bar, the device detail's back link sits at
+  offset 0); see Specificity for how.
+- **Pending buttons, one rule for every page.** A text button never shows a
+  spinner (a standard-action icon, see Icons, stays as it is). While its
+  action runs it is disabled and its label becomes the "-ing" form with
+  three dots: "Saving...", "Checking...",
   "Refreshing...", "Retrying...", "Scanning...", "Adding...", "Deleting...",
   "Removing...", "Syncing...", "Rejoining...", "Restoring...", "Updating...",
   "Browsing...", "Downloading...", "Restarting...", "Exiting...". Keep the
@@ -290,8 +337,15 @@ them; anything a second page needs goes into the kit.
   Primitives a page lays out but must not restyle (`.admin-btn`, inputs,
   `.modal`) keep `.admin-screen` in front; a page that only adds a width or a
   margin to one of them needs no prefix either (`.game-browse`, `.scan-add`).
-- **Motion:** colour/background transitions up to 120ms. No scale, lift, glow,
-  shimmer or entrance animation.
+- **Motion: quick and quiet, all of it off under `prefers-reduced-motion`.**
+  Colour, background, border and shadow transitions 120ms (`--a-dur`); a
+  pressed button, segment, chip, filter button or nav item scales to 0.98
+  over 90ms (`--a-press-scale`, `--a-dur-press`); each tab's content fades in
+  and rises 4px over 160ms (`.admin-page-body`, `--a-dur-enter`); popovers
+  and modals fade in from 0.98 over 140ms (`--a-dur-pop`); an expanded table
+  row's content fades in over 160ms; the switch knob slides over 160ms. No
+  lift, glow, shimmer, bounce or hover transforms. The page bar's hairline is
+  scroll-driven (`animation-timeline: scroll()`), not timed.
 
 ## Status colours
 
@@ -322,60 +376,78 @@ Colour tokens (dark / light):
 | --- | --- | --- | --- |
 | `--a-bg` | `#111015` | `#f5f4f7` | Page background |
 | `--a-sidebar` | `#151419` | `#efedf2` | Sidebar |
-| `--a-panel` | `#19181e` | `#ffffff` | Tables, stat rows, grouped forms, popovers, modals |
-| `--a-panel-2` | `#211f27` | `#f1eff4` | Row hover, selected rows, picker hover |
-| `--a-inset` | `#0e0d12` | `#faf9fb` | Expanded table rows |
-| `--a-tonal` / `--a-tonal-hover` | `#24222b` / `#2e2b36` | `#e9e6ee` / `#dfdbe5` | Secondary buttons, toggle chips, badges, filter buttons, segmented track, active-filter chips, key caps |
-| `--a-nav-hover` | `#1e1c24` | `#e5e2ea` | Nav item hover and focus |
+| `--a-panel` | `#1a191f` | `#ffffff` | Every grouped container: panels, tables, stat rows, standalone facts lists |
+| `--a-panel-2` | `#232129` | `#f2f0f5` | Row hover and focus highlights, picker hover |
+| `--a-panel-footer` | `#17161c` | `#faf9fc` | The panel footer strip |
+| `--a-raised` / `--a-raised-glass` | `#222028` / same at 86% | `#ffffff` / white at 88% | Floating surfaces (popovers, modals); the glass one sits over a 20px blur |
+| `--a-inset` | `#131217` | `#f8f7fa` | Expanded table row (the well) |
+| `--a-tonal` / `--a-tonal-hover` | `#26242d` / `#302d38` | `#e9e6ee` / `#dfdbe5` | Secondary buttons, toggle chips, badges, filter buttons, segmented track, active-filter chips, key caps |
+| `--a-nav-hover` | `#1f1d25` | `#e4e1e9` | Nav item hover and focus |
+| `--a-bar` | bg at 80% | bg at 80% | The sticky page bar (over a 16px blur) |
+| `--a-table-head` | panel at 82% | white at 84% | Sticky table header (over a 16px blur) |
+| `--a-edge` / `--a-edge-strong` | white at 6% / 10% | ink at 8% / 12% | 1px container edge / floating-surface edge |
+| `--a-shadow-panel` | inner top highlight (white 3.5%) | `0 1px 2px` + `0 1px 1px` ink at 6% / 4% | Container depth |
+| `--a-highlight` | white at 16% | white at 18% | Top highlight inside the primary (and confirming danger) button |
 | `--a-logo-tile` | `#0e0d12` | `#18161d` | The brand logo's tile (dark in both themes) |
-| `--a-field` / `--a-field-hover` | `#0e0d12` / `#15141a` | `#ffffff` / `#faf9fb` | Input, select, textarea fill |
-| `--a-field-line` / `--a-field-line-bottom` | `#34313c` / `#6a6675` | `#dcd8e2` / `#8f8a99` | Field border (sides and top / bottom, 3:1) |
+| `--a-field` / `--a-field-hover` | `#111015` / `#15141a` | `#ffffff` / `#fbfafc` | Input, select, textarea fill |
+| `--a-field-line` / `--a-field-line-hover` | `#3a3743` / `#4a4654` | `#d5d1db` / `#bdb8c5` | Field border, all round (hover) |
+| `--a-field-line-bottom` | `#6a6675` | `#8f8a99` | Kept for pages; the kit no longer draws a heavier bottom |
 | `--a-control-border` | `#6a6675` | `#8a8693` | Unchecked checkbox and radio |
-| `--a-switch-off` / `-hover` / `--a-switch-knob` | `#3d3a46` / `#4a4654` / `#efedf3` | `#c4bfcc` / `#b3adbc` / `#ffffff` | Switch track off, hover; knob; scrollbar thumb |
-| `--a-line` / `--a-line-strong` | `#2a2830` / `#3a3742` | `#e3e0e8` / `#cfcbd6` | Hairlines between rows / popover and modal edges |
+| `--a-segment-on` / `--a-segment-shadow` | `#3a3744` / dark lift + inner highlight | `#ffffff` / soft ink shadow | The chosen segment, raised above its track |
+| `--a-switch-off` / `-hover` / `--a-switch-knob` / `--a-knob-shadow` | `#3d3a46` / `#4a4654` / `#efedf3` | `#c4bfcc` / `#b3adbc` / `#ffffff` | Switch track off, hover; knob and its shadow; scrollbar thumb |
+| `--a-line` / `--a-line-strong` | `#2a2830` / `#3a3742` | `#e3e0e8` / `#cfcbd6` | Hairlines between rows / the filter button's value divider |
 | `--a-text` / `-2` / `-3` | `#efedf3` / `#a7a3b0` / `#8e8a98` | `#18161d` / `#5d5966` / `#6a6674` | Primary / secondary / tertiary text |
 | `--a-inverse` | `#111015` | `#ffffff` | Text on a solid red (confirm delete) |
-| `--a-accent` | `#ff4fa3` | `#c2185b` | NXGS magenta: primary fill, active nav bar, focus, links, switch on, checked boxes, selected-row bar |
+| `--a-accent` | `#ff4fa3` | `#c2185b` | NXGS magenta: primary fill, active nav icon, focus line, links, switch on, checked boxes |
 | `--a-accent-strong` | `#ff79b9` | `#a3134c` | Primary hover, link hover, text on an accent tint |
+| `--a-accent-edge` | `#e23d8d` | `#9c1149` | The primary button's slightly darker 1px edge |
 | `--a-on-accent` | `#1a0710` | `#ffffff` | Text and check marks on the accent |
-| `--a-accent-tint` / `-tint-faint` / `-line` | magenta at 14% / 7% / 50% | magenta at 12% / 7% / 45% | Selected segment and chip, active filter / active nav fill / selected chip edge |
+| `--a-accent-tint` / `-tint-faint` / `-line` | magenta at 14% / 8% / 50% | magenta at 12% / 7% / 45% | Active nav fill, selected chip, active filter, selected row on hover / selected table and list row / selected chip edge |
+| `--a-focus-soft` | magenta at 35% | magenta at 30% | The soft 3px half of the focus ring |
 | `--a-green` `--a-amber` `--a-red` `--a-blue` | see Status colours | | Meaning only |
 | `--a-*-tint` | hue at 12% | hue at 10% | Notice, badge and danger button backgrounds |
 | `--a-red-tint-strong`, `--a-red-strong` | red 20%, `#ff8a70` | red 16%, `#972c0e` | Danger hover |
 | `--a-red-line` | red at 40% | red at 40% | Danger zone hairline |
 | `--a-neutral-tint` | text at 5% | text at 4% | Neutral notice |
-| `--a-scrim`, `--a-shadow-pop` | | | Modal backdrop; popover and modal shadow |
-| `--a-weight-medium` / `-strong` / `-display` | 500 / 600 / 600 | 600 / 700 / 700 | Font weights (see Rules: weights come from tokens) |
+| `--a-scrim`, `--a-shadow-pop` | | | Modal backdrop; popover and modal shadow (larger and softer, plus an inner highlight in dark) |
+| `--a-weight-medium` / `-strong` / `-display` / `-title` | 500 / 600 / 600 / 600 | 600 / 700 / 700 / 650 | Font weights (see Rules: weights come from tokens) |
 
 Theme-independent tokens:
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `--a-radius` / `-sm` / `-xs` | 4px | Panels, popovers, modals, inputs, buttons, badges, chips |
-| `--a-radius-inner` | 2px | Segments inside a segmented track |
+| `--a-radius-panel` (= `--a-radius`) | 14px | Panels, grouped lists, tables, stat rows, standalone facts lists, popovers, modals |
+| `--a-radius-control` (= `--a-radius-sm`) | 10px | Buttons, inputs, selects, segmented track, nav items, notices, row highlights |
+| `--a-radius-segment` / `--a-radius-chip` | 8px / 8px | Segments inside a track / toggle chips, filter buttons, active-filter chips, picker rows |
+| `--a-radius-badge` (= `--a-radius-xs`) | 6px | Badges, key caps, checkboxes, thumbnails, small inline buttons |
+| `--a-radius-inner` | 2px | Thin bars: timeline strip pieces, share bars |
+| `--a-row-inset` | 4px | How far a row highlight sits inside its container (14 - 4 = 10px corners) |
 | `--a-font-display` | Red Hat Display | Page title, section and modal headings, figures, sidebar brand |
 | `--a-font` | Red Hat Text | All UI text |
 | `--a-font-mono` | Red Hat Mono, Cascadia Mono, Consolas | IDs, payment IDs, paths, key names |
 | `--a-size-*` | see Rules: type | One token per text role, 0.26.0 base size × x-height ratio |
-| `--a-focus-color`, `--a-focus`, `--a-focus-offset` | accent, `2px solid`, 2px | Focus outline |
-| `--a-dur`, `--a-ease` | 120ms | Colour transitions |
+| `--a-focus-color`, `--a-focus-line`, `--a-focus-halo`, `--a-focus-halo-field` | accent, `1px solid`, `0 0 0 4px` soft, `0 0 0 3px` soft | The soft focus ring on controls (outline line + box-shadow halo) and fields (border + halo) |
+| `--a-focus`, `--a-focus-offset` | `2px solid` accent, 2px | Whole-row focus inside clipped containers (drawn inside the row) and page-specific outlines |
+| `--a-dur`, `--a-dur-press`, `--a-dur-enter`, `--a-dur-pop`, `--a-ease`, `--a-press-scale` | 120 / 90 / 160 / 140ms, 0.98 | Colour transitions, press, tab entrance, popover entrance |
 | `--a-control` / `--a-control-sm` / `--a-input` | 48 / 40 / 48px | Buttons and header actions / compact buttons, segments, chips, filter buttons, row actions / inputs, selects and the segmented track |
 | `--a-row` / `--a-header-row` | 56 / 44px | Table rows / column header |
 | `--a-setting-row` / `--a-list-row` | 66 / 68px | Switch, value and radio rows / list rows with a thumbnail (Games library) |
 | `--a-nav-item` / `--a-brand-logo` | clamp(40px, 5.2vh, 54px) / clamp(36px, 4.2vh, 46px) | Sidebar nav items / logo tile |
-| `--a-thumb` / `--a-icon` / `--a-icon-sm` / `--a-check` | 44 / 20 / 18 / 20px | Game artwork square / icons in buttons and hint glyphs / icons in compact buttons, fields, notices / checkboxes and radios |
+| `--a-thumb` / `--a-icon` / `--a-icon-sm` / `--a-icon-empty` / `--a-check` | 44 / 20 / 18 / 32 / 20px | Game artwork square / icons in nav items, buttons and hint glyphs / icons in compact buttons, fields, notices / the icon above an empty or locked state / checkboxes and radios |
+| `--a-switch-w` / `--a-switch-h` | 46 / 28px | The switch (iOS proportions, 24px knob) |
 | `--a-btn-pad-x` / `--a-btn-pad-x-sm` / `--a-field-pad-x` | 20 / 14 / 14px | Horizontal padding in buttons / compact buttons and chips / fields |
 | `--a-panel-pad` / `--a-modal-pad` | clamp(22px, 1.6vw, 28px) / 32px | Panel padding (and footer, stat cells) / modal padding |
 | `--a-cell-pad-x` / `--a-cell-pad-edge` | 14 / 20px | Table cell padding / first and last cell from the panel edge |
 | `--a-sidebar-width` | clamp(248px, 17vw, 320px) | Sidebar (the 0.26.0 width) |
 | `--a-page-pad-top` / `--a-page-pad-x` / `--a-page-pad-bottom` | clamp(24px, 3.6vh, 40px) / clamp(32px, 2.8vw, 56px) / 64px | Content padding |
 | `--a-page-max` / `--a-page-max-data` / `--a-side-column` / `--a-section-gap` | 1240 / 1760 / clamp(360px, 24vw, 440px) / 40px | Layout |
+| `--a-page-bar-pad-y` / `--a-page-bar-height` / `--a-sticky-top` | 14px / max(48px, title line) + 28px / bar height - top padding + 16px | The sticky page bar; a page's own sticky element uses `top: var(--a-sticky-top)` so it stops 16px under the bar |
 
 **Console token bridge.** The last block of `tokens.css` re-points the global
 console tokens inside `.admin-screen` only: `--ps-*` surfaces/text/status
 (`--ps-blue*` become the accent), `--panel-*`, `--text-primary/secondary`,
-`--font-ui` / `--font-display` (Red Hat), `--radius-*` (pill becomes 4px),
-`--text-*`, `--focus-*` and `--focus-ring*` (2px accent, no glow),
+`--font-ui` / `--font-display` (Red Hat), `--radius-*` (pill becomes 6px),
+`--text-*`, `--focus-*` and `--focus-ring*` (the soft ring: 1px accent + 3px soft),
 `--hover-ring`, `--shadow-1/2` (none), `--dur-*` (120ms), the slider and
 controller glyph colours. It exists for the shared pieces the Control Room
 renders (base inputs and buttons, the modal shell, `ControllerHints`,
@@ -384,43 +456,72 @@ admin CSS; use `--a-*`.**
 
 ## Shell (AdminScreen)
 
-- Sidebar (`--a-sidebar-width`, 248-320px): the logo on a dark tile +
-  "Control Room" (`--a-size-brand`, Red Hat Display) + device name; nav items
-  are `--a-size-nav` at `--a-nav-item` height, so all ten fit at 1366×768
-  with the footer; nav groups *Library* (Games, Scan), *This device* (Sessions,
-  Plans, Details, Branding, Kiosk, Updates), *Business* (Accounts, All
-  devices). Nav items are text only, aligned with the group label; the active
-  item has a 2px accent bar, strong-weight text and a faint accent tint; hover and
-  keyboard/controller focus use `--a-nav-hover` plus the accent outline.
-  `ADMIN_TABS` follows the sidebar order, so arrow keys and the D-pad move
-  through it top to bottom. Footer, top to bottom: the theme switch (Dark ·
-  Light · System, see Themes), "Back to Home" (ghost, no icon) and one line of
-  controller hints.
-- Page header: `PAGE_COPY[tab]` title (`--a-size-title` Red Hat Display) and
-  description (`--a-size-lead`), then the scope note (`--a-size-small`),
-  always present so every header has the same height:
-  "Applies to Station 01", "Earnings from Station 01" (Accounts, this
-  device), "Earnings from every device" (Accounts, all devices) or "Covers
-  every device" (All devices). The actions slot sits on the right, then (main
-  admin pages, while unlocked) the "Main admin unlocked · Lock" chip after a
-  hairline. A hairline closes the header.
-- `DATA_TABS` (games, accounts, fleet) get the 1760px container.
+- Sidebar (`--a-sidebar-width`, 248-320px): the logo on a dark 10px tile +
+  "Control Room" (`--a-size-brand`, Red Hat Display, title weight) + device
+  name; then the nav groups *Library* (Games, Scan), *This device* (Sessions,
+  Plans, Details, Branding, System, Updates), *Business* (Accounts, All
+  devices).
+  - **Group labels are section labels, never tabs:** `--a-size-caption`
+    uppercase with +0.08em tracking, `--a-text-3`, medium weight, aligned with
+    the icon column; not focusable, no hover, no pointer (`cursor: default`,
+    no `user-select`). Groups after the first sit 20-28px lower (the nav gap,
+    `clamp(20px, 2.6vh, 28px)`) with a short hairline centred in that gap; a
+    6px gap separates a label from its first item.
+  - **Nav items:** a 20px outline lucide icon (`.admin-nav-icon`, stroke 1.75,
+    `--a-text-3`) then the label (`--a-size-nav`, `--a-text-2`), 12px apart,
+    at `--a-nav-item` height, 10px radius, 2px between items. Hover and
+    keyboard/controller focus: `--a-nav-hover` fill, `--a-text` label,
+    `--a-text-2` icon (focus adds the soft ring). Active: the `--a-accent-tint`
+    fill, `--a-text` at the strong weight and an `--a-accent` icon. No bar.
+    A press scales to 0.98. Icons: Games `Gamepad2`, Scan `ScanSearch`,
+    Sessions `Timer`, Plans `Ticket`, Details `Monitor`, Branding `Palette`,
+    System `Settings`, Updates `CircleArrowDown`, Accounts `Wallet`, All
+    devices `Network`.
+  - **System** is the label and page title of the `kiosk` tab (lockdown
+    behaviour, live diagnostics, local storage and exit); the internal id
+    stays `kiosk` (tests, `ADMIN_TABS`, the settings page component).
+  - `ADMIN_TABS` follows the sidebar order, so arrow keys and the D-pad move
+    through it top to bottom. Footer, top to bottom: the theme switch (Dark ·
+    Light · System, see Themes), "Back to Home" (styled as a nav item with a
+    `House` icon) and one line of controller hints. On screens up to 800px
+    tall (1366×768) the hint line is hidden so the ten items, the theme
+    switch and Back to Home fit without the sidebar scrolling.
+- **Page bar (sticky):** `header.admin-page-header` holds the `PAGE_COPY[tab]`
+  title (`--a-size-title` Red Hat Display at `--a-weight-title`, -0.02em) and,
+  on the right, the actions slot then (main admin pages, while unlocked) the
+  "Main admin unlocked · Lock" chip after a hairline. It sticks to the top of
+  the content pane on a full-width band of `--a-bar` (the page background at
+  80%) over `backdrop-filter: blur(16px) saturate(140%)`; the band's hairline
+  fades in once content scrolls under it (a scroll-driven animation on
+  `scroll(nearest block)`, no script). Its height is `--a-page-bar-height`;
+  the pane's `scroll-padding-top` keeps keyboard focus and `revealInContent`
+  clear of it, and a page's own sticky element uses `top: var(--a-sticky-top)`.
+- **Intro:** `.admin-page-intro` under the bar (it scrolls away): the
+  description (`--a-size-lead`) and the scope note (`--a-size-small`),
+  always present so every intro has the same height: "Applies to Station
+  01", "Earnings from Station 01" (Accounts, this device), "Earnings from
+  every device" (Accounts, all devices) or "Covers every device" (All
+  devices). 36px then separate it from the first section; no hairline.
+- **Content:** `.admin-page-body`, keyed by tab, fades in and rises 4px when
+  a tab opens. `DATA_TABS` (games, accounts, fleet) get the 1760px container.
 - Kept behaviour: `data-admin-tab` on nav buttons, `.controller-focused` on the
   focused nav item, Escape/B closes (not from inputs or an open
   `[data-admin-popover]`), arrows stay inside `[data-admin-local-keys]` (the
   theme switch is one), the main admin is locked on unmount, `{owner.dialog}`
   (PinDialog) renders in the Control Room, `data-admin-theme` on the root.
 
-Put page-level actions (Refresh, Export, Add) in the header with
-`<PageActions>`, as 48px text buttons without icons; section-level actions
-(Sync now, View earnings) are 40px buttons in the section header:
+Put page-level actions (Refresh, Export, Add) in the page bar with
+`<PageActions>`, as 48px buttons (with the standard icon where the icon
+policy gives one); section-level actions (Sync now, View earnings) are 40px
+buttons in the section header:
 
 ```tsx
+import { Download, RefreshCw } from 'lucide-react';
 import { PageActions } from './AdminKit';
 
 <PageActions>
-  <button className="admin-btn" type="button" onClick={refresh}>Refresh</button>
-  <button className="admin-btn admin-btn--primary" type="button" onClick={exportCsv}>Export CSV</button>
+  <button className="admin-btn" type="button" onClick={refresh}><RefreshCw aria-hidden="true" />Refresh</button>
+  <button className="admin-btn admin-btn--primary" type="button" onClick={exportCsv}><Download aria-hidden="true" />Export CSV</button>
 </PageActions>
 ```
 
@@ -462,12 +563,21 @@ Import components from `components/admin/AdminKit.tsx`. Classes are in
 </PageSection>
 ```
 
-### Panel — the one raised surface
+### Panel — the raised surface, and the grouped inset list
 
-`.admin-panel` (`--a-panel-pad` padding, `--a-panel` fill, no outline: a transparent 1px
-border keeps the geometry). `padding="none"` (`.admin-panel--flush`) for
-edge to edge lists; `padding="rows"` (`.admin-panel--rows`, 4px `--a-panel-pad`) for a
-panel of hairline rows: switch rows, value rows, a facts list. Other props:
+`.admin-panel`: `--a-panel-pad` padding, `--a-panel` fill, 14px radius, a 1px
+`--a-edge` and `--a-shadow-panel`. `padding="none"` (`.admin-panel--flush`,
+clipped to its radius) for edge to edge lists; `padding="rows"`
+(`.admin-panel--rows`, 4px `--a-panel-pad`) makes it a **grouped inset
+list** of switch rows, value rows or a facts list: kit rows reach to 4px
+inside the panel (`--a-row-inset`) and keep their text at `--a-panel-pad`;
+between rows an inset hairline (a `::before`, from text edge to text edge);
+a switch row's hover and focus fill (`--a-panel-2`) is a 10px rounded shape
+concentric with the panel, and the hairlines next to it hide. Page rows
+placed in a rows panel follow the same geometry: the Sessions radio rows
+(`.settings-choice`) use the 4px inset, a 10px rounded hover and focus
+inside the row, with the hairline starting at the label past the radio; the
+update summary keeps its own plain hairlines. Other props:
 `as` (`div`, `section`, `form`, `ul`, `ol`), any HTML attribute, `ref`.
 
 ```tsx
@@ -478,9 +588,10 @@ panel of hairline rows: switch rows, value rows, a facts list. Other props:
 ### Panel footer — feedback and the save button
 
 `.admin-panel-footer`: full-width strip under a hairline at the bottom of a
-panel (works in default, flush and rows panels), notice on the left, the last
-button pushed right. The Games editor adds `.game-editor-footer` to make it
-sticky.
+panel on the slightly different `--a-panel-footer` tone, its bottom corners
+following the panel (works in default, flush and rows panels), notice on the
+left, the last button pushed right. The Games editor adds
+`.game-editor-footer` to make it sticky.
 
 ```tsx
 <footer className="admin-panel-footer">
@@ -503,27 +614,35 @@ sticky.
 
 ### Buttons — classes only
 
-`.admin-btn` + `--primary` (accent fill, `--a-on-accent` text, strong weight; hover
+`.admin-btn` + `--primary` (accent fill, `--a-on-accent` text, strong weight,
+a 1px `--a-accent-edge` and a faint `--a-highlight` top highlight; hover
 `--a-accent-strong`; never white), `--secondary` (the default: tonal
-`--a-tonal` fill, no outline), `--ghost` (text only, `--a-text-2`; tonal on
-hover), `--danger` (red text on a red tint, stronger on hover); 48px with
-`--a-size-button` text and 20px side padding, sizes `--sm` (40px,
+`--a-tonal` fill), `--ghost` (text only, `--a-text-2`; tonal on hover),
+`--danger` (red text on a red tint, stronger on hover); 10px radius, 48px
+with `--a-size-button` text and 20px side padding, sizes `--sm` (40px,
 `--a-size-button-sm`, 14px padding) and `--icon` (square, combine with
-`--sm`). Every variant keeps a
-transparent 1px border so they line up. Add `.confirming` to a danger button
-for the second click of a two-step delete (solid red, labelled with the
-action: "Delete", "Remove device"; Cancel beside it). Ghost danger
-(`--ghost --danger`) stays grey until hover: use it for row delete icons.
-Text buttons have no icon and no spinner: while busy they are disabled and
-read "Saving..." (see Pending buttons). Icon-only buttons (the kit sizes any
-`svg` in an `.admin-btn` to 20px, 18px in a compact one) are for row actions
-(delete, copy, reorder, close) and need an `aria-label`; while busy the icon
-becomes a spinner of the same size. Header actions and form footers are 48px;
-section, table and toolbar actions 40px. One primary button per view.
+`--sm`). Every variant keeps a 1px border (transparent unless the variant
+draws one) so they line up. A press scales the button to 0.98. A control's
+own shadow lives in `--btn-shadow` so the focus ring adds to it. Add
+`.confirming` to a danger button for the second click of a two-step delete
+(solid red, labelled with the action: "Delete", "Remove device"; Cancel
+beside it). Ghost danger (`--ghost --danger`) stays grey until hover: use it
+for row delete icons. Text buttons follow the icon policy (Identity: Icons):
+only Add/New (`Plus`), Refresh (`RefreshCw`), Export (`Download`) lead with
+an icon and an external link ends with `ArrowUpRight`; the kit sizes any
+`svg` in an `.admin-btn` to 20px (18px in a compact one) and tightens the
+padding on the icon's side by 4px (3px compact). No spinner in a text button:
+while busy it is disabled and reads "Saving..." (see Pending buttons).
+Icon-only buttons are for row actions (delete, copy, reorder, close) and need
+an `aria-label`; while busy the icon becomes a spinner of the same size.
+Header actions and form footers are 48px; section, table and toolbar actions
+40px. One primary button per view.
 
 ```tsx
 <button className="admin-btn admin-btn--primary" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save device'}</button>
-<button className="admin-btn admin-btn--sm" type="button">Sync now</button>
+<button className="admin-btn admin-btn--primary" type="button" onClick={startNew}><Plus aria-hidden="true" />New plan</button>
+<button className="admin-btn admin-btn--sm" type="button"><RefreshCw aria-hidden="true" />{syncing ? 'Syncing...' : 'Sync now'}</button>
+<a className="admin-btn admin-btn--ghost" href={releaseUrl}>View GitHub release<ArrowUpRight aria-hidden="true" /></a>
 <button className="admin-btn admin-btn--icon admin-btn--sm admin-btn--ghost admin-btn--danger" type="button" aria-label={`Delete ${game.title}`}><Trash2 size={16} /></button>
 ```
 
@@ -537,12 +656,13 @@ control. `error` replaces the help text and turns the control border red.
 side column ("Use 6 or more digits...").
 
 Inputs, selects and textareas are styled by element inside `.admin-screen`:
-48px with `--a-size-input` text and 14px side padding, filled (`--a-field`: the inset tone in dark, white in light), a subtle
-1px `--a-field-line` border that is heavier at the bottom
-(`--a-field-line-bottom`), hover `--a-field-hover`; on focus the border turns
-accent and the accent focus outline appears. Checkboxes and radios are 20px;
-checked ones are accent with an `--a-on-accent` mark. Native pickers and the
-select list follow the theme through `color-scheme`.
+48px with `--a-size-input` text and 14px side padding, 10px radius, filled
+(`--a-field`: a well darker than the panel in dark, white in light) with a
+1px `--a-field-line` border all round; hover `--a-field-hover` and
+`--a-field-line-hover`; on focus the border turns accent and the soft 3px
+ring appears (`--a-focus-halo-field`). Checkboxes and radios are 20px (6px
+radius); checked ones are accent with an `--a-on-accent` mark. Native
+pickers and the select list follow the theme through `color-scheme`.
 
 ```tsx
 <Field label="Device name" required error={nameError}>
@@ -552,20 +672,23 @@ select list follow the theme through `color-scheme`.
 
 Also: `.admin-affix-input` (input with a leading search magnifier, or a unit
 word before or after it in an `<em>`: "₹", "min", "sec", or the "Sort" label;
-the same filled frame; the inner input/select loses its own frame, the
-wrapper shows focus; no other icons in fields),
+the same filled frame, border and ring; the inner input/select loses its own
+frame, the wrapper shows focus; no other icons in fields),
 `.input-with-button`, `.form-grid` (two columns, `.full` spans both),
 `.admin-form` (24px rhythm).
 
 ### SwitchRow — on/off setting
 
 `.admin-switch-row` (66px: `--a-size-row-title` title and `--a-size-small`
-description left, 40×24 switch right). Wrap several in
-`.admin-switch-list` for hairlines between rows, inside a `padding="rows"`
-panel. `.admin-value-row` is the same row with a value control (a PIN input,
-seconds). The switch itself is `.ps-switch[data-on]`: `--a-switch-off` track
-when off, the accent when on, a `--a-switch-knob` knob; it is the only
-rounded-full element.
+description left, the 46×28 switch right). Wrap several in
+`.admin-switch-list` inside a `padding="rows"` panel: a grouped inset list
+(inset hairlines, the row highlights on hover and focus, see Panel); in an
+ordinary form the list keeps plain hairlines and focus outlines the row at
+offset 4px. `.admin-value-row` is the same row with a value control (a PIN
+input, seconds). The switch itself is `.ps-switch[data-on]`: iOS proportions
+(`--a-switch-w` × `--a-switch-h`, a 24px knob 2px inside the track with
+`--a-knob-shadow`, sliding over 160ms), `--a-switch-off` track when off, the
+accent when on; it is the only rounded-full element.
 
 ```tsx
 <Panel padding="rows">
@@ -585,7 +708,7 @@ A `Danger zone` section holding a `padding="rows"` panel with
 red fill); each action is a value row:
 label and consequence on the left, the danger button on the right. A second
 click confirms (`.confirming`, with Cancel beside it). Used for Exit NXGS Play
-(Kiosk) and Remove device (All devices).
+(System) and Remove device (All devices).
 
 ```tsx
 <PageSection title="Danger zone">
@@ -600,9 +723,9 @@ click confirms (`.confirming`, with Cancel beside it). Used for Exit NXGS Play
 
 ### InlineSwitch — a switch in a table cell or toolbar
 
-`.admin-inline-switch`: the bare 40×24 switch with an optional label after it
+`.admin-inline-switch`: the bare 46×28 switch with an optional label after it
 and an optional spinner (`busy`). The checkbox is hidden; the label shows the
-focus outline. Used by the Plans "Enabled" column, the device detail's games
+soft focus ring. Used by the Plans "Enabled" column, the device detail's games
 "On" column and Accounts' "Verified payments only".
 
 ```tsx
@@ -612,13 +735,14 @@ focus outline. Used by the Plans "Enabled" column, the device detail's games
 
 ### Segmented — one choice out of a few
 
-`.admin-segmented`: a tonal track (no outline) as tall as an input (48px),
-40px segments; the chosen
-segment gets the accent tint, a 1px inset accent edge and
-`--a-accent-strong` text at the strong weight (unchosen segments are
-`--a-text-2` at the medium weight). Buttons carry `aria-pressed` (or
-`role="radio"` + `aria-checked`, like the theme switch). Segments are text
-only: `SegmentedOption` has no icon.
+`.admin-segmented`: a tonal track with a 10px radius as tall as an input
+(48px), 40px segments with an 8px radius; the chosen segment is **raised**
+above the track (`--a-segment-on` fill with `--a-segment-shadow`, `--a-text`
+at the strong weight), not tinted: the accent stays for primary actions, the
+active nav item, selected chips and focus. Unchosen segments are
+`--a-text-2` at the medium weight, `--a-text` on hover; a press scales to
+0.98. Buttons carry `aria-pressed` (or `role="radio"` + `aria-checked`, like
+the theme switch). Segments are text only: `SegmentedOption` has no icon.
 
 ```tsx
 <Segmented aria-label="Period" value={period} onChange={setPeriod} options={[
@@ -629,7 +753,7 @@ only: `SegmentedOption` has no icon.
 
 ### ToggleChip — on/off filter
 
-`.admin-chip-toggle[aria-pressed]` (40px, `--a-size-button-sm`, radius 4, tonal fill; selected:
+`.admin-chip-toggle[aria-pressed]` (40px, `--a-size-button-sm`, 8px radius, tonal fill; selected:
 accent tint, `--a-accent-line` edge, `--a-accent-strong` text and a leading
 check drawn by CSS, the same mark the picker's "Whole store" toggle uses, so
 no toggle carries an icon element). Group in `.admin-chip-toggles`.
@@ -642,7 +766,7 @@ no toggle carries an icon element). Group in `.admin-chip-toggles`.
 
 ### Badge — a fact about a row
 
-`.admin-badge` (26px, radius 4, `--a-size-badge` medium, tonal fill, no outline,
+`.admin-badge` (26px, 6px radius, `--a-size-badge` medium, tonal fill, no outline,
 `--a-text-2`) and `--success`, `--warning`, `--danger`, `--info` (the
 semantic tint and colour). For "This
 device", "Global", "Custom", "Device admin only". Not for counts or live states.
@@ -662,7 +786,7 @@ cell or facts row; no page needs a `vertical-align` or row-centring fix.
 
 ### StatRow + Stat — key figures
 
-`.admin-stat-row` is one panel (no outline) split into equal cells by
+`.admin-stat-row` is one panel (the panel surface, edge, depth and radius) split into equal cells by
 hairlines (wraps cleanly; `minCellWidth` sets the wrap point, default 200px).
 Each `.admin-stat`: `.admin-stat-label` (`--a-size-label`), `.admin-stat-value` (`--a-size-figure`
 Red Hat Display, proportional figures, ellipsis), optional `.admin-stat-sub`
@@ -678,21 +802,30 @@ page ("Games on device", "Paid sessions", "Revenue"). No icons.
 
 ### Table — classes only
 
-`.admin-table-scroll` is the panel (tone, no outline) and the scroller;
-`.admin-table` inside: sticky 44px header (`--a-size-caption` medium `--a-text-2`), 56px
-rows of `--a-size-small` text (a row's name `--a-size-row-title`), 14px cell
-padding, hairline row separators only, 20px from the panel edge on both sides,
-hover `--a-panel-2`, `.admin-num` for right aligned numbers.
+`.admin-table-scroll` is the rounded container (the panel surface, edge,
+depth and 14px radius) and the scroller, with the rows 4px inside it
+(`--a-row-inset`); `.admin-table` inside: a sticky 44px header
+(`--a-size-caption` medium `--a-text-2`) on `--a-table-head` over a 16px
+backdrop blur, 56px rows of `--a-size-small` text (a row's name
+`--a-size-row-title`), 14px cell padding, text 20px from the container edge
+on both sides, `.admin-num` for right aligned numbers. Row separators are
+inset hairlines (a `td::after`, so `td` is `position: relative`) from the
+first cell's text to the last cell's. A hovered row is a 10px rounded
+`--a-panel-2` highlight (the first and last cells carry the corners) and the
+hairlines next to it hide. No zebra.
 
 - `tr.is-clickable`: the row opens, expands or picks something on click
   (pointer cursor). The row also holds a real button for keyboard and
   controller (device name, expand toggle, Edit).
-- `tr.is-selected`: the row being edited or picked: `--a-panel-2` fill and a
-  2px accent bar on the left edge, like the nav and the Games list.
-- `tr.admin-table-detail`: the expanded row (`--a-inset`, 20px padding,
-  hovered or not). A page that needs other padding sets it with a selector of
-  the same weight (`.accounts-table tbody tr.accounts-detail-row td`); there is
-  no `:hover` rule to match, so the row never shifts under the pointer.
+- `tr.is-selected`: the row being edited or picked: the faint accent tint
+  (`--a-accent-tint-faint`, `--a-accent-tint` on hover) as a rounded
+  highlight. No bar.
+- `tr.admin-table-detail`: the expanded row, an `--a-inset` well joined to
+  the row above it (that row keeps its top corners, the well its bottom
+  ones), 20px from the container edge, its content fading in. A page that
+  needs other padding sets it with a selector of the same weight
+  (`.accounts-table tbody tr.accounts-detail-row td`); there is no `:hover`
+  rule to match, so the row never shifts under the pointer.
 
 ```tsx
 <div className="admin-table-scroll" data-admin-local-keys="true">
@@ -708,8 +841,10 @@ hover `--a-panel-2`, `.admin-num` for right aligned numbers.
 
 ### Notice — inline feedback
 
-`.admin-notice--success|error|warning|info`: 2px left rule in the semantic
-colour on its tint, `--a-size-small`, 18px icon inline (the icon carries meaning). `role="alert"` for errors.
+`.admin-notice--success|error|warning|info`: a 10px rounded box on the
+semantic tint with a faint 1px edge of the same colour (22%), `--a-size-small`
+text, the 18px icon inline in that colour (the icon carries meaning).
+`role="alert"` for errors.
 
 ```tsx
 <Notice tone="error">{error}</Notice>
@@ -718,12 +853,14 @@ colour on its tint, `--a-size-small`, 18px icon inline (the icon carries meaning
 ### EmptyState — nothing to show
 
 `.admin-empty`: left aligned `--a-size-lg` medium title, `--a-size-small` text, optional
-`action`. No icons. In a padded panel it uses the panel's padding; in a table scroller or
-flush panel it keeps the rows' 20px inset.
+`action`, and an optional `icon`: one 32px outline lucide icon above the title
+in `--a-text-3` (stroke 1.5), never in a circle or tile. In a padded panel it
+uses the panel's padding; in a table scroller or flush panel it keeps the
+rows' 20px inset. Locked states (the main admin gate) follow the same shape.
 
 ```tsx
 <Panel>
-  <EmptyState title="No plans saved">Add a plan to make play-time checkout available to customers.</EmptyState>
+  <EmptyState title="No plans saved" icon={<Ticket />}>Add a plan to make play-time checkout available to customers.</EmptyState>
 </Panel>
 ```
 
@@ -734,26 +871,33 @@ flush panel it keeps the rows' 20px inset.
 ### Facts list — label/value pairs
 
 `<dl class="admin-meta-list"><div><dt/><dd/></div></dl>`: hairline rows on the
-text baseline (`--a-size-small`, 13px row padding). Default: label left, value right, for short facts in a
-side column (Device page identity, device detail). `.admin-meta-list--left`: a
-210px label column (`--a-meta-label`) and left aligned values, for facts in a
-main-column panel or values that can be long (cloud sync, local storage
-paths, update facts, diagnostics). Put it in a `padding="rows"` panel when it
-has a frame.
+text baseline (`--a-size-small`, 13px row padding). Default: label left (as
+wide as it needs), value right, for short facts in a side column (Device page
+identity, device detail). `.admin-meta-list--left`: a 210px label column
+(`--a-meta-label`) and left aligned values, for facts in a main-column panel
+or values that can be long (cloud sync, local storage paths, update facts,
+diagnostics). **A facts list on its own** (not inside a panel, table, modal or
+popover) is its own grouped container: the panel surface, 14px radius, edge,
+depth and `--a-panel-pad` inset, so its hairlines are inset. Inside a
+`padding="rows"` panel it is just the rows.
 
 ### List rows — `.admin-list > .admin-list-row`
 
-Hairline rows (68px, a 44px thumbnail, `--a-size-row-title` name and
-`--a-size-small` second line) inside a flush panel (the Games library); `.row-main` is the
-clickable part; `.selected` adds the `--a-panel-2` fill and the 2px accent
-bar. Use a table for data.
+A grouped list inside a flush panel (the Games library): 68px rows (a 44px
+thumbnail, `--a-size-row-title` name and `--a-size-small` second line) 4px
+inside the panel, inset hairlines between them; hover and keyboard focus are
+a 10px rounded `--a-panel-2` highlight and `.selected` the faint accent tint
+(no bar), with the neighbouring hairlines hidden. `.row-main` is the
+clickable part. Use a table for data.
 
 ### FilterPopover, pickers, active filters
 
 `FilterPopover` (`FilterPopover.tsx`) is a filter button (`.admin-popover-trigger`,
 a tonal chip with a chevron that reads "Devices | 3 devices" once active, then
-styled like a selected chip) and a panel under it (`.admin-popover-panel`:
-`--a-panel`, 1px `--a-line-strong`, radius 4, the pop shadow). The panel carries `data-admin-popover` while open
+styled like a selected chip; its chevron turns over while open) and a panel
+under it (`.admin-popover-panel`: the floating surface, `--a-raised-glass`
+over a 20px blur, 1px `--a-edge-strong`, 14px radius, `--a-shadow-pop`,
+fading in from 0.98 over 140ms). The panel carries `data-admin-popover` while open
 so Escape/B close it, not the Control Room. Inside, a picker:
 `.admin-picker-head` (search + status line with Select all / Clear),
 `.admin-picker-list` > `.admin-picker-group` (`.admin-picker-group-header`:
@@ -767,9 +911,11 @@ focus outlines the row). Active filters show as `.admin-active-chip` buttons
 ### Modal
 
 Control Room modals reuse `.modal-backdrop > .modal` from dialogs.css; inside
-`.admin-screen` they are flattened and themed (`--a-scrim` backdrop, panel
-fill, 1px `--a-line-strong` edge, radius 4, pop shadow, 32px padding,
-`--a-size-modal-title` Red Hat Display heading, `--a-size-body` copy). Render them inside the page component so they stay
+`.admin-screen` they are themed (`--a-scrim` backdrop fading in; the modal is
+the floating surface: `--a-raised-glass` over a 20px blur, 1px
+`--a-edge-strong`, 14px radius, `--a-shadow-pop`, fading in from 0.98 over
+140ms; 32px padding, `--a-size-modal-title` Red Hat Display heading at the
+title weight, `--a-size-body` copy). Render them inside the page component so they stay
 inside `.admin-screen`. A close button is
 `admin-btn admin-btn--icon admin-btn--ghost close-button`: the kit pins it to
 the top right corner of every modal. The PinDialog is portaled outside and
@@ -778,7 +924,7 @@ keeps its own console look (dark) in both themes.
 **A list inside a modal runs edge to edge** (the installed game picker,
 `.installed-game-list` in `library.css`): no frame of its own, it spans the
 modal's full width between two hairlines (`margin-inline` minus `--a-modal-pad`), rows are
-separated by hairlines, a sticky column header sits on the same panel tone,
+separated by hairlines, a sticky column header sits on the modal's own surface,
 and every column lines up with the modal's 32px content edge. Keyboard and
 controller focus draw the outline inside the row (`outline-offset: -2px`)
 so the scroller never clips it. Do not put a framed table or a panel inside
@@ -788,12 +934,12 @@ a modal.
 
 | Class | Purpose |
 | --- | --- |
-| `.admin-subheading` | `--a-size-label` Red Hat Text at the strong weight: a group title inside a section or panel ("Details", "Kiosk", "Games played"), one notch above the labels beside it |
+| `.admin-subheading` | `--a-size-label` Red Hat Text at the strong weight: a group title inside a section or panel ("Details", "Lockdown", "Games played"), one notch above the labels beside it |
 | `.admin-text-2`, `.admin-caption` | Secondary colour; `--a-size-caption` caption |
 | `.admin-count` | `--a-size-small` `--a-text-2` count or short meta next to a heading or toolbar ("8 saved", "4 of 5 on", "Last scan 2:05 pm") |
 | `.admin-num` | Tabular, right aligned, no wrap |
 | `.admin-mono` | `--a-size-mono` Red Hat Mono, selectable (IDs, payment IDs, paths) |
-| `.admin-kbd` | Keyboard key name in Red Hat Mono on a tonal key cap: filled `--a-tonal`, no edge line, in both themes (the one uppercase) |
+| `.admin-kbd` | Keyboard key name in Red Hat Mono on a tonal key cap (6px radius): filled `--a-tonal`, no edge line, in both themes (uppercase, like the nav group labels) |
 | `.admin-visually-hidden` | Screen-reader-only text |
 | `.admin-stack` | Vertical 40px rhythm between sections |
 | `.admin-split` | Main + side column (`--a-side-column`), stacked below 1100px |
@@ -801,7 +947,7 @@ a modal.
 ### Other exports
 
 - `ArtImage`: image with a fallback node.
-- `revealInContent(element)`: scrolls an editor into view inside `.admin-content`.
+- `revealInContent(element)`: scrolls an editor into view inside `.admin-content` when its top is off screen or under the sticky page bar.
 - Types: `NoticeTone`, `Tone`, `SegmentedOption`, `PanelProps`.
 
 ## Copy
@@ -812,8 +958,8 @@ a modal.
 - **"Device", never "station"**, in staff-facing copy: "this device", "Device
   details", "device admin PIN", "This device" (nav group, badge, scope). Station
   01 is just the default device name. Code identifiers (`stationId`) stay.
-- **Name sections as the nav does:** Games, Scan, Sessions, Plans, Device,
-  Branding, Kiosk, Updates, Accounts, All devices ("managed from Plans",
+- **Name sections as the nav does:** Games, Scan, Sessions, Plans, Details,
+  Branding, System, Updates, Accounts, All devices ("managed from Plans",
   "rejoins from its own Device page", "Remove Station 01 from All devices?").
   The old names (Plan Manager, Device Manager, Device Management) are gone.
 - **Roles:** the main admin (owner PIN, every device), the device admin (each
@@ -838,19 +984,26 @@ a modal.
   400; use `--a-weight-medium`, `--a-weight-strong`, `--a-weight-display`.
 - No white primary button, no second accent (no cyan, no blue links), no
   gradients of the brand colours.
-- No icons in the nav, in text buttons, segments, field labels, headings or
-  header actions, and no spinner in a text button (its label changes
-  instead). Icon-only row actions keep their icon and an `aria-label`.
-- No eyebrows (small uppercase label over a title).
+- No icons in text buttons beyond the standard set (Add/New `Plus`, Refresh
+  `RefreshCw`, Export `Download`, external link `ArrowUpRight`), and none in
+  segments, field labels, headings or nav group labels; no spinner in a text
+  button (its label changes instead). Every nav item has its icon.
+  Icon-only row actions keep their icon and an `aria-label`.
+- No eyebrows (small uppercase label over a title). The sidebar's group
+  labels are the one uppercase label, and they head a list, not a card.
 - No icons in tinted circles or rounded squares: not in nav, headers, stat
   tiles, empty states or list rows.
 - No pills for statuses, counts or tags; no `border-radius: 999px` except the
-  switch; no radius above 4px.
-- No outlines around panels, tables, stat rows, buttons, chips or badges;
-  separate by tone. Outlines are for the danger zone, a selected chip,
-  floating surfaces and focus.
-- No glows, halos or coloured box-shadow rings; focus is the outline.
-- No gradients, blue-tinted surfaces or card shadows.
+  switch; no radius that is not one of the role tokens (14 / 10 / 8 / 6 / 2px).
+- No heavy borders around containers: a container's edge is the subtle 1px
+  `--a-edge`; coloured edges are for the danger zone, a selected chip, a
+  notice and focus. No edge-to-edge separators inside a grouped container
+  (inset them); no 2px accent bars marking a selected nav item or row (the
+  rounded tint does it).
+- No glows or blurred halos; focus is the soft ring (1px line + 3px soft).
+- No gradients, blue-tinted surfaces or heavy drop shadows; depth is the
+  layered surfaces, `--a-shadow-panel` and, for floating surfaces only,
+  `--a-shadow-pop`.
 - No uppercase or letter-spacing (key names excepted); no heading inside a
   page larger than the section heading (`--a-size-h2`): only the page title,
   the sub-page title and modal titles are larger.
@@ -861,7 +1014,10 @@ a modal.
   inside a panel; a group title (`.admin-subheading`) inside one is fine.
 - No huge numbers with an icon badge as KPI tiles; use `StatRow`.
 - No decorative icons (trophies...).
-- No scale/lift/shimmer/entrance animations, no `transform` hover effects.
+- No lift, shimmer, bounce or hover transforms; the only motion is the set in
+  Rules: motion (press 0.98, the 160ms tab entrance, the 140ms popover and
+  modal entrance, colour transitions), and all of it stops under
+  `prefers-reduced-motion`.
 - No colour outside the status mapping; no second status style for the same
   state on another page.
 - No `--ps-*`, `--radius-*`, `--focus-ring` or other console tokens in admin
@@ -869,6 +1025,8 @@ a modal.
 - No `.admin-screen .x` prefix in page CSS just to out-rank a kit heading,
   focus or expanded-row rule; those are kept low (see Specificity) so one
   class wins.
+- No page sticky element at `top: 0`: the page bar is sticky there; use
+  `top: var(--a-sticky-top)`.
 - No admin UI portaled outside `.admin-screen` (it would lose the theme).
 
 ## Adding to a page
@@ -889,7 +1047,8 @@ a modal.
    play", `'Save settings'`, `<th scope="col">Customer</th>`). If you change an
    asserted string, update the assertion and keep what it protects.
 6. Check 1920×1080 and 1366×768 in both themes: no horizontal page scroll,
-   focus visible on every control, Escape/B still closes the Control Room.
+   focus visible on every control, nothing hidden under the sticky page bar,
+   Escape/B still closes the Control Room.
 
 Checks: `npx tsc --noEmit`, `npm run test:accounts`, `test:fleet-ui`,
 `test:fleet-backend`, `test:device-manager`, `test:plan-manager`,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import type { FleetSyncStatus } from '../../../shared/types';
 import { LoadingState, Notice, PageSection, Panel, StatusText, type NoticeTone, type Tone } from './AdminKit';
 import { dateTimeLabel, relativeTime } from './fleetFormat';
@@ -116,7 +117,7 @@ export function FleetSyncCard(props: {
       className={`fleet-sync${props.className ? ` ${props.className}` : ''}`}
       actions={(
         <>
-          {/* Text buttons carry no icon; a pending action reads as its own word ("Syncing..."). */}
+          {/* Rejoin is text only; Sync now leads with the standard Refresh icon. A pending action reads as its own word ("Syncing..."). */}
           {status && (status.needsRejoin || status.removedByOwner) && owner && (
             <button className="admin-btn admin-btn--primary admin-btn--sm" type="button" disabled={Boolean(action)} onClick={() => void rejoin()}>
               {action === 'rejoin' ? 'Rejoining...' : 'Rejoin'}
@@ -128,6 +129,7 @@ export function FleetSyncCard(props: {
             disabled={Boolean(action) || !status || !status.configured || status.removedByOwner || status.needsRejoin || status.syncing}
             onClick={() => void syncNow()}
           >
+            <RefreshCw aria-hidden="true" />
             {action === 'sync' || status?.syncing ? 'Syncing...' : 'Sync now'}
           </button>
         </>

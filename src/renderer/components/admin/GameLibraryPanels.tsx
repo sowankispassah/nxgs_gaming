@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { LoaderCircle, Search, Trash2, X } from 'lucide-react';
+import { LoaderCircle, Plus, Search, Trash2, X } from 'lucide-react';
 import type {
   DeviceRecord,
   GameInput,
@@ -220,6 +220,7 @@ export function GameManager(props: { currentDevice: DeviceRecord; games: GameRec
     <div className="games-layout">
       <PageActions>
         <button className="admin-btn" type="button" onClick={startNewGame}>
+          <Plus aria-hidden="true" />
           New game
         </button>
         <button ref={chooseButtonRef} className="admin-btn admin-btn--primary" type="button" onClick={() => setPickerOpen(true)}>
@@ -490,7 +491,8 @@ function InstalledGamePicker(props: { onClose: () => void; onSelect: (suggestion
           {!pending && <span className="installed-picker-count">{filteredSuggestions.length} found</span>}
         </div>
         {error && <Notice tone="error">{error}</Notice>}
-        <div className="installed-game-list" ref={listRef}>
+        {/* Column header above the scroller (not sticky inside it), so it sits on the modal's own glass. */}
+        <div className="installed-game-table">
           {filteredSuggestions.length > 0 && (
             <div className="installed-game-head" aria-hidden="true">
               <span />
@@ -499,37 +501,39 @@ function InstalledGamePicker(props: { onClose: () => void; onSelect: (suggestion
               <span>Status</span>
             </div>
           )}
-          {pending && <LoadingState label="Scanning installed games..." />}
-          {filteredSuggestions.map((suggestion) => {
-            const status = suggestionStatus(suggestion.status);
-            return (
-              <button
-                key={suggestion.suggestionId}
-                className={`installed-game-row${focusId === suggestion.suggestionId ? ' controller-focused' : ''}`}
-                type="button"
-                data-suggestion-id={suggestion.suggestionId}
-                disabled={suggestion.status === 'unsupported'}
-                onFocus={() => setFocusId(suggestion.suggestionId)}
-                onBlur={() => setFocusId((current) => (current === suggestion.suggestionId ? '' : current))}
-                onClick={() => props.onSelect(suggestion)}
-              >
-                <GameThumb path={suggestion.iconPath} title={suggestion.title} />
-                <span className="installed-game-copy">
-                  <strong>{suggestion.title}</strong>
-                  <span>
-                    {suggestion.source} · {suggestion.launchMethod}
+          <div className="installed-game-list" ref={listRef}>
+            {pending && <LoadingState label="Scanning installed games..." />}
+            {filteredSuggestions.map((suggestion) => {
+              const status = suggestionStatus(suggestion.status);
+              return (
+                <button
+                  key={suggestion.suggestionId}
+                  className={`installed-game-row${focusId === suggestion.suggestionId ? ' controller-focused' : ''}`}
+                  type="button"
+                  data-suggestion-id={suggestion.suggestionId}
+                  disabled={suggestion.status === 'unsupported'}
+                  onFocus={() => setFocusId(suggestion.suggestionId)}
+                  onBlur={() => setFocusId((current) => (current === suggestion.suggestionId ? '' : current))}
+                  onClick={() => props.onSelect(suggestion)}
+                >
+                  <GameThumb path={suggestion.iconPath} title={suggestion.title} />
+                  <span className="installed-game-copy">
+                    <strong>{suggestion.title}</strong>
+                    <span>
+                      {suggestion.source} · {suggestion.launchMethod}
+                    </span>
                   </span>
-                </span>
-                <span className="installed-game-notes" title={suggestion.notes}>{suggestion.notes}</span>
-                <StatusText tone={status.tone}>{status.label}</StatusText>
-              </button>
-            );
-          })}
-          {!pending && filteredSuggestions.length === 0 && (
-            <EmptyState title="No installed games matched your search">
-              Try a shorter name, or browse for the game executable manually.
-            </EmptyState>
-          )}
+                  <span className="installed-game-notes" title={suggestion.notes}>{suggestion.notes}</span>
+                  <StatusText tone={status.tone}>{status.label}</StatusText>
+                </button>
+              );
+            })}
+            {!pending && filteredSuggestions.length === 0 && (
+              <EmptyState title="No installed games matched your search">
+                Try a shorter name, or browse for the game executable manually.
+              </EmptyState>
+            )}
+          </div>
         </div>
         <ControllerHints
           className="installed-picker-hints"
@@ -936,6 +940,7 @@ export function ScanPanel(props: { currentDevice: DeviceRecord; onGamesChanged: 
                               disabled={saving}
                               onClick={() => void saveSuggestion(suggestion)}
                             >
+                              <Plus aria-hidden="true" />
                               {saving ? 'Adding...' : 'Add'}
                             </button>
                           )}

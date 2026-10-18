@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, LoaderCircle, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, LoaderCircle, Plus, Trash2 } from 'lucide-react';
 import type { DeviceRecord, PlanScope, PlayPlanInput, PlayPlanRecord } from '../../shared/types';
 import { EmptyState, Field, InlineSwitch, LoadingState, Notice, PageActions, PageSection, Panel, revealInContent, SwitchRow } from './admin/AdminKit';
 import { dateLabel } from './admin/fleetFormat';
@@ -189,6 +189,7 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
     <div className="admin-stack plan-manager">
       <PageActions>
         <button className="admin-btn" type="button" disabled={busy} onClick={newPlan}>
+          <Plus aria-hidden="true" />
           New plan
         </button>
       </PageActions>

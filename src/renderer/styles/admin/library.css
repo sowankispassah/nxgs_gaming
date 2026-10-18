@@ -47,13 +47,17 @@
   gap: clamp(28px, 2.2vw, 40px);
 }
 
-/* The list stays in view while the editor scrolls; long libraries scroll inside the panel. */
+/*
+ * The list stays in view while the editor scrolls, 16px under the sticky page
+ * bar (--a-sticky-top); long libraries scroll inside the panel, which ends
+ * 24px above the window edge.
+ */
 .games-library.admin-section {
   position: sticky;
-  top: 0;
+  top: var(--a-sticky-top);
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 64px);
+  max-height: calc(100vh - var(--a-page-bar-height) - 40px);
 }
 
 .games-library-panel {
@@ -64,10 +68,21 @@
   overflow: hidden;
 }
 
+/* The search sits over the list; an inset hairline (at the rows' hairline inset) separates them. */
 .games-search {
+  position: relative;
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--a-line);
   padding: 12px;
+}
+
+.games-search::after {
+  content: '';
+  position: absolute;
+  right: 16px;
+  bottom: 0;
+  left: 16px;
+  height: 1px;
+  background: var(--a-line);
 }
 
 .games-search-clear {
@@ -152,15 +167,24 @@
   container: game-editor / inline-size;
 }
 
-/* Groups: a label column on the left, fields on the right; stacked when narrow. */
+/* Groups: a label column on the left, fields on the right; stacked when narrow. Inset hairlines between groups, from text edge to text edge. */
 .game-form-group {
+  --game-group-pad: var(--a-panel-pad);
+
+  position: relative;
   display: grid;
   gap: 16px;
-  padding: var(--a-panel-pad);
+  padding: var(--game-group-pad);
 }
 
-.game-form-group + .game-form-group {
-  border-top: 1px solid var(--a-line);
+.game-form-group + .game-form-group::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: var(--game-group-pad);
+  left: var(--game-group-pad);
+  height: 1px;
+  background: var(--a-line);
 }
 
 .game-form-group-title {
@@ -182,9 +206,10 @@
 
 @container game-editor (min-width: 760px) {
   .game-form-group {
+    --game-group-pad: 28px;
+
     grid-template-columns: 180px minmax(0, 1fr);
     gap: 28px;
-    padding: 28px;
   }
 
   /* Line the group label up with the first field label. */
@@ -278,16 +303,18 @@
 }
 
 /*
- * The kit panel footer, made sticky: it holds to the bottom edge of the window
- * while the editor is in view. Sticky offsets are measured inside the content
- * pane's bottom padding, so the negative offset puts the bar on the window edge.
+ * The kit panel footer (its --a-panel-footer tone and hairline), made sticky:
+ * it holds to the bottom edge of the window while the editor is in view.
+ * Sticky offsets are measured inside the content pane's bottom padding, so the
+ * negative offset puts the bar on the window edge. Square corners: on the
+ * window edge nothing shows through them, and at rest the flush panel's
+ * rounded clip shapes them.
  */
 .game-editor-footer {
   position: sticky;
   bottom: calc(-1 * var(--a-page-pad-bottom));
   z-index: 2;
-  border-radius: 0 0 var(--a-radius) var(--a-radius);
-  background: var(--a-panel);
+  border-radius: 0;
 }
 
 /* Keep focused fields clear of the sticky save bar when focus scrolls them into view. */
@@ -344,13 +371,26 @@
 }
 
 /*
- * Scrolling list with a sticky column header. No frame: it runs edge to edge
- * across the modal between two hairlines, rows separated by hairlines, the
- * columns lined up with the modal's content edge (--a-modal-pad).
+ * The list and its column header. No frame of its own: the rows sit on the
+ * modal's glass and run across it, their highlight a 10px rounded shape 16px
+ * from the modal edge (--picker-inset) and their text on the modal's content
+ * edge (--a-modal-pad). The header sits above the scroller, not sticky inside
+ * it, so it needs no surface of its own; both reserve the same scrollbar
+ * gutter so the columns line up. Inset hairlines: under the header, between
+ * rows (hidden next to a highlighted row) and after the last row, where the
+ * line sticks to the bottom of the scroller while rows run on below it.
  */
-.installed-game-list {
+.installed-game-table {
   --picker-columns: var(--a-thumb) minmax(0, 0.9fr) minmax(0, 1.1fr) 190px;
+  --picker-inset: 16px;
 
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.installed-game-list {
   display: grid;
   flex: 1 1 auto;
   align-content: start;
@@ -358,9 +398,18 @@
   margin-inline: calc(-1 * var(--a-modal-pad));
   overflow-y: auto;
   overscroll-behavior: contain;
-  border-block: 1px solid var(--a-line);
-  background: var(--a-panel);
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
+  padding-top: 4px;
+}
+
+.installed-game-list::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  height: 1px;
+  margin-inline: var(--a-modal-pad);
+  background: var(--a-line);
 }
 
 .installed-game-list > .admin-loading,
@@ -369,49 +418,76 @@
 }
 
 .installed-game-head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  position: relative;
   display: grid;
+  flex: 0 0 auto;
   grid-template-columns: var(--picker-columns);
   align-items: center;
   gap: 16px;
   height: var(--a-header-row);
-  border-bottom: 1px solid var(--a-line);
-  background: var(--a-panel);
+  margin-inline: calc(-1 * var(--a-modal-pad));
+  overflow: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   color: var(--a-text-2);
   padding: 0 var(--a-modal-pad);
   font-size: var(--a-size-caption);
   font-weight: var(--a-weight-medium);
 }
 
+.installed-game-head::after {
+  content: '';
+  position: absolute;
+  right: var(--a-modal-pad);
+  bottom: 0;
+  left: var(--a-modal-pad);
+  height: 1px;
+  background: var(--a-line);
+}
+
 .installed-game-row {
+  position: relative;
   display: grid;
   grid-template-columns: var(--picker-columns);
   align-items: center;
   gap: 16px;
-  width: 100%;
+  justify-self: stretch;
+  width: auto;
   min-height: 74px;
+  margin-inline: var(--picker-inset);
   border: 0;
-  border-bottom: 1px solid var(--a-line);
-  border-radius: 0;
+  border-radius: var(--a-radius-control);
   background: transparent;
   color: var(--a-text);
-  padding: 10px var(--a-modal-pad);
+  padding: 10px calc(var(--a-modal-pad) - var(--picker-inset));
   text-align: left;
 }
 
-.installed-game-row:last-of-type {
-  border-bottom: 0;
+.installed-game-row + .installed-game-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: calc(var(--a-modal-pad) - var(--picker-inset));
+  left: calc(var(--a-modal-pad) - var(--picker-inset));
+  height: 1px;
+  background: var(--a-line);
+  transition: opacity var(--a-dur) var(--a-ease);
+}
+
+.installed-game-row:not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused)::before,
+.installed-game-row:not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused) + .installed-game-row::before {
+  opacity: 0;
 }
 
 .installed-game-row:not(:disabled):hover {
   background: var(--a-panel-2);
 }
 
-/* Inside the scroller the outline sits inside the row so it is never clipped (one class out-ranks the kit's (0,2,1) button focus rule). */
+/* Inside the scroller focus is the whole-row --a-focus line drawn inside the row, so it is never clipped (one class out-ranks the kit's (0,2,1) button focus rule). */
 .installed-game-row:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
   background: var(--a-panel-2);
+  box-shadow: none;
+  outline: var(--a-focus);
   outline-offset: -2px;
 }
 
@@ -502,7 +578,7 @@
 }
 
 .scan-col-action {
-  width: 140px;
+  width: 160px;
 }
 
 .scan-table td {
@@ -583,7 +659,7 @@
 
 .scan-confidence-bars i {
   width: 4px;
-  border-radius: 1px;
+  border-radius: var(--a-radius-inner);
   background: var(--a-line-strong);
 }
 
