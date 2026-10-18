@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
-import type { DeviceInput, DeviceManagerSummary, DeviceRecord, DeviceStatus, SyncStatus } from '../../shared/types';
+import type { DeviceInput, DeviceManagerSummary, DeviceRecord, DeviceStatus, FleetSyncStatus, SyncStatus } from '../../shared/types';
 import { Field, LoadingState, Notice, PageSection, Panel, Stat, StatRow, StatusText, type Tone } from './admin/AdminKit';
 import { FleetSyncCard } from './admin/FleetSyncCard';
 import { dateTimeLabel, formatPaise } from './admin/fleetFormat';
@@ -83,6 +83,11 @@ export function DeviceManager(props: {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  // While this device must rejoin All devices, Rejoin is the page's one primary action.
+  const [rejoinPending, setRejoinPending] = useState(false);
+  const handleSyncStatus = useCallback((status: FleetSyncStatus): void => {
+    setRejoinPending(status.removedByOwner || status.needsRejoin);
+  }, []);
 
   const loadDevice = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -221,14 +226,19 @@ export function DeviceManager(props: {
               <footer className="admin-panel-footer">
                 {message && <Notice tone="success">{message}</Notice>}
                 {error && <Notice tone="error">{error}</Notice>}
-                <button className="admin-btn admin-btn--primary" type="submit" disabled={saving}>
+                <button className={rejoinPending ? 'admin-btn' : 'admin-btn admin-btn--primary'} type="submit" disabled={saving}>
                   {saving ? 'Saving...' : 'Save device'}
                 </button>
               </footer>
             </Panel>
           </PageSection>
 
-          <FleetSyncCard owner={props.owner} className="device-sync-panel" onSynced={() => void refreshAfterSync()} />
+          <FleetSyncCard
+            owner={props.owner}
+            className="device-sync-panel"
+            onSynced={() => void refreshAfterSync()}
+            onStatusChange={handleSyncStatus}
+          />
         </div>
 
         <PageSection

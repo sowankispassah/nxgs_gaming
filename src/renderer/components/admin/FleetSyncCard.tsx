@@ -43,12 +43,18 @@ export function FleetSyncCard(props: {
   className?: string;
   /** Called after a sync or rejoin so the page can refresh what it shows. */
   onSynced?: () => void;
+  /** Called whenever the sync status changes, e.g. so the page can keep a single primary action. */
+  onStatusChange?: (status: FleetSyncStatus) => void;
 }): JSX.Element {
   const [status, setStatus] = useState<FleetSyncStatus | null>(null);
   const [loadError, setLoadError] = useState('');
   const [action, setAction] = useState<'' | 'sync' | 'rejoin'>('');
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
-  const { onSynced, owner } = props;
+  const { onSynced, onStatusChange, owner } = props;
+
+  useEffect(() => {
+    if (status) onStatusChange?.(status);
+  }, [onStatusChange, status]);
 
   const loadStatus = useCallback(async (): Promise<void> => {
     try {

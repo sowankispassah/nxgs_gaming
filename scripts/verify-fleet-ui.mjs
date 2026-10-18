@@ -183,7 +183,11 @@ assert.match(syncCard, /owner\.run\(\(\) => window\.nxgs\.rejoinFleet\(\), OWNER
 assert.match(syncCard, /Removed by main admin/);
 assert.match(syncCard, /status && \(status\.needsRejoin \|\| status\.removedByOwner\) && owner && \(/, 'Rejoin must cover removal and a blocked registration');
 assert.match(syncCard, /Rejoin needed/);
-assert.match(deviceManager, /<FleetSyncCard owner=\{props\.owner\}/);
+assert.match(deviceManager, /<FleetSyncCard\s+owner=\{props\.owner\}/);
+// One primary action per view: while the device must rejoin, Rejoin is primary and Save device steps down.
+assert.match(syncCard, /onStatusChange\?\.\(status\)/);
+assert.match(deviceManager, /setRejoinPending\(status\.removedByOwner \|\| status\.needsRejoin\)/);
+assert.match(deviceManager, /className=\{rejoinPending \? 'admin-btn' : 'admin-btn admin-btn--primary'\}/);
 assert.match(app, /window\.nxgs\.onFleetLocalDataChanged\(\(change\) => \{[\s\S]{0,200}setGames\(change\.games\)/);
 assert.match(app, /unsubscribeFleetLocalData\(\);/);
 
