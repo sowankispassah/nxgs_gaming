@@ -1,7 +1,7 @@
 {
-    "version":  "0.28.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.28.0/NXGS-Play-Setup.exe",
-    "sha256":  "3a97a32a48886f21273c2734fa2526bfad7a078f1c6823a140b22c6b52c86415",
+    "version":  "0.28.1",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.28.1/NXGS-Play-Setup.exe",
+    "sha256":  "b6e3cef75ae1f863538edfb75e0de5a739d6d5ac138b7c7b9687f7df203c7063",
     "required":  false,
-    "notes":  "Control Room light/dark mode and new look; Accounts session timelines; cleaner customer Settings"
+    "notes":  "Control Room text back to its previous size"
 }
