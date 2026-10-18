@@ -1,7 +1,7 @@
 {
-    "version":  "0.26.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.26.0/NXGS-Play-Setup.exe",
-    "sha256":  "d281cebda88597c81b8f0e0687e4c5895fc09d7d70311e38f65778a9e8350a14",
+    "version":  "0.27.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.27.0/NXGS-Play-Setup.exe",
+    "sha256":  "8e545ce7552808f6a29ba7fc91acd61bfb095a0e2c5c93ae322332527964099c",
     "required":  false,
-    "notes":  "Earnings filters: pick devices or whole stores, games, payment method, status, verified only, search and sort"
+    "notes":  "Redesigned Control Room: calmer, denser layout with tables, grouped sidebar and status-only colour"
 }
