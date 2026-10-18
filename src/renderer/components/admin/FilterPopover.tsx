@@ -13,6 +13,9 @@ function isTextInput(target: EventTarget | null): boolean {
 /**
  * A filter button that opens a small panel under it.
  *
+ * The button reads "Devices" while nothing is picked and "Devices | Station 01"
+ * (or "| 3 devices") once the filter is on, styled like a selected toggle chip.
+ *
  * The Control Room closes on Escape/B and switches sections on arrows, so key
  * presses inside an open popover stay here: Escape/B close the popover and
  * return focus to its button, Up/Down move between options, Enter toggles the
@@ -20,12 +23,13 @@ function isTextInput(target: EventTarget | null): boolean {
  */
 export function FilterPopover(props: {
   label: string;
-  /** Short value shown on the button, such as "All devices" or "3 games". */
+  /** Short value, such as "All devices" or "3 games". Shown on the button while `active`; always read to screen readers. */
   value: string;
-  icon?: ReactNode;
   active?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Panel width in px (default 320). */
+  width?: number;
   children: (close: () => void) => ReactNode;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -97,25 +101,25 @@ export function FilterPopover(props: {
       data-admin-local-keys={open ? 'true' : undefined}
       onKeyDown={onKeyDown}
     >
-      <span className="admin-section-title">{props.label}</span>
       <button
         ref={triggerRef}
         className={`admin-popover-trigger${props.active ? ' is-active' : ''}`}
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-label={`${props.label}: ${props.value}`}
         disabled={props.disabled}
         onClick={() => {
           playUiSound(open ? 'back' : 'open');
           setOpen((value) => !value);
         }}
       >
-        {props.icon && <span className="admin-popover-icon" aria-hidden="true">{props.icon}</span>}
-        <span className="admin-popover-value">{props.value}</span>
-        <ChevronDown size={16} aria-hidden="true" />
+        <span className="admin-popover-label">{props.label}</span>
+        {props.active && <span className="admin-popover-value" title={props.value}>{props.value}</span>}
+        <ChevronDown size={14} aria-hidden="true" />
       </button>
       {open && (
-        <PopoverPanel label={props.label} onClose={() => close()} onMove={moveFocus}>
+        <PopoverPanel label={props.label} width={props.width} onClose={() => close()} onMove={moveFocus}>
           {props.children(() => close())}
         </PopoverPanel>
       )}
@@ -123,7 +127,13 @@ export function FilterPopover(props: {
   );
 }
 
-function PopoverPanel(props: { label: string; children: ReactNode; onClose: () => void; onMove: (delta: number) => void }): JSX.Element {
+function PopoverPanel(props: {
+  label: string;
+  width?: number;
+  children: ReactNode;
+  onClose: () => void;
+  onMove: (delta: number) => void;
+}): JSX.Element {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -147,7 +157,13 @@ function PopoverPanel(props: { label: string; children: ReactNode; onClose: () =
   useControllerNavigation(true, handleController);
 
   return (
-    <div ref={panelRef} className="admin-popover-panel" role="dialog" aria-label={props.label}>
+    <div
+      ref={panelRef}
+      className="admin-popover-panel"
+      role="dialog"
+      aria-label={props.label}
+      style={props.width ? { width: `min(${props.width}px, calc(100vw - 48px))` } : undefined}
+    >
       {props.children}
     </div>
   );

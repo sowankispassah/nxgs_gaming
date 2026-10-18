@@ -1,19 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Activity,
-  Building2,
-  Check,
-  Copy,
-  Gamepad2,
-  IndianRupee,
-  LoaderCircle,
-  MapPin,
-  Save,
-  Timer
-} from 'lucide-react';
-import type { DeviceInput, DeviceManagerSummary, DeviceRecord, DeviceStatus } from '../../shared/types';
-import { CardHeader, LoadingState, Notice } from './admin/AdminKit';
+import { Building2, Check, Copy, LoaderCircle, MapPin } from 'lucide-react';
+import type { DeviceInput, DeviceManagerSummary, DeviceRecord, DeviceStatus, SyncStatus } from '../../shared/types';
+import { Field, LoadingState, Notice, PageSection, Panel, Stat, StatRow, StatusText, type Tone } from './admin/AdminKit';
 import { FleetSyncCard } from './admin/FleetSyncCard';
+import { dateTimeLabel, formatPaise } from './admin/fleetFormat';
 import type { OwnerSession } from './admin/useOwnerSession';
 
 type DeviceForm = {
@@ -30,6 +20,13 @@ const EMPTY_FORM: DeviceForm = {
   status: 'active'
 };
 
+const SYNC_STATUS: Record<SyncStatus, { label: string; tone: Tone }> = {
+  local: { label: 'Local only', tone: 'neutral' },
+  pending: { label: 'Pending', tone: 'warning' },
+  synced: { label: 'Synced', tone: 'success' },
+  error: { label: 'Failed', tone: 'danger' }
+};
+
 function formFromDevice(device: DeviceRecord): DeviceForm {
   return {
     name: device.name,
@@ -39,12 +36,12 @@ function formFromDevice(device: DeviceRecord): DeviceForm {
   };
 }
 
-function dateTimeLabel(value?: string): string {
-  if (!value) return 'Not synced yet';
-  return new Date(value).toLocaleString();
+/** "interrupted" becomes "Interrupted"; status values read as sentence case. */
+function sentenceCase(value: string): string {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
-function CopyButton(props: { value: string }): JSX.Element {
+function CopyButton(props: { value: string; label: string }): JSX.Element {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -55,9 +52,11 @@ function CopyButton(props: { value: string }): JSX.Element {
 
   return (
     <button
-      className="secondary-action compact device-copy-button"
+      className={`admin-btn admin-btn--ghost admin-btn--sm admin-btn--icon device-copy-button${copied ? ' is-copied' : ''}`}
       type="button"
       disabled={!props.value}
+      aria-label={copied ? 'Copied' : props.label}
+      title={copied ? 'Copied' : props.label}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(props.value);
@@ -67,15 +66,15 @@ function CopyButton(props: { value: string }): JSX.Element {
         }
       }}
     >
-      {copied ? <Check size={15} /> : <Copy size={15} />}
-      {copied ? 'Copied' : 'Copy'}
+      {copied ? <Check size={16} /> : <Copy size={16} />}
     </button>
   );
 }
 
+/** The Device page: this device's key figures, details form, identity and cloud sync. */
 export function DeviceManager(props: {
   onDeviceChanged: (device: DeviceRecord) => void;
-  /** Main admin PIN gate, used by Rejoin in the Cloud sync card. */
+  /** Main admin PIN gate, used by Rejoin in the Cloud sync section. */
   owner?: OwnerSession;
 }): JSX.Element {
   const [summary, setSummary] = useState<DeviceManagerSummary | null>(null);
@@ -119,7 +118,7 @@ export function DeviceManager(props: {
       ));
       setSummary(next);
     } catch {
-      // The sync card already reports sync problems.
+      // The sync section already reports sync problems.
     }
   }, []);
 
@@ -138,7 +137,7 @@ export function DeviceManager(props: {
       setSummary(next);
       setForm(formFromDevice(next.device));
       props.onDeviceChanged(next.device);
-      setMessage('Device settings saved. Games and device plans remain linked to this device ID.');
+      setMessage('Device details saved. Games and device plans stay linked to this device ID.');
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
     } finally {
@@ -147,149 +146,127 @@ export function DeviceManager(props: {
   };
 
   if (loading) {
-    return (
-      <section className="admin-card admin-loading-card">
-        <LoadingState label="Loading device..." />
-      </section>
-    );
+    return <LoadingState label="Loading device..." />;
   }
 
   const device = summary?.device;
-  const status = device?.status ?? 'active';
+  const active = (device?.status ?? 'active') === 'active';
   const place = [device?.storeName, device?.location].filter(Boolean).join(' · ');
+  const syncStatus = SYNC_STATUS[device?.syncStatus ?? 'pending'] ?? SYNC_STATUS.pending;
+  const lastSynced = device?.lastSyncedAt ?? device?.syncedAt;
 
   return (
-    <div className="admin-columns admin-columns--device device-manager-grid">
-      <section className="admin-card device-overview-panel">
-        <CardHeader
-          eyebrow="Local identity"
-          title={device?.name ?? 'Current device'}
-          subtitle={place || 'Store and location not set'}
-          actions={(
-            <span className={`device-status-pill ps-chip ${status === 'active' ? 'ps-chip--success' : ''}`}>
-              {status === 'active' ? 'Active' : 'Inactive'}
-            </span>
-          )}
-        />
+    <div className="device-page admin-stack">
+      <StatRow aria-label="This device" minCellWidth={150}>
+        <Stat label="Games on device" value={summary?.gameCount ?? 0} />
+        <Stat label="Active plans" value={summary?.activePlanCount ?? 0} />
+        <Stat label="Paid sessions" value={(summary?.totalSessions ?? 0).toLocaleString('en-IN')} />
+        <Stat label="Revenue" value={formatPaise(summary?.totalRevenuePaise ?? 0)} />
+      </StatRow>
 
-        <div className="device-id-card">
-          <span className="device-id-label">Generated device ID</span>
-          <div className="device-id-value">
-            <code>{device?.id}</code>
-            <CopyButton value={device?.id ?? ''} />
-          </div>
-          <small>This stable ID links local games, plans, sessions, and future cloud records.</small>
-        </div>
-
-        <div className="device-stat-grid">
-          <article>
-            <span className="device-stat-icon" aria-hidden="true"><Gamepad2 size={20} /></span>
-            <strong>{summary?.gameCount ?? 0}</strong>
-            <span>Games on device</span>
-          </article>
-          <article>
-            <span className="device-stat-icon" aria-hidden="true"><Timer size={20} /></span>
-            <strong>{summary?.activePlanCount ?? 0}</strong>
-            <span>Active plans</span>
-          </article>
-          <article>
-            <span className="device-stat-icon" aria-hidden="true"><Activity size={20} /></span>
-            <strong>{summary?.totalSessions ?? 0}</strong>
-            <span>Total sessions</span>
-          </article>
-          <article>
-            <span className="device-stat-icon" aria-hidden="true"><IndianRupee size={20} /></span>
-            <strong>₹{((summary?.totalRevenuePaise ?? 0) / 100).toLocaleString('en-IN')}</strong>
-            <span>Tracked revenue</span>
-          </article>
-        </div>
-
-        <dl className="admin-meta-list device-metadata-list">
-          <div><dt>Store / branch</dt><dd>{device?.storeName || 'Not set'}</dd></div>
-          <div><dt>Location</dt><dd>{device?.location || 'Not set'}</dd></div>
-          <div><dt>Last updated</dt><dd>{dateTimeLabel(device?.updatedAt)}</dd></div>
-          <div><dt>Last synced</dt><dd>{dateTimeLabel(device?.lastSyncedAt ?? device?.syncedAt)}</dd></div>
-          <div><dt>Sync status</dt><dd className="admin-capitalize">{device?.syncStatus ?? 'pending'}</dd></div>
-          <div><dt>Current session</dt><dd className="admin-capitalize">{summary?.currentSessionStatus ?? 'idle'}</dd></div>
-        </dl>
-      </section>
-
-      <div className="admin-stack device-side-stack">
-        <section className="admin-card device-editor-panel">
-          <CardHeader
-            eyebrow="This installation"
-            title="Station details"
-            subtitle="Name this station and record where it is."
-          />
-
-          <form
-            className="admin-form device-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void saveDevice();
-            }}
+      <div className="admin-split device-layout">
+        <div className="admin-stack">
+          <PageSection
+            title="Device details"
+            description="Name this device and record where it is."
+            className="device-editor-panel"
           >
-            <label className="admin-field">
-              <span className="admin-field-label">
-                Device name <em className="required-badge">Required</em>
-              </span>
-              <input
-                value={form.name}
-                maxLength={80}
-                placeholder="Station 01"
-                disabled={saving}
-                onChange={(event) => update('name', event.target.value)}
-              />
-            </label>
-            <label className="admin-field">
-              <span className="admin-field-label">Store / branch name</span>
-              <span className="admin-affix-input device-field-with-icon">
-                <Building2 size={17} aria-hidden="true" />
-                <input
-                  value={form.storeName}
-                  maxLength={120}
-                  placeholder="Main Store"
-                  disabled={saving}
-                  onChange={(event) => update('storeName', event.target.value)}
-                />
-              </span>
-            </label>
-            <label className="admin-field">
-              <span className="admin-field-label">Device location</span>
-              <span className="admin-affix-input device-field-with-icon">
-                <MapPin size={17} aria-hidden="true" />
-                <input
-                  value={form.location}
-                  maxLength={160}
-                  placeholder="Front Desk / Cabin 1 / Room 2"
-                  disabled={saving}
-                  onChange={(event) => update('location', event.target.value)}
-                />
-              </span>
-            </label>
-            <label className="admin-field">
-              <span className="admin-field-label">Device status</span>
-              <select
-                value={form.status}
-                disabled={saving}
-                onChange={(event) => update('status', event.target.value as DeviceStatus)}
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </label>
-            <footer className="admin-card-footer admin-card-footer--stacked">
-              {message && <Notice tone="success">{message}</Notice>}
-              {error && <Notice tone="error">{error}</Notice>}
-              <button className="primary-action wide" type="submit" disabled={saving}>
-                {saving ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
-                {saving ? 'Saving...' : 'Save Device'}
-              </button>
-            </footer>
-          </form>
-        </section>
+            <Panel
+              as="form"
+              className="admin-form device-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveDevice();
+              }}
+            >
+              <div className="form-grid">
+                <Field label="Device name" required>
+                  <input
+                    value={form.name}
+                    maxLength={80}
+                    placeholder="Station 01"
+                    disabled={saving}
+                    onChange={(event) => update('name', event.target.value)}
+                  />
+                </Field>
+                <Field label="Device status">
+                  <select
+                    value={form.status}
+                    disabled={saving}
+                    onChange={(event) => update('status', event.target.value as DeviceStatus)}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </Field>
+                <Field label="Store / branch name">
+                  <span className="admin-affix-input">
+                    <Building2 size={15} aria-hidden="true" />
+                    <input
+                      value={form.storeName}
+                      maxLength={120}
+                      placeholder="Main Store"
+                      disabled={saving}
+                      onChange={(event) => update('storeName', event.target.value)}
+                    />
+                  </span>
+                </Field>
+                <Field label="Device location">
+                  <span className="admin-affix-input">
+                    <MapPin size={15} aria-hidden="true" />
+                    <input
+                      value={form.location}
+                      maxLength={160}
+                      placeholder="Front Desk / Cabin 1 / Room 2"
+                      disabled={saving}
+                      onChange={(event) => update('location', event.target.value)}
+                    />
+                  </span>
+                </Field>
+              </div>
+              <footer className="admin-panel-footer">
+                {message && <Notice tone="success">{message}</Notice>}
+                {error && <Notice tone="error">{error}</Notice>}
+                <button className="admin-btn admin-btn--primary" type="submit" disabled={saving}>
+                  {saving && <LoaderCircle className="spin" size={15} />}
+                  {saving ? 'Saving...' : 'Save device'}
+                </button>
+              </footer>
+            </Panel>
+          </PageSection>
 
-        <FleetSyncCard owner={props.owner} className="device-sync-panel" onSynced={() => void refreshAfterSync()} />
+          <FleetSyncCard owner={props.owner} className="device-sync-panel" onSynced={() => void refreshAfterSync()} />
+        </div>
+
+        <PageSection
+          title={device?.name || 'Current device'}
+          description={place || 'Store and location not set'}
+          className="device-overview-panel"
+        >
+          <dl className="admin-meta-list device-facts">
+            <div>
+              <dt>Device ID</dt>
+              <dd className="device-id-value">
+                <code className="admin-mono">{device?.id}</code>
+                <CopyButton value={device?.id ?? ''} label="Copy device ID" />
+              </dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd><StatusText tone={active ? 'success' : 'neutral'}>{active ? 'Active' : 'Inactive'}</StatusText></dd>
+            </div>
+            <div><dt>Last updated</dt><dd>{dateTimeLabel(device?.updatedAt) || 'Never'}</dd></div>
+            <div><dt>Last synced</dt><dd>{lastSynced ? dateTimeLabel(lastSynced) : 'Not synced yet'}</dd></div>
+            <div>
+              <dt>Sync status</dt>
+              <dd><StatusText tone={syncStatus.tone}>{syncStatus.label}</StatusText></dd>
+            </div>
+            <div><dt>Current session</dt><dd>{sentenceCase(summary?.currentSessionStatus ?? 'idle')}</dd></div>
+          </dl>
+          <p className="admin-caption device-id-note">
+            The device ID never changes. It links local games, plans, sessions, and future cloud records.
+          </p>
+        </PageSection>
       </div>
     </div>
   );

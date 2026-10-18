@@ -10,5 +10,13 @@
 @import './styles/control-center.css';
 @import './styles/settings.css';
 @import './styles/dialogs.css';
-@import './styles/admin.css';
-@import './styles/admin-accounts.css';
+/* Control Room (admin): tokens, shell, shared kit, then one module per page group. See docs/admin-design.md. */
+@import './styles/admin/tokens.css';
+@import './styles/admin/shell.css';
+@import './styles/admin/kit.css';
+@import './styles/admin/library.css';
+@import './styles/admin/settings.css';
+@import './styles/admin/plans.css';
+@import './styles/admin/device.css';
+@import './styles/admin/accounts.css';
+@import './styles/admin/fleet.css';

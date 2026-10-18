@@ -1,0 +1,181 @@
+/*
+ * Control Room Plans page (PlanManager): the saved plans table (order, name,
+ * availability, duration, price, updated, enabled switch, edit/delete) and the
+ * plan editor below it with the customer preview. The switch, selected row
+ * and footer are kit pieces; only column widths and the preview live here.
+ * Tokens: --a-* only.
+ */
+
+/* ------------------------------------------------------------ plans table */
+
+.plan-table th.plan-col-order,
+.plan-table td.plan-col-order {
+  width: 72px;
+  padding-right: 0;
+  padding-left: 8px;
+}
+
+.plan-order {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.plan-table td.plan-col-name {
+  max-width: 0;
+  width: 32%;
+}
+
+.plan-name {
+  display: block;
+  overflow: hidden;
+  color: var(--a-text);
+  font-size: var(--a-size-body);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-table td.plan-col-scope {
+  max-width: 180px;
+}
+
+.plan-table td.plan-col-scope > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-table .admin-num {
+  width: 1%;
+}
+
+.plan-price {
+  color: var(--a-text);
+  font-weight: 500;
+}
+
+.plan-table :is(th, td).plan-col-updated {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.plan-table :is(th, td).plan-col-enabled {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.plan-table :is(th, td).plan-col-actions {
+  width: 1%;
+  padding-right: 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Wide enough for "Cancel" + "Confirm", so columns do not jump during a delete. */
+.plan-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 140px;
+}
+
+/* Disabled plans read quieter; the switch says why. */
+.plan-table tr.is-disabled :is(.plan-name, .plan-price) {
+  color: var(--a-text-2);
+}
+
+/* ------------------------------------------------------------ plan editor */
+
+.plan-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
+  gap: 0;
+}
+
+.plan-editor-fields {
+  align-content: start;
+  padding-right: 24px;
+}
+
+.plan-editor-switch > .admin-switch-row {
+  min-height: 0;
+  border-top: 1px solid var(--a-line);
+  padding: 14px 0 0;
+}
+
+.plan-preview {
+  display: grid;
+  align-content: start;
+  align-self: stretch;
+  gap: 10px;
+  border-left: 1px solid var(--a-line);
+  padding-left: 24px;
+}
+
+.plan-preview .admin-caption {
+  margin: 0;
+}
+
+/* A sample of the customer's plan row. */
+.plan-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 60px;
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius-sm);
+  background: var(--a-inset);
+  padding: 10px 14px;
+}
+
+.plan-preview-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.plan-preview-copy strong {
+  overflow: hidden;
+  color: var(--a-text);
+  font-size: var(--a-size-body);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-preview-copy small {
+  color: var(--a-text-2);
+  font-size: var(--a-size-caption);
+}
+
+.plan-preview-price {
+  flex: 0 0 auto;
+  color: var(--a-text);
+  font-size: var(--a-size-body);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 1100px) {
+  .plan-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .plan-editor-fields {
+    padding-right: 0;
+  }
+
+  .plan-preview {
+    border-top: 1px solid var(--a-line);
+    border-left: 0;
+    padding-top: 16px;
+    padding-left: 0;
+  }
+}

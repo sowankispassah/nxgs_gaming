@@ -46,7 +46,7 @@ function unlockErrorMessage(result: OwnerUnlockResult): string {
       : 'Too many wrong PINs. Try again in a few minutes.';
   }
   if (result.code === 'offline') return 'This device is offline. Connect to the internet and try again.';
-  if (result.code === 'not_configured' || result.code === 'not_deployed') return 'Device Management is not set up on this device.';
+  if (result.code === 'not_configured' || result.code === 'not_deployed') return 'Cloud sync is not set up on this device.';
   return 'Could not check the main admin PIN. Try again.';
 }
 
@@ -166,7 +166,7 @@ export function OwnerSessionChip(props: { onLock: () => void }): JSX.Element {
     <span className="admin-owner-chip" role="status">
       <LockOpen size={16} aria-hidden="true" />
       <span>Main admin unlocked</span>
-      <button className="secondary-action compact admin-owner-lock" type="button" onClick={props.onLock}>
+      <button className="admin-btn admin-btn--ghost admin-btn--sm admin-owner-lock" type="button" onClick={props.onLock}>
         <Lock size={14} />
         Lock
       </button>

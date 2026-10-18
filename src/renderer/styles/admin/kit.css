@@ -1,0 +1,1802 @@
+/*
+ * Control Room kit: base element styling inside .admin-screen and the shared
+ * primitives every admin page builds on. React wrappers live in
+ * components/admin/AdminKit.tsx; the catalogue is docs/admin-design.md.
+ *
+ * Page CSS loads after this file and only lays primitives out (widths,
+ * columns, one-off cells); it must not restyle them. Anything two pages need
+ * belongs here.
+ *
+ * Contents: base elements, type helpers, layout, panel, buttons, forms,
+ * switch, segmented, toggle chips, badge, status text, stat row, table,
+ * notice, empty and loading, facts list, list rows, popover and pickers, modal.
+ */
+
+/* ============================================================ base elements */
+
+.admin-screen {
+  font-family: var(--a-font);
+  font-size: var(--a-size-body);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.admin-screen :is(h1, h2, h3, h4) {
+  color: var(--a-text);
+  font-family: var(--a-font);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.admin-screen h2 {
+  font-size: var(--a-size-h2);
+}
+
+.admin-screen :is(h3, h4) {
+  font-size: var(--a-size-small);
+}
+
+.admin-screen :is(code, kbd, samp) {
+  font-family: var(--a-font-mono);
+  font-size: var(--a-size-mono);
+}
+
+.admin-screen :is(code, .admin-mono) {
+  user-select: text;
+}
+
+.admin-screen a {
+  border-radius: 2px;
+  color: var(--a-blue);
+  text-decoration: none;
+}
+
+.admin-screen a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Scrollbars: thin, neutral, never decorative. */
+.admin-screen,
+.admin-screen * {
+  scrollbar-color: var(--a-switch-off) transparent;
+}
+
+/* Buttons: no console brighten, press-scale or glow inside the Control Room. */
+.admin-screen button {
+  transition:
+    background-color var(--a-dur) var(--a-ease),
+    border-color var(--a-dur) var(--a-ease),
+    color var(--a-dur) var(--a-ease),
+    opacity var(--a-dur) var(--a-ease);
+}
+
+.admin-screen button:not(:disabled):is(:hover, :active) {
+  filter: none;
+  scale: none;
+}
+
+/*
+ * Focus: one 2px outline for keyboard and controller focus (.controller-focused)
+ * on everything focusable. No glow, no box-shadow ring.
+ */
+.admin-screen :is(button, a[href], summary, [tabindex]):is(:focus-visible, .controller-focused, .focused):not(:disabled) {
+  outline: var(--a-focus);
+  outline-offset: var(--a-focus-offset);
+  box-shadow: none;
+}
+
+/* Text fields */
+.admin-screen :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea) {
+  min-height: var(--a-input);
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius-sm);
+  background-color: var(--a-inset);
+  box-shadow: none;
+  color: var(--a-text);
+  padding: 0 10px;
+  font-size: var(--a-size-body);
+  transition:
+    border-color var(--a-dur) var(--a-ease),
+    background-color var(--a-dur) var(--a-ease);
+}
+
+.admin-screen textarea {
+  min-height: 80px;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+
+.admin-screen select {
+  padding-right: 30px;
+  background-position:
+    calc(100% - 15px) 50%,
+    calc(100% - 10px) 50%;
+  background-size: 5px 5px;
+}
+
+.admin-screen select option {
+  background: var(--a-panel);
+  color: var(--a-text);
+}
+
+.admin-screen :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea):hover:not(:focus):not(:disabled) {
+  background-color: var(--a-panel-2);
+}
+
+.admin-screen :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea):focus {
+  border-color: var(--a-text);
+  background-color: var(--a-inset);
+  box-shadow: none;
+  outline: var(--a-focus);
+  outline-offset: var(--a-focus-offset);
+}
+
+.admin-screen :is(input, select, textarea):disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.admin-screen :is(input, textarea)::placeholder {
+  color: var(--a-text-3);
+}
+
+.admin-screen input[type='number']::-webkit-inner-spin-button,
+.admin-screen input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.admin-screen input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(0.75);
+  cursor: pointer;
+}
+
+/* Checkboxes and radios */
+.admin-screen :is(input[type='checkbox'], input[type='radio']) {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #5c5c62;
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+}
+
+.admin-screen input[type='radio'] {
+  border-radius: 50%;
+}
+
+.admin-screen input[type='checkbox']::after {
+  width: 4px;
+  height: 8px;
+  margin-top: -2px;
+  border-width: 0 2px 2px 0;
+  border-color: var(--a-inverse);
+}
+
+.admin-screen input[type='radio']::after {
+  width: 6px;
+  height: 6px;
+  background: var(--a-inverse);
+}
+
+.admin-screen :is(input[type='checkbox'], input[type='radio']):checked {
+  border-color: var(--a-text);
+  background: var(--a-text);
+}
+
+.admin-screen :is(input[type='checkbox'], input[type='radio']):focus-visible {
+  box-shadow: none;
+  outline: var(--a-focus);
+  outline-offset: var(--a-focus-offset);
+}
+
+/* ============================================================== type helpers */
+
+/* Subheading inside a section or panel ("Details", "Launch"). */
+.admin-subheading {
+  margin: 0;
+  color: var(--a-text);
+  font-family: var(--a-font);
+  font-size: var(--a-size-small);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.4;
+  text-transform: none;
+}
+
+.admin-text-2 {
+  color: var(--a-text-2);
+}
+
+.admin-caption {
+  color: var(--a-text-2);
+  font-size: var(--a-size-caption);
+  line-height: 1.4;
+}
+
+/* A count or short meta line next to a heading or toolbar: "8 saved", "4 of 5 on", "Last scan 1:34 pm". Plain text, never a pill. */
+.admin-count {
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.admin-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.admin-mono {
+  font-family: var(--a-font-mono);
+  font-size: var(--a-size-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Keyboard key names are the one place uppercase is allowed. */
+.admin-kbd {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius-xs);
+  color: var(--a-text-2);
+  padding: 0 5px;
+  font-family: var(--a-font-mono);
+  font-size: 11.5px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.admin-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ==================================================================== layout */
+
+/* Vertical rhythm between sections. */
+.admin-stack {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: var(--a-section-gap);
+}
+
+/* Main column + 340px side column (device facts, moderators). Stacks below 1100px. */
+.admin-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--a-side-column);
+  align-items: start;
+  gap: 40px;
+}
+
+@media (max-width: 1100px) {
+  .admin-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* PageSection: h2 + description, actions on the right, 12px, then content. */
+.admin-section {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 12px;
+}
+
+.admin-section + .admin-section {
+  margin-top: var(--a-section-gap);
+}
+
+.admin-stack > .admin-section + .admin-section {
+  margin-top: 0;
+}
+
+.admin-section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.admin-section-heading-group {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.admin-section-heading {
+  margin: 0;
+  font-size: var(--a-size-h2);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.admin-section-description {
+  margin: 0;
+  max-width: 720px;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  line-height: 1.45;
+}
+
+.admin-section-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Toolbar: a row of controls. */
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.admin-toolbar--end {
+  justify-content: flex-end;
+}
+
+.admin-toolbar--between {
+  justify-content: space-between;
+}
+
+.admin-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+/* ===================================================================== panel */
+
+/* Panel: the one bordered surface. Never nest panels. */
+.admin-panel {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius);
+  background: var(--a-panel);
+  box-shadow: none;
+  padding: 20px;
+}
+
+/* Edge to edge content (tables, hairline lists). */
+.admin-panel--flush {
+  padding: 0;
+}
+
+/* A panel of hairline rows (settings rows, facts): the rows bring their own vertical padding. */
+.admin-panel--rows {
+  padding: 4px 20px;
+}
+
+.admin-panel--rows > :is(.admin-value-row, .admin-switch-row) + :is(.admin-value-row, .admin-switch-row) {
+  border-top: 1px solid var(--a-line);
+}
+
+.admin-panel--rows > .admin-meta-list > div {
+  padding-block: 11px;
+}
+
+/*
+ * Panel footer: a full-width strip under a hairline, feedback on the left and
+ * the save button on the right. Every form panel ends with one.
+ */
+.admin-panel-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin: 20px -20px -20px;
+  border-top: 1px solid var(--a-line);
+  padding: 12px 20px;
+}
+
+/* In a form the grid gap already separates it from the fields. */
+.admin-form > .admin-panel-footer {
+  margin-top: 0;
+}
+
+.admin-panel--flush > .admin-panel-footer {
+  margin: 0;
+}
+
+.admin-panel--rows > .admin-panel-footer {
+  margin: 0 -20px -4px;
+}
+
+.admin-panel-footer > .admin-notice {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.admin-panel-footer > .admin-btn:last-child {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* =================================================================== buttons */
+
+/*
+ * .admin-btn + one variant: --primary, --secondary (default), --ghost, --danger;
+ * sizes --sm (28px) and --icon (square). Page headers use the 32px size,
+ * section headers, tables and toolbars the 28px one.
+ */
+.admin-screen .admin-btn {
+  --btn-bg: transparent;
+  --btn-fg: var(--a-text);
+  --btn-border: var(--a-line-strong);
+  --btn-bg-hover: var(--a-panel-2);
+  --btn-fg-hover: var(--btn-fg);
+  --btn-border-hover: var(--btn-border);
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--a-control);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--a-radius-sm);
+  background: var(--btn-bg);
+  box-shadow: none;
+  color: var(--btn-fg);
+  padding: 0 12px;
+  font-family: var(--a-font);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.admin-screen .admin-btn--primary {
+  --btn-bg: var(--a-text);
+  --btn-fg: var(--a-inverse);
+  --btn-border: var(--a-text);
+  --btn-bg-hover: #d4d4d8;
+  --btn-border-hover: #d4d4d8;
+}
+
+.admin-screen .admin-btn--ghost {
+  --btn-border: transparent;
+  --btn-fg: var(--a-text-2);
+  --btn-fg-hover: var(--a-text);
+}
+
+.admin-screen .admin-btn--danger {
+  --btn-fg: var(--a-red);
+  --btn-border: var(--a-red-line);
+  --btn-bg-hover: var(--a-red-tint);
+  --btn-fg-hover: var(--a-red);
+}
+
+/* Ghost danger (row delete icons) stays quiet until hover or focus. */
+.admin-screen .admin-btn--ghost.admin-btn--danger {
+  --btn-border: transparent;
+  --btn-fg: var(--a-text-3);
+}
+
+/* Second click of a two-step delete. */
+.admin-screen .admin-btn--danger.confirming {
+  --btn-bg: var(--a-red);
+  --btn-fg: var(--a-inverse);
+  --btn-border: var(--a-red);
+  --btn-bg-hover: #ff6b70;
+  --btn-fg-hover: var(--a-inverse);
+}
+
+.admin-screen .admin-btn:not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused) {
+  border-color: var(--btn-border-hover);
+  background: var(--btn-bg-hover);
+  color: var(--btn-fg-hover);
+}
+
+.admin-screen .admin-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.admin-screen .admin-btn.admin-btn--sm {
+  min-height: var(--a-control-sm);
+  gap: 5px;
+  padding: 0 10px;
+  font-size: var(--a-size-small);
+}
+
+.admin-screen .admin-btn--icon {
+  width: var(--a-control);
+  height: var(--a-control);
+  min-height: 0;
+  padding: 0;
+}
+
+.admin-screen .admin-btn--icon.admin-btn--sm {
+  width: var(--a-control-sm);
+  height: var(--a-control-sm);
+  padding: 0;
+}
+
+.admin-screen .admin-btn > svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+
+.admin-screen .admin-btn--sm > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.admin-screen .admin-btn--icon > svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ===================================================================== forms */
+
+.admin-form {
+  display: grid;
+  gap: 20px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.form-grid .full {
+  grid-column: 1 / -1;
+}
+
+/* Field: label (13px/500) above the control, help or error (12px) below. */
+.admin-field {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 6px;
+}
+
+.admin-field-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--a-text);
+  font-size: var(--a-size-small);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.admin-field-required {
+  display: inline;
+  min-height: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--a-text-3);
+  padding: 0;
+  font-size: var(--a-size-caption);
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Help under a field; also a short standalone note in a form or side column. */
+.admin-field-help {
+  margin: 0;
+  color: var(--a-text-2);
+  font-size: var(--a-size-caption);
+  line-height: 1.45;
+}
+
+.admin-field-error {
+  color: var(--a-red);
+  font-size: var(--a-size-caption);
+  line-height: 1.45;
+}
+
+.admin-screen .admin-field[data-invalid='true'] :is(input:not([type='checkbox']):not([type='radio']), select, textarea, .admin-affix-input) {
+  border-color: var(--a-red);
+}
+
+.input-with-button {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.input-with-button > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Affix input: a field with a leading icon or a trailing unit ("min", "sec"). */
+.admin-affix-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--a-input);
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius-sm);
+  background: var(--a-inset);
+  box-shadow: none;
+  color: var(--a-text-3);
+  padding: 0 10px;
+  transition:
+    border-color var(--a-dur) var(--a-ease),
+    background-color var(--a-dur) var(--a-ease);
+}
+
+.admin-affix-input:hover {
+  background: var(--a-panel-2);
+}
+
+.admin-affix-input:focus-within {
+  border-color: var(--a-text);
+  background: var(--a-inset);
+  box-shadow: none;
+  color: var(--a-text-2);
+  outline: var(--a-focus);
+  outline-offset: var(--a-focus-offset);
+}
+
+.admin-affix-input:has(:is(input, select):disabled) {
+  opacity: 0.5;
+}
+
+.admin-affix-input > svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+
+.admin-affix-input > em {
+  flex: 0 0 auto;
+  font-size: var(--a-size-small);
+  font-style: normal;
+  font-weight: 400;
+}
+
+.admin-affix-input :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select),
+.admin-affix-input :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select):is(:hover, :focus) {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: calc(var(--a-input) - 2px);
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+  padding: 0;
+}
+
+.admin-affix-input select,
+.admin-affix-input select:is(:hover, :focus) {
+  padding-right: 20px;
+  background-position:
+    calc(100% - 7px) 50%,
+    calc(100% - 2px) 50%;
+}
+
+/* ==================================================================== switch */
+
+/* 30x18, the only rounded-full element. Driven by data-on. */
+.admin-screen .ps-switch {
+  width: 30px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--a-switch-off);
+  transition: background-color var(--a-dur) var(--a-ease);
+}
+
+.admin-screen .ps-switch::after {
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--a-text);
+  box-shadow: none;
+  transition:
+    translate var(--a-dur) var(--a-ease),
+    background-color var(--a-dur) var(--a-ease);
+}
+
+.admin-screen .ps-switch[data-on='true'] {
+  background: var(--a-text);
+}
+
+.admin-screen .ps-switch[data-on='true']::after {
+  translate: 12px 0;
+  background: var(--a-inverse);
+}
+
+/* SwitchRow: copy left, switch right. Inside .admin-switch-list rows get hairlines. */
+.admin-switch-list {
+  display: grid;
+  gap: 0;
+}
+
+.admin-switch-list > * + * {
+  border-top: 1px solid var(--a-line);
+}
+
+.admin-switch-row,
+.admin-value-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 52px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 10px 0;
+}
+
+.admin-switch-row {
+  cursor: pointer;
+}
+
+.admin-switch-row:hover .ps-switch:not([data-on='true']) {
+  background: #47474b;
+}
+
+.admin-switch-row:has(.admin-switch-input:focus-visible) {
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  box-shadow: none;
+  outline: var(--a-focus);
+  outline-offset: 4px;
+}
+
+.admin-switch-row.is-disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.admin-switch-row .admin-switch-input[type='checkbox'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.admin-switch-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.admin-switch-copy strong {
+  color: var(--a-text);
+  font-size: var(--a-size-body);
+  font-weight: 500;
+}
+
+.admin-switch-copy small {
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  line-height: 1.45;
+}
+
+/* The controls on the right of a value row (an input and its button, Cancel + Confirm). */
+.admin-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Danger zone: destructive actions (Exit NXGS Play, Remove device) in a rows panel with a red hairline. No fill. */
+.admin-panel.admin-danger-zone {
+  border-color: var(--a-red-line);
+}
+
+/*
+ * InlineSwitch: the bare switch for table cells and toolbars, with an optional
+ * label after it. The checkbox is hidden; the label shows keyboard focus.
+ */
+.admin-inline-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--a-control-sm);
+  border-radius: var(--a-radius-xs);
+  color: var(--a-text-3);
+  vertical-align: middle;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.admin-inline-switch > input[type='checkbox'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.admin-inline-switch:has(> input:focus-visible) {
+  outline: var(--a-focus);
+  outline-offset: var(--a-focus-offset);
+}
+
+.admin-inline-switch:hover .ps-switch:not([data-on='true']) {
+  background: #47474b;
+}
+
+.admin-inline-switch-label {
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  font-weight: 500;
+  transition: color var(--a-dur) var(--a-ease);
+}
+
+.admin-inline-switch:is(:hover, :has(> input:checked)) .admin-inline-switch-label {
+  color: var(--a-text);
+}
+
+.admin-inline-switch.is-disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* ================================================================= segmented */
+
+/* One choice out of a few. Buttons carry aria-pressed. */
+.admin-segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius);
+  background: transparent;
+  box-shadow: none;
+  padding: 2px;
+}
+
+.admin-segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--a-control-sm);
+  border: 0;
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  box-shadow: none;
+  color: var(--a-text-2);
+  padding: 0 10px;
+  font-size: var(--a-size-small);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.admin-segmented button > svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.admin-segmented button:not(:disabled):hover {
+  background: transparent;
+  color: var(--a-text);
+}
+
+.admin-segmented button[aria-pressed='true'],
+.admin-segmented button[aria-pressed='true']:not(:disabled):hover {
+  background: var(--a-segment);
+  box-shadow: none;
+  color: var(--a-text);
+  font-weight: 500;
+}
+
+.admin-screen .admin-segmented button:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
+  outline-offset: 1px;
+}
+
+.admin-segmented button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* ============================================================== toggle chips */
+
+/* On/off filter chips. Selected: light border, 8% white fill and a leading check. */
+.admin-chip-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--a-control-sm);
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  box-shadow: none;
+  color: var(--a-text-2);
+  padding: 0 10px;
+  font-size: var(--a-size-small);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.admin-chip-toggle > svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.admin-chip-toggle:not(:disabled):hover {
+  background: var(--a-panel-2);
+  color: var(--a-text);
+}
+
+/* .admin-screen beats the console's generic button[aria-pressed] border. */
+.admin-screen .admin-chip-toggle[aria-pressed='true'],
+.admin-screen .admin-chip-toggle[aria-pressed='true']:not(:disabled):hover {
+  border-color: var(--a-text);
+  background: var(--a-white-tint);
+  color: var(--a-text);
+  font-weight: 500;
+}
+
+.admin-chip-toggle[aria-pressed='true']::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-left: -2px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.admin-chip-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* ===================================================================== badge */
+
+/* Badge: a fact about a row ("This device", "Removed", "Global"). Text first, so it sits on the text baseline. */
+.admin-screen .admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  color: var(--a-text-2);
+  padding: 0 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.admin-screen .admin-badge > svg {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+}
+
+.admin-screen .admin-badge--success {
+  border-color: transparent;
+  background: var(--a-green-tint);
+  color: var(--a-green);
+}
+
+.admin-screen .admin-badge--warning {
+  border-color: transparent;
+  background: var(--a-amber-tint);
+  color: var(--a-amber);
+}
+
+.admin-screen .admin-badge--danger {
+  border-color: transparent;
+  background: var(--a-red-tint);
+  color: var(--a-red);
+}
+
+.admin-screen .admin-badge--info {
+  border-color: transparent;
+  background: var(--a-blue-tint);
+  color: var(--a-blue);
+}
+
+/* =============================================================== status text */
+
+/*
+ * 6px dot + 13px label in the semantic colour (mapping in docs/admin-design.md).
+ * The label is the only baseline-aligned item, so the whole thing sits on the
+ * text baseline of a table cell or facts row, level with plain text beside it
+ * (no vertical-align or row-centring fixes needed in page CSS).
+ */
+.admin-status {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.admin-status-dot {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* An icon in place of the dot (the verified check in Accounts). */
+.admin-status > svg {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 14px;
+  height: 14px;
+  margin-inline: -2px -1px;
+}
+
+.admin-status--neutral .admin-status-dot {
+  background: var(--a-text-3);
+}
+
+.admin-status--success {
+  color: var(--a-green);
+}
+
+.admin-status--warning {
+  color: var(--a-amber);
+}
+
+.admin-status--danger {
+  color: var(--a-red);
+}
+
+.admin-status--info {
+  color: var(--a-blue);
+}
+
+/* ================================================================== stat row */
+
+/*
+ * One panel split into equal cells by hairlines. The cells draw their own
+ * left/top hairline as a 1px shadow; the panel clips the ones on its outer
+ * edge, so wrapped rows stay clean.
+ */
+.admin-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius);
+  background: var(--a-panel);
+}
+
+.admin-stat {
+  display: grid;
+  flex: 1 1 var(--a-stat-min, 160px);
+  align-content: start;
+  min-width: 0;
+  gap: 4px;
+  margin: 0;
+  box-shadow:
+    -1px 0 0 var(--a-line),
+    0 -1px 0 var(--a-line);
+  padding: 14px 20px 16px;
+}
+
+.admin-stat-label {
+  margin: 0;
+  color: var(--a-text-2);
+  font-size: var(--a-size-caption);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.admin-stat-value {
+  margin: 0;
+  overflow: hidden;
+  color: var(--a-text);
+  font-size: var(--a-size-figure);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-stat-value--success {
+  color: var(--a-green);
+}
+
+.admin-stat-value--warning {
+  color: var(--a-amber);
+}
+
+.admin-stat-value--danger {
+  color: var(--a-red);
+}
+
+.admin-stat-value--info {
+  color: var(--a-blue);
+}
+
+.admin-stat-sub {
+  margin: 0;
+  overflow: hidden;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===================================================================== table */
+
+/* Wrap the table in .admin-table-scroll (it is the bordered panel and the scroller). */
+.admin-table-scroll {
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius);
+  background: var(--a-panel);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--a-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: var(--a-header-row);
+  border-bottom: 1px solid var(--a-line);
+  background: var(--a-panel);
+  color: var(--a-text-2);
+  padding: 0 12px;
+  font-size: var(--a-size-caption);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.admin-table td {
+  height: var(--a-row);
+  border-bottom: 1px solid var(--a-line);
+  color: var(--a-text);
+  padding: 8px 12px;
+  vertical-align: middle;
+  transition: background-color var(--a-dur) var(--a-ease);
+}
+
+/* 16px from the panel edge on both sides; the cells between keep 12px. */
+.admin-table :is(th, td):first-child {
+  padding-left: 16px;
+}
+
+.admin-table :is(th, td):last-child {
+  padding-right: 16px;
+}
+
+.admin-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.admin-table tbody tr:hover td,
+.admin-table tbody tr.is-selected td {
+  background: var(--a-panel-2);
+}
+
+/* Rows that open, expand or pick something on click (the row also holds a real button for keyboard and controller). */
+.admin-table tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+/* Selected row (being edited, or picked as a filter): the fill plus a 2px bar on the left edge, like the nav. */
+.admin-table tbody tr.is-selected td:first-child {
+  box-shadow: inset 2px 0 0 var(--a-text);
+}
+
+.admin-table :is(th, td).admin-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Expanded row area. */
+.admin-table tbody tr.admin-table-detail td,
+.admin-table tbody tr.admin-table-detail:hover td {
+  background: var(--a-inset);
+  padding: 16px;
+}
+
+/* ==================================================================== notice */
+
+/* 2px left rule in the semantic colour on its tint. */
+.admin-notice {
+  --notice-color: var(--a-text-3);
+  --notice-tint: rgba(255, 255, 255, 0.04);
+
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  border-left: 2px solid var(--notice-color);
+  border-radius: 0 var(--a-radius-xs) var(--a-radius-xs) 0;
+  background: var(--notice-tint);
+  color: var(--a-text);
+  padding: 8px 12px;
+  font-size: var(--a-size-small);
+  font-weight: 400;
+  line-height: 1.45;
+  animation: none;
+}
+
+.admin-notice-icon {
+  display: grid;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--notice-color);
+}
+
+.admin-notice-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.admin-notice--success {
+  --notice-color: var(--a-green);
+  --notice-tint: var(--a-green-tint);
+}
+
+.admin-notice--error {
+  --notice-color: var(--a-red);
+  --notice-tint: var(--a-red-tint);
+}
+
+.admin-notice--warning {
+  --notice-color: var(--a-amber);
+  --notice-tint: var(--a-amber-tint);
+}
+
+.admin-notice--info {
+  --notice-color: var(--a-blue);
+  --notice-tint: var(--a-blue-tint);
+}
+
+/* ========================================================= empty and loading */
+
+.admin-empty {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 16px 0;
+  text-align: left;
+}
+
+/* In a padded panel the panel's padding is enough; edge to edge (scroller, flush panel) it keeps the rows' 16px inset. */
+.admin-panel:not(.admin-panel--flush) > :is(.admin-empty, .admin-loading) {
+  padding: 0;
+}
+
+:is(.admin-table-scroll, .admin-panel--flush) > :is(.admin-empty, .admin-loading) {
+  padding: 16px;
+}
+
+.admin-empty strong,
+.admin-empty-title {
+  color: var(--a-text);
+  font-size: var(--a-size-body);
+  font-weight: 500;
+}
+
+.admin-empty p {
+  max-width: 560px;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  line-height: 1.5;
+}
+
+.admin-empty-action {
+  margin-top: 8px;
+}
+
+.admin-loading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 0;
+  color: var(--a-text-2);
+  padding: 12px 0;
+  font-size: var(--a-size-small);
+}
+
+.admin-loading > svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+/* ================================================================ facts list */
+
+/*
+ * <dl class="admin-meta-list"><div><dt/><dd/></div>...</dl>: label/value rows
+ * with hairlines between them. One rule for alignment:
+ *   default  label left, value right. Short facts in a side column (340px).
+ *   --left   a fixed label column and left-aligned values. Anywhere wider
+ *            (inside a main-column panel) or when a value can be long: paths,
+ *            IDs, errors, release notes.
+ * Rows align on the text baseline; StatusText and badges sit on it too.
+ */
+.admin-meta-list {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+}
+
+.admin-meta-list > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.6fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 16px;
+  border-bottom: 1px solid var(--a-line);
+  padding: 9px 0;
+}
+
+.admin-meta-list > div:last-child {
+  border-bottom: 0;
+}
+
+.admin-meta-list dt {
+  min-width: 0;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.admin-meta-list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--a-text);
+  font-size: var(--a-size-small);
+  font-weight: 400;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.admin-meta-list--left > div {
+  grid-template-columns: var(--a-meta-label, 168px) minmax(0, 1fr);
+}
+
+.admin-meta-list--left dd {
+  text-align: left;
+}
+
+/* ================================================================= list rows */
+
+/* Hairline list inside a flush panel (the Games library): .admin-list > .admin-list-row > .row-main. Use a table for data. */
+.admin-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--a-line);
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 8px 6px 10px;
+  transition: background-color var(--a-dur) var(--a-ease);
+}
+
+.admin-list-row:last-child {
+  border-bottom: 0;
+}
+
+.admin-list-row:hover,
+.admin-list-row.selected,
+.admin-list-row:has(> .row-main:focus-visible) {
+  background: var(--a-panel-2);
+  box-shadow: none;
+}
+
+.admin-list-row.selected::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  border-radius: 0;
+  background: var(--a-text);
+  box-shadow: none;
+}
+
+.row-main {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+  border: 0;
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  color: var(--a-text);
+  padding: 4px;
+  text-align: left;
+}
+
+/* ======================================================= popover and pickers */
+
+/*
+ * FilterPopover (components/admin/FilterPopover.tsx): a filter button that
+ * opens a panel under it, and the pickers that go inside (a search, a status
+ * line with Select all / Clear, grouped checkbox rows). The panel is the one
+ * place besides modals with a shadow.
+ */
+.admin-screen .admin-popover-panel {
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius);
+  background: var(--a-panel);
+  box-shadow: var(--a-shadow-pop);
+  animation: none;
+}
+
+/* Filter button: a toggle chip with a chevron; "Games | Forza Horizon 5" once a filter is on. */
+.admin-popover {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.admin-popover-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  min-height: var(--a-control-sm);
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  color: var(--a-text-2);
+  padding: 0 7px 0 10px;
+  font-size: var(--a-size-small);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.admin-popover-trigger > svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: var(--a-text-3);
+}
+
+.admin-popover-label {
+  flex: 0 0 auto;
+}
+
+.admin-popover-value {
+  min-width: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--a-line-strong);
+  color: var(--a-text);
+  padding-left: 7px;
+  text-overflow: ellipsis;
+}
+
+.admin-popover-trigger:not(:disabled):hover,
+.admin-popover.is-open .admin-popover-trigger {
+  background: var(--a-panel-2);
+  color: var(--a-text);
+}
+
+.admin-popover-trigger.is-active,
+.admin-popover.is-open .admin-popover-trigger.is-active {
+  border-color: var(--a-text);
+  background: var(--a-white-tint);
+}
+
+.admin-popover-trigger.is-active .admin-popover-label {
+  color: var(--a-text-2);
+}
+
+.admin-popover-trigger:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* The panel sits under its button; surface and shadow above. */
+.admin-popover-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 48px));
+  max-height: min(60vh, 480px);
+  overflow: hidden;
+}
+
+.admin-picker {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.admin-picker-head {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px;
+  border-bottom: 1px solid var(--a-line);
+  padding: 8px 8px 6px;
+}
+
+.admin-screen .admin-picker-search {
+  min-height: var(--a-control);
+}
+
+.admin-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--a-control-sm);
+}
+
+.admin-picker-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--a-text-3);
+  padding-left: 2px;
+  font-size: var(--a-size-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-picker-list {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+}
+
+.admin-picker-group + .admin-picker-group {
+  margin-top: 4px;
+  border-top: 1px solid var(--a-line);
+  padding-top: 4px;
+}
+
+/* Store header: a 12px label with a ghost "Whole store" button. */
+.admin-picker-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--a-control);
+  padding-left: 8px;
+}
+
+.admin-picker-group-header > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-screen .admin-picker-store[aria-pressed='true'] {
+  --btn-fg: var(--a-text);
+  border-color: transparent;
+}
+
+.admin-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--a-control);
+  border-radius: var(--a-radius-xs);
+  padding: 0 8px;
+  cursor: pointer;
+  transition: background-color var(--a-dur) var(--a-ease);
+}
+
+.admin-picker-option:hover {
+  background: var(--a-panel-2);
+}
+
+/* Keyboard and controller focus outline the whole row, not just the checkbox. */
+.admin-screen .admin-picker-option input:focus-visible {
+  outline: none;
+}
+
+.admin-picker-option:has(input:focus-visible) {
+  background: var(--a-panel-2);
+  outline: var(--a-focus);
+  outline-offset: -2px;
+}
+
+.admin-picker-option input[type='checkbox'] {
+  flex: 0 0 auto;
+}
+
+.admin-picker-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--a-text);
+  font-size: var(--a-size-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-picker-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-picker-option .admin-badge {
+  flex: 0 0 auto;
+}
+
+.admin-picker-note {
+  margin: 0;
+  color: var(--a-text-2);
+  padding: 8px;
+  font-size: var(--a-size-small);
+}
+
+/* Active filters: removable chips in the result line under a filter bar. */
+/* A removable filter: filled, not outlined, so it never reads as another toggle. */
+.admin-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 300px;
+  min-height: var(--a-control-sm);
+  border: 1px solid transparent;
+  border-radius: var(--a-radius-xs);
+  background: var(--a-panel-2);
+  color: var(--a-text);
+  padding: 0 6px 0 9px;
+  font-size: var(--a-size-caption);
+  font-weight: 500;
+}
+
+.admin-active-chip-kind {
+  flex: 0 0 auto;
+  color: var(--a-text-3);
+}
+
+.admin-active-chip-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-active-chip > svg {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  color: var(--a-text-3);
+  transition: color var(--a-dur) var(--a-ease);
+}
+
+.admin-active-chip:not(:disabled):hover {
+  border-color: var(--a-line-strong);
+}
+
+.admin-active-chip:not(:disabled):is(:hover, :focus-visible, .controller-focused) > svg {
+  color: var(--a-text);
+}
+
+/* ===================================================================== modal */
+
+/* Control Room modals reuse .modal-backdrop > .modal from dialogs.css, flattened here. */
+.admin-screen .modal-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: none;
+  animation: none;
+}
+
+.admin-screen .modal {
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius);
+  background: var(--a-panel);
+  box-shadow: var(--a-shadow-pop);
+  padding: 24px;
+  animation: none;
+}
+
+.admin-screen .modal h2 {
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.admin-screen .modal .muted {
+  font-size: var(--a-size-small);
+}
+
+/*
+ * Close button in a modal's top right corner: <button className="admin-btn
+ * admin-btn--icon admin-btn--ghost close-button">. The button rule above sets
+ * position: relative; this wins, for every modal, so no page needs its own fix.
+ */
+.admin-screen .admin-btn.close-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  width: var(--a-control);
+  height: var(--a-control);
+}

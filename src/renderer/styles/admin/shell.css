@@ -1,0 +1,348 @@
+/*
+ * Control Room shell: the screen grid, the grouped sidebar, the page
+ * container (form pages 1120px, data pages 1600px, left aligned) and the page
+ * header (title, description, scope note, actions slot, hairline).
+ */
+
+/* The Control Room opens without an entrance animation. */
+.app-screen--admin:has(> .admin-screen) {
+  animation: none;
+}
+
+.admin-screen {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--a-sidebar-width) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--a-bg);
+  color: var(--a-text);
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+.admin-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 20px;
+  border-right: 1px solid var(--a-line);
+  background: var(--a-sidebar);
+  padding: 16px 12px 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.admin-sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 8px;
+}
+
+.admin-brand-logo {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--a-radius-sm);
+  background: var(--a-panel-2);
+  object-fit: cover;
+}
+
+.admin-brand-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.admin-brand-title {
+  margin: 0;
+  color: var(--a-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.admin-brand-station {
+  margin: 0;
+  overflow: hidden;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-sidebar nav {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.admin-nav-group {
+  display: grid;
+  gap: 1px;
+}
+
+.admin-nav-group-label {
+  margin: 0 0 4px;
+  color: var(--a-text-3);
+  padding: 0 8px;
+  font-size: var(--a-size-caption);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.admin-sidebar nav button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  border-radius: var(--a-radius-sm);
+  background: transparent;
+  color: var(--a-text-2);
+  padding: 0 8px;
+  font-size: var(--a-size-body);
+  font-weight: 400;
+  text-align: left;
+}
+
+.admin-nav-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  color: var(--a-text-3);
+  transition: color var(--a-dur) var(--a-ease);
+}
+
+.admin-nav-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-sidebar nav button:not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused) {
+  background: var(--a-panel-2);
+  color: var(--a-text);
+}
+
+.admin-sidebar nav button:not(.active):not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused) .admin-nav-icon {
+  color: var(--a-text-2);
+}
+
+.admin-sidebar nav button.active {
+  background: var(--a-panel-2);
+  color: var(--a-text);
+  font-weight: 500;
+}
+
+.admin-sidebar nav button.active .admin-nav-icon {
+  color: var(--a-text);
+}
+
+/* Active marker: a 2px bar on the left edge. */
+.admin-sidebar nav button.active::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 1px 1px 0;
+  background: var(--a-text);
+}
+
+.admin-sidebar-footer {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+  border-top: 1px solid var(--a-line);
+  padding-top: 12px;
+}
+
+.admin-screen .admin-sidebar-footer .admin-home-button {
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 0 8px;
+  font-size: var(--a-size-body);
+  font-weight: 400;
+}
+
+.admin-screen .admin-sidebar-footer .admin-home-button > svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* One line of controller hints, monochrome. */
+.admin-hints {
+  --glyph-cross: currentColor;
+  --glyph-circle: currentColor;
+  --glyph-square: currentColor;
+  --glyph-triangle: currentColor;
+
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 12px;
+  overflow: hidden;
+  color: var(--a-text-3);
+  padding: 0 8px;
+  font-size: var(--a-size-caption);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.admin-hints .controller-hint {
+  gap: 6px;
+}
+
+.admin-hints .button-glyph,
+.admin-hints .button-glyph svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------------------------------------------------------------- content */
+
+.admin-content {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--a-page-pad-top) var(--a-page-pad-x) var(--a-page-pad-bottom);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+/* Form pages are 1120px wide, data pages (Games, Accounts, All devices) 1600px; both left aligned. */
+.admin-page {
+  width: 100%;
+  max-width: var(--a-page-max);
+}
+
+.admin-page--data {
+  max-width: var(--a-page-max-data);
+}
+
+.admin-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--a-line);
+  padding-bottom: 20px;
+}
+
+.admin-page-heading {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.admin-page-header h1 {
+  margin: 0;
+  color: var(--a-text);
+  font-size: var(--a-size-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.admin-page-description {
+  max-width: 720px;
+  margin: 0;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  line-height: 1.45;
+}
+
+/* "Applies to Station 01" / "Covers every device": plain text, not a pill. Always present, so headers keep one height. */
+.admin-page-scope {
+  margin: 0;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  line-height: 1.4;
+}
+
+.admin-page-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: var(--a-control);
+}
+
+/* Pages portal their header actions in here (<PageActions>). */
+.admin-page-actions-slot {
+  display: contents;
+}
+
+/* ------------------------------------------------------- main admin chip */
+
+.admin-owner-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--a-control);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--a-text-2);
+  padding: 0;
+  font-size: var(--a-size-small);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.admin-owner-chip > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--a-green);
+}
+
+/* The ghost Lock button ends on the content edge like the other header actions. */
+.admin-screen .admin-owner-chip .admin-owner-lock {
+  margin-right: -10px;
+}
+
+/* After the page's own actions: a hairline and 16px on each side, so the session state never reads as another button. */
+.admin-page-actions-slot:not(:empty) + .admin-owner-chip {
+  margin-left: 8px;
+  border-left: 1px solid var(--a-line);
+  padding-left: 16px;
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-height: 760px) {
+  .admin-hints {
+    display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .admin-page-header {
+    flex-wrap: wrap;
+  }
+}

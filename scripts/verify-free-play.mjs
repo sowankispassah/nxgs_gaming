@@ -25,6 +25,6 @@ assert.match(mainSource, /requiresPaymentForLaunch\(store\.getSettings\(\), sess
 assert.match(appSource, /Allow free play/);
 assert.match(appSource, /Games launch immediately without opening the plan or payment pages/);
 assert.match(appSource, /requiresPaymentForLaunch\(settings, session\)/);
-assert.match(appSource, /pending \? 'Saving\.\.\.' : 'Save Settings'/);
+assert.match(appSource, /pending \? 'Saving\.\.\.' : 'Save settings'/);
 
 console.log('Paid/free access persistence, payment bypass, and Admin save feedback verified.');

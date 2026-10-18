@@ -47,13 +47,15 @@ assert.match(preload, /deletePlayPlan/);
 assert.match(preload, /setPlayPlanEnabled/);
 assert.match(preload, /reorderPlayPlans/);
 
-assert.match(app, /label="Plan Manager"/);
+assert.match(app, /label="Plans"/);
 assert.match(app, /tab === 'plans' && <PlanManager/);
-assert.match(app, /Play durations and prices are managed from Plan Manager\./);
+// Sessions points staff to the Plans section for durations and prices.
+assert.match(app, /Play durations and prices are managed from Plans\./);
 assert.match(app, /No play plans available\./);
 assert.doesNotMatch(app, /plan\.durationMinutes === (5|30|180)/);
 
-assert.match(manager, /Add New Plan/);
+assert.match(manager, /form\.id \? 'Edit plan' : 'New plan'/);
+assert.match(manager, /'Add plan'/);
 assert.match(manager, /savePlayPlan/);
 assert.match(manager, /deletePlayPlan/);
 assert.match(manager, /setPlayPlanEnabled/);

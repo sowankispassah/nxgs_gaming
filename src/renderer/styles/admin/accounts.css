@@ -1,0 +1,537 @@
+/*
+ * Control Room Accounts (earnings). The page is built from kit primitives
+ * (Toolbar, Segmented, ToggleChip, FilterPopover and pickers, InlineSwitch,
+ * StatRow, PageSection, .admin-table, StatusText); this file only lays them
+ * out and adds what is specific to a money report:
+ *
+ *   toolbar      two rows under the page header, then one quiet result line
+ *   sessions     column widths, the row toggle and the expanded row
+ *   breakdown    the By device and Top games tables with their share bars
+ */
+
+/* ===================================================================== page */
+
+.accounts-page {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 24px;
+}
+
+/* Sections sit 32px apart (24px gap + 8px). */
+.accounts-page > .admin-section,
+.accounts-breakdown {
+  margin-top: 8px;
+}
+
+.accounts-page :is(.admin-stat-row, .accounts-table-scroll, .accounts-rank-table) {
+  transition: opacity var(--a-dur) var(--a-ease);
+}
+
+/* A new report is loading: the current one stays, dimmed, until it arrives. */
+.accounts-page.is-busy :is(.admin-stat-row, .accounts-table-scroll, .accounts-rank-table) {
+  opacity: 0.55;
+}
+
+.accounts-note {
+  margin: 0;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  line-height: 1.5;
+}
+
+.accounts-muted {
+  color: var(--a-text-3);
+}
+
+.accounts-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.accounts-error > .admin-notice {
+  flex: 1 1 320px;
+}
+
+.accounts-export-notice {
+  overflow-wrap: anywhere;
+}
+
+/* ================================================================== toolbar */
+
+.accounts-controls,
+.accounts-filters {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.accounts-toolbar {
+  gap: 8px;
+}
+
+/* Top row: scope, period (and custom dates), then search and sort pushed right. */
+.accounts-search {
+  flex: 1 1 240px;
+  max-width: 340px;
+  margin-left: auto;
+}
+
+.admin-screen .accounts-search input {
+  font-size: var(--a-size-small);
+}
+
+.accounts-sort {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.accounts-sort-label {
+  color: var(--a-text-3);
+  font-size: var(--a-size-small);
+}
+
+.admin-screen .accounts-sort select,
+.admin-screen .accounts-sort select:is(:hover, :focus) {
+  color: var(--a-text);
+  font-size: var(--a-size-small);
+  font-weight: 500;
+}
+
+.accounts-dates {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--a-text-3);
+  font-size: var(--a-size-small);
+}
+
+.admin-screen .accounts-dates input[type='date'] {
+  width: 150px;
+  font-size: var(--a-size-small);
+}
+
+/* Second row: Devices and Games, then labelled chip groups and the verified switch. */
+.accounts-toolbar--filters {
+  gap: 8px 24px;
+}
+
+.accounts-filter-cluster {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.accounts-filter-label {
+  flex: 0 0 auto;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  font-weight: 500;
+}
+
+.accounts-filter-empty {
+  color: var(--a-text-3);
+  font-size: var(--a-size-small);
+}
+
+/*
+ * Result line: "Showing 3 of 18 sessions", the active filters ending in Clear
+ * filters, and "Updated" on the right. The chips wrap inside their own list so
+ * the count and the time stay on the first line.
+ */
+.accounts-results {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 16px;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  line-height: var(--a-control-sm);
+}
+
+.accounts-results[hidden] {
+  display: none;
+}
+
+.accounts-results-count {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.accounts-results-meta {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  white-space: nowrap;
+}
+
+.accounts-active-chips {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  line-height: 1.4;
+}
+
+/* =================================================================== sessions */
+
+/* The table scrolls inside its panel (both ways) so the page never does. */
+.accounts-table-scroll {
+  max-height: min(70vh, 760px);
+  overflow: auto;
+}
+
+.accounts-table {
+  min-width: 900px;
+}
+
+.accounts-table--all {
+  min-width: 1000px;
+}
+
+.accounts-table :is(th, td) {
+  padding-right: 10px;
+  padding-left: 10px;
+}
+
+.accounts-table td {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.accounts-table :is(th.accounts-toggle-col, td.accounts-toggle-cell) {
+  width: 44px;
+  padding: 0 0 0 8px;
+}
+
+.accounts-row-toggle {
+  display: inline-grid;
+  width: var(--a-control-sm);
+  height: var(--a-control-sm);
+  place-items: center;
+  border: 0;
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  color: var(--a-text-3);
+}
+
+.accounts-row-toggle:not(:disabled):hover,
+.accounts-row-toggle[aria-expanded='true'] {
+  color: var(--a-text);
+}
+
+.accounts-row-toggle[aria-expanded='true'] svg {
+  rotate: 90deg;
+}
+
+.accounts-table tbody tr.accounts-row:is(.is-open, :has(.accounts-row-toggle:focus-visible)) td {
+  background: var(--a-panel-2);
+}
+
+.accounts-table tbody tr.accounts-row.is-open td {
+  border-bottom-color: transparent;
+}
+
+/* Two-line cells: primary text, then a 12px secondary line. */
+.accounts-cell-stack {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.accounts-cell-stack > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-cell-stack > small {
+  overflow: hidden;
+  color: var(--a-text-2);
+  font-size: var(--a-size-caption);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-table .accounts-started .accounts-cell-stack > span {
+  overflow: visible;
+}
+
+.accounts-started {
+  white-space: nowrap;
+}
+
+.accounts-device-cell {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-customer-cell {
+  min-width: 150px;
+  max-width: 230px;
+}
+
+.accounts-plan-cell {
+  min-width: 100px;
+  max-width: 160px;
+}
+
+/* Plan and duration are context; the amount carries the row. */
+.accounts-table td:is(.accounts-plan-cell, .accounts-duration) {
+  color: var(--a-text-2);
+}
+
+.accounts-games-cell {
+  min-width: 170px;
+  max-width: 320px;
+}
+
+/* Games as one comma list, minutes quieter; two lines at most (the full list is the tooltip). */
+.accounts-games {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.5;
+}
+
+.accounts-game-time {
+  margin-left: 5px;
+  color: var(--a-text-3);
+  white-space: nowrap;
+}
+
+.accounts-game-sep {
+  color: var(--a-text-3);
+}
+
+.accounts-amount {
+  font-weight: 500;
+}
+
+/* Expanded row: games on the left, payments on the right, aligned with the Started column. */
+.accounts-table tbody tr.accounts-detail-row td {
+  padding: 16px 24px 20px 54px;
+  cursor: default;
+}
+
+.accounts-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 48px;
+  max-width: 1180px;
+}
+
+.accounts-detail-section {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 10px;
+}
+
+.accounts-timeline {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--a-line);
+  padding: 0;
+  list-style: none;
+}
+
+.accounts-timeline li {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 16px;
+  min-height: 34px;
+  border-bottom: 1px solid var(--a-line);
+  padding: 7px 0;
+  font-size: var(--a-size-small);
+}
+
+.accounts-timeline-time {
+  color: var(--a-text-2);
+  white-space: nowrap;
+}
+
+.accounts-timeline-title {
+  overflow: hidden;
+  color: var(--a-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-timeline-duration {
+  color: var(--a-text-2);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Key/value list: 148px labels, values left aligned so long IDs read naturally. */
+.accounts-kv {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.accounts-kv > div {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 16px;
+}
+
+.accounts-kv dt {
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+}
+
+.accounts-kv dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--a-text);
+  font-size: var(--a-size-small);
+  overflow-wrap: anywhere;
+}
+
+.accounts-kv dd.admin-mono {
+  font-size: var(--a-size-mono);
+}
+
+.accounts-detail-section > .accounts-kv:not(.accounts-payer) {
+  margin-top: 6px;
+}
+
+.accounts-payer {
+  display: grid;
+  gap: 5px;
+}
+
+.accounts-payer + .accounts-payer {
+  margin-top: 4px;
+  border-top: 1px solid var(--a-line);
+  padding-top: 12px;
+}
+
+/* ================================================================ breakdown */
+
+.accounts-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 32px;
+}
+
+.accounts-breakdown > .admin-section + .admin-section {
+  margin-top: 0;
+}
+
+/* 40px rows in both tables, with or without the device pick button. */
+.accounts-rank-table .admin-table td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.accounts-rank-table .admin-table :is(th, td).accounts-rank-col,
+.accounts-rank-table .admin-table td.accounts-rank {
+  width: 40px;
+  padding-right: 0;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+}
+
+/* The name column takes the free width and truncates. */
+.accounts-rank-name {
+  width: 100%;
+  max-width: 0;
+}
+
+.accounts-rank-name > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-row-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: var(--a-control-sm);
+  border: 0;
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  color: var(--a-text);
+  padding: 0;
+  font-size: var(--a-size-small);
+  text-align: left;
+}
+
+.accounts-row-pick > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-row-pick > svg {
+  flex: 0 0 auto;
+}
+
+.accounts-rank-table .admin-table :is(th, td).accounts-share-col,
+.accounts-rank-table .admin-table td.accounts-share-cell {
+  width: 132px;
+  white-space: nowrap;
+}
+
+.accounts-share-cell > * {
+  vertical-align: middle;
+}
+
+.accounts-share-bar {
+  display: inline-block;
+  width: 72px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--a-line);
+}
+
+.accounts-share-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--a-text-2);
+}
+
+.accounts-share-value {
+  display: inline-block;
+  width: 40px;
+  color: var(--a-text-2);
+  font-size: var(--a-size-caption);
+  text-align: right;
+}
+
+/* =============================================================== responsive */
+
+@media (max-width: 1100px) {
+  .accounts-breakdown,
+  .accounts-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .accounts-results-meta {
+    margin-left: 0;
+  }
+}

@@ -1,20 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from 'react';
-import {
-  BadgeCheck,
-  CalendarRange,
-  ChevronRight,
-  Clock,
-  Download,
-  IndianRupee,
-  LoaderCircle,
-  MonitorCog,
-  Network,
-  ReceiptIndianRupee,
-  RefreshCw,
-  ShieldAlert,
-  Timer,
-  Trophy
-} from 'lucide-react';
+import { Check, ChevronRight, Download, LoaderCircle, RefreshCw } from 'lucide-react';
 import type {
   DeviceRecord,
   EarningsReport,
@@ -24,7 +9,20 @@ import type {
   LocalSessionStatus,
   PaymentPayerDetails
 } from '../../../shared/types';
-import { CardHeader, EmptyState, LoadingState, Notice, type NoticeTone } from './AdminKit';
+import {
+  EmptyState,
+  LoadingState,
+  Notice,
+  PageActions,
+  PageSection,
+  Panel,
+  Segmented,
+  Stat,
+  StatRow,
+  StatusText,
+  type NoticeTone,
+  type Tone
+} from './AdminKit';
 import { AccountsFilterBar } from './AccountsFilters';
 import {
   accountsFilterCount,
@@ -63,19 +61,22 @@ const RANGE_OPTIONS: Array<{ id: RangePreset; label: string }> = [
   { id: 'custom', label: 'Custom' }
 ];
 
-const STATUS_CHIPS: Record<LocalSessionStatus, { label: string; tone: string }> = {
-  active: { label: 'Playing', tone: 'ps-chip--accent' },
-  completed: { label: 'Completed', tone: 'ps-chip--success' },
-  expired: { label: 'Time up', tone: '' },
-  interrupted: { label: 'Interrupted', tone: 'ps-chip--warning' }
+type SessionStatus = { label: string; tone: Tone };
+
+/** The one status mapping (docs/admin-design.md): done is green, live is blue, needs a look is amber, over is grey. */
+const STATUS_LABELS: Record<LocalSessionStatus, SessionStatus> = {
+  active: { label: 'Playing', tone: 'info' },
+  completed: { label: 'Completed', tone: 'success' },
+  expired: { label: 'Time up', tone: 'neutral' },
+  interrupted: { label: 'Interrupted', tone: 'neutral' }
 };
 
 /** Still "active" after its paid time ended: the app closed before the session finished. */
-const UNFINISHED_CHIP = { label: 'Unfinished', tone: 'ps-chip--warning' };
+const UNFINISHED_CHIP: SessionStatus = { label: 'Unfinished', tone: 'warning' };
 
-function sessionStatusChip(row: EarningsSessionRow, now: number): { label: string; tone: string } {
+function sessionStatusChip(row: EarningsSessionRow, now: number): SessionStatus {
   if (isUnfinishedSession(row, now)) return UNFINISHED_CHIP;
-  return STATUS_CHIPS[row.status] ?? { label: row.status, tone: '' };
+  return STATUS_LABELS[row.status] ?? { label: row.status, tone: 'neutral' };
 }
 
 const TOP_GAMES_PREVIEW = 8;
@@ -88,6 +89,10 @@ function periodLabel(view: AccountsView): string {
   if (from) return `From ${dateLabel(from.toISOString())}`;
   if (to) return `Up to ${dateLabel(to.toISOString())}`;
   return 'All time';
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count.toLocaleString('en-IN')} ${count === 1 ? one : many}`;
 }
 
 export function AccountsPanel(props: {
@@ -208,6 +213,8 @@ export function AccountsPanel(props: {
     });
   };
 
+  const refresh = (): void => setRefreshCount((count) => count + 1);
+
   const exportCsv = async (): Promise<void> => {
     if (exporting) return;
     const { query, invalid } = buildEarningsQuery(view);
@@ -234,6 +241,14 @@ export function AccountsPanel(props: {
     });
   };
 
+  // By device rows add (or remove) their device from the Devices filter.
+  const toggleStation = (station: { stationId: string }): void => {
+    onViewChange((current) => ({
+      ...current,
+      stationIds: toggleValue(current.stationIds, station.stationId)
+    }));
+  };
+
   const pickedStations = allScope ? view.stationIds : [];
   const scopeName = !allScope
     ? props.currentDevice.name
@@ -248,235 +263,242 @@ export function AccountsPanel(props: {
   const topGame = report?.byGame[0];
   const games = report ? (showAllGames ? report.byGame : report.byGame.slice(0, TOP_GAMES_PREVIEW)) : [];
   const maxGameMinutes = Math.max(1, ...(report?.byGame.map((game) => game.playMinutes) ?? [1]));
-  const maxStationPaise = Math.max(1, ...(report?.byStation.map((station) => station.amountPaise) ?? [1]));
   const busy = loading || scopePending;
 
   return (
-    <div className="accounts-page admin-stack">
-      <section className="admin-card accounts-filters" aria-label="Earnings filters">
-        <div className="accounts-filter-row">
-          <div className="accounts-filter-group">
-            <span className="admin-section-title">Show</span>
-            <div className="admin-segmented" role="group" aria-label="Earnings scope">
-              <button type="button" aria-pressed={!allScope} disabled={scopePending} onClick={() => void chooseScope('device')}>
-                <MonitorCog size={16} aria-hidden="true" />
-                This device
-              </button>
-              <button type="button" aria-pressed={allScope} disabled={scopePending} onClick={() => void chooseScope('all')}>
-                {scopePending ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <Network size={16} aria-hidden="true" />}
-                All devices
-              </button>
-            </div>
-          </div>
-          <div className="accounts-filter-actions">
-            <button className="secondary-action compact" type="button" disabled={busy} onClick={() => setRefreshCount((count) => count + 1)}>
-              {loading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
-              Refresh
-            </button>
-            <button className="secondary-action compact" type="button" disabled={exporting || Boolean(invalidRange)} onClick={() => void exportCsv()}>
-              {exporting ? <LoaderCircle className="spin" size={15} /> : <Download size={15} />}
-              {exporting ? 'Saving...' : 'Export CSV'}
-            </button>
-          </div>
-        </div>
-        <div className="accounts-filter-row">
-          <div className="accounts-filter-group">
-            <span className="admin-section-title">Period</span>
-            <div className="admin-segmented" role="group" aria-label="Period">
-              {RANGE_OPTIONS.map((option) => (
-                <button key={option.id} type="button" aria-pressed={view.range === option.id} onClick={() => chooseRange(option.id)}>
-                  {option.id === 'custom' && <CalendarRange size={16} aria-hidden="true" />}
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {view.range === 'custom' && (
-            <div className="accounts-custom-range">
-              <label className="admin-field">
-                <span className="admin-section-title">From</span>
-                <input
-                  type="date"
-                  value={view.customFrom}
-                  max={view.customTo || undefined}
-                  onChange={(event) => onViewChange((current) => ({ ...current, customFrom: event.target.value }))}
-                />
-              </label>
-              <label className="admin-field">
-                <span className="admin-section-title">To</span>
-                <input
-                  type="date"
-                  value={view.customTo}
-                  min={view.customFrom || undefined}
-                  onChange={(event) => onViewChange((current) => ({ ...current, customTo: event.target.value }))}
-                />
-              </label>
-            </div>
-          )}
-        </div>
+    <div className={`accounts-page${report && loading ? ' is-busy' : ''}`} aria-busy={loading}>
+      <PageActions>
+        <button className="admin-btn" type="button" disabled={busy} onClick={refresh}>
+          {loading ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <RefreshCw size={15} aria-hidden="true" />}
+          Refresh
+        </button>
+        <button className="admin-btn" type="button" disabled={exporting || Boolean(invalidRange)} onClick={() => void exportCsv()}>
+          {exporting ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <Download size={15} aria-hidden="true" />}
+          {exporting ? 'Saving...' : 'Export CSV'}
+        </button>
+      </PageActions>
+
+      <div className="accounts-controls">
         <AccountsFilterBar
           view={view}
+          facets={report?.facets}
           onViewChange={onViewChange}
           stations={stations}
-          facets={report?.facets}
           shownCount={report?.sessionCount}
           disabled={scopePending}
-        />
+          meta={report && <>Updated {timeLabel(report.generatedAt)}</>}
+        >
+          <div className="admin-segmented accounts-scope" role="group" aria-label="Earnings scope">
+            <button type="button" aria-pressed={!allScope} disabled={scopePending} onClick={() => void chooseScope('device')}>
+              This device
+            </button>
+            <button type="button" aria-pressed={allScope} disabled={scopePending} onClick={() => void chooseScope('all')}>
+              {scopePending && <LoaderCircle className="spin" size={14} aria-hidden="true" />}
+              All devices
+            </button>
+          </div>
+          <Segmented
+            aria-label="Period"
+            value={view.range}
+            onChange={chooseRange}
+            options={RANGE_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+          />
+          {view.range === 'custom' && (
+            <div className="accounts-dates" role="group" aria-label="Custom period">
+              <input
+                type="date"
+                aria-label="From"
+                value={view.customFrom}
+                max={view.customTo || undefined}
+                onChange={(event) => onViewChange((current) => ({ ...current, customFrom: event.target.value }))}
+              />
+              <span aria-hidden="true">to</span>
+              <input
+                type="date"
+                aria-label="To"
+                value={view.customTo}
+                min={view.customFrom || undefined}
+                onChange={(event) => onViewChange((current) => ({ ...current, customTo: event.target.value }))}
+              />
+            </div>
+          )}
+        </AccountsFilterBar>
         {allScope && stationsError && <Notice tone="warning">{stationsError}</Notice>}
         {invalidRange && <Notice tone="warning">{invalidRange}</Notice>}
         {exportNotice && <Notice tone={exportNotice.tone} className="accounts-export-notice">{exportNotice.text}</Notice>}
-      </section>
+      </div>
 
       {error && (
-        <section className="admin-card accounts-error-card">
+        <div className="accounts-error">
           <Notice tone="error">{error}</Notice>
-          <button className="secondary-action compact" type="button" disabled={loading} onClick={() => setRefreshCount((count) => count + 1)}>
-            <RefreshCw size={15} />
+          <button className="admin-btn admin-btn--sm" type="button" disabled={loading} onClick={refresh}>
+            <RefreshCw size={14} aria-hidden="true" />
             Retry
           </button>
-        </section>
+        </div>
       )}
 
-      {!error && !report && loading && (
-        <section className="admin-card admin-loading-card">
-          <LoadingState label="Loading earnings..." />
-        </section>
-      )}
+      {!error && !report && loading && <LoadingState label="Loading earnings..." />}
 
       {report && (
         <>
-          <div className="accounts-stat-grid">
-            <article className="accounts-stat">
-              <span className="accounts-stat-icon" aria-hidden="true"><IndianRupee size={20} /></span>
-              <strong>{formatPaise(report.totalPaise, report.currency)}</strong>
-              <span>Total earned</span>
-              <small>{period} · {scopeName}</small>
-            </article>
-            <article className="accounts-stat">
-              <span className="accounts-stat-icon" aria-hidden="true"><ReceiptIndianRupee size={20} /></span>
-              <strong>{report.sessionCount.toLocaleString('en-IN')}</strong>
-              <span>Paid sessions</span>
-              <small>{period}</small>
-            </article>
-            <article className="accounts-stat">
-              <span className="accounts-stat-icon" aria-hidden="true"><Timer size={20} /></span>
-              <strong>{durationLabel(report.paidMinutes)}</strong>
-              <span>Paid time</span>
-              <small>{report.paidMinutes.toLocaleString('en-IN')} min sold</small>
-            </article>
-            <article className="accounts-stat">
-              <span className="accounts-stat-icon" aria-hidden="true"><Trophy size={20} /></span>
-              <strong className="accounts-stat-text" title={topGame?.title}>{topGame?.title ?? 'None yet'}</strong>
-              <span>Most played game</span>
-              <small>
-                {topGame
-                  ? `${topGame.sessionCount} ${topGame.sessionCount === 1 ? 'session' : 'sessions'} · ${durationLabel(topGame.playMinutes)}`
-                  : 'No games recorded in this period'}
-              </small>
-            </article>
-          </div>
-
-          <section className="admin-card accounts-sessions-card" aria-busy={loading}>
-            <CardHeader
-              eyebrow={allScope ? scopeName : 'This device'}
-              title="Paid sessions"
-              subtitle={`${period} · ${sortLabel} · Updated ${timeLabel(report.generatedAt)}`}
-              actions={<span className="ps-chip admin-count-chip">{report.rows.length} {report.rows.length === 1 ? 'session' : 'sessions'}</span>}
+          <StatRow aria-label="Totals" minCellWidth={200}>
+            <Stat label="Total earned" value={formatPaise(report.totalPaise, report.currency)} sub={`${period} · ${scopeName}`} />
+            <Stat
+              label="Paid sessions"
+              value={report.sessionCount.toLocaleString('en-IN')}
+              sub={report.sessionCount > 0
+                ? `${formatPaise(Math.round(report.totalPaise / report.sessionCount), report.currency)} on average`
+                : period}
             />
+            <Stat label="Paid time" value={durationLabel(report.paidMinutes)} sub={`${report.paidMinutes.toLocaleString('en-IN')} min sold`} />
+            <Stat
+              label="Most played game"
+              value={topGame?.title ?? 'None yet'}
+              title={topGame?.title}
+              sub={topGame
+                ? `${plural(topGame.sessionCount, 'session', 'sessions')} · ${durationLabel(topGame.playMinutes)}`
+                : 'No games recorded in this period'}
+            />
+          </StatRow>
+
+          <PageSection
+            title="Paid sessions"
+            description={report.rows.length > 0 ? `${sortLabel}. Select a session to see the games played and who paid.` : undefined}
+            actions={<span className="admin-count">{plural(report.rows.length, 'session', 'sessions')}</span>}
+          >
             {report.truncated && (
-              <Notice tone="warning" className="accounts-truncated-notice">
+              <Notice tone="warning">
                 Too many sessions to show at once: the totals and table cover only the newest {report.rows.length.toLocaleString('en-IN')}. Pick a shorter period or one device to see everything.
               </Notice>
             )}
             {report.rows.length === 0 ? (
-              filterCount > 0 ? (
-                <EmptyState icon={<ReceiptIndianRupee size={28} />} title="No sessions match these filters">
-                  <button className="secondary-action compact" type="button" onClick={() => onViewChange((current) => clearAccountsFilters(current))}>
-                    Clear filters
-                  </button>
-                </EmptyState>
-              ) : (
-                <EmptyState icon={<ReceiptIndianRupee size={28} />} title="No paid sessions in this period">
-                  {allScope ? 'Try a longer period or another device.' : 'Try a longer period. Sessions customers pay for on this device appear here.'}
-                </EmptyState>
-              )
+              <Panel>
+                {filterCount > 0 ? (
+                  <EmptyState
+                    title="No sessions match these filters"
+                    action={(
+                      <button className="admin-btn admin-btn--sm" type="button" onClick={() => onViewChange((current) => clearAccountsFilters(current))}>
+                        Clear filters
+                      </button>
+                    )}
+                  />
+                ) : (
+                  <EmptyState title="No paid sessions in this period">
+                    {allScope ? 'Try a longer period or another device.' : 'Try a longer period. Sessions customers pay for on this device appear here.'}
+                  </EmptyState>
+                )}
+              </Panel>
             ) : (
               <SessionsTable rows={report.rows} allScope={allScope} expanded={expanded} onToggle={toggleRow} />
             )}
-          </section>
+          </PageSection>
 
-          <div className={`admin-columns accounts-breakdown${allScope ? '' : ' accounts-breakdown--single'}`}>
+          <div className={`accounts-breakdown${allScope ? '' : ' accounts-breakdown--single'}`}>
             {allScope && (
-              <section className="admin-card accounts-device-card">
-                <CardHeader
-                  eyebrow="Breakdown"
-                  title="By device"
-                  subtitle="Pick devices to see only their sessions."
-                />
+              <PageSection title="By device" description="Select a device to show only its sessions.">
                 {report.byStation.length === 0 ? (
-                  <p className="field-note">No device earned in this period.</p>
+                  <p className="accounts-note">No device earned in this period.</p>
                 ) : (
-                  <ol className="accounts-bar-list">
-                    {report.byStation.map((station) => (
-                      <li key={station.stationId}>
-                        <button
-                          className="accounts-bar-row"
-                          type="button"
-                          aria-pressed={view.stationIds.includes(station.stationId)}
-                          onClick={() => onViewChange((current) => ({
-                            ...current,
-                            stationIds: toggleValue(current.stationIds, station.stationId)
-                          }))}
-                        >
-                          <span className="accounts-bar-copy">
-                            <strong>{station.stationName}</strong>
-                            <small>{station.sessionCount} {station.sessionCount === 1 ? 'session' : 'sessions'}</small>
-                          </span>
-                          <strong className="accounts-bar-value">{formatPaise(station.amountPaise, report.currency)}</strong>
-                          <span className="accounts-bar-track" aria-hidden="true">
-                            <span style={{ width: `${Math.max(2, (station.amountPaise / maxStationPaise) * 100)}%` }} />
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
+                  <div className="admin-table-scroll accounts-rank-table">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th scope="col" className="accounts-rank-col"><span className="admin-visually-hidden">Rank</span></th>
+                          <th scope="col">Device</th>
+                          <th scope="col" className="admin-num">Sessions</th>
+                          <th scope="col" className="admin-num">Amount</th>
+                          <th scope="col" className="accounts-share-col">Share</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.byStation.map((station, index) => {
+                          const picked = view.stationIds.includes(station.stationId);
+                          const share = report.totalPaise > 0 ? (station.amountPaise / report.totalPaise) * 100 : 0;
+                          return (
+                            <tr key={station.stationId} className={`accounts-rank-row is-clickable${picked ? ' is-selected' : ''}`} onClick={() => toggleStation(station)}>
+                              <td className="accounts-rank">{index + 1}</td>
+                              <td className="accounts-rank-name">
+                                <button
+                                  className="accounts-row-pick"
+                                  type="button"
+                                  aria-pressed={picked}
+                                  title={picked ? `Stop filtering by ${station.stationName}` : `Show only ${station.stationName}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleStation(station);
+                                  }}
+                                >
+                                  <span>{station.stationName}</span>
+                                  {picked && <Check size={14} aria-hidden="true" />}
+                                </button>
+                              </td>
+                              <td className="admin-num">{station.sessionCount.toLocaleString('en-IN')}</td>
+                              <td className="admin-num accounts-amount">{formatPaise(station.amountPaise, report.currency)}</td>
+                              <td className="accounts-share-cell">
+                                <ShareBar percent={share} />
+                                <span className="accounts-share-value">{Math.round(share)}%</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
-              </section>
+              </PageSection>
             )}
-            <section className="admin-card accounts-games-card">
-              <CardHeader
-                eyebrow="Breakdown"
-                title="Top games"
-                subtitle="Paid sessions each game was played in, and total play time."
-                actions={report.byGame.length > TOP_GAMES_PREVIEW && (
-                  <button className="secondary-action compact" type="button" onClick={() => setShowAllGames((value) => !value)}>
-                    {showAllGames ? 'Show fewer' : `Show all ${report.byGame.length}`}
-                  </button>
-                )}
-              />
-              {report.byGame.length === 0 ? (
-                <p className="field-note">No games recorded in this period. Sessions from before version 0.25.0 did not record games.</p>
-              ) : (
-                <ol className="accounts-bar-list accounts-game-list">
-                  {games.map((game, index) => (
-                    <li key={game.gameId || game.title} className="accounts-bar-row">
-                      <span className="accounts-bar-copy">
-                        <strong><em className="accounts-rank">{index + 1}</em>{game.title}</strong>
-                        <small>{game.sessionCount} {game.sessionCount === 1 ? 'session' : 'sessions'}</small>
-                      </span>
-                      <strong className="accounts-bar-value">{durationLabel(game.playMinutes)}</strong>
-                      <span className="accounts-bar-track" aria-hidden="true">
-                        <span style={{ width: `${Math.max(2, (game.playMinutes / maxGameMinutes) * 100)}%` }} />
-                      </span>
-                    </li>
-                  ))}
-                </ol>
+            <PageSection
+              title="Top games"
+              actions={report.byGame.length > TOP_GAMES_PREVIEW && (
+                <button className="admin-btn admin-btn--ghost admin-btn--sm" type="button" onClick={() => setShowAllGames((value) => !value)}>
+                  {showAllGames ? 'Show fewer' : `Show all ${report.byGame.length}`}
+                </button>
               )}
-            </section>
+            >
+              {report.byGame.length === 0 ? (
+                <p className="accounts-note">No games recorded in this period. Sessions from before version 0.25.0 did not record games.</p>
+              ) : (
+                <div className="admin-table-scroll accounts-rank-table">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="accounts-rank-col"><span className="admin-visually-hidden">Rank</span></th>
+                        <th scope="col">Game</th>
+                        <th scope="col" className="admin-num">Sessions</th>
+                        <th scope="col" className="admin-num">Play time</th>
+                        <th scope="col" className="accounts-share-col"><span className="admin-visually-hidden">Compared with the top game</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {games.map((game, index) => (
+                        <tr key={game.gameId || game.title}>
+                          <td className="accounts-rank">{index + 1}</td>
+                          <td className="accounts-rank-name"><span title={game.title}>{game.title}</span></td>
+                          <td className="admin-num">{game.sessionCount.toLocaleString('en-IN')}</td>
+                          <td className="admin-num">{durationLabel(game.playMinutes)}</td>
+                          <td className="accounts-share-cell"><ShareBar percent={(game.playMinutes / maxGameMinutes) * 100} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </PageSection>
           </div>
         </>
       )}
     </div>
+  );
+}
+
+/** A thin neutral bar for a share of the whole (or of the top row). */
+function ShareBar(props: { percent: number }): JSX.Element {
+  const width = props.percent > 0 ? Math.max(2, Math.min(100, props.percent)) : 0;
+  return (
+    <span className="accounts-share-bar" aria-hidden="true">
+      <span style={{ width: `${width}%` }} />
+    </span>
   );
 }
 
@@ -500,19 +522,19 @@ function SessionsTable(props: {
   };
 
   return (
-    <div className="accounts-table-scroll" data-admin-local-keys="true">
-      <table ref={tableRef} className={`accounts-table${props.allScope ? ' accounts-table--all' : ''}`}>
+    <div className="admin-table-scroll accounts-table-scroll" data-admin-local-keys="true">
+      <table ref={tableRef} className={`admin-table accounts-table${props.allScope ? ' accounts-table--all' : ''}`}>
         <thead>
           <tr>
-            <th scope="col"><span className="admin-visually-hidden">Details</span></th>
+            <th scope="col" className="accounts-toggle-col"><span className="admin-visually-hidden">Details</span></th>
             <th scope="col">Started</th>
             {props.allScope && <th scope="col">Device</th>}
-            <th scope="col">Plan</th>
-            <th scope="col">Duration</th>
-            <th scope="col" className="accounts-num">Amount</th>
-            <th scope="col">Status</th>
             <th scope="col">Customer</th>
+            <th scope="col">Plan</th>
             <th scope="col">Games played</th>
+            <th scope="col" className="admin-num">Duration</th>
+            <th scope="col" className="admin-num">Amount</th>
+            <th scope="col">Status</th>
             {props.allScope && <th scope="col">Payment</th>}
           </tr>
         </thead>
@@ -546,7 +568,7 @@ function SessionsTable(props: {
 function SessionRows(props: {
   row: EarningsSessionRow;
   open: boolean;
-  status: { label: string; tone: string };
+  status: SessionStatus;
   sessionGames: ReturnType<typeof summarizeSessionGames>;
   allScope: boolean;
   columnCount: number;
@@ -556,9 +578,10 @@ function SessionRows(props: {
 }): JSX.Element {
   const { row } = props;
   const detailId = `accounts-session-${row.stationId}-${row.id}`;
+  const gamesTitle = props.sessionGames.map((game) => `${game.title} (${durationLabel(game.minutes)})`).join(', ');
   return (
     <>
-      <tr className={`accounts-row${props.open ? ' is-open' : ''}`} onClick={props.onToggle}>
+      <tr className={`accounts-row is-clickable${props.open ? ' is-open' : ''}`} onClick={props.onToggle}>
         <td className="accounts-toggle-cell">
           <button
             className="accounts-row-toggle"
@@ -577,49 +600,50 @@ function SessionRows(props: {
               props.onKeyDown(event);
             }}
           >
-            <ChevronRight size={17} aria-hidden="true" />
+            <ChevronRight size={16} aria-hidden="true" />
           </button>
         </td>
-        <td>
+        <td className="accounts-started">
           <span className="accounts-cell-stack">
-            <strong>{dateLabel(row.startedAt)}</strong>
+            <span>{dateLabel(row.startedAt)}</span>
             <small>{timeLabel(row.startedAt)}</small>
           </span>
         </td>
         {props.allScope && <td className="accounts-device-cell">{row.stationName || row.stationId}</td>}
-        <td className="accounts-plan-cell">{row.planNames.length ? row.planNames.join(', ') : '—'}</td>
-        <td className="accounts-nowrap">{durationLabel(row.durationMinutes)}</td>
-        <td className="accounts-num accounts-amount">{formatPaise(row.amountPaise, row.currency)}</td>
-        <td><span className={`ps-chip ${props.status.tone}`}>{props.status.label}</span></td>
         <td className="accounts-customer-cell"><CustomerSummary payers={row.payers ?? []} /></td>
+        <td className="accounts-plan-cell">{row.planNames.length ? row.planNames.join(', ') : '—'}</td>
         <td className="accounts-games-cell">
           {props.sessionGames.length === 0 ? (
             <span className="accounts-muted">{row.status === 'active' && !isUnfinishedSession(row, props.now) ? 'None yet' : 'Not recorded'}</span>
           ) : (
-            <span className="accounts-game-chips">
-              {props.sessionGames.map((game) => (
-                <span key={game.gameId} className="ps-chip accounts-game-chip" title={game.title}>
-                  <span className="accounts-game-title">{game.title}</span>
-                  <em>{durationLabel(game.minutes)}</em>
+            <span className="accounts-games" title={gamesTitle}>
+              {props.sessionGames.map((game, index) => (
+                <span key={game.gameId} className="accounts-game">
+                  {game.title}
+                  <span className="accounts-game-time">{durationLabel(game.minutes)}</span>
+                  {index < props.sessionGames.length - 1 && <span className="accounts-game-sep">, </span>}
                 </span>
               ))}
             </span>
           )}
         </td>
+        <td className="admin-num accounts-duration">{durationLabel(row.durationMinutes)}</td>
+        <td className="admin-num accounts-amount">{formatPaise(row.amountPaise, row.currency)}</td>
+        <td><StatusText tone={props.status.tone}>{props.status.label}</StatusText></td>
         {props.allScope && (
           <td>
             {row.paymentVerified === undefined ? (
               <span className="accounts-muted">—</span>
             ) : row.paymentVerified ? (
-              <span className="ps-chip ps-chip--success"><BadgeCheck size={14} aria-hidden="true" />Verified</span>
+              <StatusText tone="success" icon={<Check size={14} aria-hidden="true" />}>Verified</StatusText>
             ) : (
-              <span className="ps-chip ps-chip--warning"><ShieldAlert size={14} aria-hidden="true" />Not verified</span>
+              <StatusText tone="warning">Not verified</StatusText>
             )}
           </td>
         )}
       </tr>
       {props.open && (
-        <tr className="accounts-detail-row" id={detailId}>
+        <tr className="admin-table-detail accounts-detail-row" id={detailId}>
           <td colSpan={props.columnCount}>
             <SessionDetail row={row} now={props.now} />
           </td>
@@ -629,27 +653,23 @@ function SessionRows(props: {
   );
 }
 
-/** The table cell: the first payer Razorpay told us about, and how many more paid. */
+/** The table cell: the first payer Razorpay told us about (phone first), how they paid, and how many more paid. */
 function CustomerSummary(props: { payers: PaymentPayerDetails[] }): JSX.Element {
   const known = props.payers.filter(payerHasDetails);
   const payer = known[0];
   if (!payer) return <span className="accounts-muted">—</span>;
   const primary = phoneLabel(payer.phone) || payer.name || payer.email || payer.upiId || payer.razorpayPaymentId || '—';
+  const detail = paymentMethodDetail(payer);
+  const method = [paymentMethodLabel(payer.method), detail !== primary ? detail : ''].filter(Boolean).join(' · ');
+  const fallback = payer.phone ? payer.name || payer.email || '' : '';
   const secondary = [
-    payer.phone ? payer.name : '',
-    payer.email && payer.email !== primary ? payer.email : payer.upiId && payer.upiId !== primary ? payer.upiId : ''
+    method || fallback,
+    known.length > 1 ? `+${known.length - 1} more ${known.length === 2 ? 'payment' : 'payments'}` : ''
   ].filter(Boolean).join(' · ');
-  const method = paymentMethodLabel(payer.method);
   return (
-    <span className="accounts-cell-stack accounts-customer">
-      <strong className="accounts-customer-primary">{primary}</strong>
+    <span className="accounts-cell-stack">
+      <span>{primary}</span>
       {secondary && <small title={secondary}>{secondary}</small>}
-      {(method || known.length > 1) && (
-        <span className="accounts-customer-tags">
-          {method && <span className="ps-chip accounts-method-chip">{method}</span>}
-          {known.length > 1 && <small>+{known.length - 1} more {known.length === 2 ? 'payment' : 'payments'}</small>}
-        </span>
-      )}
     </span>
   );
 }
@@ -673,26 +693,23 @@ function SessionDetail(props: { row: EarningsSessionRow; now: number }): JSX.Ele
   return (
     <div className="accounts-detail">
       <section className="accounts-detail-section">
-        <h3 className="admin-section-title">Games played</h3>
+        <h3 className="admin-subheading">Games played</h3>
         {row.games.length === 0 ? (
-          <p className="field-note">
+          <p className="accounts-note">
             {playing ? 'No game started yet.' : 'Not recorded. Games are recorded for sessions from version 0.25.0.'}
           </p>
         ) : (
           <ol className="accounts-timeline">
             {row.games.map((entry, index) => (
               <li key={`${entry.gameId}-${entry.startedAt}-${index}`}>
-                <span className="accounts-timeline-time">
-                  <Clock size={14} aria-hidden="true" />
-                  {timeLabel(entry.startedAt)} – {endLabel(entry)}
-                </span>
-                <strong>{entry.title || 'Unknown game'}</strong>
-                <small>{durationLabel(entryMinutes(entry, row, props.now))}</small>
+                <span className="accounts-timeline-time">{timeLabel(entry.startedAt)} – {endLabel(entry)}</span>
+                <span className="accounts-timeline-title">{entry.title || 'Unknown game'}</span>
+                <span className="accounts-timeline-duration">{durationLabel(entryMinutes(entry, row, props.now))}</span>
               </li>
             ))}
           </ol>
         )}
-        <dl className="accounts-detail-meta">
+        <dl className="accounts-kv">
           <div><dt>Started</dt><dd>{dateTimeLabel(row.startedAt)}</dd></div>
           <div>
             <dt>Ended</dt>
@@ -704,45 +721,41 @@ function SessionDetail(props: { row: EarningsSessionRow; now: number }): JSX.Ele
                   : playing ? 'Still playing' : '—'}
             </dd>
           </div>
-          <div><dt>Session ID</dt><dd><code>{row.id}</code></dd></div>
+          <div><dt>Session ID</dt><dd className="admin-mono">{row.id}</dd></div>
         </dl>
       </section>
 
       <section className="accounts-detail-section">
-        <h3 className="admin-section-title">{payers.length > 1 ? `Payments (${payers.length})` : 'Payment'}</h3>
-        {payers.length === 0 && missingCheckouts.length === 0 && <p className="field-note">No payment details recorded.</p>}
-        <ul className="accounts-payer-list">
-          {payers.map((payer) => {
-            const method = paymentMethodLabel(payer.method);
-            const methodDetail = paymentMethodDetail(payer);
-            return (
-              <li key={payer.checkoutId} className="accounts-payer">
-                <dl className="accounts-detail-meta">
-                  {payer.name && <div><dt>Name</dt><dd>{payer.name}</dd></div>}
-                  <div><dt>Phone</dt><dd>{phoneLabel(payer.phone) || '—'}</dd></div>
-                  {payer.email && <div><dt>Email</dt><dd>{payer.email}</dd></div>}
-                  <div>
-                    <dt>Method</dt>
-                    <dd>{[method, methodDetail].filter(Boolean).join(' · ') || '—'}</dd>
-                  </div>
-                  {payer.upiId && methodDetail !== payer.upiId && <div><dt>UPI ID</dt><dd>{payer.upiId}</dd></div>}
-                  {payer.bank && methodDetail !== payer.bank && <div><dt>Bank</dt><dd>{payer.bank}</dd></div>}
-                  <div><dt>Paid</dt><dd>{payer.paidAt ? dateTimeLabel(payer.paidAt) : '—'}</dd></div>
-                  <div><dt>Razorpay payment ID</dt><dd><code>{payer.razorpayPaymentId || '—'}</code></dd></div>
-                  <div><dt>Checkout ID</dt><dd><code>{payer.checkoutId}</code></dd></div>
-                </dl>
-              </li>
-            );
-          })}
-          {missingCheckouts.map((checkoutId) => (
-            <li key={checkoutId} className="accounts-payer accounts-payer--missing">
-              <p className="field-note">Customer details not available yet for this payment.</p>
-              <dl className="accounts-detail-meta">
-                <div><dt>Checkout ID</dt><dd><code>{checkoutId}</code></dd></div>
-              </dl>
-            </li>
-          ))}
-        </ul>
+        <h3 className="admin-subheading">{payers.length > 1 ? `Payments (${payers.length})` : 'Payment'}</h3>
+        {payers.length === 0 && missingCheckouts.length === 0 && <p className="accounts-note">No payment details recorded.</p>}
+        {payers.map((payer) => {
+          const method = paymentMethodLabel(payer.method);
+          const methodDetail = paymentMethodDetail(payer);
+          return (
+            <dl key={payer.checkoutId} className="accounts-kv accounts-payer">
+              {payer.name && <div><dt>Name</dt><dd>{payer.name}</dd></div>}
+              <div><dt>Phone</dt><dd>{phoneLabel(payer.phone) || '—'}</dd></div>
+              {payer.email && <div><dt>Email</dt><dd>{payer.email}</dd></div>}
+              <div>
+                <dt>Method</dt>
+                <dd>{[method, methodDetail].filter(Boolean).join(' · ') || '—'}</dd>
+              </div>
+              {payer.upiId && methodDetail !== payer.upiId && <div><dt>UPI ID</dt><dd>{payer.upiId}</dd></div>}
+              {payer.bank && methodDetail !== payer.bank && <div><dt>Bank</dt><dd>{payer.bank}</dd></div>}
+              <div><dt>Paid</dt><dd>{payer.paidAt ? dateTimeLabel(payer.paidAt) : '—'}</dd></div>
+              <div><dt>Razorpay payment ID</dt><dd className="admin-mono">{payer.razorpayPaymentId || '—'}</dd></div>
+              <div><dt>Checkout ID</dt><dd className="admin-mono">{payer.checkoutId}</dd></div>
+            </dl>
+          );
+        })}
+        {missingCheckouts.map((checkoutId) => (
+          <div key={checkoutId} className="accounts-payer">
+            <p className="accounts-note">Customer details not available yet for this payment.</p>
+            <dl className="accounts-kv">
+              <div><dt>Checkout ID</dt><dd className="admin-mono">{checkoutId}</dd></div>
+            </dl>
+          </div>
+        ))}
       </section>
     </div>
   );

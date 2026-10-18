@@ -1,0 +1,585 @@
+/*
+ * Control Room library pages: Games (library list + editor, artwork, the
+ * installed game picker) and Scan (results table). Built on the kit
+ * primitives; only layout and the page's own pieces live here.
+ */
+
+/* ------------------------------------------------------------------ shared */
+
+/* 32px artwork square. Muted initials stand in when a game has no artwork. */
+.game-thumb {
+  display: grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--a-radius-xs);
+  background: var(--a-panel-2);
+  box-shadow: inset 0 0 0 1px var(--a-line);
+}
+
+.game-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.game-thumb-initials {
+  color: var(--a-text-3);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* ------------------------------------------------------- games: layout */
+
+/* Library list on the left, editor on the right. */
+.games-layout {
+  display: grid;
+  grid-template-columns: clamp(340px, 28%, 420px) minmax(0, 1fr);
+  align-items: start;
+  gap: 32px;
+}
+
+/* The list stays in view while the editor scrolls; long libraries scroll inside the panel. */
+.games-library.admin-section {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 56px);
+}
+
+.games-library-panel {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.games-search {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--a-line);
+  padding: 10px;
+}
+
+.games-search-clear {
+  display: grid;
+  flex: 0 0 auto;
+  width: var(--a-control-sm);
+  height: var(--a-control-sm);
+  margin-right: -7px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  color: var(--a-text-3);
+  padding: 0;
+}
+
+.games-search-clear:hover {
+  background: var(--a-panel-2);
+  color: var(--a-text);
+}
+
+/* ---------------------------------------------------------- games: list */
+
+.games-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.games-list .admin-list-row {
+  gap: 4px;
+  min-height: 52px;
+  padding: 6px 8px;
+}
+
+.games-list .row-main {
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 4px;
+}
+
+.game-row-copy {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 1px;
+}
+
+.game-row-copy strong {
+  overflow: hidden;
+  color: var(--a-text);
+  font-size: var(--a-size-body);
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-row-copy span {
+  overflow: hidden;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-row-status {
+  flex: 0 0 auto;
+}
+
+/* -------------------------------------------------------- games: editor */
+
+.game-editor-panel {
+  container: game-editor / inline-size;
+}
+
+/* Groups: a 13px label column on the left, fields on the right; stacked when narrow. */
+.game-form-group {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.game-form-group + .game-form-group {
+  border-top: 1px solid var(--a-line);
+}
+
+.game-form-group-title {
+  line-height: 1.4;
+}
+
+.game-form-group-body {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+@container game-editor (min-width: 720px) {
+  .game-form-group {
+    grid-template-columns: 148px minmax(0, 1fr);
+    gap: 24px;
+    padding: 24px;
+  }
+
+  /* Line the group label up with the first field label. */
+  .game-form-group-title {
+    padding-top: 1px;
+  }
+
+}
+
+.game-form-group--switch .admin-switch-row {
+  min-height: 0;
+  padding: 0;
+}
+
+
+/* Browse buttons share one width so their inputs end on the same line. */
+.admin-screen .game-browse {
+  flex: 0 0 auto;
+  min-width: 132px;
+}
+
+/* Artwork: preview on the left of each path field. */
+.game-assets {
+  display: grid;
+  gap: 20px;
+}
+
+.asset-field {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  min-width: 0;
+}
+
+.asset-preview {
+  display: grid;
+  height: 63px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--a-radius-xs);
+  background: var(--a-inset);
+  box-shadow: inset 0 0 0 1px var(--a-line);
+}
+
+.asset-preview--avatar {
+  width: 63px;
+}
+
+.asset-preview--cover {
+  width: 112px;
+}
+
+.asset-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.asset-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--a-text-3);
+}
+
+.asset-field .admin-field-label .admin-badge {
+  margin-left: 2px;
+}
+
+/*
+ * The kit panel footer, made sticky: it holds to the bottom edge of the window
+ * while the editor is in view. Sticky offsets are measured inside the content
+ * pane's bottom padding, so the negative offset puts the bar on the window edge.
+ */
+.game-editor-footer {
+  position: sticky;
+  bottom: calc(-1 * var(--a-page-pad-bottom));
+  z-index: 2;
+  border-radius: 0 0 var(--a-radius) var(--a-radius);
+  background: var(--a-panel);
+}
+
+/* Keep focused fields clear of the sticky save bar when focus scrolls them into view. */
+.game-editor-panel :is(input, select, button) {
+  scroll-margin-bottom: 72px;
+}
+
+@container game-editor (min-width: 720px) {
+  .game-editor-footer {
+    padding: 12px 24px;
+  }
+}
+
+/* ------------------------------------------------- installed game picker */
+
+.admin-screen .modal.installed-picker-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(900px, 100%);
+  height: min(720px, 100%);
+  overflow: hidden;
+  padding: 24px;
+}
+
+.installed-picker-header {
+  display: grid;
+  gap: 4px;
+  padding-right: 48px;
+}
+
+.installed-picker-header p {
+  margin: 0;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  line-height: 1.45;
+}
+
+.installed-picker-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.installed-picker-search {
+  flex: 1 1 auto;
+}
+
+.installed-picker-count {
+  flex: 0 0 auto;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  white-space: nowrap;
+}
+
+/* Bordered, scrolling list with a sticky column header. */
+.installed-game-list {
+  --picker-columns: 32px minmax(0, 0.9fr) minmax(0, 1.1fr) 152px;
+
+  display: grid;
+  flex: 1 1 auto;
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius);
+  background: var(--a-panel);
+  scrollbar-width: thin;
+}
+
+.installed-game-list > .admin-loading,
+.installed-game-list > .admin-empty {
+  padding: 16px;
+}
+
+.installed-game-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: var(--picker-columns);
+  align-items: center;
+  gap: 12px;
+  height: var(--a-header-row);
+  border-bottom: 1px solid var(--a-line);
+  background: var(--a-panel);
+  color: var(--a-text-2);
+  padding: 0 16px 0 12px;
+  font-size: var(--a-size-caption);
+  font-weight: 500;
+}
+
+.installed-game-row {
+  display: grid;
+  grid-template-columns: var(--picker-columns);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  border-bottom: 1px solid var(--a-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--a-text);
+  padding: 8px 16px 8px 12px;
+  text-align: left;
+}
+
+.installed-game-row:last-of-type {
+  border-bottom: 0;
+}
+
+.installed-game-row:not(:disabled):hover {
+  background: var(--a-panel-2);
+}
+
+/* Inside the scroller the outline sits inside the row so it is never clipped. */
+.admin-screen button.installed-game-row:is(:focus-visible, .controller-focused, .focused):not(:disabled) {
+  background: var(--a-panel-2);
+  outline-offset: -2px;
+}
+
+.installed-game-row:disabled {
+  cursor: default;
+}
+
+.installed-game-row:disabled > :not(.admin-status) {
+  opacity: 0.55;
+}
+
+.installed-game-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.installed-game-copy strong,
+.installed-game-copy span,
+.installed-game-notes {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.installed-game-copy strong {
+  font-size: var(--a-size-body);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.installed-game-copy span {
+  color: var(--a-text-2);
+  font-size: var(--a-size-caption);
+  line-height: 1.35;
+}
+
+.installed-game-notes {
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+}
+
+.installed-picker-hints {
+  --glyph-cross: currentColor;
+  --glyph-circle: currentColor;
+  --glyph-square: currentColor;
+  --glyph-triangle: currentColor;
+
+  justify-content: flex-start;
+  gap: 16px;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  font-weight: 400;
+}
+
+.installed-picker-hints .button-glyph,
+.installed-picker-hints .button-glyph svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* -------------------------------------------------------------------- scan */
+
+.scan-filter-count {
+  margin-left: 6px;
+  color: var(--a-text-3);
+  font-weight: 400;
+}
+
+.admin-segmented button[aria-pressed='true'] .scan-filter-count {
+  color: var(--a-text-2);
+}
+
+.scan-table {
+  table-layout: fixed;
+}
+
+.scan-col-source {
+  width: 19%;
+}
+
+.scan-col-confidence {
+  width: 128px;
+}
+
+.scan-col-status {
+  width: 172px;
+}
+
+.scan-col-action {
+  width: 116px;
+}
+
+.scan-table td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.scan-game {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.scan-game-copy,
+.scan-source {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.scan-game-copy strong,
+.scan-game-copy span,
+.scan-source span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-game-copy strong {
+  color: var(--a-text);
+  font-size: var(--a-size-body);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.scan-game-copy span {
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  line-height: 1.35;
+}
+
+.scan-source span:first-child {
+  color: var(--a-text);
+}
+
+.scan-source span + span {
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+}
+
+.scan-table tr.is-unsupported :is(.scan-game-copy strong, .scan-source span:first-child) {
+  color: var(--a-text-2);
+}
+
+.scan-table tr.is-unsupported .game-thumb {
+  opacity: 0.6;
+}
+
+/* Confidence: three short bars, filled up to the level, then the word. Neutral on purpose.
+   The word is the baseline item, so it lines up with the text in the next cells. */
+.scan-confidence {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--a-text-2);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.scan-confidence-bars {
+  display: inline-flex;
+  align-self: center;
+  align-items: flex-end;
+  gap: 2px;
+  height: 11px;
+}
+
+.scan-confidence-bars i {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--a-line-strong);
+}
+
+.scan-confidence-bars i:nth-child(1) {
+  height: 5px;
+}
+
+.scan-confidence-bars i:nth-child(2) {
+  height: 8px;
+}
+
+.scan-confidence-bars i:nth-child(3) {
+  height: 11px;
+}
+
+.scan-confidence[data-level='1'] i:nth-child(-n + 1),
+.scan-confidence[data-level='2'] i:nth-child(-n + 2),
+.scan-confidence[data-level='3'] i:nth-child(-n + 3) {
+  background: var(--a-text-2);
+}
+
+.admin-screen .scan-add {
+  min-width: 76px;
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 1180px) {
+  .games-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .games-library.admin-section {
+    position: static;
+    max-height: none;
+  }
+
+  .games-list {
+    max-height: 420px;
+  }
+}

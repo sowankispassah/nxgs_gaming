@@ -1,8 +1,20 @@
 import { useRef, useState } from 'react';
-import { LoaderCircle, Pencil, Plus, Save, Trash2, UserPlus, Users } from 'lucide-react';
+import { LoaderCircle, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { FleetStation, ModeratorInput, ModeratorRecord } from '../../../shared/types';
-import { CardHeader, EmptyState, LoadingState, Notice, revealInContent, SwitchRow, type NoticeTone } from './AdminKit';
-import { PIN_PATTERN } from './fleetFormat';
+import {
+  Badge,
+  EmptyState,
+  Field,
+  LoadingState,
+  Notice,
+  PageSection,
+  Panel,
+  revealInContent,
+  StatusText,
+  SwitchRow,
+  type NoticeTone
+} from './AdminKit';
+import { groupStationsByStore, PIN_PATTERN } from './fleetFormat';
 import type { OwnerSession } from './useOwnerSession';
 
 type ModeratorForm = {
@@ -56,9 +68,10 @@ export function ModeratorsSection(props: {
   const [confirmDeleteId, setConfirmDeleteId] = useState('');
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const [listError, setListError] = useState('');
-  const editorRef = useRef<HTMLElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const moderators = props.moderators ?? [];
   const assignable = props.stations.filter((station) => !station.removedAt);
+  const assignableGroups = groupStationsByStore(assignable);
   const stationName = (id: string): string => props.stations.find((station) => station.id === id)?.name ?? 'Unknown device';
   // Assigned ids the device list does not know (yet): kept as they are, never dropped silently.
   const savedIds = form.id ? moderators.find((moderator) => moderator.id === form.id)?.stationIds ?? [] : [];
@@ -158,74 +171,133 @@ export function ModeratorsSection(props: {
     }
   };
 
+  const deviceOption = (station: FleetStation): JSX.Element => (
+    <label key={station.id} className="fleet-device-option">
+      <input
+        type="checkbox"
+        checked={form.stationIds.includes(station.id)}
+        onChange={(event) => toggleStation(station.id, event.target.checked)}
+      />
+      <span className="fleet-device-option-name">{station.name || 'Unnamed device'}</span>
+      {station.isCurrentDevice && <Badge>This device</Badge>}
+      {station.location && <span className="fleet-device-option-place">{station.location}</span>}
+    </label>
+  );
+
   return (
-    <div className="admin-columns admin-columns--plans fleet-moderators-grid">
-      <section className="admin-card fleet-moderator-list-card">
-        <CardHeader
-          eyebrow="Access"
-          title="Moderators"
-          subtitle="A moderator's PIN unlocks the Control Room on the devices you pick."
-          icon={<Users size={20} />}
-          actions={props.moderators && <span className="ps-chip admin-count-chip">{moderators.length} saved</span>}
-        />
-        {props.loadError && <Notice tone="error" className="fleet-list-notice">{props.loadError}</Notice>}
-        {listError && <Notice tone="error" className="fleet-list-notice">{listError}</Notice>}
+    <>
+      <PageSection
+        title="Moderators"
+        description="A moderator's PIN unlocks the Control Room on the devices you pick."
+        className="fleet-moderators"
+        actions={props.moderators && (
+          <span className="admin-count">{moderators.length} saved</span>
+        )}
+      >
+        {props.loadError && <Notice tone="error">{props.loadError}</Notice>}
+        {listError && <Notice tone="error">{listError}</Notice>}
         {!props.moderators && props.loading && <LoadingState label="Loading moderators..." />}
         {props.moderators && moderators.length === 0 && (
-          <EmptyState icon={<UserPlus size={28} />} title="No moderators yet">
-            Add staff who should unlock the Control Room with their own PIN.
-          </EmptyState>
+          <Panel>
+            <EmptyState title="No moderators yet">
+              Add staff who should unlock the Control Room with their own PIN.
+            </EmptyState>
+          </Panel>
         )}
         {moderators.length > 0 && (
-          <ul className="fleet-moderator-list">
-            {moderators.map((moderator) => {
-              const editing = form.id === moderator.id;
-              const confirming = confirmDeleteId === moderator.id;
-              const deleting = busyId === moderator.id;
-              const deviceNames = moderator.stationIds.map(stationName);
-              return (
-                <li key={moderator.id} className={`fleet-moderator-row${editing ? ' selected' : ''}${moderator.active ? '' : ' is-inactive'}`}>
-                  <button className="fleet-moderator-summary" type="button" aria-current={editing ? 'true' : undefined} onClick={() => editModerator(moderator)}>
-                    <strong>{moderator.name}</strong>
-                    <span title={deviceNames.join(', ')}>
-                      {deviceNames.length === 0 ? 'No devices' : deviceNames.join(', ')}
-                    </span>
-                  </button>
-                  <span className={`ps-chip ${moderator.active ? 'ps-chip--success' : ''}`}>{moderator.active ? 'Active' : 'Inactive'}</span>
-                  <div className="fleet-moderator-actions">
-                    <button className="secondary-action compact" type="button" disabled={busy} onClick={() => editModerator(moderator)}>
-                      <Pencil size={15} /> Edit
-                    </button>
-                    <button
-                      className={`secondary-action compact danger${confirming ? ' confirming' : ''}`}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void deleteModerator(moderator)}
+          <div className="admin-table-scroll">
+            <table className="admin-table fleet-moderator-table">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Devices</th>
+                  <th scope="col" className="fleet-moderator-status">Status</th>
+                  <th scope="col" className="fleet-moderator-actions-cell"><span className="admin-visually-hidden">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {moderators.map((moderator) => {
+                  const editing = form.id === moderator.id;
+                  const confirming = confirmDeleteId === moderator.id;
+                  const deleting = busyId === moderator.id;
+                  const deviceNames = moderator.stationIds.map(stationName);
+                  return (
+                    <tr
+                      key={moderator.id}
+                      className={`fleet-moderator-row is-clickable${editing ? ' is-selected' : ''}${moderator.active ? '' : ' is-inactive'}`}
+                      onClick={() => {
+                        if (!busy && !editing) editModerator(moderator);
+                      }}
                     >
-                      {deleting ? <LoaderCircle className="spin" size={15} /> : <Trash2 size={15} />}
-                      {deleting ? 'Deleting...' : confirming ? 'Confirm' : 'Delete'}
-                    </button>
-                    {confirming && !deleting && (
-                      <button className="secondary-action compact" type="button" disabled={busy} onClick={() => setConfirmDeleteId('')}>
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                      <td className="fleet-moderator-name">{moderator.name}</td>
+                      <td className="fleet-moderator-devices" title={deviceNames.join(', ')}>
+                        {deviceNames.length === 0 ? <span className="fleet-cell-empty">No devices</span> : deviceNames.join(', ')}
+                      </td>
+                      <td>
+                        <StatusText tone={moderator.active ? 'success' : 'neutral'}>{moderator.active ? 'Active' : 'Inactive'}</StatusText>
+                      </td>
+                      <td className="fleet-moderator-actions-cell" onClick={(event) => event.stopPropagation()}>
+                        <div className="fleet-moderator-actions">
+                          {confirming ? (
+                            <>
+                              {!deleting && (
+                                <button className="admin-btn admin-btn--ghost admin-btn--sm" type="button" disabled={busy} onClick={() => setConfirmDeleteId('')}>
+                                  Cancel
+                                </button>
+                              )}
+                              <button
+                                className="admin-btn admin-btn--danger admin-btn--sm confirming"
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void deleteModerator(moderator)}
+                              >
+                                {deleting ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}
+                                {deleting ? 'Deleting...' : 'Confirm'}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="admin-btn admin-btn--ghost admin-btn--sm"
+                                type="button"
+                                disabled={busy}
+                                aria-current={editing ? 'true' : undefined}
+                                onClick={() => editModerator(moderator)}
+                              >
+                                <Pencil size={14} />
+                                Edit
+                              </button>
+                              <button
+                                className="admin-btn admin-btn--ghost admin-btn--danger admin-btn--sm admin-btn--icon"
+                                type="button"
+                                disabled={busy}
+                                aria-label={`Delete ${moderator.name}`}
+                                title="Delete"
+                                onClick={() => void deleteModerator(moderator)}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
-      </section>
+      </PageSection>
 
-      <section className="admin-card fleet-moderator-editor" ref={editorRef}>
-        <CardHeader
-          eyebrow="Moderator"
-          title={form.id ? 'Edit Moderator' : 'Add Moderator'}
-          subtitle={form.id ? 'Changes reach each device at its next sync.' : 'Give a staff member their own Control Room PIN.'}
+      {/* Like Plans: the list, then the editor as its own section; Edit fills it, New empties it. */}
+      <div ref={editorRef} className="fleet-moderator-editor-anchor">
+        <PageSection
+          title={form.id ? 'Edit moderator' : 'Add moderator'}
+          description={form.id ? 'Changes reach each device at its next sync.' : 'Give a staff member their own Control Room PIN.'}
           actions={form.id && (
             <button
-              className="secondary-action compact"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
               type="button"
               disabled={busy}
               onClick={() => {
@@ -233,116 +305,114 @@ export function ModeratorsSection(props: {
                 setNotice(null);
               }}
             >
-              <Plus size={16} />
+              <Plus size={14} />
               New
             </button>
           )}
-        />
-        <form
-          className="admin-form fleet-moderator-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void saveModerator();
-          }}
         >
-          <label className="admin-field">
-            <span className="admin-field-label">
-              Name <em className="required-badge">Required</em>
-            </span>
-            <input
-              value={form.name}
-              maxLength={60}
-              placeholder="Staff name"
-              disabled={saving}
-              onChange={(event) => update('name', event.target.value)}
-            />
-          </label>
-          <div className="form-grid">
-            <label className="admin-field">
-              <span className="admin-field-label">
-                PIN {!form.id && <em className="required-badge">Required</em>}
-              </span>
-              <input
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={12}
-                value={form.pin}
-                disabled={saving}
-                onChange={(event) => update('pin', event.target.value.replace(/\D/g, ''))}
-              />
-            </label>
-            <label className="admin-field">
-              <span className="admin-field-label">Confirm PIN</span>
-              <input
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={12}
-                value={form.confirmPin}
-                disabled={saving}
-                onChange={(event) => update('confirmPin', event.target.value.replace(/\D/g, ''))}
-              />
-            </label>
-          </div>
-          <small className="field-note">
-            {form.id ? 'Leave blank to keep the current PIN. ' : ''}4 to 12 digits. Use a PIN different from every device's admin PIN.
-          </small>
-          <SwitchRow
-            label="Active"
-            description="Inactive moderators can't unlock any device."
-            checked={form.active}
-            disabled={saving}
-            onChange={(checked) => update('active', checked)}
-          />
-          <fieldset className="fleet-device-picker" disabled={saving}>
-            <legend className="admin-section-title">Devices this moderator can unlock</legend>
-            {!props.stationsReady ? (
-              <p className="field-note">{props.stationsError ? 'The device list did not load.' : 'Loading devices...'}</p>
-            ) : assignable.length === 0 && unknownAssigned.length === 0 ? (
-              <p className="field-note">No devices yet.</p>
-            ) : (
-              assignable.map((station) => (
-                <label key={station.id} className="fleet-device-option">
+          <Panel
+            as="form"
+            className="admin-form fleet-moderator-editor"
+            aria-label={form.id ? 'Edit moderator' : 'Add moderator'}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveModerator();
+            }}
+          >
+            <div className="fleet-editor-body">
+              <div className="admin-form fleet-editor-fields">
+                <Field label="Name" required>
                   <input
-                    type="checkbox"
-                    checked={form.stationIds.includes(station.id)}
-                    onChange={(event) => toggleStation(station.id, event.target.checked)}
+                    value={form.name}
+                    maxLength={60}
+                    placeholder="Staff name"
+                    disabled={saving}
+                    onChange={(event) => update('name', event.target.value)}
                   />
-                  <span>
-                    <strong>{station.name || 'Unnamed device'}</strong>
-                    <small>{[station.storeName, station.location].filter(Boolean).join(' · ') || 'Store and location not set'}</small>
-                  </span>
-                  {station.isCurrentDevice && <span className="ps-chip ps-chip--accent">This device</span>}
-                </label>
-              ))
-            )}
-            {unknownAssigned.map((id) => (
-              <label key={id} className="fleet-device-option">
-                <input
-                  type="checkbox"
-                  checked={form.stationIds.includes(id)}
-                  onChange={(event) => toggleStation(id, event.target.checked)}
+                </Field>
+                <div className="form-grid">
+                  <Field label="PIN" required={!form.id}>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={12}
+                      value={form.pin}
+                      disabled={saving}
+                      onChange={(event) => update('pin', event.target.value.replace(/\D/g, ''))}
+                    />
+                  </Field>
+                  <Field label="Confirm PIN">
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={12}
+                      value={form.confirmPin}
+                      disabled={saving}
+                      onChange={(event) => update('confirmPin', event.target.value.replace(/\D/g, ''))}
+                    />
+                  </Field>
+                  <small className="admin-field-help full">
+                    {form.id ? 'Leave blank to keep the current PIN. ' : ''}4 to 12 digits. Use a PIN different from every device's admin PIN.
+                  </small>
+                </div>
+                <SwitchRow
+                  className="fleet-moderator-active"
+                  label="Active"
+                  description="Inactive moderators can't unlock any device."
+                  checked={form.active}
+                  disabled={saving}
+                  onChange={(checked) => update('active', checked)}
                 />
-                <span>
-                  <strong>Unknown device</strong>
-                  <small>{id}</small>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-          <footer className="admin-card-footer admin-card-footer--stacked">
-            {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
-            {!props.stationsReady && props.stationsError && (
-              <Notice tone="error">Moderators can be saved once the device list loads. {props.stationsError}</Notice>
-            )}
-            <button className="primary-action wide" type="submit" disabled={busy || !props.stationsReady}>
-              {saving ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
-              {saving ? 'Saving...' : form.id ? 'Update Moderator' : 'Add Moderator'}
-            </button>
-          </footer>
-        </form>
-      </section>
-    </div>
+              </div>
+              <fieldset className="fleet-device-picker" disabled={saving}>
+                <legend className="admin-field-label">Devices this moderator can unlock</legend>
+                <div className="fleet-device-groups">
+                  {!props.stationsReady ? (
+                    <p className="admin-field-help">{props.stationsError ? 'The device list did not load.' : 'Loading devices...'}</p>
+                  ) : assignable.length === 0 && unknownAssigned.length === 0 ? (
+                    <p className="admin-field-help">No devices yet.</p>
+                  ) : (
+                    assignableGroups.map((group) => (
+                      <div key={group.store} className="fleet-device-group" role="group" aria-label={group.store}>
+                        <p className="fleet-device-group-label" aria-hidden="true">{group.store}</p>
+                        {group.stations.map(deviceOption)}
+                      </div>
+                    ))
+                  )}
+                  {unknownAssigned.length > 0 && (
+                    <div className="fleet-device-group" role="group" aria-label="Unknown devices">
+                      <p className="fleet-device-group-label" aria-hidden="true">Unknown devices</p>
+                      {unknownAssigned.map((id) => (
+                        <label key={id} className="fleet-device-option">
+                          <input
+                            type="checkbox"
+                            checked={form.stationIds.includes(id)}
+                            onChange={(event) => toggleStation(id, event.target.checked)}
+                          />
+                          <span className="fleet-device-option-name">Unknown device</span>
+                          <span className="fleet-device-option-place admin-mono">{id}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </fieldset>
+            </div>
+            <footer className="admin-panel-footer">
+              {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
+              {!props.stationsReady && props.stationsError && (
+                <Notice tone="error">Moderators can be saved once the device list loads. {props.stationsError}</Notice>
+              )}
+              <button className="admin-btn admin-btn--primary" type="submit" disabled={busy || !props.stationsReady}>
+                {saving && <LoaderCircle className="spin" size={15} />}
+                {saving ? 'Saving...' : form.id ? 'Update moderator' : 'Add moderator'}
+              </button>
+            </footer>
+          </Panel>
+        </PageSection>
+      </div>
+    </>
   );
 }

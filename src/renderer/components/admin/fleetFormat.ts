@@ -9,7 +9,7 @@ import type {
   SessionGamePlay
 } from '../../../shared/types';
 
-/** Shared label helpers for the Accounts and Device Management pages. */
+/** Shared label helpers for the Accounts and All devices pages. */
 
 export const PIN_PATTERN = /^\d{4,12}$/;
 
@@ -289,7 +289,7 @@ export function buildEarningsQuery(view: AccountsView, now = new Date()): { quer
 }
 
 // ---------------------------------------------------------------------------
-// Device lists (Accounts device picker and the All Devices tab)
+// Device lists (Accounts device picker and the All devices tab)
 // ---------------------------------------------------------------------------
 
 export type FleetStationState = 'active' | 'inactive' | 'removed';

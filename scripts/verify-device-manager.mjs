@@ -44,18 +44,20 @@ assert.match(main, /store\.finishActiveSession/);
 assert.match(preload, /getCurrentDevice/);
 assert.match(preload, /updateCurrentDevice/);
 
-assert.match(app, /label="Device Manager"/);
+assert.match(app, /label="Details"/);
 assert.match(app, /tab === 'device'/);
 assert.match(app, /Only games linked to/);
 assert.match(app, /Saved results will belong to/);
 
-assert.match(manager, /Generated device ID/);
+// The generated, stable device ID is shown with a copy button.
+assert.match(manager, /<dt>Device ID<\/dt>[\s\S]{0,200}<code className="admin-mono">\{device\?\.id\}<\/code>[\s\S]{0,120}label="Copy device ID"/);
 assert.match(manager, /Store \/ branch name/);
 assert.match(manager, /Device location/);
 assert.match(manager, /Games on device/);
 assert.match(manager, /Active plans/);
-assert.match(manager, /Total sessions/);
-assert.match(manager, /Tracked revenue/);
+// Same figure labels as the device detail on All devices.
+assert.match(manager, /label="Paid sessions"/);
+assert.match(manager, /label="Revenue"/);
 assert.match(manager, /Saving\.\.\./);
 assert.match(manager, /disabled=\{saving\}/);
 

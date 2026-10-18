@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
-  Check,
   FileUp,
   FolderOpen,
-  Gamepad2,
   Image as ImageIcon,
   LoaderCircle,
   Plus,
@@ -25,14 +23,24 @@ import { ControllerHints } from '../../ui/ControllerHints';
 import { playUiSound } from '../../ui/uiSound';
 import {
   ArtImage,
-  CardHeader,
+  Badge,
   EmptyState,
+  Field,
   LoadingState,
   Notice,
+  PageActions,
+  PageSection,
+  Panel,
   revealInContent,
+  Segmented,
+  StatusText,
   SwitchRow,
-  type NoticeTone
+  Toolbar,
+  ToolbarSpacer,
+  type NoticeTone,
+  type Tone
 } from './AdminKit';
+import { timeLabel } from './fleetFormat';
 
 const EMPTY_GAME: GameInput = {
   title: '',
@@ -53,6 +61,14 @@ const SOURCE_OPTIONS = ['Manual', 'Steam', 'Epic Games', 'Microsoft Store', 'Sta
 
 type FormMessage = { tone: NoticeTone; text: string } | null;
 
+type ScanFilter = 'all' | GameSuggestion['status'];
+
+const CONFIDENCE: Record<GameSuggestion['confidence'], { label: string; level: number }> = {
+  high: { label: 'High', level: 3 },
+  medium: { label: 'Medium', level: 2 },
+  low: { label: 'Low', level: 1 }
+};
+
 function launchTypeLabel(launchType: LaunchType): string {
   if (launchType === 'steam') {
     return 'Steam game';
@@ -69,27 +85,18 @@ function launchTypeLabel(launchType: LaunchType): string {
   return 'Custom command';
 }
 
-function suggestionStatusLabel(status: GameSuggestion['status']): string {
-  if (status === 'ready') {
-    return 'ready';
-  }
-  if (status === 'needs-confirmation') {
-    return 'needs confirmation';
-  }
-  return 'unsupported';
+function suggestionStatus(status: GameSuggestion['status']): { label: string; tone: Tone } {
+  if (status === 'ready') return { label: 'Ready', tone: 'success' };
+  if (status === 'needs-confirmation') return { label: 'Needs confirmation', tone: 'warning' };
+  return { label: 'Unsupported', tone: 'neutral' };
 }
 
-function suggestionChipTone(status: GameSuggestion['status']): string {
-  if (status === 'ready') return 'ps-chip--success';
-  if (status === 'needs-confirmation') return 'ps-chip--warning';
-  return 'ps-chip--danger';
-}
-
-function gameStatus(game: GameRecord): { label: string; tone: string } {
-  if (!game.enabled || game.availabilityStatus === 'disabled') return { label: 'Disabled', tone: '' };
-  if (game.availabilityStatus === 'available') return { label: 'Available', tone: 'ps-chip--success' };
-  if (game.availabilityStatus === 'missing') return { label: 'Missing', tone: 'ps-chip--danger' };
-  return { label: 'Unknown', tone: 'ps-chip--warning' };
+function gameStatus(game: GameRecord): { label: string; tone: Tone } {
+  if (!game.enabled || game.availabilityStatus === 'disabled') return { label: 'Disabled', tone: 'neutral' };
+  if (game.availabilityStatus === 'available') return { label: 'Available', tone: 'success' };
+  if (game.availabilityStatus === 'missing') return { label: 'Missing', tone: 'danger' };
+  // Same words and colour as the main admin sees on All devices.
+  return { label: 'Not checked', tone: 'neutral' };
 }
 
 function normalizeForm(game?: GameRecord | GameInput): GameInput {
@@ -99,13 +106,47 @@ function normalizeForm(game?: GameRecord | GameInput): GameInput {
   };
 }
 
+function initials(title: string): string {
+  return title
+    .split(/\s+/)
+    .filter((word) => /^[A-Za-z0-9]/.test(word))
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase();
+}
+
+/** 32px artwork square; muted initials when the game has no artwork yet. */
+function GameThumb(props: { path?: string; title: string }): JSX.Element {
+  return (
+    <ArtImage
+      className="game-thumb"
+      path={props.path}
+      fallback={<span className="game-thumb-initials" aria-hidden="true">{initials(props.title) || '?'}</span>}
+    />
+  );
+}
+
+/** Three short bars and a word: how sure the scanner is that this is a playable game. */
+function Confidence(props: { value: GameSuggestion['confidence'] }): JSX.Element {
+  const confidence = CONFIDENCE[props.value] ?? CONFIDENCE.low;
+  return (
+    <span className="scan-confidence" data-level={confidence.level} title={`${confidence.label} confidence`}>
+      <span className="scan-confidence-bars" aria-hidden="true"><i /><i /><i /></span>
+      {confidence.label}
+    </span>
+  );
+}
+
 export function GameManager(props: { currentDevice: DeviceRecord; games: GameRecord[]; onGamesChanged: (games: GameRecord[]) => void }): JSX.Element {
   const [form, setForm] = useState<GameInput>(EMPTY_GAME);
   const [pending, setPending] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [message, setMessage] = useState<FormMessage>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const editorRef = useRef<HTMLElement>(null);
+  const [query, setQuery] = useState('');
+  const editorRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const chooseButtonRef = useRef<HTMLButtonElement>(null);
 
   const closePicker = (): void => {
@@ -115,6 +156,11 @@ export function GameManager(props: { currentDevice: DeviceRecord; games: GameRec
 
   const update = <K extends keyof GameInput>(key: K, value: GameInput[K]): void => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const startNewGame = (): void => {
+    setForm(EMPTY_GAME);
+    setMessage(null);
   };
 
   const applySuggestion = (suggestion: GameSuggestion): void => {
@@ -162,102 +208,146 @@ export function GameManager(props: { currentDevice: DeviceRecord; games: GameRec
     }
   };
 
-  return (
-    <div className="admin-columns admin-columns--library">
-      <section className="admin-card game-list-panel">
-        <CardHeader
-          eyebrow="Library"
-          title="Customer games"
-          subtitle={`Only games linked to ${props.currentDevice.name}`}
-          actions={<span className="ps-chip admin-count-chip">{props.games.length} saved</span>}
-        />
-        {props.games.length === 0 ? (
-          <EmptyState icon={<Gamepad2 size={28} />} title="No games linked yet">
-            Use Choose Installed Game to add the first game to this station.
-          </EmptyState>
-        ) : (
-          <ul className="admin-list game-list">
-            {props.games.map((game) => {
-              const status = gameStatus(game);
-              const selected = form.id === game.id;
-              return (
-                <li key={game.id} className={`admin-list-row game-row${selected ? ' selected' : ''}`}>
-                  <button
-                    type="button"
-                    className="row-main"
-                    aria-current={selected ? 'true' : undefined}
-                    onClick={() => {
-                      setForm(normalizeForm(game));
-                      setMessage(null);
-                      revealInContent(editorRef.current);
-                    }}
-                  >
-                    <ArtImage
-                      className="row-art"
-                      path={game.avatarImagePath || game.coverImagePath}
-                      fallback={<Gamepad2 size={22} />}
-                    />
-                    <span className="row-copy">
-                      <strong>{game.title}</strong>
-                      <span className="row-chips">
-                        <span className="ps-chip">{launchTypeLabel(game.launchType)}</span>
-                        <span className={`ps-chip ${status.tone}`}>{status.label}</span>
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    className="icon-button danger row-icon-action"
-                    type="button"
-                    title="Delete game"
-                    aria-label={`Delete ${game.title}`}
-                    disabled={deletingId === game.id}
-                    onClick={() => void deleteGame(game)}
-                  >
-                    {deletingId === game.id ? <LoaderCircle className="spin" size={18} /> : <Trash2 size={18} />}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+  // Up and Down move between games while focus is in the list (the list keeps arrows local).
+  const moveListFocus = (event: ReactKeyboardEvent<HTMLUListElement>): void => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('.admin-list-row') ?? [])];
+    const current = event.target instanceof Element ? event.target.closest<HTMLElement>('.admin-list-row') : null;
+    const index = current ? rows.indexOf(current) : -1;
+    if (index === -1) return;
+    event.preventDefault();
+    const next = rows[index + (event.key === 'ArrowDown' ? 1 : -1)];
+    next?.querySelector<HTMLButtonElement>('.row-main')?.focus();
+  };
 
-      <section className="admin-card game-editor-panel" ref={editorRef}>
-        <CardHeader
-          eyebrow="Game linking"
-          title={form.id ? 'Edit game' : 'Add game'}
-          subtitle={form.id ? `Editing ${form.title || 'an untitled game'} on ${props.currentDevice.name}` : `New games are linked to ${props.currentDevice.name}`}
-          actions={(
-            <button
-              className="secondary-action compact"
-              type="button"
-              title="New game"
-              onClick={() => {
-                setForm(EMPTY_GAME);
-                setMessage(null);
-              }}
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleGames = normalizedQuery
+    ? props.games.filter((game) =>
+      [game.title, game.source, launchTypeLabel(game.launchType)].join(' ').toLowerCase().includes(normalizedQuery))
+    : props.games;
+  const countLabel = normalizedQuery ? `${visibleGames.length} of ${props.games.length}` : `${props.games.length} saved`;
+
+  return (
+    <div className="games-layout">
+      <PageActions>
+        <button className="admin-btn" type="button" title="New game" onClick={startNewGame}>
+          <Plus size={15} />
+          New game
+        </button>
+        <button ref={chooseButtonRef} className="admin-btn admin-btn--primary" type="button" onClick={() => setPickerOpen(true)}>
+          <Search size={15} />
+          Choose installed game
+        </button>
+      </PageActions>
+
+      <PageSection
+        className="games-library"
+        title="Customer games"
+        description={`Only games linked to ${props.currentDevice.name}`}
+        actions={props.games.length > 0 ? <span className="admin-count">{countLabel}</span> : undefined}
+      >
+        <Panel padding="none" className="games-library-panel">
+          {props.games.length === 0 ? (
+            <EmptyState
+              title="No games linked yet"
+              action={(
+                <button className="admin-btn" type="button" onClick={() => setPickerOpen(true)}>
+                  <Search size={15} />
+                  Choose installed game
+                </button>
+              )}
             >
-              <Plus size={17} />
-              New game
-            </button>
+              Pick one of the games detected on this device, or add one by hand with New game.
+            </EmptyState>
+          ) : (
+            <>
+              <div className="games-search">
+                <label className="admin-affix-input">
+                  <Search size={15} aria-hidden="true" />
+                  <input
+                    value={query}
+                    placeholder="Search games"
+                    aria-label="Search games"
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                  {query && (
+                    <button className="games-search-clear" type="button" aria-label="Clear search" onClick={() => setQuery('')}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </label>
+              </div>
+              {visibleGames.length === 0 ? (
+                <EmptyState title="No games match your search">
+                  Try a shorter name, or clear the search to see all {props.games.length} games.
+                </EmptyState>
+              ) : (
+                <ul
+                  className="admin-list games-list"
+                  ref={listRef}
+                  aria-label="Customer games"
+                  data-admin-local-keys="true"
+                  onKeyDown={moveListFocus}
+                >
+                  {visibleGames.map((game) => {
+                    const status = gameStatus(game);
+                    const selected = form.id === game.id;
+                    return (
+                      <li key={game.id} className={`admin-list-row game-row${selected ? ' selected' : ''}`}>
+                        <button
+                          type="button"
+                          className="row-main"
+                          aria-current={selected ? 'true' : undefined}
+                          onClick={() => {
+                            setForm(normalizeForm(game));
+                            setMessage(null);
+                            revealInContent(editorRef.current);
+                          }}
+                        >
+                          <GameThumb path={game.avatarImagePath || game.coverImagePath} title={game.title} />
+                          <span className="game-row-copy">
+                            <strong title={game.title}>{game.title}</strong>
+                            <span>{launchTypeLabel(game.launchType)}</span>
+                          </span>
+                          <StatusText tone={status.tone} className="game-row-status">{status.label}</StatusText>
+                        </button>
+                        <button
+                          className="admin-btn admin-btn--icon admin-btn--sm admin-btn--ghost admin-btn--danger"
+                          type="button"
+                          title="Delete game"
+                          aria-label={`Delete ${game.title}`}
+                          disabled={deletingId === game.id}
+                          onClick={() => void deleteGame(game)}
+                        >
+                          {deletingId === game.id ? <LoaderCircle className="spin" size={16} /> : <Trash2 size={16} />}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
           )}
-        />
-        <div className="linking-actions">
-          <button ref={chooseButtonRef} className="primary-action" type="button" onClick={() => setPickerOpen(true)}>
-            <Search size={19} />
-            Choose Installed Game
-          </button>
-          <span className="muted">Use manual EXE browsing only when the game is not detected.</span>
-        </div>
-        <GameForm form={form} onChange={update} />
-        <footer className="admin-card-footer">
-          {message ? <Notice tone={message.tone}>{message.text}</Notice> : <span aria-hidden="true" />}
-          <button className="primary-action" type="button" disabled={pending} onClick={() => void saveGame()}>
-            {pending ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
-            {pending ? 'Saving...' : 'Save Game'}
-          </button>
-        </footer>
-      </section>
+        </Panel>
+      </PageSection>
+
+      <div className="games-editor" ref={editorRef}>
+        <PageSection
+          title={form.id ? 'Edit game' : 'Add game'}
+          description={form.id ? `Editing ${form.title || 'an untitled game'} on ${props.currentDevice.name}` : `New games are linked to ${props.currentDevice.name}`}
+        >
+          <Panel padding="none" className="game-editor-panel">
+            <GameForm form={form} onChange={update} />
+            <footer className="admin-panel-footer game-editor-footer">
+              {message ? <Notice tone={message.tone}>{message.text}</Notice> : <span aria-hidden="true" />}
+              <button className="admin-btn admin-btn--primary" type="button" disabled={pending} onClick={() => void saveGame()}>
+                {pending ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}
+                {pending ? 'Saving...' : 'Save game'}
+              </button>
+            </footer>
+          </Panel>
+        </PageSection>
+      </div>
 
       {pickerOpen && (
         <InstalledGamePicker
@@ -385,55 +475,73 @@ function InstalledGamePicker(props: { onClose: () => void; onSelect: (suggestion
 
   return (
     <div className="modal-backdrop">
-      <section className="modal installed-picker-modal" role="dialog" aria-modal="true" aria-labelledby="installed-picker-title">
-        <button className="icon-button close-button" type="button" title="Close" onClick={props.onClose} disabled={pending}>
-          <X size={20} />
+      <section
+        className="modal installed-picker-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="installed-picker-title"
+        aria-describedby="installed-picker-description"
+      >
+        <button className="admin-btn admin-btn--icon admin-btn--ghost close-button" type="button" title="Close" aria-label="Close" onClick={props.onClose} disabled={pending}>
+          <X size={16} />
         </button>
         <header className="installed-picker-header">
-          <p className="eyebrow">Detected apps and games</p>
-          <h2 id="installed-picker-title">Choose Installed Game</h2>
+          <h2 id="installed-picker-title">Choose installed game</h2>
+          <p id="installed-picker-description">Apps and games detected on this device. Pick one to fill in its details, then save it.</p>
         </header>
         <div className="installed-picker-toolbar">
-          <label className="picker-search">
-            <Search size={19} aria-hidden="true" />
+          <label className="admin-affix-input installed-picker-search">
+            <Search size={15} aria-hidden="true" />
             <input
               ref={searchRef}
               autoFocus
+              aria-label="Search installed games"
               placeholder="Search installed games, for example Chicken Invaders"
               value={query}
               onFocus={() => setFocusId('')}
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-          {!pending && <span className="ps-chip admin-count-chip">{filteredSuggestions.length} found</span>}
+          {!pending && <span className="installed-picker-count">{filteredSuggestions.length} found</span>}
         </div>
         {error && <Notice tone="error">{error}</Notice>}
         <div className="installed-game-list" ref={listRef}>
+          {filteredSuggestions.length > 0 && (
+            <div className="installed-game-head" aria-hidden="true">
+              <span />
+              <span>Game</span>
+              <span>Notes</span>
+              <span>Status</span>
+            </div>
+          )}
           {pending && <LoadingState label="Scanning installed games..." />}
-          {filteredSuggestions.map((suggestion) => (
-            <button
-              key={suggestion.suggestionId}
-              className={`installed-game-row${focusId === suggestion.suggestionId ? ' controller-focused' : ''}`}
-              type="button"
-              data-suggestion-id={suggestion.suggestionId}
-              disabled={suggestion.status === 'unsupported'}
-              onFocus={() => setFocusId(suggestion.suggestionId)}
-              onBlur={() => setFocusId((current) => (current === suggestion.suggestionId ? '' : current))}
-              onClick={() => props.onSelect(suggestion)}
-            >
-              <ArtImage className="installed-game-icon" path={suggestion.iconPath} fallback={<Gamepad2 size={22} />} />
-              <span className="installed-game-copy">
-                <strong>{suggestion.title}</strong>
-                <span>
-                  {suggestion.source} · {suggestion.launchMethod}
+          {filteredSuggestions.map((suggestion) => {
+            const status = suggestionStatus(suggestion.status);
+            return (
+              <button
+                key={suggestion.suggestionId}
+                className={`installed-game-row${focusId === suggestion.suggestionId ? ' controller-focused' : ''}`}
+                type="button"
+                data-suggestion-id={suggestion.suggestionId}
+                disabled={suggestion.status === 'unsupported'}
+                onFocus={() => setFocusId(suggestion.suggestionId)}
+                onBlur={() => setFocusId((current) => (current === suggestion.suggestionId ? '' : current))}
+                onClick={() => props.onSelect(suggestion)}
+              >
+                <GameThumb path={suggestion.iconPath} title={suggestion.title} />
+                <span className="installed-game-copy">
+                  <strong>{suggestion.title}</strong>
+                  <span>
+                    {suggestion.source} · {suggestion.launchMethod}
+                  </span>
                 </span>
-                <small>{suggestion.notes}</small>
-              </span>
-              <em className={`picker-status ps-chip ${suggestionChipTone(suggestion.status)}`}>{suggestionStatusLabel(suggestion.status)}</em>
-            </button>
-          ))}
+                <span className="installed-game-notes" title={suggestion.notes}>{suggestion.notes}</span>
+                <StatusText tone={status.tone}>{status.label}</StatusText>
+              </button>
+            );
+          })}
           {!pending && filteredSuggestions.length === 0 && (
-            <EmptyState icon={<Search size={26} />} title="No installed games matched your search.">
+            <EmptyState title="No installed games matched your search">
               Try a shorter name, or browse for the game executable manually.
             </EmptyState>
           )}
@@ -464,41 +572,55 @@ function AssetField(props: {
   onBrowse: () => void;
 }): JSX.Element {
   const previewPath = props.value || props.fallback;
+  const usingFallback = !props.value && Boolean(props.fallback);
   return (
     <div className={`asset-field asset-field--${props.kind}`}>
-      <div className={`asset-preview ${props.kind}-preview`}>
-        <ArtImage
-          className="asset-preview-art"
-          path={previewPath}
-          alt={`Selected ${props.kind} preview`}
-          fallback={(
-            <span className="asset-placeholder">
-              <ImageIcon size={24} />
-              <small>No artwork</small>
-            </span>
-          )}
-        />
-        {!props.value && props.fallback && (
-          <span className="asset-fallback-chip">Using {props.kind === 'avatar' ? 'cover' : 'avatar'}</span>
+      <ArtImage
+        className={`asset-preview asset-preview--${props.kind}`}
+        path={previewPath}
+        alt={`Selected ${props.kind} preview`}
+        fallback={<span className="asset-placeholder" title="No artwork"><ImageIcon size={16} aria-label="No artwork" /></span>}
+      />
+      <Field
+        htmlFor={props.id}
+        label={(
+          <>
+            {props.label}
+            {usingFallback && <Badge>Using {props.kind === 'avatar' ? 'cover' : 'avatar'}</Badge>}
+          </>
         )}
-      </div>
-      <div className="asset-body">
-        <label className="admin-field-label" htmlFor={props.id}>{props.label}</label>
-        <input
-          id={props.id}
-          value={props.value}
-          placeholder="No image selected"
-          onChange={(event) => props.onChange(event.target.value)}
-        />
-        <div className="asset-actions">
-          <button className="secondary-action compact browse-button" type="button" disabled={props.browsing} onClick={props.onBrowse}>
-            <ImageIcon size={17} />
-            {props.browsing ? 'Browsing...' : props.browseLabel}
+        help={props.note}
+      >
+        <div className="input-with-button">
+          <input
+            id={props.id}
+            value={props.value}
+            placeholder="No image selected"
+            onChange={(event) => props.onChange(event.target.value)}
+          />
+          <button
+            className="admin-btn game-browse"
+            type="button"
+            aria-label={props.browseLabel}
+            disabled={props.browsing}
+            onClick={props.onBrowse}
+          >
+            <ImageIcon size={15} />
+            {props.browsing ? 'Browsing...' : 'Browse'}
           </button>
-          <small className="field-note">{props.note}</small>
         </div>
-      </div>
+      </Field>
     </div>
+  );
+}
+
+/** One group of the game editor: a 13px label on the left (above, when narrow) and its fields. */
+function FormGroup(props: { title: string; children: ReactNode; className?: string }): JSX.Element {
+  return (
+    <section className={`game-form-group${props.className ? ` ${props.className}` : ''}`} aria-label={props.title}>
+      <h3 className="admin-subheading game-form-group-title">{props.title}</h3>
+      <div className="game-form-group-body">{props.children}</div>
+    </section>
   );
 }
 
@@ -572,23 +694,24 @@ function GameForm(props: {
     }
   };
 
+  const launchHelp = props.form.launchType === 'localExe'
+    ? 'Use manual EXE browsing only when the game is not detected.'
+    : props.form.launchType === 'microsoftStore'
+      ? 'Use the app identifier from Choose installed game. No hidden executable path is required.'
+      : undefined;
+
   return (
-    <div className="admin-form game-form">
-      <section className="admin-form-section">
-        <h3 className="admin-section-title">Details</h3>
+    <div className="game-form">
+      <FormGroup title="Details">
         <div className="form-grid">
-          <label className="admin-field">
-            <span className="admin-field-label">
-              Game title <em className="required-badge">Required</em>
-            </span>
+          <Field label="Game title" required>
             <input
               value={props.form.title}
               placeholder="Name shown to customers"
               onChange={(event) => props.onChange('title', event.target.value)}
             />
-          </label>
-          <label className="admin-field">
-            <span className="admin-field-label">Source</span>
+          </Field>
+          <Field label="Source">
             <select value={sourceValue} onChange={(event) => props.onChange('source', event.target.value)}>
               {SOURCE_OPTIONS.map((source) => (
                 <option key={source} value={source}>
@@ -596,12 +719,11 @@ function GameForm(props: {
                 </option>
               ))}
             </select>
-          </label>
+          </Field>
         </div>
-      </section>
+      </FormGroup>
 
-      <section className="admin-form-section">
-        <h3 className="admin-section-title">Artwork</h3>
+      <FormGroup title="Artwork">
         <div className="game-assets">
           <AssetField
             id="avatar-image-path"
@@ -610,7 +732,7 @@ function GameForm(props: {
             note="Square artwork for the customer game row. Falls back to the cover image."
             value={props.form.avatarImagePath ?? ''}
             fallback={props.form.coverImagePath ?? ''}
-            browseLabel="Browse Avatar"
+            browseLabel="Browse avatar"
             browsing={picking === 'avatar'}
             onChange={(value) => props.onChange('avatarImagePath', value)}
             onBrowse={() => void pickImage('avatar')}
@@ -622,21 +744,17 @@ function GameForm(props: {
             note="Wide 16:9 artwork for the console background. Falls back to the avatar image."
             value={props.form.coverImagePath ?? ''}
             fallback={props.form.avatarImagePath ?? ''}
-            browseLabel="Browse Cover"
+            browseLabel="Browse cover"
             browsing={picking === 'cover'}
             onChange={(value) => props.onChange('coverImagePath', value)}
             onBrowse={() => void pickImage('cover')}
           />
         </div>
-      </section>
+      </FormGroup>
 
-      <section className="admin-form-section">
-        <h3 className="admin-section-title">Launch</h3>
+      <FormGroup title="Launch">
         <div className="form-grid">
-          <label className="admin-field">
-            <span className="admin-field-label">
-              Launch type <em className="required-badge">Required</em>
-            </span>
+          <Field label="Launch type" required>
             <select value={props.form.launchType} onChange={(event) => props.onChange('launchType', event.target.value as LaunchType)}>
               <option value="steam">Steam game</option>
               <option value="epic">Epic game</option>
@@ -644,19 +762,15 @@ function GameForm(props: {
               <option value="localExe">Local executable</option>
               <option value="custom">Custom command</option>
             </select>
-          </label>
-          <label className="admin-field">
-            <span className="admin-field-label">Process name to monitor</span>
+          </Field>
+          <Field label="Process name to monitor">
             <input
               value={props.form.processName ?? ''}
               placeholder="game.exe"
               onChange={(event) => props.onChange('processName', event.target.value)}
             />
-          </label>
-          <div className="admin-field full">
-            <label className="admin-field-label" htmlFor="launch-command">
-              Launch command <em className="required-badge">Required</em>
-            </label>
+          </Field>
+          <Field className="full" label="Launch command" htmlFor="launch-command" required help={launchHelp}>
             <div className="input-with-button">
               <input
                 id="launch-command"
@@ -665,18 +779,14 @@ function GameForm(props: {
                 onChange={(event) => props.onChange('launchCommand', event.target.value)}
               />
               {props.form.launchType === 'localExe' && (
-                <button className="secondary-action browse-button" type="button" disabled={picking === 'exe'} onClick={() => void pickExecutable()}>
-                  <FileUp size={18} />
-                  {picking === 'exe' ? 'Browsing...' : 'Browse EXE manually'}
+                <button className="admin-btn game-browse" type="button" disabled={picking === 'exe'} onClick={() => void pickExecutable()}>
+                  <FileUp size={15} />
+                  {picking === 'exe' ? 'Browsing...' : 'Browse EXE'}
                 </button>
               )}
             </div>
-            {props.form.launchType === 'microsoftStore' && (
-              <small className="field-note">Use the app identifier from Choose Installed Game. No hidden executable path is required.</small>
-            )}
-          </div>
-          <div className="admin-field full">
-            <label className="admin-field-label" htmlFor="working-directory">Working directory</label>
+          </Field>
+          <Field className="full" label="Working directory" htmlFor="working-directory">
             <div className="input-with-button">
               <input
                 id="working-directory"
@@ -684,23 +794,24 @@ function GameForm(props: {
                 placeholder="Folder the game starts in"
                 onChange={(event) => props.onChange('workingDirectory', event.target.value)}
               />
-              <button className="secondary-action browse-button" type="button" disabled={picking === 'folder'} onClick={() => void pickFolder()}>
-                <FolderOpen size={18} />
-                {picking === 'folder' ? 'Browsing...' : 'Browse Folder'}
+              <button className="admin-btn game-browse" type="button" disabled={picking === 'folder'} onClick={() => void pickFolder()}>
+                <FolderOpen size={15} />
+                {picking === 'folder' ? 'Browsing...' : 'Browse folder'}
               </button>
             </div>
-          </div>
+          </Field>
         </div>
-      </section>
+        {pickerError && <Notice tone="error">{pickerError}</Notice>}
+      </FormGroup>
 
-      {pickerError && <Notice tone="error">{pickerError}</Notice>}
-
-      <SwitchRow
-        label="Enabled on customer home screen"
-        description="Show this game in the customer game row on Home."
-        checked={props.form.enabled ?? true}
-        onChange={(checked) => props.onChange('enabled', checked)}
-      />
+      <FormGroup title="Home screen" className="game-form-group--switch">
+        <SwitchRow
+          label="Enabled on customer home screen"
+          description="Show this game in the customer game row on Home."
+          checked={props.form.enabled ?? true}
+          onChange={(checked) => props.onChange('enabled', checked)}
+        />
+      </FormGroup>
     </div>
   );
 }
@@ -708,6 +819,8 @@ function GameForm(props: {
 export function ScanPanel(props: { currentDevice: DeviceRecord; onGamesChanged: (games: GameRecord[]) => void }): JSX.Element {
   const [suggestions, setSuggestions] = useState<GameSuggestion[]>([]);
   const [pendingScan, setPendingScan] = useState(false);
+  const [scannedAt, setScannedAt] = useState<Date | null>(null);
+  const [filter, setFilter] = useState<ScanFilter>('all');
   const [savingId, setSavingId] = useState('');
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -717,6 +830,7 @@ export function ScanPanel(props: { currentDevice: DeviceRecord; onGamesChanged: 
     setError('');
     try {
       setSuggestions(await window.nxgs.scanInstalledGames());
+      setScannedAt(new Date());
     } catch (scanError) {
       setError(scanError instanceof Error ? scanError.message : String(scanError));
     } finally {
@@ -738,67 +852,149 @@ export function ScanPanel(props: { currentDevice: DeviceRecord; onGamesChanged: 
     }
   };
 
+  const countOf = (status: ScanFilter): number =>
+    status === 'all' ? suggestions.length : suggestions.filter((suggestion) => suggestion.status === status).length;
+  const filterOption = (value: ScanFilter, label: string) => ({
+    value,
+    label: (
+      <>
+        {label}
+        <span className="scan-filter-count">{countOf(value)}</span>
+      </>
+    )
+  });
+  const visibleSuggestions = filter === 'all' ? suggestions : suggestions.filter((suggestion) => suggestion.status === filter);
+
   return (
-    <section className="admin-card scan-panel">
-      <CardHeader
-        eyebrow="Suggestions only"
-        title="Scan installed games"
-        subtitle={`Saved results will belong to ${props.currentDevice.name}`}
-        actions={(
-          <button className="primary-action scan-button" type="button" disabled={pendingScan} onClick={() => void runScan()}>
-            {pendingScan ? <LoaderCircle className="spin" size={19} /> : <Search size={19} />}
-            {pendingScan ? 'Scanning...' : 'Scan'}
-          </button>
+    <>
+      <PageActions>
+        <button className="admin-btn admin-btn--primary scan-button" type="button" disabled={pendingScan} onClick={() => void runScan()}>
+          {pendingScan ? <LoaderCircle className="spin" size={15} /> : <ScanSearch size={15} />}
+          {pendingScan ? 'Scanning...' : scannedAt ? 'Scan again' : 'Scan'}
+        </button>
+      </PageActions>
+
+      <PageSection
+        className="scan-section"
+        title="Scan results"
+        description={`Suggestions only: nothing is added until you choose Add. Saved results will belong to ${props.currentDevice.name}.`}
+      >
+        {error && <Notice tone="error">{error}</Notice>}
+
+        {suggestions.length > 0 && (
+          <>
+            <Toolbar aria-label="Filter scan results">
+              <Segmented<ScanFilter>
+                aria-label="Show"
+                value={filter}
+                onChange={setFilter}
+                options={[
+                  filterOption('all', 'All'),
+                  filterOption('ready', 'Ready'),
+                  filterOption('needs-confirmation', 'Needs confirmation'),
+                  filterOption('unsupported', 'Unsupported')
+                ]}
+              />
+              <ToolbarSpacer />
+              <span className="admin-count">
+                {savedIds.length > 0 && `${savedIds.length} added · `}
+                {scannedAt && `Last scan ${timeLabel(scannedAt.toISOString())}`}
+              </span>
+            </Toolbar>
+
+            <div className="admin-table-scroll scan-table-scroll">
+              <table className="admin-table scan-table">
+                <colgroup>
+                  <col />
+                  <col className="scan-col-source" />
+                  <col className="scan-col-confidence" />
+                  <col className="scan-col-status" />
+                  <col className="scan-col-action" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">Game</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Confidence</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" className="admin-num"><span className="admin-visually-hidden">Action</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleSuggestions.map((suggestion) => {
+                    const saving = savingId === suggestion.suggestionId;
+                    const saved = savedIds.includes(suggestion.suggestionId);
+                    const status = suggestionStatus(suggestion.status);
+                    return (
+                      <tr key={suggestion.suggestionId} className={suggestion.status === 'unsupported' ? 'is-unsupported' : undefined}>
+                        <td>
+                          <div className="scan-game">
+                            <GameThumb path={suggestion.iconPath || suggestion.avatarImagePath} title={suggestion.title} />
+                            <div className="scan-game-copy">
+                              <strong title={suggestion.title}>{suggestion.title}</strong>
+                              <span title={suggestion.notes}>{suggestion.notes}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="scan-source">
+                            <span>{suggestion.source}</span>
+                            <span>{suggestion.launchMethod}</span>
+                          </div>
+                        </td>
+                        <td><Confidence value={suggestion.confidence} /></td>
+                        <td><StatusText tone={status.tone}>{status.label}</StatusText></td>
+                        <td className="admin-num">
+                          {saved ? (
+                            <StatusText tone="success">In library</StatusText>
+                          ) : (
+                            <button
+                              className="admin-btn admin-btn--sm scan-add"
+                              type="button"
+                              aria-label={`Add ${suggestion.title} to the library`}
+                              disabled={saving}
+                              onClick={() => void saveSuggestion(suggestion)}
+                            >
+                              {saving ? <LoaderCircle className="spin" size={14} /> : <Plus size={14} />}
+                              {saving ? 'Adding...' : 'Add'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {visibleSuggestions.length === 0 && (
+                <EmptyState title="No results with this status">Choose All to see every result from the last scan.</EmptyState>
+              )}
+            </div>
+          </>
         )}
-      />
-      {error && <Notice tone="error">{error}</Notice>}
-      {suggestions.length > 0 && (
-        <div className="scan-results">
-          {suggestions.map((suggestion) => {
-            const saving = savingId === suggestion.suggestionId;
-            return (
-              <article key={suggestion.suggestionId} className="suggestion-row">
-                <ArtImage
-                  className="row-art"
-                  path={suggestion.iconPath || suggestion.avatarImagePath}
-                  fallback={<Gamepad2 size={22} />}
-                />
-                <div className="row-copy">
-                  <strong>{suggestion.title}</strong>
-                  <span>
-                    {suggestion.source} · {suggestion.launchMethod}
-                  </span>
-                  <small>{suggestion.notes}</small>
-                </div>
-                <div className="suggestion-side">
-                  {savedIds.includes(suggestion.suggestionId) && (
-                    <span className="ps-chip ps-chip--success">
-                      <Check size={14} />
-                      In library
-                    </span>
-                  )}
-                  <span className={`ps-chip ${suggestionChipTone(suggestion.status)}`}>{suggestionStatusLabel(suggestion.status)}</span>
-                  <button
-                    className="secondary-action compact"
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void saveSuggestion(suggestion)}
-                  >
-                    {saving ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}
-                    {saving ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
-      {pendingScan && suggestions.length === 0 && <LoadingState label="Scanning installed games..." />}
-      {!pendingScan && suggestions.length === 0 && (
-        <EmptyState icon={<ScanSearch size={28} />} title="No scan results yet.">
-          Run a scan to detect games installed on this station. Nothing is added to the library until you save a result.
-        </EmptyState>
-      )}
-    </section>
+
+        {pendingScan && suggestions.length === 0 && (
+          <Panel className="scan-placeholder">
+            <LoadingState label="Scanning installed games..." />
+          </Panel>
+        )}
+        {!pendingScan && suggestions.length === 0 && (
+          <Panel className="scan-placeholder">
+            <EmptyState
+              title={scannedAt ? 'No installed games found' : 'No scan results yet'}
+              action={scannedAt ? undefined : (
+                <button className="admin-btn" type="button" onClick={() => void runScan()}>
+                  <ScanSearch size={15} />
+                  Scan now
+                </button>
+              )}
+            >
+              {scannedAt
+                ? 'The scan finished without finding Steam, Epic, Microsoft Store or local games. Add a game manually from Games instead.'
+                : 'Run a scan to detect games installed on this device. Nothing is added to the library until you add a result.'}
+            </EmptyState>
+          </Panel>
+        )}
+      </PageSection>
+    </>
   );
 }

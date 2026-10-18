@@ -1,0 +1,38 @@
+/*
+ * Control Room Device page (DeviceManager): key figures, the device details
+ * form and cloud sync in the main column, identity facts in the side column.
+ * Built on kit primitives (StatRow, PageSection, Panel, Field, facts list,
+ * panel footer, .admin-split); only the device ID cell lives here.
+ * Uses --a-* tokens only.
+ */
+
+/* Device ID: the code and its copy button, right aligned like the other side-column facts. */
+.device-id-value {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-block: -4px;
+}
+
+.device-id-value code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--a-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-screen .device-copy-button {
+  margin-right: -6px;
+}
+
+.admin-screen .device-copy-button.is-copied {
+  --btn-fg: var(--a-green);
+  --btn-fg-hover: var(--a-green);
+}
+
+.device-id-note {
+  margin: 0;
+  color: var(--a-text-3);
+}

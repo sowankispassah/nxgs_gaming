@@ -1,23 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Activity,
-  Gamepad2,
-  IndianRupee,
-  KeyRound,
-  LoaderCircle,
-  LockKeyhole,
-  MonitorCog,
-  Network,
-  RefreshCw,
-  Save,
-  Search,
-  Store
-} from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { ChevronRight, LoaderCircle, LockKeyhole, RefreshCw, Search, Store } from 'lucide-react';
 import type { FleetStation, ModeratorRecord } from '../../../shared/types';
-import { CardHeader, EmptyState, LoadingState, Notice, revealInContent, type NoticeTone } from './AdminKit';
+import {
+  Badge,
+  EmptyState,
+  Field,
+  LoadingState,
+  Notice,
+  PageActions,
+  PageSection,
+  Panel,
+  revealInContent,
+  StatusText,
+  ToggleChip,
+  Toolbar,
+  ToolbarSpacer,
+  type NoticeTone
+} from './AdminKit';
 import { FleetStationPanel } from './FleetStationPanel';
 import { FleetSyncCard } from './FleetSyncCard';
 import {
+  dateTimeLabel,
   filterFleetStations,
   formatPaise,
   PIN_PATTERN,
@@ -43,8 +46,8 @@ function sortStations(stations: FleetStation[]): FleetStation[] {
 }
 
 /**
- * The "All Devices" tab: the main admin's view of every station. Everything
- * here needs the main admin PIN; cancelling the prompt leaves a locked card.
+ * The "All devices" tab: the main admin's view of every device. Everything
+ * here needs the main admin PIN; cancelling the prompt leaves a short locked message.
  */
 export function DeviceManagementPanel(props: {
   owner: OwnerSession;
@@ -64,7 +67,7 @@ export function DeviceManagementPanel(props: {
   const [deviceStates, setDeviceStates] = useState<FleetStationState[]>([]);
   const [deviceStore, setDeviceStore] = useState('');
   const moderatorsRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const unlock = useCallback(async (): Promise<void> => {
     setAccess('checking');
@@ -110,24 +113,23 @@ export function DeviceManagementPanel(props: {
   };
 
   if (access === 'checking') {
-    return (
-      <section className="admin-card admin-loading-card">
-        <LoadingState label="Checking main admin..." />
-      </section>
-    );
+    return <LoadingState label="Checking main admin..." />;
   }
 
   if (access === 'locked') {
     return (
-      <section className="admin-card fleet-locked-card">
-        <EmptyState icon={<LockKeyhole size={28} />} title="Main admin PIN needed">
-          Device Management shows every device, their games and moderators. Enter the main admin PIN to continue.
-        </EmptyState>
-        <button className="primary-action" type="button" disabled={owner.prompting} onClick={() => void unlock()}>
-          <LockKeyhole size={18} />
-          Unlock
-        </button>
-      </section>
+      <EmptyState
+        className="fleet-locked"
+        title="Main admin PIN needed"
+        action={(
+          <button className="admin-btn admin-btn--primary" type="button" disabled={owner.prompting} onClick={() => void unlock()}>
+            <LockKeyhole size={15} />
+            Unlock
+          </button>
+        )}
+      >
+        This page shows every device, its games and moderators. Enter the main admin PIN to continue.
+      </EmptyState>
     );
   }
 
@@ -135,6 +137,7 @@ export function DeviceManagementPanel(props: {
   const stores = storeNames(stations ?? []);
   const visibleStations = filterFleetStations(stations ?? [], { search: deviceSearch, states: deviceStates, store: deviceStore });
   const listFiltered = Boolean(deviceSearch.trim() || deviceStates.length || deviceStore);
+  const activeCount = (stations ?? []).filter((station) => !station.removedAt).length;
   const clearDeviceFilters = (): void => {
     setDeviceSearch('');
     setDeviceStates([]);
@@ -164,39 +167,37 @@ export function DeviceManagementPanel(props: {
             void loadAll();
           }}
           onViewEarnings={props.onViewEarnings}
-          onManageModerators={() => revealInContent(moderatorsRef.current)}
+          onManageModerators={() => {
+            // Moderators live on the list page: go back and bring them into view.
+            setSelectedId('');
+            window.requestAnimationFrame(() => moderatorsRef.current?.scrollIntoView({ block: 'start' }));
+          }}
         />
       ) : (
-        <section className="admin-card fleet-stations-card" ref={listRef}>
-          <CardHeader
-            eyebrow="Every device"
+        <div ref={listRef} className="fleet-list-anchor">
+          <PageActions>
+            <button className="admin-btn" type="button" disabled={loading} onClick={() => void loadAll()}>
+              {loading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
+              Refresh
+            </button>
+          </PageActions>
+          <PageSection
             title="Devices"
-            subtitle="Pick a device to see its games, edit its details or remove it."
-            icon={<Network size={20} />}
-            actions={(
-              <>
-                {stations && <span className="ps-chip admin-count-chip">{stations.filter((station) => !station.removedAt).length} active</span>}
-                <button className="secondary-action compact" type="button" disabled={loading} onClick={() => void loadAll()}>
-                  {loading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
-                  Refresh
-                </button>
-              </>
+            description="Pick a device to see its games, edit its details or remove it."
+            className="fleet-stations"
+          >
+            {listNotice && <Notice tone="success">{listNotice}</Notice>}
+            {listError && <Notice tone="error">{listError}</Notice>}
+            {!stations && loading && <LoadingState label="Loading devices..." />}
+            {stations && stations.length === 0 && (
+              <EmptyState title="No devices yet">
+                Devices appear here after they sync for the first time.
+              </EmptyState>
             )}
-          />
-          {listNotice && <Notice tone="success" className="fleet-list-notice">{listNotice}</Notice>}
-          {listError && <Notice tone="error" className="fleet-list-notice">{listError}</Notice>}
-          {!stations && loading && <LoadingState label="Loading devices..." />}
-          {stations && stations.length === 0 && (
-            <EmptyState icon={<MonitorCog size={28} />} title="No devices yet">
-              Devices appear here after they sync for the first time.
-            </EmptyState>
-          )}
-          {stations && stations.length > 0 && (
-            <div className="fleet-list-filters">
-              <label className="admin-field fleet-list-search">
-                <span className="admin-section-title">Search</span>
-                <span className="admin-affix-input">
-                  <Search size={17} aria-hidden="true" />
+            {stations && stations.length > 0 && (
+              <Toolbar className="fleet-toolbar" aria-label="Device filters">
+                <span className="admin-affix-input fleet-toolbar-search">
+                  <Search size={15} aria-hidden="true" />
                   <input
                     type="search"
                     value={deviceSearch}
@@ -213,125 +214,171 @@ export function DeviceManagementPanel(props: {
                     }}
                   />
                 </span>
-              </label>
-              <div className="accounts-filter-group">
-                <span className="admin-section-title">Status</span>
                 <div className="admin-chip-toggles" role="group" aria-label="Device status">
                   {STATE_FILTERS.map((state) => (
-                    <button
+                    <ToggleChip
                       key={state.id}
-                      className="admin-chip-toggle"
-                      type="button"
-                      aria-pressed={deviceStates.includes(state.id)}
-                      onClick={() => setDeviceStates((current) => toggleValue(current, state.id))}
+                      pressed={deviceStates.includes(state.id)}
+                      onChange={() => setDeviceStates((current) => toggleValue(current, state.id))}
                     >
                       {state.label}
-                    </button>
+                    </ToggleChip>
                   ))}
                 </div>
-              </div>
-              {stores.length > 1 && (
-                <label className="admin-field fleet-list-store">
-                  <span className="admin-section-title">Store</span>
-                  <span className="admin-affix-input accounts-sort-input">
-                    <Store size={16} aria-hidden="true" />
+                {stores.length > 1 && (
+                  <span className="admin-affix-input fleet-toolbar-store">
+                    <Store size={15} aria-hidden="true" />
                     <select value={deviceStore} aria-label="Store" onChange={(event) => setDeviceStore(event.target.value)}>
                       <option value="">All stores</option>
                       {stores.map((store) => <option key={store} value={store}>{store}</option>)}
                     </select>
                   </span>
-                </label>
-              )}
-              <div className="accounts-active-filters fleet-list-count">
-                <span className="accounts-result-count">
+                )}
+                <ToolbarSpacer />
+                <span className="admin-count" role="status">
                   {listFiltered
                     ? `Showing ${visibleStations.length} of ${stations.length} devices`
-                    : `Showing all ${stations.length} ${stations.length === 1 ? 'device' : 'devices'}`}
+                    : `${stations.length} ${stations.length === 1 ? 'device' : 'devices'} · ${activeCount} active`}
                 </span>
                 {listFiltered && (
-                  <button className="secondary-action compact" type="button" onClick={clearDeviceFilters}>
+                  <button className="admin-btn admin-btn--ghost admin-btn--sm" type="button" onClick={clearDeviceFilters}>
                     Clear filters
                   </button>
                 )}
-              </div>
-            </div>
-          )}
-          {stations && stations.length > 0 && visibleStations.length === 0 && (
-            <EmptyState icon={<Search size={28} />} title="No devices match these filters">
-              <button className="secondary-action compact" type="button" onClick={clearDeviceFilters}>
-                Clear filters
-              </button>
-            </EmptyState>
-          )}
-          {visibleStations.length > 0 && (
-            <ul className="fleet-station-grid">
-              {visibleStations.map((station) => (
-                <li key={station.id}>
-                  <StationCard
-                    station={station}
-                    onSelect={() => {
-                      setListNotice('');
-                      setSelectedId(station.id);
-                    }}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+              </Toolbar>
+            )}
+            {stations && stations.length > 0 && visibleStations.length === 0 && (
+              <EmptyState
+                title="No devices match these filters"
+                action={(
+                  <button className="admin-btn admin-btn--sm" type="button" onClick={clearDeviceFilters}>
+                    Clear filters
+                  </button>
+                )}
+              />
+            )}
+            {visibleStations.length > 0 && (
+              <StationTable
+                stations={visibleStations}
+                onSelect={(stationId) => {
+                  setListNotice('');
+                  setSelectedId(stationId);
+                }}
+              />
+            )}
+          </PageSection>
+        </div>
       )}
 
-      <div ref={moderatorsRef} className="fleet-moderators-anchor">
-        <ModeratorsSection
-          owner={owner}
-          stations={stations ?? []}
-          stationsReady={stations !== null && !listError}
-          stationsError={listError}
-          moderators={moderators}
-          loadError={moderatorError}
-          loading={loading}
-          onModeratorsChanged={setModerators}
-        />
-      </div>
+      {/* Hidden, not unmounted, while a device is open: a half-typed moderator or PIN survives the detour. */}
+      <div className="fleet-list-extras" hidden={Boolean(selectedId)}>
+        <div className="admin-stack">
+          <div ref={moderatorsRef} className="fleet-moderators-anchor admin-stack">
+            <ModeratorsSection
+              owner={owner}
+              stations={stations ?? []}
+              stationsReady={stations !== null && !listError}
+              stationsError={listError}
+              moderators={moderators}
+              loadError={moderatorError}
+              loading={loading}
+              onModeratorsChanged={setModerators}
+            />
+          </div>
 
-      <div className="admin-columns fleet-settings-grid">
-        <OwnerPinCard owner={owner} />
-        <FleetSyncCard owner={owner} eyebrow="This device" />
+          <div className="fleet-settings-grid">
+            <OwnerPinCard owner={owner} />
+            <FleetSyncCard owner={owner} title="Cloud sync on this device" />
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function StationCard(props: { station: FleetStation; onSelect: () => void }): JSX.Element {
-  const { station } = props;
-  const place = [station.storeName, station.location].filter(Boolean).join(' · ');
-  const removed = Boolean(station.removedAt);
+/** Every device as one table row; the row (or Enter on its name) opens the device. */
+function StationTable(props: { stations: FleetStation[]; onSelect: (stationId: string) => void }): JSX.Element {
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  // Up/Down move between devices; the Control Room keeps the arrows for its sections elsewhere.
+  const onRowKeyDown = (event: KeyboardEvent<HTMLButtonElement>, stationId: string): void => {
+    if (event.key === 'Enter') {
+      // The app shell swallows Enter on buttons, so open here.
+      event.preventDefault();
+      props.onSelect(stationId);
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const rows = [...(tableRef.current?.querySelectorAll<HTMLButtonElement>('[data-fleet-row-open]') ?? [])];
+    rows[rows.indexOf(event.currentTarget) + (event.key === 'ArrowDown' ? 1 : -1)]?.focus();
+  };
+
   return (
-    <button className={`fleet-station-card${removed ? ' is-removed' : ''}`} type="button" onClick={props.onSelect}>
-      <span className="fleet-station-head">
-        <strong>{station.name || 'Unnamed device'}</strong>
-        {station.isCurrentDevice && <span className="ps-chip ps-chip--accent">This device</span>}
-      </span>
-      <span className="fleet-station-place">{place || 'Store and location not set'}</span>
-      <span className="fleet-station-chips">
-        {removed ? (
-          <span className="ps-chip ps-chip--danger">Removed</span>
-        ) : (
-          <span className={`ps-chip device-status-pill ${station.status === 'active' ? 'ps-chip--success' : ''}`}>
-            {station.status === 'active' ? 'Active' : 'Inactive'}
-          </span>
-        )}
-        {station.appVersion && <span className="ps-chip">v{station.appVersion}</span>}
-      </span>
-      <span className="fleet-station-stats">
-        <span><Gamepad2 size={15} aria-hidden="true" />{station.gameCount} {station.gameCount === 1 ? 'game' : 'games'}</span>
-        <span><Activity size={15} aria-hidden="true" />{station.sessionCount} {station.sessionCount === 1 ? 'session' : 'sessions'}</span>
-        <span><IndianRupee size={15} aria-hidden="true" />{formatPaise(station.totalRevenuePaise)}</span>
-      </span>
-      <span className="fleet-station-seen">
-        {removed ? `Removed ${relativeTime(station.removedAt).toLowerCase()}` : `Last seen ${relativeTime(station.lastSeenAt).toLowerCase()}`}
-      </span>
-    </button>
+    <div className="admin-table-scroll fleet-table-scroll" data-admin-local-keys="true">
+      <table ref={tableRef} className="admin-table fleet-table">
+        <thead>
+          <tr>
+            <th scope="col">Device</th>
+            <th scope="col" className="fleet-col-status">Status</th>
+            <th scope="col" className="fleet-col-version">Version</th>
+            <th scope="col" className="fleet-col-seen">Last seen</th>
+            <th scope="col" className="admin-num fleet-col-count">Games</th>
+            <th scope="col" className="admin-num fleet-col-count">Sessions</th>
+            <th scope="col" className="admin-num fleet-col-money">Revenue</th>
+            <th scope="col" className="fleet-table-chevron"><span className="admin-visually-hidden">Open</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.stations.map((station) => {
+            const removed = Boolean(station.removedAt);
+            const place = [station.storeName, station.location].filter(Boolean).join(' · ');
+            return (
+              <tr key={station.id} className={`is-clickable${removed ? ' is-removed' : ''}`} onClick={() => props.onSelect(station.id)}>
+                <td className="fleet-device-cell">
+                  <button
+                    className="fleet-row-open"
+                    type="button"
+                    data-fleet-row-open="true"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      props.onSelect(station.id);
+                    }}
+                    onKeyDown={(event) => onRowKeyDown(event, station.id)}
+                  >
+                    <span className="fleet-device-name">
+                      <strong>{station.name || 'Unnamed device'}</strong>
+                      {station.isCurrentDevice && <Badge>This device</Badge>}
+                    </span>
+                    <span className="fleet-device-place">{place || 'Store and location not set'}</span>
+                  </button>
+                </td>
+                <td>
+                  {removed ? (
+                    <span className="fleet-cell-stack">
+                      <StatusText tone="danger" title={`Removed ${dateTimeLabel(station.removedAt)}`}>Removed</StatusText>
+                      <small>{relativeTime(station.removedAt)}</small>
+                    </span>
+                  ) : (
+                    <StatusText tone={station.status === 'active' ? 'success' : 'neutral'}>
+                      {station.status === 'active' ? 'Active' : 'Inactive'}
+                    </StatusText>
+                  )}
+                </td>
+                <td className="fleet-cell-muted">{station.appVersion || '—'}</td>
+                <td className="fleet-cell-muted" title={station.lastSeenAt ? dateTimeLabel(station.lastSeenAt) : undefined}>
+                  {relativeTime(station.lastSeenAt)}
+                </td>
+                <td className="admin-num">{station.gameCount.toLocaleString('en-IN')}</td>
+                <td className="admin-num">{station.sessionCount.toLocaleString('en-IN')}</td>
+                <td className="admin-num">{formatPaise(station.totalRevenuePaise)}</td>
+                <td className="fleet-table-chevron" aria-hidden="true"><ChevronRight size={16} /></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -376,8 +423,7 @@ function OwnerPinCard(props: { owner: OwnerSession }): JSX.Element {
   };
 
   const pinInput = (value: string, onChange: (value: string) => void, label: string): JSX.Element => (
-    <label className="admin-field">
-      <span className="admin-field-label">{label}</span>
+    <Field label={label}>
       <input
         type="password"
         inputMode="numeric"
@@ -387,38 +433,38 @@ function OwnerPinCard(props: { owner: OwnerSession }): JSX.Element {
         disabled={saving}
         onChange={(event) => onChange(event.target.value.replace(/\D/g, ''))}
       />
-    </label>
+    </Field>
   );
 
   return (
-    <section className="admin-card fleet-owner-pin-card">
-      <CardHeader
-        eyebrow="Main admin"
-        title="Main admin PIN"
-        subtitle="Unlocks Accounts for every device and this page. It is separate from each device's admin PIN."
-        icon={<KeyRound size={20} />}
-      />
-      <form
+    <PageSection
+      title="Main admin PIN"
+      description="Unlocks Accounts for every device and this page. It is separate from each device's admin PIN."
+      className="fleet-owner-pin"
+    >
+      <Panel
+        as="form"
         className="admin-form fleet-owner-pin-form"
         onSubmit={(event) => {
           event.preventDefault();
           void changePin();
         }}
       >
-        {pinInput(currentPin, setCurrentPin, 'Current PIN')}
         <div className="form-grid">
+          {pinInput(currentPin, setCurrentPin, 'Current PIN')}
+          <span aria-hidden="true" />
           {pinInput(nextPin, setNextPin, 'New PIN')}
           {pinInput(confirmPin, setConfirmPin, 'Confirm new PIN')}
+          <small className="admin-field-help full">Use 6 or more digits. Any PIN of 4 to 12 digits is accepted.</small>
         </div>
-        <small className="field-note">Use 6 or more digits. Any PIN of 4 to 12 digits is accepted.</small>
-        <footer className="admin-card-footer admin-card-footer--stacked">
+        <footer className="admin-panel-footer">
           {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
-          <button className="primary-action wide" type="submit" disabled={saving}>
-            {saving ? <LoaderCircle className="spin" size={19} /> : <Save size={19} />}
+          <button className="admin-btn admin-btn--primary" type="submit" disabled={saving}>
+            {saving && <LoaderCircle className="spin" size={15} />}
             {saving ? 'Saving...' : 'Change PIN'}
           </button>
         </footer>
-      </form>
-    </section>
+      </Panel>
+    </PageSection>
   );
 }

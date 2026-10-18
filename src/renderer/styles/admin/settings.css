@@ -1,0 +1,443 @@
+/*
+ * Control Room settings pages for this device: Sessions (play access, admin
+ * PIN), Branding, Kiosk (behavior, diagnostics, storage, exit) and Updates.
+ *
+ * Every page is a stack of PageSections. A section holds one panel of
+ * hairline rows (kit .admin-panel--rows) whose rows are kit rows
+ * (.admin-switch-row, .admin-value-row): label and description left, control
+ * right. Facts are kit facts lists (.admin-meta-list--left); a panel ends in
+ * the kit .admin-panel-footer. Only layout lives here. Tokens: --a-* only.
+ */
+
+/* ------------------------------------------------------------ page save */
+
+/* Sessions saves two sections at once: feedback left, save button right, under both. */
+.settings-save {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--a-control);
+}
+
+.settings-save > .admin-notice {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-save > .admin-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* A short line under a group: "Play durations and prices are managed from Plans." */
+.settings-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+}
+
+.settings-note > p {
+  margin: 0;
+}
+
+.settings-note > .admin-btn {
+  margin-left: -10px;
+}
+
+/* Matches the base input rule's specificity so the fixed width wins. */
+.admin-screen :is(.admin-value-row, .admin-row-actions) > input.settings-pin-input {
+  flex: 0 0 auto;
+  width: 200px;
+}
+
+.settings-seconds-input {
+  flex: 0 0 auto;
+  width: 120px;
+}
+
+.settings-locked {
+  flex: 0 0 auto;
+}
+
+/* ------------------------------------------------------------ play access */
+
+/* Radio rows: radio, then label and description. The row shows keyboard focus. */
+.settings-choices {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.settings-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 52px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.settings-choice + .settings-choice {
+  border-top: 1px solid var(--a-line);
+}
+
+.settings-choice > input[type='radio'] {
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+}
+
+.admin-screen .settings-choice > input[type='radio']:focus-visible {
+  outline: none;
+}
+
+.settings-choice:has(> input:focus-visible) {
+  border-radius: var(--a-radius-xs);
+  outline: var(--a-focus);
+  outline-offset: 4px;
+}
+
+.settings-choice:hover > input[type='radio']:not(:checked) {
+  border-color: var(--a-text-2);
+}
+
+/* ---------------------------------------------------------------- branding */
+
+.branding-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.branding-preview {
+  display: grid;
+  flex: 0 0 auto;
+  width: 104px;
+  height: 104px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius);
+  background: var(--a-inset);
+}
+
+.branding-preview-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.branding-copy {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: center;
+  min-width: 0;
+  gap: 4px;
+  font-size: var(--a-size-small);
+}
+
+.branding-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.branding-title strong {
+  color: var(--a-text);
+  font-size: var(--a-size-body);
+  font-weight: 500;
+}
+
+.branding-copy .admin-caption {
+  margin-top: 4px;
+}
+
+.branding-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ------------------------------------------------------------------- kiosk */
+
+.diagnostics-live {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.diagnostics-warnings {
+  display: grid;
+  gap: 8px;
+}
+
+/* Two columns of key/value groups with a hairline between them. */
+.admin-panel.diagnostics-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0;
+}
+
+.diagnostics-column {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 20px;
+  padding: 16px 20px 12px;
+}
+
+.diagnostics-column + .diagnostics-column {
+  border-left: 1px solid var(--a-line);
+}
+
+.diagnostics-group {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+/* Denser rows than other facts lists, all one height whether or not a label holds key caps. */
+.diagnostics-list > div {
+  grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1fr);
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 0;
+}
+
+.diagnostics-list dd.diagnostics-value--empty {
+  color: var(--a-text-3);
+}
+
+.diagnostics-list dd.diagnostics-value--problem {
+  color: var(--a-red);
+}
+
+.diagnostics-keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.diagnostics-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--a-text-3);
+}
+
+.diagnostics-note {
+  max-width: 720px;
+  margin: 0;
+}
+
+/* Danger zone (kit .admin-danger-zone): the exit PIN beside its button. */
+.admin-screen .admin-row-actions > input.settings-pin-input {
+  width: 160px;
+}
+
+.danger-zone-notice {
+  margin-bottom: 12px;
+}
+
+/* ----------------------------------------------------------------- updates */
+
+.update-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 12px 0;
+}
+
+.update-summary-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.update-headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--a-text);
+  font-size: var(--a-size-body);
+  font-weight: 600;
+}
+
+.update-headline > svg {
+  flex: 0 0 auto;
+  color: var(--a-text-2);
+}
+
+/* State dot: neutral until a check says otherwise. */
+.update-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin: 0 4px;
+  border-radius: 50%;
+  background: var(--a-text-3);
+}
+
+.update-panel--available .update-dot {
+  background: var(--a-blue);
+}
+
+.update-panel--latest .update-dot,
+.update-panel--ready .update-dot {
+  background: var(--a-green);
+}
+
+.update-panel--failed .update-dot {
+  background: var(--a-red);
+}
+
+.update-detail {
+  margin: 0 0 0 22px;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+  line-height: 1.45;
+}
+
+.update-progress {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--a-line);
+  padding: 12px 0 14px;
+}
+
+.update-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+}
+
+.update-progress-head > .admin-num {
+  color: var(--a-text);
+}
+
+.update-progress-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--a-line-strong);
+}
+
+.update-progress-track > span {
+  display: block;
+  height: 100%;
+  background: var(--a-text);
+  transition: width var(--a-dur) var(--a-ease);
+}
+
+.update-progress.is-failed .update-progress-head,
+.update-progress.is-failed .update-progress-head > .admin-num {
+  color: var(--a-red);
+}
+
+.update-progress.is-failed .update-progress-track > span {
+  background: var(--a-red);
+}
+
+.update-facts {
+  border-top: 1px solid var(--a-line);
+}
+
+.update-version {
+  font-weight: 500;
+}
+
+.update-release-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Restart prompt: kit modal, two buttons, controller hints. */
+.admin-screen .modal.update-modal {
+  display: grid;
+  gap: 20px;
+  width: min(480px, 100%);
+}
+
+.update-modal-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.update-modal-copy > p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.update-restart-note {
+  color: var(--a-text-2);
+  font-size: var(--a-size-small);
+}
+
+.update-modal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  border-top: 1px solid var(--a-line);
+  padding-top: 16px;
+}
+
+.update-modal-hints {
+  --glyph-cross: currentColor;
+  --glyph-circle: currentColor;
+
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+}
+
+.update-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 1100px) {
+  .admin-panel.diagnostics-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .diagnostics-column + .diagnostics-column {
+    border-top: 1px solid var(--a-line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .branding-row {
+    flex-wrap: wrap;
+  }
+
+  .branding-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .danger-zone-row {
+    flex-wrap: wrap;
+  }
+}

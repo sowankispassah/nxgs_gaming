@@ -1,0 +1,141 @@
+/*
+ * Control Room tokens. Every custom property here is scoped to .admin-screen,
+ * so customer surfaces and the :root console tokens never change.
+ *
+ * Use the --a-* tokens in admin CSS. The second block re-points the global
+ * console tokens (--ps-*, --radius-*, --text-*, --focus-ring, ...) inside the
+ * Control Room only, so the shared pieces it renders (base inputs and buttons,
+ * the modal shell, ControllerHints, .ps-switch) come out flat, neutral and
+ * dense. Never use those names in admin CSS. Rules: docs/admin-design.md.
+ */
+
+.admin-screen {
+  /* Surfaces: flat and neutral, no blue tint, no gradients */
+  --a-bg: #0e0e0f;
+  --a-sidebar: #121213;
+  --a-panel: #161617;
+  --a-panel-2: #1d1d1f;
+  --a-inset: #111112;
+  --a-segment: #2a2a2d;
+  --a-switch-off: #3a3a3d;
+  --a-line: #262628;
+  --a-line-strong: #36363a;
+
+  /* Text */
+  --a-text: #ededee;
+  --a-text-2: #a1a1a6;
+  --a-text-3: #6e6e73;
+  --a-inverse: #0e0e0f;
+
+  /* Colour only carries meaning */
+  --a-green: #3ecf8e;
+  --a-amber: #f5a524;
+  --a-red: #f2555a;
+  --a-blue: #7aa7ff;
+  --a-green-tint: rgba(62, 207, 142, 0.12);
+  --a-amber-tint: rgba(245, 165, 36, 0.12);
+  --a-red-tint: rgba(242, 85, 90, 0.12);
+  --a-blue-tint: rgba(122, 167, 255, 0.12);
+  --a-red-line: rgba(242, 85, 90, 0.4);
+  --a-white-tint: rgba(255, 255, 255, 0.08);
+
+  /* Shape: switches are the only rounded-full element */
+  --a-radius: 6px;
+  --a-radius-sm: 5px;
+  --a-radius-xs: 4px;
+
+  /* Type (Inter is bundled) */
+  --a-font: var(--font-ui);
+  --a-font-mono: 'Cascadia Mono', Consolas, ui-monospace, monospace;
+  --a-size-title: 22px;
+  --a-size-h2: 15px;
+  --a-size-body: 14px;
+  --a-size-small: 13px;
+  --a-size-caption: 12px;
+  --a-size-figure: 24px;
+  --a-size-mono: 12.5px;
+
+  /* Focus: one crisp outline, never a glow */
+  --a-focus-color: #ededee;
+  --a-focus: 2px solid var(--a-focus-color);
+  --a-focus-offset: 2px;
+
+  /* Elevation: popovers and modals only */
+  --a-shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  /* Motion: colour and background only */
+  --a-dur: 120ms;
+  --a-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Sizes */
+  --a-control: 32px;
+  --a-control-sm: 28px;
+  --a-input: 34px;
+  --a-row: 40px;
+  --a-header-row: 36px;
+
+  /* Layout */
+  --a-sidebar-width: 224px;
+  --a-page-pad-top: 28px;
+  --a-page-pad-x: 40px;
+  --a-page-pad-bottom: 48px;
+  --a-page-max: 1120px;
+  --a-page-max-data: 1600px;
+  --a-side-column: 340px;
+  --a-section-gap: 32px;
+  --a-gap: 16px;
+
+  /* ---------------------------------------------------- legacy bridge */
+
+  /* Console tokens, re-pointed for the Control Room only. */
+  --ps-surface: var(--a-panel);
+  --ps-surface-strong: var(--a-panel);
+  --ps-surface-raised: var(--a-panel-2);
+  --ps-surface-hover: var(--a-panel-2);
+  --ps-surface-selected: var(--a-panel-2);
+  --ps-line: var(--a-line);
+  --ps-line-strong: var(--a-line-strong);
+  --ps-text: var(--a-text);
+  --ps-text-2: var(--a-text-2);
+  --ps-text-3: var(--a-text-3);
+  --ps-text-inverse: var(--a-inverse);
+  --ps-blue: var(--a-text-2);
+  --ps-blue-bright: var(--a-text);
+  --ps-blue-soft: var(--a-white-tint);
+  --ps-success: var(--a-green);
+  --ps-success-soft: var(--a-green-tint);
+  --ps-warning: var(--a-amber);
+  --ps-warning-soft: var(--a-amber-tint);
+  --ps-danger: var(--a-red);
+  --ps-danger-soft: var(--a-red-tint);
+  --radius-xs: var(--a-radius-xs);
+  --radius-sm: var(--a-radius-sm);
+  --radius-md: var(--a-radius);
+  --radius-lg: var(--a-radius);
+  --radius-xl: var(--a-radius);
+  --radius-pill: var(--a-radius-xs);
+  --text-2xs: 11.5px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+  --text-3xl: 24px;
+  --tracking-tight: -0.01em;
+  --tracking-caps: 0;
+  --focus-ring: 0 0 0 2px var(--a-focus-color);
+  --focus-ring-tight: 0 0 0 2px var(--a-focus-color);
+  --focus-ring-inset: inset 0 0 0 2px var(--a-focus-color);
+  --shadow-1: none;
+  --shadow-2: none;
+  --shadow-3: var(--a-shadow-pop);
+  --dur-instant: 90ms;
+  --dur-fast: var(--a-dur);
+  --dur-base: var(--a-dur);
+  --dur-slow: var(--a-dur);
+  --dur-hero: var(--a-dur);
+  --ease-spring: var(--a-ease);
+  --slider-track: var(--a-line-strong);
+  --slider-active: var(--a-text);
+}

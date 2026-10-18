@@ -38,15 +38,15 @@ const [admin, accounts, filters, popover, ownerGate, fleetPanel, stationPanel, m
 ]);
 const fleet = [fleetPanel, stationPanel, moderators].join('\n');
 
-// Two new sections after Device Manager; existing order and labels intact.
+// Accounts and All devices close the sidebar (Business group); the tab cycle follows the sidebar order.
 assert.match(
   admin,
-  /const ADMIN_TABS: AdminTab\[\] = \['games', 'scan', 'sessions', 'branding', 'kiosk', 'updates', 'plans', 'device', 'accounts', 'fleet'\]/,
-  'Accounts and All Devices must follow Device Manager in the tab cycle'
+  /const ADMIN_TABS: AdminTab\[\] = \['games', 'scan', 'sessions', 'plans', 'device', 'branding', 'kiosk', 'updates', 'accounts', 'fleet'\]/,
+  'Accounts and All devices must follow the station sections (Device included) in the tab cycle'
 );
-assert.match(admin, /label="Device Manager"[\s\S]*label="Accounts"[\s\S]*label="All Devices"/, 'sidebar must list Accounts then All Devices after Device Manager');
+assert.match(admin, /label="Details"[\s\S]*label="Business">[\s\S]*label="Accounts"[\s\S]*label="All devices"/, 'sidebar must list Accounts then All devices, in the Business group after Details');
 assert.match(admin, /accounts: \{\s*title: 'Accounts'/);
-assert.match(admin, /fleet: \{\s*title: 'Device Management'/);
+assert.match(admin, /fleet: \{\s*title: 'All devices'/);
 assert.match(admin, /tab === 'accounts' && \(\s*<AccountsPanel/);
 assert.match(admin, /tab === 'fleet' && <DeviceManagementPanel/);
 assert.match(admin, /useEffect\(\(\) => \(\) => \{\s*void window\.nxgs\.lockOwner\(\)/, 'closing the Control Room must lock the main admin');
@@ -135,7 +135,7 @@ assert.match(app, /setAdminRole\(result\.role \?\? 'admin'\)/, 'App must keep wh
 assert.equal((app.match(/setAdminRole\(null\)/g) ?? []).length >= 4, true, 'the unlock role must clear whenever admin mode ends');
 assert.match(app, /adminRole=\{adminRole \?\? 'moderator'\}/);
 assert.match(admin, /<SessionSettings[\s\S]{0,120}adminRole=\{props\.adminRole \?\? 'admin'\}/);
-assert.match(settingsPanels, /Only the station admin can see or change the admin PIN\./);
+assert.match(settingsPanels, /Only the device admin can see or change the admin PIN\./);
 assert.match(settingsPanels, /adminPin: isModerator \? props\.settings\.adminPin : pin/, 'a moderator must save the existing admin PIN unchanged');
 
 // Cloud sync on this device's page, and live updates from sync.
@@ -149,7 +149,8 @@ assert.match(deviceManager, /<FleetSyncCard owner=\{props\.owner\}/);
 assert.match(app, /window\.nxgs\.onFleetLocalDataChanged\(\(change\) => \{[\s\S]{0,200}setGames\(change\.games\)/);
 assert.match(app, /unsubscribeFleetLocalData\(\);/);
 
-assert.match(styles, /\.accounts-table th \{[^}]*position: sticky;/, 'the sessions table header must stay visible while scrolling');
+assert.match(accounts, /className=\{`admin-table accounts-table/, 'the sessions table must be a kit table');
+assert.match(styles, /\.admin-table th \{[^}]*position: sticky;/, 'the sessions table header must stay visible while scrolling');
 assert.match(styles, /\.accounts-table-scroll \{[^}]*overflow: auto;/);
 
 // Earnings filters (contract addendum C): the bar only builds the query; main filters.

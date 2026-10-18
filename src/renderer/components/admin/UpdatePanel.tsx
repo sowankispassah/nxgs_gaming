@@ -1,20 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ArrowUpRight,
-  CircleAlert,
-  CircleCheck,
-  CloudDownload,
-  FileUp,
-  Info,
-  LoaderCircle,
-  Power,
-  RefreshCw
-} from 'lucide-react';
+import { ArrowUpRight, FileDown, LoaderCircle, Power, RefreshCw } from 'lucide-react';
 import type { InitialData, UpdateCheckResult, UpdateDownloadProgress } from '../../../shared/types';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../../controllerNavigation';
 import { ControllerHints } from '../../ui/ControllerHints';
 import { playUiSound } from '../../ui/uiSound';
-import { Notice } from './AdminKit';
+import { Notice, PageActions, PageSection, Panel } from './AdminKit';
+import { dateTimeLabel } from './fleetFormat';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(0, Math.round(bytes / 1024))} KB`;
@@ -44,9 +35,51 @@ export function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
   );
   const downloadProgressLabel =
     pendingAction === 'download' ? 'Downloading update...' : downloadFailed ? 'Download failed' : 'Download complete';
-  const statusTone = checking ? 'checking' : result?.status ?? 'idle';
+  const statusTone = checking ? 'checking' : downloadedInstallerPath ? 'ready' : result?.status ?? 'idle';
+  const canDownload = Boolean(result?.status === 'available' && result.canDownload && result.downloadUrl && !downloadedInstallerPath);
+  // The status block owns the primary action once there is something to download or install.
+  const hasUpdateAction = canDownload || Boolean(downloadedInstallerPath);
 
   useEffect(() => window.nxgs.onUpdateDownloadProgress(setDownloadProgress), []);
+
+  const checkForUpdates = async (): Promise<void> => {
+    setPendingAction('check');
+    setOperationMessage('');
+    setOperationOk(true);
+    setDownloadedInstallerPath('');
+    setDownloadProgress(null);
+    setRestartPromptOpen(false);
+    try {
+      setResult(await window.nxgs.checkForUpdates());
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const downloadUpdate = async (): Promise<void> => {
+    if (!result) return;
+    setPendingAction('download');
+    setOperationMessage('');
+    setOperationOk(true);
+    setDownloadProgress({ receivedBytes: 0, percent: 0 });
+    try {
+      const download = await window.nxgs.downloadUpdate({
+        downloadUrl: result.downloadUrl ?? '',
+        assetName: result.assetName,
+        sha256: result.sha256,
+        latestVersion: result.latestVersion
+      });
+      setOperationMessage(download.message);
+      setOperationOk(download.ok);
+      if (download.ok && download.installerPath) {
+        setDownloadedInstallerPath(download.installerPath);
+        setDownloadedInstallerSha256(download.sha256 ?? result.sha256 ?? '');
+        setRestartPromptOpen(true);
+      }
+    } finally {
+      setPendingAction(null);
+    }
+  };
 
   const installDownloadedUpdate = async (): Promise<void> => {
     if (!downloadedInstallerPath) {
@@ -125,208 +158,150 @@ export function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
     promptWasOpen.current = restartPromptOpen;
   }, [restartPromptOpen]);
 
-  const statusIcon = checking ? (
-    <LoaderCircle size={24} className="spin" />
-  ) : result?.status === 'available' ? (
-    <CloudDownload size={24} />
-  ) : result?.status === 'latest' ? (
-    <CircleCheck size={24} />
-  ) : result?.status === 'failed' ? (
-    <CircleAlert size={24} />
-  ) : (
-    <Info size={24} />
-  );
+  const headline = checking
+    ? 'Checking for updates...'
+    : downloadedInstallerPath
+      ? 'Update downloaded'
+      : result?.status === 'available'
+      ? 'New update available'
+      : result?.status === 'latest'
+        ? 'You are on the latest version'
+        : result?.status === 'failed'
+          ? 'Update check failed'
+          : 'Not checked yet';
+  const detail = checking
+    ? 'Contacting the NXGS release manifest.'
+    : downloadedInstallerPath
+      ? `Restart NXGS Play to install version ${result?.latestVersion ?? 'the new update'}.`
+      : result
+      ? result.message
+      : 'Use Check for updates to look for a newer NXGS Play release.';
 
   return (
     <>
-      <div className="admin-stack update-panel">
-        <section className="admin-card update-version-card">
-          <div className="version-block">
-            <span className="version-icon" aria-hidden="true">
-              <RefreshCw size={26} />
-            </span>
-            <div className="version-copy">
-              <span>Current app version</span>
-              <strong>{props.initialData.appVersion}</strong>
+      <PageActions>
+        <button
+          className={`admin-btn${hasUpdateAction ? '' : ' admin-btn--primary'}`}
+          type="button"
+          disabled={pending}
+          onClick={() => void checkForUpdates()}
+        >
+          {checking ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}
+          {checking ? 'Checking for updates...' : 'Check for updates'}
+        </button>
+      </PageActions>
+
+      <div className="admin-stack">
+        <PageSection
+          title="Software update"
+          description="NXGS Play checks the release manifest for a newer installer and stays open while it downloads."
+        >
+          <Panel padding="rows" className={`update-panel update-panel--${statusTone}`} aria-live="polite">
+            <div className="update-summary">
+              <div className="update-summary-copy">
+                <h3 className="update-headline">
+                  {checking ? <LoaderCircle size={14} className="spin" aria-hidden="true" /> : <i className="update-dot" aria-hidden="true" />}
+                  {headline}
+                </h3>
+                <p className="update-detail">{detail}</p>
+              </div>
+
+              {canDownload && (
+                <button className="admin-btn admin-btn--primary" type="button" disabled={pending} onClick={() => void downloadUpdate()}>
+                  {pendingAction === 'download' ? <LoaderCircle size={15} className="spin" /> : <FileDown size={15} />}
+                  {pendingAction === 'download' ? `Downloading update${progressPercent > 0 ? ` ${progressPercent}%` : '...'}` : 'Download update'}
+                </button>
+              )}
+
+              {downloadedInstallerPath && (
+                <button
+                  ref={restartInstallRef}
+                  className="admin-btn admin-btn--primary"
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setRestartPromptOpen(true)}
+                >
+                  <Power size={15} />
+                  Restart to install update
+                </button>
+              )}
             </div>
-            <button
-              className="primary-action check-updates-button"
-              type="button"
-              disabled={pending}
-              onClick={async () => {
-                setPendingAction('check');
-                setOperationMessage('');
-                setOperationOk(true);
-                setDownloadedInstallerPath('');
-                setDownloadProgress(null);
-                setRestartPromptOpen(false);
-                try {
-                  setResult(await window.nxgs.checkForUpdates());
-                } finally {
-                  setPendingAction(null);
-                }
-              }}
-            >
-              {checking ? <LoaderCircle size={19} className="spin" /> : <RefreshCw size={19} />}
-              {checking ? 'Checking for updates...' : 'Check for Updates'}
-            </button>
-          </div>
-          <p className="muted update-intro">
-            NXGS Play checks the release manifest for a newer packaged installer. The app stays open while the update downloads,
-            then asks you to restart when the installer is ready.
-          </p>
-        </section>
 
-        <section className={`admin-card update-status ${statusTone}`} aria-live="polite">
-          <div className="update-status-head">
-            <span className="update-status-icon" aria-hidden="true">{statusIcon}</span>
-            {checking ? (
-              <div className="update-status-copy">
-                <strong>Checking for updates...</strong>
-                <span>Contacting the NXGS release manifest.</span>
-              </div>
-            ) : result ? (
-              <div className="update-status-copy">
-                <strong>
-                  {result.status === 'available'
-                    ? 'New update available'
-                    : result.status === 'latest'
-                      ? 'You are on the latest version'
-                      : 'Update check failed'}
-                </strong>
-                <span>{result.message}</span>
-              </div>
-            ) : (
-              <div className="update-status-copy">
-                <strong>No update check has been run yet.</strong>
-                <span>Use Check for Updates to look for a newer NXGS Play release.</span>
+            {(pendingAction === 'download' || downloadProgress) && (
+              <div className={`update-progress${downloadFailed ? ' is-failed' : ''}`}>
+                <div className="update-progress-head">
+                  <span>{downloadProgressLabel}</span>
+                  <span className="admin-num">
+                    {downloadProgress?.totalBytes
+                      ? `${formatBytes(downloadProgress.receivedBytes)} of ${formatBytes(downloadProgress.totalBytes)} · `
+                      : ''}
+                    {progressPercent}%
+                  </span>
+                </div>
+                <div className="update-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}>
+                  <span style={{ width: `${progressPercent}%` }} />
+                </div>
               </div>
             )}
-            {!checking && result?.latestVersion && (
-              <span className={`ps-chip ${result.status === 'available' ? 'ps-chip--accent' : ''}`}>v{result.latestVersion}</span>
-            )}
-          </div>
 
-          {!checking && result && (
-            <dl className="admin-meta-list update-details">
-              {result.latestVersion && (
+            <dl className="admin-meta-list admin-meta-list--left update-facts">
+              <div>
+                <dt>Installed version</dt>
+                <dd className="update-version">{props.initialData.appVersion}</dd>
+              </div>
+              {!checking && result?.latestVersion && (
                 <div>
                   <dt>Latest version</dt>
-                  <dd>{result.latestVersion}</dd>
+                  <dd className="update-version">{result.latestVersion}</dd>
                 </div>
               )}
-              {result.assetName && (
+              {!checking && result?.assetName && (
                 <div>
-                  <dt>Installer asset</dt>
-                  <dd>{result.assetName}</dd>
+                  <dt>Installer</dt>
+                  <dd className="admin-mono">{result.assetName}</dd>
                 </div>
               )}
-              {result.notes && (
+              {!checking && result?.notes && (
                 <div>
                   <dt>Release notes</dt>
                   <dd>{result.notes}</dd>
                 </div>
               )}
-              <div>
-                <dt>Checked at</dt>
-                <dd>{new Date(result.checkedAt).toLocaleString()}</dd>
-              </div>
+              {!checking && result && (
+                <div>
+                  <dt>Checked at</dt>
+                  <dd>{dateTimeLabel(result.checkedAt)}</dd>
+                </div>
+              )}
+              {!checking && result?.releaseUrl && (
+                <div>
+                  <dt>Release</dt>
+                  <dd>
+                    <a className="update-release-link" href={result.releaseUrl} target="_blank" rel="noreferrer">
+                      View GitHub release
+                      <ArrowUpRight size={14} aria-hidden="true" />
+                    </a>
+                  </dd>
+                </div>
+              )}
             </dl>
-          )}
-
-          {!checking && result?.releaseUrl && (
-            <a className="update-release-link" href={result.releaseUrl} target="_blank" rel="noreferrer">
-              View GitHub release
-              <ArrowUpRight size={16} aria-hidden="true" />
-            </a>
-          )}
-
-          {result?.status === 'available' && result.canDownload && result.downloadUrl && !downloadedInstallerPath && (
-            <button
-              className="primary-action wide"
-              type="button"
-              disabled={pending}
-              onClick={async () => {
-                setPendingAction('download');
-                setOperationMessage('');
-                setOperationOk(true);
-                setDownloadProgress({ receivedBytes: 0, percent: 0 });
-                try {
-                  const download = await window.nxgs.downloadUpdate({
-                    downloadUrl: result.downloadUrl ?? '',
-                    assetName: result.assetName,
-                    sha256: result.sha256,
-                    latestVersion: result.latestVersion
-                  });
-                  setOperationMessage(download.message);
-                  setOperationOk(download.ok);
-                  if (download.ok && download.installerPath) {
-                    setDownloadedInstallerPath(download.installerPath);
-                    setDownloadedInstallerSha256(download.sha256 ?? result.sha256 ?? '');
-                    setRestartPromptOpen(true);
-                  }
-                } finally {
-                  setPendingAction(null);
-                }
-              }}
-            >
-              {pendingAction === 'download' ? <LoaderCircle size={19} className="spin" /> : <FileUp size={19} />}
-              {pendingAction === 'download' ? `Downloading update${progressPercent > 0 ? ` ${progressPercent}%` : '...'}` : 'Download Update'}
-            </button>
-          )}
-
-          {(pendingAction === 'download' || downloadProgress) && (
-            <div className={`download-progress ${downloadFailed ? 'failed' : ''}`}>
-              <div className="download-progress-head">
-                <span>{downloadProgressLabel}</span>
-                <strong>{progressPercent}%</strong>
-              </div>
-              <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}>
-                <span style={{ width: `${progressPercent}%` }} />
-              </div>
-              {downloadProgress?.totalBytes ? (
-                <small>
-                  {formatBytes(downloadProgress.receivedBytes)} of {formatBytes(downloadProgress.totalBytes)}
-                </small>
-              ) : null}
-            </div>
-          )}
-
-          {downloadedInstallerPath && (
-            <div className="update-actions">
-              <button
-                ref={restartInstallRef}
-                className="primary-action wide"
-                type="button"
-                disabled={pending}
-                onClick={() => setRestartPromptOpen(true)}
-              >
-                <Power size={19} />
-                Restart to Install Update
-              </button>
-            </div>
-          )}
-
+          </Panel>
           {operationMessage && <Notice tone={operationOk ? 'success' : 'error'}>{operationMessage}</Notice>}
-        </section>
+        </PageSection>
       </div>
 
       {restartPromptOpen && (
         <div className="modal-backdrop">
           <div className="modal update-modal" role="dialog" aria-modal="true" aria-labelledby="update-modal-title">
-            <span className="update-modal-icon" aria-hidden="true">
-              <CloudDownload size={28} />
-            </span>
             <div className="update-modal-copy">
-              <p className="eyebrow">Update ready</p>
               <h2 id="update-modal-title">Restart to finish update</h2>
               <p className="muted">
                 Version {result?.latestVersion ?? 'the new update'} is downloaded. NXGS Play will stay open until you choose
-                Restart Now.
+                Restart now.
               </p>
-            </div>
-            <div className="update-restart-note">
-              Restart Now closes NXGS Play, runs the verified installer, and reopens the app after installation.
+              <p className="update-restart-note">
+                Restart now closes NXGS Play, runs the verified installer, and reopens the app after installation.
+              </p>
             </div>
             <div className="update-modal-footer">
               <ControllerHints
@@ -339,7 +314,7 @@ export function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
               <div className="update-modal-actions">
                 <button
                   ref={laterRef}
-                  className={`secondary-action ${restartPromptIndex === 0 ? 'controller-focused' : ''}`}
+                  className={`admin-btn ${restartPromptIndex === 0 ? 'controller-focused' : ''}`}
                   type="button"
                   disabled={pendingAction === 'install'}
                   onFocus={() => setRestartPromptIndex(0)}
@@ -349,14 +324,14 @@ export function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
                 </button>
                 <button
                   ref={restartRef}
-                  className={`primary-action ${restartPromptIndex === 1 ? 'controller-focused' : ''}`}
+                  className={`admin-btn admin-btn--primary ${restartPromptIndex === 1 ? 'controller-focused' : ''}`}
                   type="button"
                   disabled={pendingAction === 'install'}
                   onFocus={() => setRestartPromptIndex(1)}
                   onClick={installDownloadedUpdate}
                 >
-                  {pendingAction === 'install' ? <LoaderCircle size={18} className="spin" /> : <Power size={18} />}
-                  {pendingAction === 'install' ? 'Restarting...' : 'Restart Now'}
+                  {pendingAction === 'install' ? <LoaderCircle size={15} className="spin" /> : <Power size={15} />}
+                  {pendingAction === 'install' ? 'Restarting...' : 'Restart now'}
                 </button>
               </div>
             </div>

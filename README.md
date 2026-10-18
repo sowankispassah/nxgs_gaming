@@ -121,6 +121,8 @@ The customer-facing launcher uses a console-style interface modeled on modern ga
 - **Quick menu**: the in-game overlay opened with the controller Home button, `Ctrl+Shift+H` or `F10` shows a bottom control bar, a card for the running game (Resume, Go to Launcher Home, Close Game) and a Sound/Brightness card.
 - Payment, PIN, launch and boot screens share the same dialog style; on-screen controller hints show the ✕/○ buttons.
 
+The staff Control Room has its own calm, dense design system (neutral greys, hairlines, colour only for status), scoped to `.admin-screen` under `src/renderer/styles/admin/`; its rules and shared components are documented in `docs/admin-design.md`.
+
 Renderer styles are split per surface under `src/renderer/styles/` (`tokens.css`, `base.css` and `ui-kit.css` hold the shared design system). Shared UI pieces — controller glyphs and hints, notifications, the clock, navigation sounds and per-station UI preferences — live in `src/renderer/ui/`. The Inter typeface is bundled so the launcher renders the same offline.
 
 ## Accounts and Device Management

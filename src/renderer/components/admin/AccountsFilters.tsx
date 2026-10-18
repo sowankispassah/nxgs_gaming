@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { ArrowDownUp, Gamepad2, Network, Search, ShieldCheck, Store, X } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { Check, Search, X } from 'lucide-react';
 import { UNKNOWN_PAYMENT_METHOD } from '../../../shared/types';
 import type { EarningsFacets, EarningsSort, FleetStation, LocalSessionStatus } from '../../../shared/types';
+import { Badge, InlineSwitch, Toolbar, ToggleChip } from './AdminKit';
 import {
   accountsFilterCount,
   clearAccountsFilters,
@@ -50,25 +51,34 @@ function countLabel(count: number, one: string, many: string): string {
 }
 
 /**
- * Accounts filters under the scope and period controls: devices, games,
- * payment method, status, verified payments, search and sort, plus the row of
- * active filters. The main process applies every filter; this only edits the
- * view that AdminScreen keeps.
+ * The Accounts toolbar, directly under the page header.
+ *
+ * Top row: the scope and period controls AccountsPanel passes in as children,
+ * then search and sort. Second row: devices, games, payment method, status and
+ * verified payments. Then one quiet line with the result count, the active
+ * filters and Clear filters. The main process applies every filter; this only
+ * edits the view that AdminScreen keeps.
  */
 export function AccountsFilterBar(props: {
   view: AccountsView;
+  facets?: EarningsFacets;
   onViewChange: Dispatch<SetStateAction<AccountsView>>;
   stations: FleetStation[];
-  facets?: EarningsFacets;
   /** Sessions in the report after every filter. */
   shownCount?: number;
   disabled?: boolean;
+  /** Scope and period controls, first in the top row. */
+  children?: ReactNode;
+  /** Right end of the result line, such as "Updated 2:31 pm". */
+  meta?: ReactNode;
 }): JSX.Element {
   const { view, onViewChange } = props;
   const allScope = view.scope === 'all';
   const [searchDraft, setSearchDraft] = useState(view.search);
   const committedSearch = useRef(view.search);
   const gameTitles = useRef(new Map<string, string>());
+  const paymentLabelId = useId();
+  const statusLabelId = useId();
 
   for (const game of props.facets?.games ?? []) gameTitles.current.set(game.gameId, game.title);
 
@@ -124,195 +134,192 @@ export function AccountsFilterBar(props: {
   };
 
   return (
-    <div className="accounts-filter-bar">
-      <div className="accounts-filter-row accounts-filter-row--controls">
-        {allScope && (
+    <div className="accounts-filters" role="search" aria-label="Earnings filters">
+      <Toolbar className="accounts-toolbar">
+        {props.children}
+        <label className="admin-affix-input accounts-search">
+          <span className="admin-visually-hidden">Search</span>
+          <Search size={15} aria-hidden="true" />
+          <input
+            type="search"
+            value={searchDraft}
+            maxLength={100}
+            placeholder="Phone, email, UPI ID or payment ID"
+            aria-label="Search sessions"
+            onChange={(event) => setSearchDraft(event.target.value)}
+            onKeyDown={(event) => {
+              // Escape clears the search first; only an empty box lets Escape leave the Control Room.
+              if (event.key === 'Escape' && searchDraft) {
+                event.preventDefault();
+                event.stopPropagation();
+                setSearchDraft('');
+              }
+            }}
+          />
+        </label>
+        <label className="admin-affix-input accounts-sort">
+          <span className="accounts-sort-label">Sort</span>
+          <select
+            value={view.sort}
+            aria-label="Sort sessions"
+            onChange={(event) => onViewChange((current) => ({ ...current, sort: event.target.value as EarningsSort }))}
+          >
+            {EARNINGS_SORT_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      </Toolbar>
+
+      <Toolbar className="accounts-toolbar accounts-toolbar--filters">
+        <div className="accounts-filter-cluster">
+          {allScope && (
+            <FilterPopover
+              label="Devices"
+              value={devicesValue}
+              active={view.stationIds.length > 0}
+              disabled={props.disabled}
+              width={340}
+              className="accounts-device-popover"
+            >
+              {() => (
+                <DevicePicker
+                  stations={props.stations}
+                  selected={view.stationIds}
+                  onChange={(stationIds) => onViewChange((current) => ({ ...current, stationIds }))}
+                />
+              )}
+            </FilterPopover>
+          )}
           <FilterPopover
-            label="Devices"
-            value={devicesValue}
-            icon={<Network size={16} />}
-            active={view.stationIds.length > 0}
-            disabled={props.disabled}
-            className="accounts-device-popover"
+            label="Games"
+            value={gamesValue}
+            active={selectedGames.length > 0}
+            disabled={props.disabled || games.length === 0}
+            className="accounts-game-popover"
           >
             {() => (
-              <DevicePicker
-                stations={props.stations}
-                selected={view.stationIds}
-                onChange={(stationIds) => onViewChange((current) => ({ ...current, stationIds }))}
+              <GamePicker
+                games={games}
+                selected={view.gameIds}
+                onToggle={toggleGameGroup}
+                onClear={() => onViewChange((current) => ({ ...current, gameIds: [] }))}
               />
             )}
           </FilterPopover>
-        )}
-        <FilterPopover
-          label="Games"
-          value={gamesValue}
-          icon={<Gamepad2 size={16} />}
-          active={selectedGames.length > 0}
-          disabled={props.disabled || games.length === 0}
-          className="accounts-game-popover"
-        >
-          {() => (
-            <GamePicker
-              games={games}
-              selected={view.gameIds}
-              onToggle={toggleGameGroup}
-              onClear={() => onViewChange((current) => ({ ...current, gameIds: [] }))}
-            />
-          )}
-        </FilterPopover>
-        <label className="admin-field accounts-search-field">
-          <span className="admin-section-title">Search</span>
-          <span className="admin-affix-input">
-            <Search size={17} aria-hidden="true" />
-            <input
-              type="search"
-              value={searchDraft}
-              maxLength={100}
-              placeholder="Phone, email, UPI ID or payment ID"
-              aria-label="Search sessions"
-              onChange={(event) => setSearchDraft(event.target.value)}
-              onKeyDown={(event) => {
-                // Escape clears the search first; only an empty box lets Escape leave the Control Room.
-                if (event.key === 'Escape' && searchDraft) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setSearchDraft('');
-                }
-              }}
-            />
-          </span>
-        </label>
-        <label className="admin-field accounts-sort-field">
-          <span className="admin-section-title">Sort</span>
-          <span className="admin-affix-input accounts-sort-input">
-            <ArrowDownUp size={16} aria-hidden="true" />
-            <select
-              value={view.sort}
-              aria-label="Sort sessions"
-              onChange={(event) => onViewChange((current) => ({ ...current, sort: event.target.value as EarningsSort }))}
-            >
-              {EARNINGS_SORT_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
-          </span>
-        </label>
-      </div>
-
-      <div className="accounts-filter-row accounts-filter-row--chips">
-        <div className="accounts-filter-group">
-          <span className="admin-section-title">Payment</span>
-          <div className="admin-chip-toggles" role="group" aria-label="Payment method">
-            {methods.length === 0 && <span className="field-note">No payments in this period</span>}
+        </div>
+        <div className="accounts-filter-cluster">
+          <span className="accounts-filter-label" id={paymentLabelId}>Payment</span>
+          <div className="admin-chip-toggles" role="group" aria-labelledby={paymentLabelId}>
+            {methods.length === 0 && <span className="accounts-filter-empty">No payments in this period</span>}
             {methods.map((method) => (
-              <button
+              <ToggleChip
                 key={method}
-                className="admin-chip-toggle"
-                type="button"
-                aria-pressed={view.paymentMethods.includes(method)}
-                onClick={() => onViewChange((current) => ({ ...current, paymentMethods: toggleValue(current.paymentMethods, method) }))}
+                pressed={view.paymentMethods.includes(method)}
+                onChange={() => onViewChange((current) => ({ ...current, paymentMethods: toggleValue(current.paymentMethods, method) }))}
               >
                 {paymentMethodFilterLabel(method)}
-              </button>
+              </ToggleChip>
             ))}
           </div>
         </div>
-        <div className="accounts-filter-group">
-          <span className="admin-section-title">Status</span>
-          <div className="admin-chip-toggles" role="group" aria-label="Session status">
+        <div className="accounts-filter-cluster">
+          <span className="accounts-filter-label" id={statusLabelId}>Status</span>
+          <div className="admin-chip-toggles" role="group" aria-labelledby={statusLabelId}>
             {STATUS_FILTERS.map((status) => (
-              <button
+              <ToggleChip
                 key={status.id}
-                className="admin-chip-toggle"
-                type="button"
-                aria-pressed={view.statuses.includes(status.id)}
-                onClick={() => onViewChange((current) => ({ ...current, statuses: toggleValue(current.statuses, status.id) }))}
+                pressed={view.statuses.includes(status.id)}
+                onChange={() => onViewChange((current) => ({ ...current, statuses: toggleValue(current.statuses, status.id) }))}
               >
                 {status.label}
-              </button>
+              </ToggleChip>
             ))}
           </div>
         </div>
         {allScope && (
-          <label className="accounts-inline-switch">
-            <input
-              type="checkbox"
-              checked={view.verifiedOnly}
-              onChange={(event) => onViewChange((current) => ({ ...current, verifiedOnly: event.target.checked }))}
-            />
-            <span className="ps-switch" data-on={view.verifiedOnly ? 'true' : 'false'} aria-hidden="true" />
-            <span><ShieldCheck size={16} aria-hidden="true" />Verified payments only</span>
-          </label>
+          <InlineSwitch
+            checked={view.verifiedOnly}
+            label="Verified payments only"
+            onChange={(checked) => onViewChange((current) => ({ ...current, verifiedOnly: checked }))}
+          />
         )}
-      </div>
+      </Toolbar>
 
-      <div className="accounts-active-filters" aria-live="polite">
-        <span className="accounts-result-count">
-          {props.shownCount === undefined || total === undefined
-            ? 'Loading sessions...'
-            : filterCount > 0
+      {/* Before the first report the page shows its own loading line; the count appears with the report. */}
+      <div className="accounts-results" aria-live="polite" hidden={(props.shownCount === undefined || total === undefined) && filterCount === 0}>
+        {props.shownCount !== undefined && total !== undefined && (
+          <span className="accounts-results-count">
+            {filterCount > 0
               ? `Showing ${props.shownCount.toLocaleString('en-IN')} of ${total.toLocaleString('en-IN')} sessions`
-              : `Showing all ${total.toLocaleString('en-IN')} ${total === 1 ? 'session' : 'sessions'}`}
-        </span>
-        {filterCount > 0 && (
-          <>
-            <ul className="accounts-active-chips" aria-label="Active filters">
-              {allScope && view.stationIds.map((id) => (
-                <ActiveChip
-                  key={`device:${id}`}
-                  label={stationName(id)}
-                  onRemove={() => onViewChange((current) => ({ ...current, stationIds: current.stationIds.filter((item) => item !== id) }))}
-                />
-              ))}
-              {selectedGames.map((group) => (
-                <ActiveChip key={`game:${group.key}`} label={group.title} onRemove={() => toggleGameGroup(group)} />
-              ))}
-              {view.paymentMethods.map((method) => (
-                <ActiveChip
-                  key={`method:${method}`}
-                  label={paymentMethodFilterLabel(method)}
-                  onRemove={() => onViewChange((current) => ({ ...current, paymentMethods: current.paymentMethods.filter((item) => item !== method) }))}
-                />
-              ))}
-              {view.statuses.map((status) => (
-                <ActiveChip
-                  key={`status:${status}`}
-                  label={STATUS_FILTERS.find((item) => item.id === status)?.label ?? status}
-                  onRemove={() => onViewChange((current) => ({ ...current, statuses: current.statuses.filter((item) => item !== status) }))}
-                />
-              ))}
-              {allScope && view.verifiedOnly && (
-                <ActiveChip label="Verified only" onRemove={() => onViewChange((current) => ({ ...current, verifiedOnly: false }))} />
-              )}
-              {view.search.trim() && (
-                <ActiveChip
-                  label={`"${view.search.trim()}"`}
-                  onRemove={() => onViewChange((current) => ({ ...current, search: '' }))}
-                />
-              )}
-            </ul>
-            <button
-              className="secondary-action compact"
-              type="button"
-              onClick={() => onViewChange((current) => clearAccountsFilters(current))}
-            >
-              <X size={15} />
-              Clear filters
-            </button>
-          </>
+              : total === 0
+                ? 'No sessions'
+                : `Showing all ${total.toLocaleString('en-IN')} ${total === 1 ? 'session' : 'sessions'}`}
+          </span>
         )}
+        {filterCount > 0 && (
+          <ul className="accounts-active-chips" aria-label="Active filters">
+            {allScope && view.stationIds.map((id) => (
+              <ActiveChip
+                key={`device:${id}`}
+                kind="Device"
+                label={stationName(id)}
+                onRemove={() => onViewChange((current) => ({ ...current, stationIds: current.stationIds.filter((item) => item !== id) }))}
+              />
+            ))}
+            {selectedGames.map((group) => (
+              <ActiveChip key={`game:${group.key}`} kind="Game" label={group.title} onRemove={() => toggleGameGroup(group)} />
+            ))}
+            {view.paymentMethods.map((method) => (
+              <ActiveChip
+                key={`method:${method}`}
+                kind="Payment"
+                label={paymentMethodFilterLabel(method)}
+                onRemove={() => onViewChange((current) => ({ ...current, paymentMethods: current.paymentMethods.filter((item) => item !== method) }))}
+              />
+            ))}
+            {view.statuses.map((status) => (
+              <ActiveChip
+                key={`status:${status}`}
+                kind="Status"
+                label={STATUS_FILTERS.find((item) => item.id === status)?.label ?? status}
+                onRemove={() => onViewChange((current) => ({ ...current, statuses: current.statuses.filter((item) => item !== status) }))}
+              />
+            ))}
+            {allScope && view.verifiedOnly && (
+              <ActiveChip kind="Payment" label="Verified only" onRemove={() => onViewChange((current) => ({ ...current, verifiedOnly: false }))} />
+            )}
+            {view.search.trim() && (
+              <ActiveChip
+                kind="Search"
+                label={`"${view.search.trim()}"`}
+                onRemove={() => onViewChange((current) => ({ ...current, search: '' }))}
+              />
+            )}
+            <li>
+              <button
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                type="button"
+                onClick={() => onViewChange((current) => clearAccountsFilters(current))}
+              >
+                Clear filters
+              </button>
+            </li>
+          </ul>
+        )}
+        {props.meta && <span className="accounts-results-meta">{props.meta}</span>}
       </div>
     </div>
   );
 }
 
-function ActiveChip(props: { label: string; onRemove: () => void }): JSX.Element {
+function ActiveChip(props: { kind: string; label: string; onRemove: () => void }): JSX.Element {
   return (
     <li>
-      <button className="admin-active-chip" type="button" aria-label={`Remove filter: ${props.label}`} onClick={props.onRemove}>
-        <span>{props.label}</span>
-        <X size={14} aria-hidden="true" />
+      <button className="admin-active-chip" type="button" aria-label={`Remove filter: ${props.label}`} title={props.label} onClick={props.onRemove}>
+        <span className="admin-active-chip-kind">{props.kind}</span>
+        <span className="admin-active-chip-value">{props.label}</span>
+        <X size={12} aria-hidden="true" />
       </button>
     </li>
   );
@@ -336,52 +343,53 @@ function DevicePicker(props: { stations: FleetStation[]; selected: string[]; onC
 
   return (
     <div className="admin-picker">
-      <span className="admin-affix-input admin-picker-search">
-        <Search size={16} aria-hidden="true" />
-        <input
-          type="search"
-          value={search}
-          placeholder="Find a device or store"
-          aria-label="Find a device or store"
-          onChange={(event) => setSearch(event.target.value)}
-        />
-      </span>
-      <div className="admin-picker-actions">
-        <button className="secondary-action compact" type="button" onClick={() => setMany(visible.map((station) => station.id), true)}>
-          Select all
-        </button>
-        <button className="secondary-action compact" type="button" disabled={props.selected.length === 0} onClick={() => props.onChange([])}>
-          Clear
-        </button>
-        <span className="field-note">{props.selected.length === 0 ? 'Showing every device' : `${props.selected.length} picked`}</span>
+      <div className="admin-picker-head">
+        <span className="admin-affix-input admin-picker-search">
+          <Search size={15} aria-hidden="true" />
+          <input
+            type="search"
+            value={search}
+            placeholder="Find a device or store"
+            aria-label="Find a device or store"
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </span>
+        <div className="admin-picker-actions">
+          <span className="admin-picker-status">{props.selected.length === 0 ? 'Showing every device' : `${props.selected.length} picked`}</span>
+          <button className="admin-btn admin-btn--ghost admin-btn--sm" type="button" onClick={() => setMany(visible.map((station) => station.id), true)}>
+            Select all
+          </button>
+          <button className="admin-btn admin-btn--ghost admin-btn--sm" type="button" disabled={props.selected.length === 0} onClick={() => props.onChange([])}>
+            Clear
+          </button>
+        </div>
       </div>
       <div className="admin-picker-list">
-        {props.stations.length === 0 && <p className="field-note">Loading devices...</p>}
-        {props.stations.length > 0 && groups.length === 0 && <p className="field-note">No device matches "{search.trim()}".</p>}
+        {props.stations.length === 0 && <p className="admin-picker-note">Loading devices...</p>}
+        {props.stations.length > 0 && groups.length === 0 && <p className="admin-picker-note">No device matches "{search.trim()}".</p>}
         {groups.map((group) => {
           const ids = group.stations.map((station) => station.id);
           const whole = ids.every((id) => selected.has(id));
           return (
             <section key={group.store} className="admin-picker-group" aria-label={group.store}>
               <header className="admin-picker-group-header">
-                <span><Store size={15} aria-hidden="true" />{group.store}</span>
+                <span>{group.store}</span>
                 <button
-                  className="admin-chip-toggle"
+                  className="admin-btn admin-btn--ghost admin-btn--sm admin-picker-store"
                   type="button"
                   aria-pressed={whole}
                   onClick={() => setMany(ids, !whole)}
                 >
-                  {whole ? 'Whole store picked' : 'Whole store'}
+                  {whole && <Check size={14} aria-hidden="true" />}
+                  Whole store
                 </button>
               </header>
               {group.stations.map((station) => (
                 <label key={station.id} className="admin-picker-option">
                   <input type="checkbox" checked={selected.has(station.id)} onChange={(event) => setMany([station.id], event.target.checked)} />
-                  <span className="admin-picker-copy">
-                    <strong>{station.name || 'Unnamed device'}{station.removedAt ? ' (removed)' : ''}</strong>
-                    <small>{station.location || 'Location not set'}</small>
-                  </span>
-                  {station.isCurrentDevice && <span className="ps-chip ps-chip--accent">This device</span>}
+                  <span className="admin-picker-name">{station.name || 'Unnamed device'}{station.removedAt ? ' (removed)' : ''}</span>
+                  <span className="admin-picker-meta">{station.location || 'Location not set'}</span>
+                  {station.isCurrentDevice && <Badge>This device</Badge>}
                 </label>
               ))}
             </section>
@@ -398,26 +406,26 @@ function GamePicker(props: { games: GameGroup[]; selected: string[]; onToggle: (
   const visible = props.games.filter((game) => !needle || game.title.toLowerCase().includes(needle));
   return (
     <div className="admin-picker">
-      {props.games.length > 8 && (
-        <span className="admin-affix-input admin-picker-search">
-          <Search size={16} aria-hidden="true" />
-          <input type="search" value={search} placeholder="Find a game" aria-label="Find a game" onChange={(event) => setSearch(event.target.value)} />
-        </span>
-      )}
-      <div className="admin-picker-actions">
-        <button className="secondary-action compact" type="button" disabled={props.selected.length === 0} onClick={props.onClear}>
-          Clear
-        </button>
-        <span className="field-note">Sessions where any picked game was played.</span>
+      <div className="admin-picker-head">
+        {props.games.length > 8 && (
+          <span className="admin-affix-input admin-picker-search">
+            <Search size={15} aria-hidden="true" />
+            <input type="search" value={search} placeholder="Find a game" aria-label="Find a game" onChange={(event) => setSearch(event.target.value)} />
+          </span>
+        )}
+        <div className="admin-picker-actions">
+          <span className="admin-picker-status">Sessions where any picked game was played.</span>
+          <button className="admin-btn admin-btn--ghost admin-btn--sm" type="button" disabled={props.selected.length === 0} onClick={props.onClear}>
+            Clear
+          </button>
+        </div>
       </div>
       <div className="admin-picker-list">
-        {visible.length === 0 && <p className="field-note">No game matches "{search.trim()}".</p>}
+        {visible.length === 0 && <p className="admin-picker-note">No game matches "{search.trim()}".</p>}
         {visible.map((game) => (
           <label key={game.key} className="admin-picker-option">
             <input type="checkbox" checked={game.ids.some((id) => props.selected.includes(id))} onChange={() => props.onToggle(game)} />
-            <span className="admin-picker-copy">
-              <strong>{game.title}</strong>
-            </span>
+            <span className="admin-picker-name">{game.title}</span>
           </label>
         ))}
       </div>
