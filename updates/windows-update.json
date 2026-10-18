@@ -1,7 +1,7 @@
 {
-    "version":  "0.28.2",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.28.2/NXGS-Play-Setup.exe",
-    "sha256":  "379c50843b7a63f7bb82f426d4354f01bc1b8bcd6a7e2c739fe853ed5c61d895",
+    "version":  "0.29.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.29.0/NXGS-Play-Setup.exe",
+    "sha256":  "d47e194a14121a22e9ef29cf3b72d22aa3e2b82a3bb63d4aea36c45a66967cd7",
     "required":  false,
-    "notes":  "Bigger Control Room text, matching the earlier design's size"
+    "notes":  "Modern Control Room: clear sidebar headings, icons, rounded layered panels; Kiosk renamed System"
 }
