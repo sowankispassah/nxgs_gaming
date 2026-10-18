@@ -175,14 +175,17 @@ them; anything a second page needs goes into the kit.
   (Games, Accounts, All devices, including the device detail) 1600px. Both
   1920×1080 and 1366×768 fit without horizontal page scroll; wide tables scroll
   inside `.admin-table-scroll`.
-- **Type does the hierarchy.** One 22px title per page in Red Hat Display (the
-  shell renders it). Text sizes come from tokens only: body 14.5px, secondary
-  13.5px `--a-text-2`, captions/labels 12.5px medium `--a-text-2`, big
-  figures 24px Red Hat Display, IDs and paths 13px Red Hat Mono, buttons
-  14px, badges 12px. (Red Hat Text and Mono have a smaller x-height than the
-  Inter and Cascadia of 0.27, so the text sizes are 0.5px larger to read the
-  same; display sizes are unchanged.) A sub-page title (the device detail's
-  name) is 18px; modal titles are 18px.
+- **Type does the hierarchy, at the size staff are used to.** Text sizes come
+  from the `--a-size-*` tokens only, and each token is a 0.27.0 size (set in
+  Inter and Cascadia Mono) multiplied by an x-height ratio, so Red Hat's
+  lowercase renders exactly as tall as before: `--a-x-match-text` 0.55/0.49,
+  `--a-x-match-display` 0.55/0.50, `--a-x-match-mono` 0.52/0.49 (measured).
+  Base sizes: page title 22, sub-page and modal titles 18, section headings
+  15, big figures 24 (all Red Hat Display); body 14, buttons 13.5, secondary
+  13, captions and labels 12, badges 11.5 (Red Hat Text); IDs and paths 12.5
+  (Red Hat Mono). To resize, change a base size in `tokens.css`, never a
+  ratio, and never write a raw pixel font size in page CSS. The owner asked
+  for these sizes (0.28.1): don't shrink them.
 - **Weights come from tokens, never literals** (only regular 400 is written
   as a number, because it is the same in both themes). Light-on-dark reads
   heavier, so the light theme steps every token up one notch:

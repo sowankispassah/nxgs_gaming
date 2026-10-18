@@ -19,7 +19,7 @@
 .accounts-page {
   /* The hero figure is the one big number on the page; the figures beside it step down. */
   --accounts-hero-size: 46px;
-  --accounts-figure-size: 18px;
+  --accounts-figure-size: calc(18px * var(--a-x-match-text));
   /*
    * Timeline segments alternate two neutral tones, never the accent and never
    * a hue per game: text-2, and text-2 pulled 40% toward the track (text-2 and

@@ -176,19 +176,24 @@
   --a-font-display: 'Red Hat Display Variable', 'Red Hat Text Variable', 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
   --a-font-mono: 'Red Hat Mono Variable', 'Cascadia Mono', Consolas, ui-monospace, monospace;
   /*
-   * Display sizes are unchanged from 0.27. Red Hat Text and Mono have a
-   * smaller x-height than Inter and Cascadia (0.49 vs 0.55 and 0.52), so the
-   * text sizes are +0.5px to read at the same size as before.
+   * Sizes are the 0.27.0 sizes (set in Inter and Cascadia Mono), scaled so
+   * Red Hat's lowercase renders exactly as tall as it did then. Measured
+   * x-heights: Inter 0.55, Red Hat Text 0.49, Red Hat Display 0.50,
+   * Red Hat Mono 0.49, Cascadia Mono 0.52. Change a base size, never a ratio.
    */
-  --a-size-title: 22px;
-  --a-size-h2: 15px;
-  --a-size-body: 14.5px;
-  --a-size-small: 13.5px;
-  --a-size-caption: 12.5px;
-  --a-size-figure: 24px;
-  --a-size-mono: 13px;
-  --a-size-button: 14px;
-  --a-size-badge: 12px;
+  --a-x-match-text: calc(0.55 / 0.49);
+  --a-x-match-display: calc(0.55 / 0.5);
+  --a-x-match-mono: calc(0.52 / 0.49);
+  --a-size-title: calc(22px * var(--a-x-match-display));
+  --a-size-h2: calc(15px * var(--a-x-match-display));
+  --a-size-body: calc(14px * var(--a-x-match-text));
+  --a-size-small: calc(13px * var(--a-x-match-text));
+  --a-size-caption: calc(12px * var(--a-x-match-text));
+  --a-size-figure: calc(24px * var(--a-x-match-display));
+  --a-size-mono: calc(12.5px * var(--a-x-match-mono));
+  --a-size-button: calc(13.5px * var(--a-x-match-text));
+  --a-size-badge: calc(11.5px * var(--a-x-match-text));
+  --a-size-heading-lg: calc(18px * var(--a-x-match-display));
 
   /* Focus: one crisp accent outline, never a glow */
   --a-focus-color: var(--a-accent);
@@ -263,10 +268,10 @@
   --text-xs: var(--a-size-caption);
   --text-sm: var(--a-size-small);
   --text-md: var(--a-size-body);
-  --text-lg: 15px;
-  --text-xl: 18px;
-  --text-2xl: 22px;
-  --text-3xl: 24px;
+  --text-lg: calc(15px * var(--a-x-match-text));
+  --text-xl: var(--a-size-heading-lg);
+  --text-2xl: var(--a-size-title);
+  --text-3xl: var(--a-size-figure);
   --tracking-tight: -0.01em;
   --tracking-caps: 0;
   --focus-color: var(--a-focus-color);

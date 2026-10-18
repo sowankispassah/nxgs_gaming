@@ -1813,7 +1813,7 @@
 
 .admin-screen .modal h2 {
   font-family: var(--a-font-display);
-  font-size: 18px;
+  font-size: var(--a-size-heading-lg);
   font-weight: var(--a-weight-display);
   letter-spacing: -0.01em;
   line-height: 1.3;

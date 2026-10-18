@@ -32,7 +32,7 @@
 
 .game-thumb-initials {
   color: var(--a-text-2);
-  font-size: 11px;
+  font-size: calc(11px * var(--a-x-match-text));
   font-weight: var(--a-weight-display);
   line-height: 1;
 }
