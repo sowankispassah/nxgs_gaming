@@ -1,7 +1,8 @@
 /*
- * Control Room shell: the screen grid, the grouped sidebar, the page
- * container (form pages 1120px, data pages 1600px, left aligned) and the page
- * header (title, description, scope note, actions slot, hairline).
+ * Control Room shell: the screen grid, the grouped sidebar (text nav, theme
+ * switch), the page container (form pages 1120px, data pages 1600px, left
+ * aligned) and the page header (title, description, scope note, actions slot,
+ * hairline).
  */
 
 /* The Control Room opens without an entrance animation. */
@@ -46,12 +47,13 @@
   padding: 2px 8px;
 }
 
+/* The logo art is dark, so it sits on a dark tile in both themes. */
 .admin-brand-logo {
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
   border-radius: var(--a-radius-sm);
-  background: var(--a-panel-2);
+  background: var(--a-logo-tile);
   object-fit: cover;
 }
 
@@ -63,8 +65,9 @@
 .admin-brand-title {
   margin: 0;
   color: var(--a-text);
-  font-size: 14px;
-  font-weight: 600;
+  font-family: var(--a-font-display);
+  font-size: var(--a-size-body);
+  font-weight: var(--a-weight-display);
   line-height: 1.3;
   white-space: nowrap;
 }
@@ -95,15 +98,15 @@
   color: var(--a-text-3);
   padding: 0 8px;
   font-size: var(--a-size-caption);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   line-height: 1.4;
 }
 
+/* Nav items are text only, aligned with their group label. */
 .admin-sidebar nav button {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
   width: 100%;
   min-height: 32px;
   border: 0;
@@ -116,21 +119,6 @@
   text-align: left;
 }
 
-.admin-nav-icon {
-  display: grid;
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  place-items: center;
-  color: var(--a-text-3);
-  transition: color var(--a-dur) var(--a-ease);
-}
-
-.admin-nav-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
 .admin-nav-label {
   min-width: 0;
   overflow: hidden;
@@ -139,25 +127,23 @@
 }
 
 .admin-sidebar nav button:not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused) {
-  background: var(--a-panel-2);
+  background: var(--a-nav-hover);
   color: var(--a-text);
 }
 
-.admin-sidebar nav button:not(.active):not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused) .admin-nav-icon {
-  color: var(--a-text-2);
+/* Keyboard and controller focus draw over the neighbouring items. */
+.admin-sidebar nav button:is(:focus-visible, .controller-focused, .focused) {
+  z-index: 1;
 }
 
-.admin-sidebar nav button.active {
-  background: var(--a-panel-2);
+/* Active: a 2px accent bar, strong text and a faint accent tint. */
+.admin-sidebar nav button.active,
+.admin-sidebar nav button.active:not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused) {
+  background: var(--a-accent-tint-faint);
   color: var(--a-text);
-  font-weight: 500;
+  font-weight: var(--a-weight-strong);
 }
 
-.admin-sidebar nav button.active .admin-nav-icon {
-  color: var(--a-text);
-}
-
-/* Active marker: a 2px bar on the left edge. */
 .admin-sidebar nav button.active::before {
   content: '';
   position: absolute;
@@ -166,7 +152,7 @@
   left: 0;
   width: 2px;
   border-radius: 0 1px 1px 0;
-  background: var(--a-text);
+  background: var(--a-accent);
 }
 
 .admin-sidebar-footer {
@@ -177,27 +163,29 @@
   padding-top: 12px;
 }
 
+/* Theme: Dark · Light · System, three equal segments across the sidebar. */
+.admin-screen .admin-theme-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex-wrap: nowrap;
+}
+
+.admin-screen .admin-theme-switch button {
+  justify-content: center;
+  min-width: 0;
+  padding: 0 4px;
+}
+
 .admin-screen .admin-sidebar-footer .admin-home-button {
   justify-content: flex-start;
-  gap: 10px;
   width: 100%;
   padding: 0 8px;
   font-size: var(--a-size-body);
   font-weight: 400;
 }
 
-.admin-screen .admin-sidebar-footer .admin-home-button > svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* One line of controller hints, monochrome. */
+/* One line of controller hints, monochrome (the glyph colours are re-pointed in tokens.css). */
 .admin-hints {
-  --glyph-cross: currentColor;
-  --glyph-circle: currentColor;
-  --glyph-square: currentColor;
-  --glyph-triangle: currentColor;
-
   flex-wrap: nowrap;
   justify-content: flex-start;
   gap: 12px;
@@ -217,6 +205,16 @@
 .admin-hints .button-glyph svg {
   width: 16px;
   height: 16px;
+}
+
+/*
+ * Controller glyphs (sidebar hints, the game picker footer...): the glyph body
+ * (its first shape) is drawn for the dark console; re-colour it from tokens so
+ * it follows the theme. The symbols already use currentColor.
+ */
+.admin-screen .button-glyph svg > :first-child {
+  fill: var(--a-tonal);
+  stroke: var(--a-text-3);
 }
 
 /* ---------------------------------------------------------------- content */
@@ -260,8 +258,9 @@
 .admin-page-header h1 {
   margin: 0;
   color: var(--a-text);
+  font-family: var(--a-font-display);
   font-size: var(--a-size-title);
-  font-weight: 600;
+  font-weight: var(--a-weight-display);
   letter-spacing: -0.01em;
   line-height: 1.25;
 }
@@ -313,12 +312,6 @@
   font-size: var(--a-size-small);
   font-weight: 400;
   white-space: nowrap;
-}
-
-.admin-owner-chip > svg {
-  width: 14px;
-  height: 14px;
-  color: var(--a-green);
 }
 
 /* The ghost Lock button ends on the content edge like the other header actions. */

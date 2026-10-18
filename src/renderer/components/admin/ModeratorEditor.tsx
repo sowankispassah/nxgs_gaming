@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { LoaderCircle, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import type { FleetStation, ModeratorInput, ModeratorRecord } from '../../../shared/types';
 import {
   Badge,
@@ -251,8 +251,7 @@ export function ModeratorsSection(props: {
                                 disabled={busy}
                                 onClick={() => void deleteModerator(moderator)}
                               >
-                                {deleting ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}
-                                {deleting ? 'Deleting...' : 'Confirm'}
+                                {deleting ? 'Deleting...' : 'Delete'}
                               </button>
                             </>
                           ) : (
@@ -264,7 +263,6 @@ export function ModeratorsSection(props: {
                                 aria-current={editing ? 'true' : undefined}
                                 onClick={() => editModerator(moderator)}
                               >
-                                <Pencil size={14} />
                                 Edit
                               </button>
                               <button
@@ -290,14 +288,14 @@ export function ModeratorsSection(props: {
         )}
       </PageSection>
 
-      {/* Like Plans: the list, then the editor as its own section; Edit fills it, New empties it. */}
+      {/* Like Plans: the list, then the editor as its own section; Edit fills it, New moderator empties it. */}
       <div ref={editorRef} className="fleet-moderator-editor-anchor">
         <PageSection
           title={form.id ? 'Edit moderator' : 'Add moderator'}
           description={form.id ? 'Changes reach each device at its next sync.' : 'Give a staff member their own Control Room PIN.'}
           actions={form.id && (
             <button
-              className="admin-btn admin-btn--ghost admin-btn--sm"
+              className="admin-btn admin-btn--sm"
               type="button"
               disabled={busy}
               onClick={() => {
@@ -305,8 +303,7 @@ export function ModeratorsSection(props: {
                 setNotice(null);
               }}
             >
-              <Plus size={14} />
-              New
+              New moderator
             </button>
           )}
         >
@@ -406,7 +403,6 @@ export function ModeratorsSection(props: {
                 <Notice tone="error">Moderators can be saved once the device list loads. {props.stationsError}</Notice>
               )}
               <button className="admin-btn admin-btn--primary" type="submit" disabled={busy || !props.stationsReady}>
-                {saving && <LoaderCircle className="spin" size={15} />}
                 {saving ? 'Saving...' : form.id ? 'Update moderator' : 'Add moderator'}
               </button>
             </footer>

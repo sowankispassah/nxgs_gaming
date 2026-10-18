@@ -1,17 +1,35 @@
 /*
  * Control Room Accounts (earnings). The page is built from kit primitives
  * (Toolbar, Segmented, ToggleChip, FilterPopover and pickers, InlineSwitch,
- * StatRow, PageSection, .admin-table, StatusText); this file only lays them
- * out and adds what is specific to a money report:
+ * PageSection, .admin-table, StatusText); this file only lays them out and
+ * adds what is specific to a money report:
  *
  *   toolbar      two rows under the page header, then one quiet result line
+ *   figures      the one hero figure (Total earned) and three quieter figures
  *   sessions     column widths, the row toggle and the expanded row
+ *   timeline     the session timeline strip (the Control Room's one signature
+ *                element) and the hover/focus readout shared with the bars
  *   breakdown    the By device and Top games tables with their share bars
+ *
+ * Every colour is a theme token (or a mix of two); nothing here is literal.
  */
 
 /* ===================================================================== page */
 
 .accounts-page {
+  /* The hero figure is the one big number on the page; the figures beside it step down. */
+  --accounts-hero-size: 46px;
+  --accounts-figure-size: 18px;
+  /*
+   * Timeline segments alternate two neutral tones, never the accent and never
+   * a hue per game: text-2, and text-2 pulled 40% toward the track (text-2 and
+   * text-3 are too close in the light theme to tell apart).
+   */
+  --accounts-play: var(--a-text-2);
+  --accounts-play-alt: color-mix(in oklab, var(--a-text-2) 60%, var(--a-line));
+  /* Share bars: one neutral hue, quieter than the timeline. */
+  --accounts-bar: var(--a-text-3);
+
   display: grid;
   align-content: start;
   min-width: 0;
@@ -24,12 +42,12 @@
   margin-top: 8px;
 }
 
-.accounts-page :is(.admin-stat-row, .accounts-table-scroll, .accounts-rank-table) {
+.accounts-page :is(.accounts-figures, .accounts-table-scroll, .accounts-rank-table) {
   transition: opacity var(--a-dur) var(--a-ease);
 }
 
 /* A new report is loading: the current one stays, dimmed, until it arrives. */
-.accounts-page.is-busy :is(.admin-stat-row, .accounts-table-scroll, .accounts-rank-table) {
+.accounts-page.is-busy :is(.accounts-figures, .accounts-table-scroll, .accounts-rank-table) {
   opacity: 0.55;
 }
 
@@ -97,7 +115,7 @@
 .admin-screen .accounts-sort select:is(:hover, :focus) {
   color: var(--a-text);
   font-size: var(--a-size-small);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .accounts-dates {
@@ -129,7 +147,7 @@
   flex: 0 0 auto;
   color: var(--a-text-3);
   font-size: var(--a-size-caption);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .accounts-filter-empty {
@@ -180,6 +198,103 @@
   padding: 0;
   list-style: none;
   line-height: 1.4;
+}
+
+/* ================================================================== figures */
+
+/*
+ * One panel: the hero figure on the left, three quieter figures after it,
+ * hairlines between them. Everything sits on one bottom line, so the sub
+ * lines share a baseline. The accent marks only the hero's label.
+ */
+.accounts-figures {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.3fr) repeat(3, minmax(0, 1fr));
+  align-items: end;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: var(--a-radius);
+  background: var(--a-panel);
+  padding: 18px 0 18px;
+}
+
+.accounts-figures > div {
+  display: grid;
+  align-content: end;
+  min-width: 0;
+  gap: 4px;
+  margin: 0;
+  padding: 0 24px;
+}
+
+.accounts-figures > div + div {
+  box-shadow: -1px 0 0 var(--a-line);
+}
+
+.accounts-figures dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.accounts-figure-label {
+  color: var(--a-text-2);
+  font-size: var(--a-size-caption);
+  font-weight: var(--a-weight-medium);
+  line-height: 1.4;
+}
+
+/* The hero's small marker: a 2px accent bar, like the active nav item. */
+.accounts-hero .accounts-figure-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accounts-hero .accounts-figure-label::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 2px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--a-accent);
+}
+
+/* Big standalone number: Red Hat Display, proportional figures. */
+.accounts-hero-value {
+  overflow: hidden;
+  color: var(--a-text);
+  font-family: var(--a-font-display);
+  font-size: var(--accounts-hero-size);
+  font-weight: var(--a-weight-display);
+  font-variant-numeric: proportional-nums lining-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-figure-value {
+  overflow: hidden;
+  color: var(--a-text);
+  font-size: var(--accounts-figure-size);
+  font-weight: var(--a-weight-medium);
+  font-variant-numeric: proportional-nums;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-figure-sub {
+  overflow: hidden;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-hero .accounts-figure-sub {
+  color: var(--a-text-2);
 }
 
 /* =================================================================== sessions */
@@ -293,18 +408,25 @@
   color: var(--a-text-2);
 }
 
-.accounts-games-cell {
-  min-width: 170px;
-  max-width: 320px;
+/* Games played: the timeline strip, then the games as one comma list (minutes quieter). */
+.accounts-table .accounts-games-cell {
+  width: 28%;
+  min-width: 200px;
 }
 
-/* Games as one comma list, minutes quieter; two lines at most (the full list is the tooltip). */
+.accounts-games-cell > .accounts-strip {
+  margin: 1px 0 7px;
+}
+
+/* One line; the full list is the tooltip and the expanded row. Zero width so it never widens the column. */
 .accounts-games {
-  display: -webkit-box;
+  display: block;
+  width: 0;
+  min-width: 100%;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-height: 1.5;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .accounts-game-time {
@@ -318,12 +440,12 @@
 }
 
 .accounts-amount {
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 /* Expanded row: games on the left, payments on the right, aligned with the Started column. */
 .accounts-table tbody tr.accounts-detail-row td {
-  padding: 16px 24px 20px 54px;
+  padding: 18px 24px 20px 54px;
   cursor: default;
 }
 
@@ -339,6 +461,23 @@
   align-content: start;
   min-width: 0;
   gap: 10px;
+}
+
+.accounts-detail-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  min-height: 19px;
+}
+
+.accounts-detail-usage {
+  overflow: hidden;
+  color: var(--a-text-2);
+  font-size: var(--a-size-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .accounts-timeline {
@@ -376,6 +515,11 @@
   color: var(--a-text-2);
   text-align: right;
   white-space: nowrap;
+}
+
+/* The game under the pointer on the strip (or the list) reads in full colour in both. */
+.accounts-timeline li.is-active :is(.accounts-timeline-time, .accounts-timeline-duration) {
+  color: var(--a-text);
 }
 
 /* Key/value list: 148px labels, values left aligned so long IDs read naturally. */
@@ -424,6 +568,179 @@
   padding-top: 12px;
 }
 
+/* ================================================================= timeline */
+
+/*
+ * The session timeline strip. Its full width is the session's paid time.
+ * Pieces are absolutely placed by percentage: a game played is a neutral
+ * segment (two tones alternating), paid time without a game is empty track,
+ * and every boundary between pieces is a 2px gap the row shows through. Each
+ * piece's hit area reaches a few px past the drawn bar (its ::before), so a
+ * thin mark is still easy to point at.
+ */
+.accounts-strip {
+  --strip-height: 6px;
+  --strip-reach: 5px;
+
+  position: relative;
+  display: block;
+  height: var(--strip-height);
+}
+
+.accounts-strip--detail {
+  --strip-height: 10px;
+  --strip-reach: 6px;
+}
+
+.accounts-strip-piece {
+  position: absolute;
+  top: calc(var(--strip-reach) * -1);
+  bottom: calc(var(--strip-reach) * -1);
+}
+
+.accounts-strip-piece::before {
+  content: '';
+  position: absolute;
+  inset: var(--strip-reach) 0;
+  border-radius: var(--a-radius-inner);
+  background: var(--accounts-play);
+  transition: background-color var(--a-dur) var(--a-ease);
+}
+
+.accounts-strip-piece.is-alt::before {
+  background: var(--accounts-play-alt);
+}
+
+.accounts-strip-piece.is-idle::before {
+  background: var(--a-line);
+}
+
+.accounts-strip-piece.is-game:is(:hover, .is-active, :focus-visible)::before {
+  background: var(--a-text);
+}
+
+.accounts-strip-piece.is-idle:hover::before {
+  background: var(--a-line-strong);
+}
+
+/* Keyboard focus (expanded row) outlines the drawn bar, not the taller hit area: the kit's focus rule is (0,1,0) for [tabindex] marks, so one class + state replaces it. */
+.accounts-strip-piece:is(:focus-visible, .controller-focused) {
+  outline: none;
+}
+
+.accounts-strip-piece:is(:focus-visible, .controller-focused)::before {
+  outline: var(--a-focus);
+  outline-offset: var(--a-focus-offset);
+}
+
+/* Live sessions: where now is, in the expanded strip. */
+.accounts-strip-now {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--a-text);
+  pointer-events: none;
+}
+
+/* Expanded row: the strip with a clock scale under it. */
+.accounts-strip-chart {
+  display: grid;
+  min-width: 0;
+  margin-top: 4px;
+}
+
+.accounts-strip-scale {
+  position: relative;
+  height: 24px;
+  margin-top: 4px;
+  color: var(--a-text-3);
+  font-size: var(--a-size-caption);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.accounts-strip-tick {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 4px;
+  margin-left: -0.5px;
+  background: var(--a-line-strong);
+}
+
+.accounts-strip-tick.is-hour {
+  height: 6px;
+}
+
+.accounts-strip-tick.is-now {
+  width: 2px;
+  margin-left: -1px;
+  background: transparent;
+}
+
+.accounts-strip-tick-label {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  translate: -50% 0;
+}
+
+.accounts-strip-tick.is-now .accounts-strip-tick-label {
+  color: var(--a-text);
+  font-weight: var(--a-weight-medium);
+}
+
+.accounts-strip-end {
+  position: absolute;
+  top: 10px;
+  color: var(--a-text-2);
+}
+
+.accounts-strip-end.is-start {
+  left: 0;
+}
+
+.accounts-strip-end.is-end {
+  right: 0;
+}
+
+/*
+ * Hover/focus readout for a chart mark (timeline pieces, share bars): fixed so
+ * table scrollers never clip it. The value is the strong part.
+ */
+.accounts-tip {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  gap: 2px;
+  max-width: 320px;
+  border: 1px solid var(--a-line-strong);
+  border-radius: var(--a-radius);
+  background: var(--a-panel);
+  box-shadow: var(--a-shadow-pop);
+  color: var(--a-text-2);
+  padding: 7px 10px;
+  font-size: var(--a-size-caption);
+  line-height: 1.4;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.accounts-tip-title {
+  overflow: hidden;
+  color: var(--a-text);
+  font-weight: var(--a-weight-medium);
+  text-overflow: ellipsis;
+}
+
+.accounts-tip strong {
+  color: var(--a-text);
+  font-weight: var(--a-weight-medium);
+}
+
 /* ================================================================ breakdown */
 
 .accounts-breakdown {
@@ -467,7 +784,6 @@
 .accounts-row-pick {
   display: flex;
   align-items: center;
-  gap: 6px;
   max-width: 100%;
   min-height: var(--a-control-sm);
   border: 0;
@@ -486,41 +802,67 @@
   white-space: nowrap;
 }
 
-.accounts-row-pick > svg {
-  flex: 0 0 auto;
+/* The picked device reads as chosen in its name too (the row also gets the accent bar). */
+.accounts-row-pick[aria-pressed='true'] {
+  font-weight: var(--a-weight-medium);
 }
 
+/*
+ * Share bars: one neutral hue, 6px, square at the start and 2px rounded at
+ * the end, on a recessive track; the value sits in its own right-aligned
+ * tabular column so the bars all start and end on the same lines.
+ */
 .accounts-rank-table .admin-table :is(th, td).accounts-share-col,
 .accounts-rank-table .admin-table td.accounts-share-cell {
-  width: 132px;
   white-space: nowrap;
 }
 
-.accounts-share-cell > * {
-  vertical-align: middle;
+.accounts-meter {
+  --meter-value: 40px;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--meter-value);
+  width: var(--meter-width, 176px);
+  align-items: center;
+  gap: 12px;
+  min-height: var(--a-control-sm);
 }
 
-.accounts-share-bar {
-  display: inline-block;
-  width: 72px;
-  height: 4px;
+/* Top games: the bar's value is the play time column. */
+.accounts-rank-table--games .accounts-meter {
+  --meter-value: 84px;
+  --meter-width: 220px;
+}
+
+.accounts-meter-track {
+  position: relative;
+  height: 6px;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: var(--a-radius-inner);
   background: var(--a-line);
 }
 
-.accounts-share-bar > span {
+.accounts-meter-fill {
   display: block;
   height: 100%;
+  border-radius: 0 var(--a-radius-inner) var(--a-radius-inner) 0;
+  background: var(--accounts-bar);
+  transition: background-color var(--a-dur) var(--a-ease);
+}
+
+.accounts-meter:hover .accounts-meter-fill,
+.accounts-rank-row:has(.accounts-row-pick:focus-visible) .accounts-meter-fill {
   background: var(--a-text-2);
 }
 
-.accounts-share-value {
-  display: inline-block;
-  width: 40px;
+.accounts-meter-value {
   color: var(--a-text-2);
-  font-size: var(--a-size-caption);
+  font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+.accounts-rank-table--games .accounts-meter-value {
+  color: var(--a-text);
 }
 
 /* =============================================================== responsive */
@@ -529,6 +871,19 @@
   .accounts-breakdown,
   .accounts-detail {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .accounts-figures {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 16px;
+  }
+
+  .accounts-hero {
+    grid-column: 1 / -1;
+  }
+
+  .accounts-figures > .accounts-hero + div {
+    box-shadow: none;
   }
 
   .accounts-results-meta {

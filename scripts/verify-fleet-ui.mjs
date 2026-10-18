@@ -63,6 +63,9 @@ assert.match(ownerGate, /throw new Error\(unlockErrorMessage\(result\)\)/, 'lock
 assert.match(ownerGate, /first\.code !== 'owner_pin_required'\) return first;[\s\S]*requestPin\(/, 'an expired main admin session must ask for the PIN again');
 assert.match(ownerGate, /createPortal\(/, 'the PIN dialog must be a full-screen overlay, not clipped by a card');
 assert.match(ownerGate, /Main admin unlocked/);
+// Control Room v2: the chip states the session in words (a success StatusText) and a text-only Lock button, no lock icons.
+assert.match(ownerGate, /<StatusText tone="success">Main admin unlocked<\/StatusText>/);
+assert.doesNotMatch(ownerGate, /from 'lucide-react'/, 'the main admin chip carries no icons');
 
 // Accounts.
 assert.match(accounts, /window\.nxgs\.getEarnings\(query\)/);
@@ -114,6 +117,16 @@ assert.match(fleetPanel, /Main admin PIN needed/);
 assert.match(stationPanel, /Waiting for device/);
 assert.match(stationPanel, /View earnings/);
 assert.match(stationPanel, /This is the device you are using now\./);
+// Control Room v2 icon policy: text buttons (Refresh, Sync now, Rejoin, Unlock, Edit, View earnings, back to All devices...)
+// and plain fields carry no icon; icon-only row actions (delete, copy) and the search field's magnifier stay.
+for (const [name, source] of Object.entries({ fleetPanel, stationPanel, moderators, syncCard, deviceManager })) {
+  assert.doesNotMatch(
+    source,
+    /import \{[^}]*\b(RefreshCw|LogIn|Pencil|Plus|ReceiptIndianRupee|LockKeyhole|ArrowLeft|Building2|MapPin|Store)\b[^}]*\} from 'lucide-react'/,
+    `${name}: text buttons and plain fields must not carry decorative icons`
+  );
+}
+assert.match(stationPanel, /className="fleet-detail-back" type="button" onClick=\{props\.onBack\}>All devices<\/button>/, 'the device detail keeps a real back button');
 assert.match(moderators, /A moderator's PIN unlocks the Control Room on the devices you pick\./);
 assert.match(moderators, /Leave blank to keep the current PIN/);
 assert.equal((moderators.match(/type="password"\s+inputMode="numeric"/g) ?? []).length, 2, 'moderator PIN fields must be numeric password inputs');

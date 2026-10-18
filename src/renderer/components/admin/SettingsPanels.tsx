@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowRight, FileUp, LoaderCircle, Lock, Power, RefreshCw, RotateCcw } from 'lucide-react';
 import type { AppDiagnostics, AppSettings, InitialData, KioskSettings } from '../../../shared/types';
 import { BrandLogo } from '../BrandLogo';
 import { Badge, Notice, PageSection, Panel, StatusText, SwitchRow, type Tone } from './AdminKit';
@@ -114,7 +113,6 @@ export function BrandingSettingsPanel(props: {
                   disabled={pendingAction !== null}
                   onClick={() => void resetLogo()}
                 >
-                  {pendingAction === 'reset' ? <LoaderCircle size={15} className="spin" /> : <RotateCcw size={15} />}
                   {pendingAction === 'reset' ? 'Restoring...' : 'Use built-in logo'}
                 </button>
               )}
@@ -124,7 +122,6 @@ export function BrandingSettingsPanel(props: {
                 disabled={pendingAction !== null}
                 onClick={() => void chooseLogo()}
               >
-                {pendingAction === 'upload' ? <LoaderCircle size={15} className="spin" /> : <FileUp size={15} />}
                 {pendingAction === 'upload' ? 'Updating...' : customLogo ? 'Replace logo' : 'Upload logo'}
               </button>
             </div>
@@ -199,7 +196,6 @@ export function SessionSettings(props: {
           {props.onOpenPlans && (
             <button className="admin-btn admin-btn--sm admin-btn--ghost" type="button" onClick={props.onOpenPlans}>
               Open Plans
-              <ArrowRight size={14} />
             </button>
           )}
         </div>
@@ -209,7 +205,7 @@ export function SessionSettings(props: {
         <Panel padding="rows">
           {isModerator ? (
             <SettingRow label="Admin PIN" description="Only the device admin can see or change the admin PIN.">
-              <Badge className="settings-locked"><Lock size={12} aria-hidden="true" />Device admin only</Badge>
+              <Badge className="settings-locked">Device admin only</Badge>
             </SettingRow>
           ) : (
             <label className="admin-value-row">
@@ -225,7 +221,6 @@ export function SessionSettings(props: {
 
       <SaveBar page message={message} ok={message.startsWith('Saved')}>
         <button className="admin-btn admin-btn--primary" type="button" disabled={pending} onClick={() => void save()}>
-          {pending && <LoaderCircle className="spin" size={15} />}
           {pending ? 'Saving...' : 'Save settings'}
         </button>
       </SaveBar>
@@ -368,7 +363,6 @@ export function KioskSettingsPanel(props: {
           </div>
           <SaveBar message={message} ok={message.startsWith('Saved')}>
             <button className="admin-btn admin-btn--primary" type="button" disabled={pending} onClick={() => void saveKiosk()}>
-              {pending && <LoaderCircle className="spin" size={15} />}
               {pending ? 'Saving...' : 'Save kiosk settings'}
             </button>
           </SaveBar>
@@ -385,7 +379,6 @@ export function KioskSettingsPanel(props: {
         )}
         actions={(
           <button className="admin-btn admin-btn--sm" type="button" disabled={pendingDiagnostics} onClick={() => void refreshDiagnostics()}>
-            <RefreshCw size={14} className={pendingDiagnostics ? 'spin' : undefined} />
             {pendingDiagnostics ? 'Refreshing...' : 'Refresh'}
           </button>
         )}
@@ -504,7 +497,6 @@ export function KioskSettingsPanel(props: {
                 onChange={(event) => setExitPin(event.target.value)}
               />
               <button className="admin-btn admin-btn--danger" type="submit" disabled={exiting}>
-                {exiting ? <LoaderCircle className="spin" size={15} /> : <Power size={15} />}
                 {exiting ? 'Exiting...' : 'Exit NXGS Play'}
               </button>
             </span>

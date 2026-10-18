@@ -1,17 +1,20 @@
-import type { ReactNode } from 'react';
-import { Download, Gamepad2, Hand, HardDrive, Library, UserRound } from 'lucide-react';
 import { ButtonGlyph, type GlyphName } from '../../ui/ButtonGlyph';
 import { useUiPreference } from '../../ui/preferences';
-import { SettingsInfoRow, SettingsStatusCard, SettingsSwitchRow } from './SettingsParts';
+import { SettingsInfoRow, SettingsStatus, SettingsStatusCard, SettingsSwitchRow } from './SettingsParts';
 
-function GuideTile(props: { glyph?: GlyphName; icon?: ReactNode; title: string; text: string }): JSX.Element {
+/** One control in the controller legend: what it does on the left, the button on the right. */
+function GuideRow(props: { glyph?: GlyphName; title: string; text: string }): JSX.Element {
   return (
-    <div className="settings-guide-tile" tabIndex={-1} data-settings-action>
-      <span className="settings-guide-art" aria-hidden="true">
-        {props.glyph ? <ButtonGlyph name={props.glyph} size={44} /> : props.icon}
+    <div className="settings-row settings-info-row settings-guide-row" tabIndex={-1} data-settings-action>
+      <span className="settings-row-text">
+        <strong>{props.title}</strong>
+        <small>{props.text}</small>
       </span>
-      <strong>{props.title}</strong>
-      <span>{props.text}</span>
+      {props.glyph && (
+        <span className="settings-row-value settings-guide-glyph" aria-hidden="true">
+          <ButtonGlyph name={props.glyph} size={36} />
+        </span>
+      )}
     </div>
   );
 }
@@ -20,11 +23,11 @@ export function GuideSettingsPage(props: { appVersion?: string; controllerName?:
   return (
     <>
       <h3 className="settings-section-heading">Controller basics</h3>
-      <div className="settings-guide-grid">
-        <GuideTile glyph="home" title="Quick menu" text="Press the PS button during a game to resume, go to Home or close the game." />
-        <GuideTile glyph="cross" title="Select" text="Choose a game, open a page or change a setting." />
-        <GuideTile glyph="circle" title="Back" text="Go back a step or close a menu." />
-        <GuideTile icon={<Hand size={26} />} title="Ask staff" text="Need more play time, another game or help with a controller? Staff are here to help." />
+      <div className="settings-list">
+        <GuideRow glyph="home" title="Quick menu" text="Press the PS button during a game to resume, go to Home or close the game." />
+        <GuideRow glyph="cross" title="Select" text="Choose a game, open a page or change a setting." />
+        <GuideRow glyph="circle" title="Back" text="Go back a step or close a menu." />
+        <GuideRow title="Ask staff" text="Need more play time, another game or help with a controller? Staff are here to help." />
       </div>
       <h3 className="settings-section-heading">About</h3>
       <div className="settings-list">
@@ -36,7 +39,9 @@ export function GuideSettingsPage(props: { appVersion?: string; controllerName?:
         <SettingsInfoRow
           label="Controller"
           description={props.controllerDetected ? 'Ready for navigation and games' : 'Press the PS button on a paired controller to wake it'}
-          value={props.controllerDetected ? props.controllerName ?? 'Connected' : 'Not detected'}
+          value={props.controllerDetected
+            ? <SettingsStatus tone="success" className="is-plain">{props.controllerName ?? 'Connected'}</SettingsStatus>
+            : <SettingsStatus tone="neutral">Not detected</SettingsStatus>}
         />
       </div>
     </>
@@ -71,14 +76,12 @@ export function AccessibilitySettingsPage(): JSX.Element {
 export function UsersSettingsPage(): JSX.Element {
   return (
     <>
-      <div className="settings-profile-card" tabIndex={-1} data-settings-action>
-        <span className="settings-profile-avatar" aria-hidden="true"><UserRound size={40} /></span>
-        <span className="settings-profile-copy">
-          <small>Playing now</small>
+      <div className="settings-status-card settings-profile-card" tabIndex={-1} data-settings-action>
+        <span className="settings-status-copy">
           <strong>Guest Player</strong>
-          <span>Guest profile for this station</span>
+          <small>Guest profile for this station</small>
         </span>
-        <span className="ps-chip ps-chip--accent">Guest</span>
+        <SettingsStatus tone="success">Playing now</SettingsStatus>
       </div>
       <h3 className="settings-section-heading">Account</h3>
       <div className="settings-list">
@@ -95,16 +98,15 @@ export function StorageSettingsPage(): JSX.Element {
     <>
       <SettingsStatusCard
         tone="neutral"
-        icon={<HardDrive size={30} />}
         label="Managed by staff"
         title="Station storage"
         detail="Games and their data are installed, updated and cleaned up by the NXGS team, so there is nothing to manage here."
       />
       <h3 className="settings-section-heading">On this station</h3>
       <div className="settings-list">
-        <SettingsInfoRow icon={<Library size={20} />} label="Game library" description="Ask staff if a game is missing or needs an update." value="Installed by staff" />
-        <SettingsInfoRow icon={<Download size={20} />} label="Downloads" description="New games and add-ons can't be downloaded from this screen." value="Staff only" />
-        <SettingsInfoRow icon={<Gamepad2 size={20} />} label="Game progress" description="Each game keeps its own progress the way it normally does." value="Per game" />
+        <SettingsInfoRow label="Game library" description="Ask staff if a game is missing or needs an update." value="Installed by staff" />
+        <SettingsInfoRow label="Downloads" description="New games and add-ons can't be downloaded from this screen." value="Staff only" />
+        <SettingsInfoRow label="Game progress" description="Each game keeps its own progress the way it normally does." value="Per game" />
       </div>
     </>
   );

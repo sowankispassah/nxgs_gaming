@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, IndianRupee, LoaderCircle, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, LoaderCircle, Trash2 } from 'lucide-react';
 import type { DeviceRecord, PlanScope, PlayPlanInput, PlayPlanRecord } from '../../shared/types';
 import { EmptyState, Field, InlineSwitch, LoadingState, Notice, PageActions, PageSection, Panel, revealInContent, SwitchRow } from './admin/AdminKit';
 import { dateLabel } from './admin/fleetFormat';
@@ -189,7 +189,6 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
     <div className="admin-stack plan-manager">
       <PageActions>
         <button className="admin-btn" type="button" disabled={busy} onClick={newPlan}>
-          <Plus size={15} />
           New plan
         </button>
       </PageActions>
@@ -295,7 +294,6 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
                               aria-label={`Edit ${plan.name}`}
                               onClick={() => editPlan(plan)}
                             >
-                              <Pencil size={14} />
                               Edit
                             </button>
                           )}
@@ -306,8 +304,7 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
                               disabled={busy}
                               onClick={() => deletePlan(plan)}
                             >
-                              {deleting && <LoaderCircle className="spin" size={14} />}
-                              {deleting ? 'Deleting...' : 'Confirm'}
+                              {deleting ? 'Deleting...' : 'Delete'}
                             </button>
                           ) : (
                             <button
@@ -379,7 +376,7 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
                 </Field>
                 <Field label="Price">
                   <span className="admin-affix-input">
-                    <IndianRupee size={15} aria-hidden="true" />
+                    <em aria-hidden="true">₹</em>
                     <input
                       type="number"
                       min="1"
@@ -437,7 +434,6 @@ export function PlanManager(props: { currentDevice: DeviceRecord }): JSX.Element
             <footer className="admin-panel-footer">
               {feedback('editor') ?? <span aria-hidden="true" />}
               <button className="admin-btn admin-btn--primary" type="submit" disabled={busy}>
-                {saving && <LoaderCircle className="spin" size={15} />}
                 {saving ? 'Saving...' : form.id ? 'Save plan' : 'Add plan'}
               </button>
             </footer>

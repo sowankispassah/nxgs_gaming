@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LoaderCircle, LogIn, RefreshCw } from 'lucide-react';
 import type { FleetSyncStatus } from '../../../shared/types';
 import { LoadingState, Notice, PageSection, Panel, StatusText, type NoticeTone, type Tone } from './AdminKit';
 import { dateTimeLabel, relativeTime } from './fleetFormat';
@@ -117,9 +116,9 @@ export function FleetSyncCard(props: {
       className={`fleet-sync${props.className ? ` ${props.className}` : ''}`}
       actions={(
         <>
+          {/* Text buttons carry no icon; a pending action reads as its own word ("Syncing..."). */}
           {status && (status.needsRejoin || status.removedByOwner) && owner && (
             <button className="admin-btn admin-btn--primary admin-btn--sm" type="button" disabled={Boolean(action)} onClick={() => void rejoin()}>
-              {action === 'rejoin' ? <LoaderCircle className="spin" size={14} /> : <LogIn size={14} />}
               {action === 'rejoin' ? 'Rejoining...' : 'Rejoin'}
             </button>
           )}
@@ -129,39 +128,41 @@ export function FleetSyncCard(props: {
             disabled={Boolean(action) || !status || !status.configured || status.removedByOwner || status.needsRejoin || status.syncing}
             onClick={() => void syncNow()}
           >
-            {action === 'sync' || status?.syncing ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}
-            {action === 'sync' ? 'Syncing...' : 'Sync now'}
+            {action === 'sync' || status?.syncing ? 'Syncing...' : 'Sync now'}
           </button>
         </>
       )}
     >
-      {!status && !loadError && <LoadingState label="Checking sync..." />}
-      {loadError && <Notice tone="error">{loadError}</Notice>}
-      {status && state && (
-        <Panel padding="rows">
-          <dl className="admin-meta-list admin-meta-list--left fleet-sync-meta">
-            <div>
-              <dt>Status</dt>
-              <dd><StatusText tone={state.tone}>{state.label}</StatusText></dd>
-            </div>
-            <div>
-              <dt>Registered</dt>
-              <dd>{status.removedByOwner ? 'Removed' : status.needsRejoin ? 'Needs rejoin' : status.registered ? 'Yes' : 'Not yet'}</dd>
-            </div>
-            <div>
-              <dt>Last sync</dt>
-              <dd title={status.lastSyncAt ? dateTimeLabel(status.lastSyncAt) : undefined}>
-                {status.lastSyncAt ? `${relativeTime(status.lastSyncAt)} · ${dateTimeLabel(status.lastSyncAt)}` : 'Not synced yet'}
-              </dd>
-            </div>
-            <div><dt>Sessions waiting</dt><dd>{status.pendingSessions}</dd></div>
-            {showError && (
-              <div><dt>Last error</dt><dd className="fleet-sync-error">{status.lastSyncError}</dd></div>
-            )}
-          </dl>
-        </Panel>
-      )}
-      {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
+      {/* One body element under the header, so All devices can line this section up with the main admin PIN beside it. */}
+      <div className="fleet-sync-body">
+        {!status && !loadError && <LoadingState label="Checking sync..." />}
+        {loadError && <Notice tone="error">{loadError}</Notice>}
+        {status && state && (
+          <Panel padding="rows">
+            <dl className="admin-meta-list admin-meta-list--left fleet-sync-meta">
+              <div>
+                <dt>Status</dt>
+                <dd><StatusText tone={state.tone}>{state.label}</StatusText></dd>
+              </div>
+              <div>
+                <dt>Registered</dt>
+                <dd>{status.removedByOwner ? 'Removed' : status.needsRejoin ? 'Needs rejoin' : status.registered ? 'Yes' : 'Not yet'}</dd>
+              </div>
+              <div>
+                <dt>Last sync</dt>
+                <dd title={status.lastSyncAt ? dateTimeLabel(status.lastSyncAt) : undefined}>
+                  {status.lastSyncAt ? `${relativeTime(status.lastSyncAt)} · ${dateTimeLabel(status.lastSyncAt)}` : 'Not synced yet'}
+                </dd>
+              </div>
+              <div><dt>Sessions waiting</dt><dd>{status.pendingSessions}</dd></div>
+              {showError && (
+                <div><dt>Last error</dt><dd className="fleet-sync-error">{status.lastSyncError}</dd></div>
+              )}
+            </dl>
+          </Panel>
+        )}
+        {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
+      </div>
     </PageSection>
   );
 }

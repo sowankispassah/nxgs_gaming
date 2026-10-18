@@ -2,66 +2,198 @@
  * Control Room tokens. Every custom property here is scoped to .admin-screen,
  * so customer surfaces and the :root console tokens never change.
  *
- * Use the --a-* tokens in admin CSS. The second block re-points the global
- * console tokens (--ps-*, --radius-*, --text-*, --focus-ring, ...) inside the
- * Control Room only, so the shared pieces it renders (base inputs and buttons,
- * the modal shell, ControllerHints, .ps-switch) come out flat, neutral and
- * dense. Never use those names in admin CSS. Rules: docs/admin-design.md.
+ * Two themes, chosen per station (Dark · Light · System in the sidebar
+ * footer) and applied as data-admin-theme on .admin-screen. Colours live only
+ * in the two theme blocks below; component CSS never uses a literal colour,
+ * so every rule works in both themes. Neutrals lean faintly violet toward the
+ * NXGS magenta accent, which is used sparingly (primary button, active nav
+ * marker, focus, selected chip/segment, links, switch on).
+ *
+ * The last block re-points the global console tokens (--ps-*, --radius-*,
+ * --text-*, --focus-ring, ...) inside the Control Room only, so the shared
+ * pieces it renders (base inputs and buttons, the modal shell,
+ * ControllerHints, .ps-switch) follow the theme. Never use those names in
+ * admin CSS. Rules: docs/admin-design.md.
  */
 
-.admin-screen {
-  /* Surfaces: flat and neutral, no blue tint, no gradients */
-  --a-bg: #0e0e0f;
-  --a-sidebar: #121213;
-  --a-panel: #161617;
-  --a-panel-2: #1d1d1f;
-  --a-inset: #111112;
-  --a-segment: #2a2a2d;
-  --a-switch-off: #3a3a3d;
-  --a-line: #262628;
-  --a-line-strong: #36363a;
+/* Red Hat Display / Text / Mono, bundled offline. Only the Control Room uses them; customer screens keep Inter. */
+@import '@fontsource-variable/red-hat-display';
+@import '@fontsource-variable/red-hat-text';
+@import '@fontsource-variable/red-hat-mono';
+
+/* ------------------------------------------------------------ dark (default) */
+
+.admin-screen,
+.admin-screen[data-admin-theme='dark'] {
+  color-scheme: dark;
+
+  /* Surfaces: flat, separated by tone */
+  --a-bg: #111015;
+  --a-sidebar: #151419;
+  --a-panel: #19181e;
+  --a-panel-2: #211f27;
+  --a-inset: #0e0d12;
+  --a-tonal: #24222b;
+  --a-tonal-hover: #2e2b36;
+  --a-nav-hover: #1e1c24;
+  --a-logo-tile: #0e0d12;
+
+  /* Fields: filled, subtle bottom-weighted border */
+  --a-field: #0e0d12;
+  --a-field-hover: #15141a;
+  --a-field-line: #34313c;
+  --a-field-line-bottom: #6a6675;
+  --a-control-border: #6a6675;
+
+  /* Switch */
+  --a-switch-off: #3d3a46;
+  --a-switch-off-hover: #4a4654;
+  --a-switch-knob: #efedf3;
+
+  /* Lines */
+  --a-line: #2a2830;
+  --a-line-strong: #3a3742;
 
   /* Text */
-  --a-text: #ededee;
-  --a-text-2: #a1a1a6;
-  --a-text-3: #6e6e73;
-  --a-inverse: #0e0e0f;
+  --a-text: #efedf3;
+  --a-text-2: #a7a3b0;
+  --a-text-3: #8e8a98;
+  --a-inverse: #111015;
+
+  /* NXGS magenta: one accent, used sparingly */
+  --a-accent: #ff4fa3;
+  --a-accent-strong: #ff79b9;
+  --a-on-accent: #1a0710;
+  --a-accent-tint: rgba(255, 79, 163, 0.14);
+  --a-accent-tint-faint: rgba(255, 79, 163, 0.07);
+  --a-accent-line: rgba(255, 79, 163, 0.5);
 
   /* Colour only carries meaning */
   --a-green: #3ecf8e;
   --a-amber: #f5a524;
-  --a-red: #f2555a;
+  --a-red: #ff6b4a;
+  --a-red-strong: #ff8a70;
   --a-blue: #7aa7ff;
   --a-green-tint: rgba(62, 207, 142, 0.12);
   --a-amber-tint: rgba(245, 165, 36, 0.12);
-  --a-red-tint: rgba(242, 85, 90, 0.12);
+  --a-red-tint: rgba(255, 107, 74, 0.12);
+  --a-red-tint-strong: rgba(255, 107, 74, 0.2);
   --a-blue-tint: rgba(122, 167, 255, 0.12);
-  --a-red-line: rgba(242, 85, 90, 0.4);
-  --a-white-tint: rgba(255, 255, 255, 0.08);
+  --a-red-line: rgba(255, 107, 74, 0.4);
+  --a-neutral-tint: rgba(239, 237, 243, 0.05);
 
-  /* Shape: switches are the only rounded-full element */
-  --a-radius: 6px;
-  --a-radius-sm: 5px;
-  --a-radius-xs: 4px;
-
-  /* Type (Inter is bundled) */
-  --a-font: var(--font-ui);
-  --a-font-mono: 'Cascadia Mono', Consolas, ui-monospace, monospace;
-  --a-size-title: 22px;
-  --a-size-h2: 15px;
-  --a-size-body: 14px;
-  --a-size-small: 13px;
-  --a-size-caption: 12px;
-  --a-size-figure: 24px;
-  --a-size-mono: 12.5px;
-
-  /* Focus: one crisp outline, never a glow */
-  --a-focus-color: #ededee;
-  --a-focus: 2px solid var(--a-focus-color);
-  --a-focus-offset: 2px;
+  /*
+   * Weights: light-on-dark reads heavier than dark-on-light, and Red Hat
+   * Display's 600 is light, so the light theme steps every weight above
+   * regular up one notch to keep the same hierarchy. Medium: labels, column
+   * headers, buttons, badges, status words. Strong: group titles (h3,
+   * .admin-subheading), the primary button, the chosen segment, the active
+   * nav item. Display: Red Hat Display titles and figures. Regular (400) is
+   * the same in both themes and stays literal.
+   */
+  --a-weight-medium: 500;
+  --a-weight-strong: 600;
+  --a-weight-display: 600;
 
   /* Elevation: popovers and modals only */
+  --a-scrim: rgba(8, 7, 11, 0.62);
   --a-shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* -------------------------------------------------------------------- light */
+
+.admin-screen[data-admin-theme='light'] {
+  color-scheme: light;
+
+  --a-bg: #f5f4f7;
+  --a-sidebar: #efedf2;
+  --a-panel: #ffffff;
+  --a-panel-2: #f1eff4;
+  --a-inset: #faf9fb;
+  --a-tonal: #e9e6ee;
+  --a-tonal-hover: #dfdbe5;
+  --a-nav-hover: #e5e2ea;
+  /* The logo art is dark: it keeps a dark tile in the light theme too. */
+  --a-logo-tile: #18161d;
+
+  --a-field: #ffffff;
+  --a-field-hover: #faf9fb;
+  --a-field-line: #dcd8e2;
+  --a-field-line-bottom: #8f8a99;
+  --a-control-border: #8a8693;
+
+  --a-switch-off: #c4bfcc;
+  --a-switch-off-hover: #b3adbc;
+  --a-switch-knob: #ffffff;
+
+  --a-line: #e3e0e8;
+  --a-line-strong: #cfcbd6;
+
+  --a-text: #18161d;
+  --a-text-2: #5d5966;
+  --a-text-3: #6a6674;
+  --a-inverse: #ffffff;
+
+  --a-accent: #c2185b;
+  --a-accent-strong: #a3134c;
+  --a-on-accent: #ffffff;
+  --a-accent-tint: rgba(194, 24, 91, 0.12);
+  --a-accent-tint-faint: rgba(194, 24, 91, 0.07);
+  --a-accent-line: rgba(194, 24, 91, 0.45);
+
+  --a-green: #137246;
+  --a-amber: #945300;
+  --a-red: #b93815;
+  --a-red-strong: #972c0e;
+  --a-blue: #2457c5;
+  --a-green-tint: rgba(19, 114, 70, 0.1);
+  --a-amber-tint: rgba(148, 83, 0, 0.1);
+  --a-red-tint: rgba(185, 56, 21, 0.1);
+  --a-red-tint-strong: rgba(185, 56, 21, 0.16);
+  --a-blue-tint: rgba(36, 87, 197, 0.1);
+  --a-red-line: rgba(185, 56, 21, 0.4);
+  --a-neutral-tint: rgba(24, 22, 29, 0.04);
+
+  --a-weight-medium: 600;
+  --a-weight-strong: 700;
+  --a-weight-display: 700;
+
+  --a-scrim: rgba(24, 22, 29, 0.36);
+  --a-shadow-pop: 0 12px 32px rgba(24, 22, 29, 0.14), 0 2px 6px rgba(24, 22, 29, 0.06);
+}
+
+/* --------------------------------------------------------- theme independent */
+
+.admin-screen {
+  /* Shape: 4px everywhere; switches are the only rounded-full element */
+  --a-radius: 4px;
+  --a-radius-sm: 4px;
+  --a-radius-xs: 4px;
+  --a-radius-inner: 2px;
+
+  /* Type: Red Hat Display for titles, headings and figures; Red Hat Text for UI; Red Hat Mono for IDs */
+  --a-font: 'Red Hat Text Variable', 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
+  --a-font-display: 'Red Hat Display Variable', 'Red Hat Text Variable', 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
+  --a-font-mono: 'Red Hat Mono Variable', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+  /*
+   * Display sizes are unchanged from 0.27. Red Hat Text and Mono have a
+   * smaller x-height than Inter and Cascadia (0.49 vs 0.55 and 0.52), so the
+   * text sizes are +0.5px to read at the same size as before.
+   */
+  --a-size-title: 22px;
+  --a-size-h2: 15px;
+  --a-size-body: 14.5px;
+  --a-size-small: 13.5px;
+  --a-size-caption: 12.5px;
+  --a-size-figure: 24px;
+  --a-size-mono: 13px;
+  --a-size-button: 14px;
+  --a-size-badge: 12px;
+
+  /* Focus: one crisp accent outline, never a glow */
+  --a-focus-color: var(--a-accent);
+  --a-focus: 2px solid var(--a-focus-color);
+  --a-focus-offset: 2px;
 
   /* Motion: colour and background only */
   --a-dur: 120ms;
@@ -87,7 +219,7 @@
 
   /* ---------------------------------------------------- legacy bridge */
 
-  /* Console tokens, re-pointed for the Control Room only. */
+  /* Console tokens, re-pointed for the Control Room only (they follow the theme). */
   --ps-surface: var(--a-panel);
   --ps-surface-strong: var(--a-panel);
   --ps-surface-raised: var(--a-panel-2);
@@ -99,34 +231,55 @@
   --ps-text-2: var(--a-text-2);
   --ps-text-3: var(--a-text-3);
   --ps-text-inverse: var(--a-inverse);
-  --ps-blue: var(--a-text-2);
-  --ps-blue-bright: var(--a-text);
-  --ps-blue-soft: var(--a-white-tint);
+  --ps-blue: var(--a-accent);
+  --ps-blue-bright: var(--a-accent-strong);
+  --ps-blue-soft: var(--a-accent-tint);
   --ps-success: var(--a-green);
   --ps-success-soft: var(--a-green-tint);
   --ps-warning: var(--a-amber);
   --ps-warning-soft: var(--a-amber-tint);
   --ps-danger: var(--a-red);
   --ps-danger-soft: var(--a-red-tint);
+  --ps-bg-0: var(--a-bg);
+  --ps-bg-1: var(--a-bg);
+  --ps-bg-2: var(--a-bg);
+  --ps-bg-3: var(--a-panel);
+  --ps-navy: var(--a-bg);
+  --ps-scrim: var(--a-scrim);
+  --panel-bg: var(--a-panel);
+  --panel-bg-strong: var(--a-panel);
+  --panel-border: var(--a-line-strong);
+  --text-primary: var(--a-text);
+  --text-secondary: var(--a-text-2);
+  --font-ui: var(--a-font);
+  --font-display: var(--a-font-display);
   --radius-xs: var(--a-radius-xs);
   --radius-sm: var(--a-radius-sm);
   --radius-md: var(--a-radius);
   --radius-lg: var(--a-radius);
   --radius-xl: var(--a-radius);
   --radius-pill: var(--a-radius-xs);
-  --text-2xs: 11.5px;
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-md: 14px;
+  --text-2xs: var(--a-size-badge);
+  --text-xs: var(--a-size-caption);
+  --text-sm: var(--a-size-small);
+  --text-md: var(--a-size-body);
   --text-lg: 15px;
   --text-xl: 18px;
   --text-2xl: 22px;
   --text-3xl: 24px;
   --tracking-tight: -0.01em;
   --tracking-caps: 0;
+  --focus-color: var(--a-focus-color);
   --focus-ring: 0 0 0 2px var(--a-focus-color);
   --focus-ring-tight: 0 0 0 2px var(--a-focus-color);
   --focus-ring-inset: inset 0 0 0 2px var(--a-focus-color);
+  --focus-glow: var(--focus-ring);
+  --focus-border: var(--a-focus-color);
+  --focus-bg: var(--a-panel-2);
+  --focus-bg-strong: var(--a-panel-2);
+  --focus-accent: var(--a-accent);
+  --focus-accent-soft: var(--a-accent-tint);
+  --hover-ring: 0 0 0 1px var(--a-line-strong);
   --shadow-1: none;
   --shadow-2: none;
   --shadow-3: var(--a-shadow-pop);
@@ -136,6 +289,12 @@
   --dur-slow: var(--a-dur);
   --dur-hero: var(--a-dur);
   --ease-spring: var(--a-ease);
-  --slider-track: var(--a-line-strong);
-  --slider-active: var(--a-text);
+  --slider-track: var(--a-switch-off);
+  --slider-active: var(--a-accent);
+  --slider-thumb: var(--a-switch-knob);
+  --slider-thumb-border: var(--a-line-strong);
+  --glyph-cross: currentColor;
+  --glyph-circle: currentColor;
+  --glyph-square: currentColor;
+  --glyph-triangle: currentColor;
 }

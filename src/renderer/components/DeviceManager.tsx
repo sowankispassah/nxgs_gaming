@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Building2, Check, Copy, LoaderCircle, MapPin } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 import type { DeviceInput, DeviceManagerSummary, DeviceRecord, DeviceStatus, SyncStatus } from '../../shared/types';
 import { Field, LoadingState, Notice, PageSection, Panel, Stat, StatRow, StatusText, type Tone } from './admin/AdminKit';
 import { FleetSyncCard } from './admin/FleetSyncCard';
@@ -167,7 +167,7 @@ export function DeviceManager(props: {
       <div className="admin-split device-layout">
         <div className="admin-stack">
           <PageSection
-            title="Device details"
+            title="Edit details"
             description="Name this device and record where it is."
             className="device-editor-panel"
           >
@@ -200,35 +200,28 @@ export function DeviceManager(props: {
                   </select>
                 </Field>
                 <Field label="Store / branch name">
-                  <span className="admin-affix-input">
-                    <Building2 size={15} aria-hidden="true" />
-                    <input
-                      value={form.storeName}
-                      maxLength={120}
-                      placeholder="Main Store"
-                      disabled={saving}
-                      onChange={(event) => update('storeName', event.target.value)}
-                    />
-                  </span>
+                  <input
+                    value={form.storeName}
+                    maxLength={120}
+                    placeholder="Main Store"
+                    disabled={saving}
+                    onChange={(event) => update('storeName', event.target.value)}
+                  />
                 </Field>
                 <Field label="Device location">
-                  <span className="admin-affix-input">
-                    <MapPin size={15} aria-hidden="true" />
-                    <input
-                      value={form.location}
-                      maxLength={160}
-                      placeholder="Front Desk / Cabin 1 / Room 2"
-                      disabled={saving}
-                      onChange={(event) => update('location', event.target.value)}
-                    />
-                  </span>
+                  <input
+                    value={form.location}
+                    maxLength={160}
+                    placeholder="Front Desk / Cabin 1 / Room 2"
+                    disabled={saving}
+                    onChange={(event) => update('location', event.target.value)}
+                  />
                 </Field>
               </div>
               <footer className="admin-panel-footer">
                 {message && <Notice tone="success">{message}</Notice>}
                 {error && <Notice tone="error">{error}</Notice>}
                 <button className="admin-btn admin-btn--primary" type="submit" disabled={saving}>
-                  {saving && <LoaderCircle className="spin" size={15} />}
                   {saving ? 'Saving...' : 'Save device'}
                 </button>
               </footer>

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Lock, LockOpen } from 'lucide-react';
 import type { FleetErrorCode, OwnerUnlockResult } from '../../../shared/types';
 import { PinDialog } from '../dialogs/PinDialog';
+import { StatusText } from './AdminKit';
 import { timeLabel } from './fleetFormat';
 
 /**
@@ -160,14 +160,12 @@ export function useOwnerSession(): OwnerSession {
   return { unlocked, prompting: prompt !== null, ensureUnlocked, run, lock, dialog };
 }
 
-/** Header chip shown on main admin pages while the main admin session is open. */
+/** Header chip shown on main admin pages while the main admin session is open: the state in words, then Lock. */
 export function OwnerSessionChip(props: { onLock: () => void }): JSX.Element {
   return (
     <span className="admin-owner-chip" role="status">
-      <LockOpen size={16} aria-hidden="true" />
-      <span>Main admin unlocked</span>
+      <StatusText tone="success">Main admin unlocked</StatusText>
       <button className="admin-btn admin-btn--ghost admin-btn--sm admin-owner-lock" type="button" onClick={props.onLock}>
-        <Lock size={14} />
         Lock
       </button>
     </span>

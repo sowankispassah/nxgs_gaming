@@ -5,7 +5,9 @@
  * device's Device page). All devices is a data page: the list and the detail
  * both fill the 1600px container. Built on kit primitives (tables, clickable
  * and selected rows, InlineSwitch, facts lists, panel footers); only column
- * widths and cell details live here. Self-contained, --a-* tokens only.
+ * widths and cell details live here. Self-contained, --a-* tokens only: no
+ * literal colours and no literal 500/600 weights (the theme weight tokens
+ * step up in the light theme so it keeps the same hierarchy).
  */
 
 /* Shared cell helpers */
@@ -60,8 +62,10 @@
   min-width: 220px;
 }
 
+/* A plain filled select (no decorative icon); "All stores" says what it is. */
 .fleet-toolbar-store {
   flex: 0 0 200px;
+  min-width: 0;
 }
 
 .fleet-table td {
@@ -106,7 +110,7 @@
 .fleet-device-name strong {
   overflow: hidden;
   font-size: var(--a-size-body);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -156,7 +160,7 @@
   width: 22%;
   max-width: 280px;
   overflow: hidden;
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -194,16 +198,16 @@
   gap: 4px;
 }
 
-/* Editor: fields on the left, devices on the right, a hairline between. */
+/* Editor: fields on the left, devices on the right, separated by space, not a line. */
 .fleet-editor-body {
   display: grid;
   grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
   align-items: start;
+  gap: 24px 64px;
 }
 
 .fleet-editor-fields {
   gap: 16px;
-  padding-right: 32px;
 }
 
 .fleet-moderator-active {
@@ -213,12 +217,10 @@
 }
 
 .fleet-device-picker {
-  align-self: stretch;
   min-width: 0;
   margin: 0;
   border: 0;
-  border-left: 1px solid var(--a-line);
-  padding: 0 0 0 32px;
+  padding: 0;
 }
 
 .fleet-device-picker legend {
@@ -243,9 +245,9 @@
 
 .fleet-device-group-label {
   margin: 0 0 2px;
-  color: var(--a-text-3);
+  color: var(--a-text-2);
   font-size: var(--a-size-caption);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .fleet-device-option {
@@ -311,6 +313,33 @@
   margin-top: 0;
 }
 
+/*
+ * Side by side, the two sections share a header row (subgrid), so both panels
+ * start at the same height even when only one description wraps.
+ */
+@media (min-width: 1101px) {
+  .fleet-settings-grid {
+    row-gap: 12px;
+  }
+
+  .fleet-settings-grid > .admin-section {
+    grid-row: span 2;
+    grid-template-rows: subgrid;
+  }
+
+  .fleet-settings-grid > .admin-section > .admin-section-header {
+    align-self: start;
+  }
+}
+
+/* Cloud sync's content under its header (also on the Device page): the facts panel and any notice. */
+.fleet-sync-body {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 12px;
+}
+
 .fleet-sync-error {
   color: var(--a-red);
 }
@@ -321,11 +350,6 @@
   display: grid;
   min-width: 0;
   gap: 20px;
-}
-
-.fleet-back {
-  justify-self: start;
-  margin: -6px 0 -4px -10px;
 }
 
 .fleet-detail-header {
@@ -341,14 +365,63 @@
   gap: 4px;
 }
 
+/*
+ * "All devices / Station 01": one 18px Red Hat Display line. The first part is
+ * the way back (a plain text button, underlined on hover), the separator is
+ * tertiary, the device name is the heading.
+ */
+.fleet-detail-path {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  font-family: var(--a-font-display);
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.fleet-detail-back {
+  flex: 0 0 auto;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: var(--a-radius-xs);
+  background: transparent;
+  color: var(--a-text-2);
+  padding: 0 6px;
+  font-weight: 400;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  white-space: nowrap;
+}
+
+.fleet-detail-back:not(:disabled):is(:hover, :focus-visible, .controller-focused, .focused) {
+  color: var(--a-text);
+}
+
+.fleet-detail-back:not(:disabled):hover {
+  text-decoration-line: underline;
+}
+
+/* The 6px padding already clears the text, so the outline sits on the box and keeps off the separator. */
+.fleet-detail-back:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
+  outline-offset: 0;
+}
+
+.fleet-detail-path-sep {
+  flex: 0 0 auto;
+  color: var(--a-text-3);
+}
+
 .fleet-detail-title {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
   margin: 0;
+  font-family: var(--a-font-display);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: var(--a-weight-display);
   letter-spacing: -0.01em;
   line-height: 1.3;
 }
@@ -357,6 +430,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The badge keeps body type, not the heading's display face. */
+.fleet-detail-title .admin-badge {
+  flex: 0 0 auto;
+  font-family: var(--a-font);
+  letter-spacing: 0;
 }
 
 .fleet-detail-meta {
@@ -383,7 +463,7 @@
 }
 
 .fleet-game-title {
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .fleet-games-table tr.is-off .fleet-game-title {
@@ -411,7 +491,7 @@
   vertical-align: middle;
 }
 
-/* Side column: assigned moderators, hairline rows like a facts list. */
+/* Side column: assigned moderators, hairline rows exactly like the facts list above it. */
 .fleet-assigned-list {
   display: grid;
   margin: 0;
@@ -428,8 +508,8 @@
   padding: 9px 0;
 }
 
-.fleet-assigned-list li:first-child {
-  border-top: 1px solid var(--a-line);
+.fleet-assigned-list li:last-child {
+  border-bottom: 0;
 }
 
 .fleet-assigned-name {
@@ -446,15 +526,5 @@
   .fleet-settings-grid,
   .fleet-editor-body {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .fleet-editor-fields {
-    padding-right: 0;
-  }
-
-  .fleet-device-picker {
-    border-left: 0;
-    border-top: 1px solid var(--a-line);
-    padding: 16px 0 0;
   }
 }

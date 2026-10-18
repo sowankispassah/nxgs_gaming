@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ArrowLeft,
-  Building2,
-  LoaderCircle,
-  MapPin,
-  ReceiptIndianRupee,
-  RefreshCw,
-  Trash2
-} from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import type {
   DeviceStatus,
   FleetStation,
@@ -210,43 +202,54 @@ export function FleetStationPanel(props: {
     <div className="fleet-detail">
       <PageActions>
         <button className="admin-btn" type="button" disabled={loading} onClick={() => void loadDetail()}>
-          {loading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
-          Refresh
+          {loading ? 'Refreshing...' : 'Refresh'}
         </button>
       </PageActions>
 
-      <button className="admin-btn admin-btn--ghost admin-btn--sm fleet-back" type="button" onClick={props.onBack}>
-        <ArrowLeft size={14} />
-        All devices
-      </button>
+      {/*
+        The title reads as a path, "All devices / Station 01": its first part is
+        the way back (a real button for keyboard and controller), so the page
+        needs no arrow icon or separate back button.
+      */}
+      <header className="fleet-detail-header">
+        <div className="fleet-detail-heading">
+          <div className="fleet-detail-path">
+            <button className="fleet-detail-back" type="button" onClick={props.onBack}>All devices</button>
+            {station && (
+              <>
+                <span className="fleet-detail-path-sep" aria-hidden="true">/</span>
+                <h2 className="fleet-detail-title">
+                  <span>{station.name || 'Unnamed device'}</span>
+                  {station.isCurrentDevice && <Badge>This device</Badge>}
+                </h2>
+              </>
+            )}
+          </div>
+          {station && (
+            <p className="fleet-detail-meta">
+              {removed ? (
+                <StatusText tone="danger">Removed</StatusText>
+              ) : (
+                <StatusText tone={station.status === 'active' ? 'success' : 'neutral'}>
+                  {station.status === 'active' ? 'Active' : 'Inactive'}
+                </StatusText>
+              )}
+              <span className="fleet-detail-place">{place || 'Store and location not set'}</span>
+            </p>
+          )}
+        </div>
+        {station && (
+          <button className="admin-btn admin-btn--sm" type="button" onClick={() => props.onViewEarnings(stationId)}>
+            View earnings
+          </button>
+        )}
+      </header>
 
       {loadError && <Notice tone="error">{loadError}</Notice>}
       {!station && loading && <LoadingState label="Loading device..." />}
 
       {station && (
         <>
-          <header className="fleet-detail-header">
-            <div className="fleet-detail-heading">
-              <h2 className="fleet-detail-title">
-                <span>{station.name || 'Unnamed device'}</span>
-                {station.isCurrentDevice && <Badge>This device</Badge>}
-              </h2>
-              <p className="fleet-detail-meta">
-                {removed ? (
-                  <StatusText tone="danger">Removed</StatusText>
-                ) : (
-                  <StatusText tone={station.status === 'active' ? 'success' : 'neutral'}>
-                    {station.status === 'active' ? 'Active' : 'Inactive'}
-                  </StatusText>
-                )}
-                <span className="fleet-detail-place">{place || 'Store and location not set'}</span>
-              </p>
-            </div>
-            <button className="admin-btn admin-btn--sm" type="button" onClick={() => props.onViewEarnings(stationId)}>
-              <ReceiptIndianRupee size={14} />
-              View earnings
-            </button>
-          </header>
 
           {removed && (
             <Notice tone="warning">
@@ -328,7 +331,7 @@ export function FleetStationPanel(props: {
               </PageSection>
 
               <PageSection
-                title="Device details"
+                title="Edit details"
                 description={station.isCurrentDevice ? 'Changes apply to this device right away.' : 'The device picks up changes at its next sync.'}
                 className="fleet-edit"
               >
@@ -362,34 +365,27 @@ export function FleetStationPanel(props: {
                         </select>
                       </Field>
                       <Field label="Store / branch name">
-                        <span className="admin-affix-input">
-                          <Building2 size={15} aria-hidden="true" />
-                          <input
-                            value={form.storeName}
-                            maxLength={120}
-                            placeholder="Main Store"
-                            disabled={saving || removed}
-                            onChange={(event) => update('storeName', event.target.value)}
-                          />
-                        </span>
+                        <input
+                          value={form.storeName}
+                          maxLength={120}
+                          placeholder="Main Store"
+                          disabled={saving || removed}
+                          onChange={(event) => update('storeName', event.target.value)}
+                        />
                       </Field>
                       <Field label="Device location">
-                        <span className="admin-affix-input">
-                          <MapPin size={15} aria-hidden="true" />
-                          <input
-                            value={form.location}
-                            maxLength={160}
-                            placeholder="Front Desk / Cabin 1 / Room 2"
-                            disabled={saving || removed}
-                            onChange={(event) => update('location', event.target.value)}
-                          />
-                        </span>
+                        <input
+                          value={form.location}
+                          maxLength={160}
+                          placeholder="Front Desk / Cabin 1 / Room 2"
+                          disabled={saving || removed}
+                          onChange={(event) => update('location', event.target.value)}
+                        />
                       </Field>
                     </div>
                     <footer className="admin-panel-footer">
                       {formNotice && <Notice tone={formNotice.tone}>{formNotice.text}</Notice>}
                       <button className="admin-btn admin-btn--primary" type="submit" disabled={saving || removed}>
-                        {saving && <LoaderCircle className="spin" size={15} />}
                         {saving ? 'Saving...' : 'Save device'}
                       </button>
                     </footer>
@@ -422,13 +418,11 @@ export function FleetStationPanel(props: {
                               Cancel
                             </button>
                             <button className="admin-btn admin-btn--danger confirming" type="button" disabled={removing} onClick={() => void removeDevice()}>
-                              {removing ? <LoaderCircle className="spin" size={15} /> : <Trash2 size={15} />}
                               {removing ? 'Removing...' : 'Remove device'}
                             </button>
                           </>
                         ) : (
                           <button className="admin-btn admin-btn--danger" type="button" onClick={() => setConfirmRemove(true)}>
-                            <Trash2 size={15} />
                             Remove device
                           </button>
                         )}

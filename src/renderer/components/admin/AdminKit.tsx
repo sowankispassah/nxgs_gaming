@@ -237,8 +237,8 @@ export function Field(props: {
 
 export interface SegmentedOption<T extends string> {
   value: T;
+  /** Text only: segments carry no icons. */
   label: ReactNode;
-  icon?: ReactNode;
   disabled?: boolean;
   title?: string;
 }
@@ -265,7 +265,6 @@ export function Segmented<T extends string>(props: {
             if (option.value !== props.value) props.onChange(option.value);
           }}
         >
-          {option.icon}
           {option.label}
         </button>
       ))}
@@ -336,7 +335,7 @@ export function InlineSwitch(props: {
   'aria-label'?: string;
   title?: string;
   className?: string;
-  /** Shows a spinner after the switch while the change saves. */
+  /** Shows a spinner after the switch while the change saves (a switch has no words to change, unlike a text button). */
   busy?: boolean;
 }): JSX.Element {
   return (

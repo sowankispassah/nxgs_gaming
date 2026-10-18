@@ -92,7 +92,7 @@
   margin: 2px 0 0;
 }
 
-.admin-screen .settings-choice > input[type='radio']:focus-visible {
+.settings-choice > input[type='radio']:focus-visible {
   outline: none;
 }
 
@@ -114,6 +114,7 @@
   gap: 20px;
 }
 
+/* The logo art is made for a dark background, so it sits on the dark logo tile in both themes (no outline). */
 .branding-preview {
   display: grid;
   flex: 0 0 auto;
@@ -121,9 +122,8 @@
   height: 104px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid var(--a-line);
   border-radius: var(--a-radius);
-  background: var(--a-inset);
+  background: var(--a-logo-tile);
 }
 
 .branding-preview-logo {
@@ -151,7 +151,7 @@
 .branding-title strong {
   color: var(--a-text);
   font-size: var(--a-size-body);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .branding-copy .admin-caption {
@@ -273,7 +273,7 @@
   margin: 0;
   color: var(--a-text);
   font-size: var(--a-size-body);
-  font-weight: 600;
+  font-weight: var(--a-weight-medium);
 }
 
 .update-headline > svg {
@@ -338,10 +338,11 @@
   background: var(--a-line-strong);
 }
 
+/* The fill is the accent (progress toward the chosen action); a failed download turns it red. */
 .update-progress-track > span {
   display: block;
   height: 100%;
-  background: var(--a-text);
+  background: var(--a-accent);
   transition: width var(--a-dur) var(--a-ease);
 }
 
@@ -359,7 +360,7 @@
 }
 
 .update-version {
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .update-release-link {
@@ -400,12 +401,26 @@
   padding-top: 16px;
 }
 
+/* The same compact hints as the game picker footer and the sidebar: 16px glyphs. */
 .update-modal-hints {
   --glyph-cross: currentColor;
   --glyph-circle: currentColor;
 
+  justify-content: flex-start;
+  gap: 16px;
   color: var(--a-text-3);
   font-size: var(--a-size-caption);
+  font-weight: 400;
+}
+
+.update-modal-hints .controller-hint {
+  gap: 6px;
+}
+
+.update-modal-hints .button-glyph,
+.update-modal-hints .button-glyph svg {
+  width: 16px;
+  height: 16px;
 }
 
 .update-modal-actions {

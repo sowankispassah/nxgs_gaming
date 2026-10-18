@@ -1,5 +1,16 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from 'react';
-import { Check, ChevronRight, Download, LoaderCircle, RefreshCw } from 'lucide-react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type KeyboardEvent,
+  type ReactNode,
+  type SetStateAction
+} from 'react';
+import { Check, ChevronRight } from 'lucide-react';
 import type {
   DeviceRecord,
   EarningsReport,
@@ -17,8 +28,6 @@ import {
   PageSection,
   Panel,
   Segmented,
-  Stat,
-  StatRow,
   StatusText,
   type NoticeTone,
   type Tone
@@ -80,6 +89,7 @@ function sessionStatusChip(row: EarningsSessionRow, now: number): SessionStatus 
 }
 
 const TOP_GAMES_PREVIEW = 8;
+const MINUTE = 60_000;
 
 function periodLabel(view: AccountsView): string {
   if (view.range !== 'custom') return RANGE_OPTIONS.find((option) => option.id === view.range)?.label ?? '';
@@ -269,11 +279,9 @@ export function AccountsPanel(props: {
     <div className={`accounts-page${report && loading ? ' is-busy' : ''}`} aria-busy={loading}>
       <PageActions>
         <button className="admin-btn" type="button" disabled={busy} onClick={refresh}>
-          {loading ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <RefreshCw size={15} aria-hidden="true" />}
-          Refresh
+          {loading ? 'Refreshing...' : 'Refresh'}
         </button>
         <button className="admin-btn" type="button" disabled={exporting || Boolean(invalidRange)} onClick={() => void exportCsv()}>
-          {exporting ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <Download size={15} aria-hidden="true" />}
           {exporting ? 'Saving...' : 'Export CSV'}
         </button>
       </PageActions>
@@ -293,7 +301,6 @@ export function AccountsPanel(props: {
               This device
             </button>
             <button type="button" aria-pressed={allScope} disabled={scopePending} onClick={() => void chooseScope('all')}>
-              {scopePending && <LoaderCircle className="spin" size={14} aria-hidden="true" />}
               All devices
             </button>
           </div>
@@ -332,8 +339,7 @@ export function AccountsPanel(props: {
         <div className="accounts-error">
           <Notice tone="error">{error}</Notice>
           <button className="admin-btn admin-btn--sm" type="button" disabled={loading} onClick={refresh}>
-            <RefreshCw size={14} aria-hidden="true" />
-            Retry
+            {loading ? 'Retrying...' : 'Retry'}
           </button>
         </div>
       )}
@@ -342,17 +348,22 @@ export function AccountsPanel(props: {
 
       {report && (
         <>
-          <StatRow aria-label="Totals" minCellWidth={200}>
-            <Stat label="Total earned" value={formatPaise(report.totalPaise, report.currency)} sub={`${period} · ${scopeName}`} />
-            <Stat
+          {/* One hero figure (Total earned); the other figures are quieter facts beside it. */}
+          <dl className="accounts-figures" aria-label="Totals">
+            <div className="accounts-hero">
+              <dt className="accounts-figure-label">Total earned</dt>
+              <dd className="accounts-hero-value">{formatPaise(report.totalPaise, report.currency)}</dd>
+              <dd className="accounts-figure-sub">{period} · {scopeName}</dd>
+            </div>
+            <Figure
               label="Paid sessions"
               value={report.sessionCount.toLocaleString('en-IN')}
               sub={report.sessionCount > 0
                 ? `${formatPaise(Math.round(report.totalPaise / report.sessionCount), report.currency)} on average`
                 : period}
             />
-            <Stat label="Paid time" value={durationLabel(report.paidMinutes)} sub={`${report.paidMinutes.toLocaleString('en-IN')} min sold`} />
-            <Stat
+            <Figure label="Paid time" value={durationLabel(report.paidMinutes)} sub={`${report.paidMinutes.toLocaleString('en-IN')} min sold`} />
+            <Figure
               label="Most played game"
               value={topGame?.title ?? 'None yet'}
               title={topGame?.title}
@@ -360,11 +371,11 @@ export function AccountsPanel(props: {
                 ? `${plural(topGame.sessionCount, 'session', 'sessions')} · ${durationLabel(topGame.playMinutes)}`
                 : 'No games recorded in this period'}
             />
-          </StatRow>
+          </dl>
 
           <PageSection
             title="Paid sessions"
-            description={report.rows.length > 0 ? `${sortLabel}. Select a session to see the games played and who paid.` : undefined}
+            description={report.rows.length > 0 ? `${sortLabel}. Each strip is the paid time, marked where games were played. Select a session for details.` : undefined}
             actions={<span className="admin-count">{plural(report.rows.length, 'session', 'sessions')}</span>}
           >
             {report.truncated && (
@@ -408,40 +419,21 @@ export function AccountsPanel(props: {
                           <th scope="col">Device</th>
                           <th scope="col" className="admin-num">Sessions</th>
                           <th scope="col" className="admin-num">Amount</th>
-                          <th scope="col" className="accounts-share-col">Share</th>
+                          <th scope="col" className="admin-num accounts-share-col">Share</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {report.byStation.map((station, index) => {
-                          const picked = view.stationIds.includes(station.stationId);
-                          const share = report.totalPaise > 0 ? (station.amountPaise / report.totalPaise) * 100 : 0;
-                          return (
-                            <tr key={station.stationId} className={`accounts-rank-row is-clickable${picked ? ' is-selected' : ''}`} onClick={() => toggleStation(station)}>
-                              <td className="accounts-rank">{index + 1}</td>
-                              <td className="accounts-rank-name">
-                                <button
-                                  className="accounts-row-pick"
-                                  type="button"
-                                  aria-pressed={picked}
-                                  title={picked ? `Stop filtering by ${station.stationName}` : `Show only ${station.stationName}`}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleStation(station);
-                                  }}
-                                >
-                                  <span>{station.stationName}</span>
-                                  {picked && <Check size={14} aria-hidden="true" />}
-                                </button>
-                              </td>
-                              <td className="admin-num">{station.sessionCount.toLocaleString('en-IN')}</td>
-                              <td className="admin-num accounts-amount">{formatPaise(station.amountPaise, report.currency)}</td>
-                              <td className="accounts-share-cell">
-                                <ShareBar percent={share} />
-                                <span className="accounts-share-value">{Math.round(share)}%</span>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {report.byStation.map((station, index) => (
+                          <StationShareRow
+                            key={station.stationId}
+                            rank={index + 1}
+                            station={station}
+                            totalPaise={report.totalPaise}
+                            currency={report.currency}
+                            picked={view.stationIds.includes(station.stationId)}
+                            onToggle={() => toggleStation(station)}
+                          />
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -459,26 +451,19 @@ export function AccountsPanel(props: {
               {report.byGame.length === 0 ? (
                 <p className="accounts-note">No games recorded in this period. Sessions from before version 0.25.0 did not record games.</p>
               ) : (
-                <div className="admin-table-scroll accounts-rank-table">
+                <div className="admin-table-scroll accounts-rank-table accounts-rank-table--games">
                   <table className="admin-table">
                     <thead>
                       <tr>
                         <th scope="col" className="accounts-rank-col"><span className="admin-visually-hidden">Rank</span></th>
                         <th scope="col">Game</th>
                         <th scope="col" className="admin-num">Sessions</th>
-                        <th scope="col" className="admin-num">Play time</th>
-                        <th scope="col" className="accounts-share-col"><span className="admin-visually-hidden">Compared with the top game</span></th>
+                        <th scope="col" className="admin-num accounts-share-col">Play time</th>
                       </tr>
                     </thead>
                     <tbody>
                       {games.map((game, index) => (
-                        <tr key={game.gameId || game.title}>
-                          <td className="accounts-rank">{index + 1}</td>
-                          <td className="accounts-rank-name"><span title={game.title}>{game.title}</span></td>
-                          <td className="admin-num">{game.sessionCount.toLocaleString('en-IN')}</td>
-                          <td className="admin-num">{durationLabel(game.playMinutes)}</td>
-                          <td className="accounts-share-cell"><ShareBar percent={(game.playMinutes / maxGameMinutes) * 100} /></td>
-                        </tr>
+                        <GameShareRow key={game.gameId || game.title} rank={index + 1} game={game} maxMinutes={maxGameMinutes} />
                       ))}
                     </tbody>
                   </table>
@@ -492,15 +477,484 @@ export function AccountsPanel(props: {
   );
 }
 
-/** A thin neutral bar for a share of the whole (or of the top row). */
-function ShareBar(props: { percent: number }): JSX.Element {
-  const width = props.percent > 0 ? Math.max(2, Math.min(100, props.percent)) : 0;
+/** A secondary figure beside the hero: label, value (quieter than the hero), optional sub line. */
+function Figure(props: { label: string; value: ReactNode; sub?: ReactNode; title?: string }): JSX.Element {
   return (
-    <span className="accounts-share-bar" aria-hidden="true">
-      <span style={{ width: `${width}%` }} />
+    <div className="accounts-figure">
+      <dt className="accounts-figure-label">{props.label}</dt>
+      <dd className="accounts-figure-value" title={props.title}>{props.value}</dd>
+      {props.sub && <dd className="accounts-figure-sub">{props.sub}</dd>}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- chart tooltip
+
+interface ChartTipState {
+  anchor: DOMRect;
+  content: ReactNode;
+}
+
+interface ChartTipController {
+  tip: ChartTipState | null;
+  show: (anchor: DOMRect, content: ReactNode) => void;
+  hide: () => void;
+}
+
+/** Hover/focus readout for a chart mark (timeline segment, share bar). Hides on scroll or resize. */
+function useChartTip(): ChartTipController {
+  const [tip, setTip] = useState<ChartTipState | null>(null);
+  const open = tip !== null;
+  useEffect(() => {
+    if (!open) return undefined;
+    const hide = (): void => setTip(null);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+    return () => {
+      window.removeEventListener('scroll', hide, true);
+      window.removeEventListener('resize', hide);
+    };
+  }, [open]);
+  return useMemo(() => ({
+    tip,
+    show: (anchor: DOMRect, content: ReactNode) => setTip({ anchor, content }),
+    hide: () => setTip(null)
+  }), [tip]);
+}
+
+/**
+ * The readout floats above its mark (below it when there is no room), kept
+ * inside the window. It is fixed-positioned so table scrollers never clip it,
+ * and stays inside .admin-screen so it follows the theme. Screen readers get
+ * the same text from the mark's label.
+ */
+function ChartTip(props: { tip: ChartTipState | null }): JSX.Element | null {
+  const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || !props.tip) {
+      setPosition(null);
+      return;
+    }
+    const { anchor } = props.tip;
+    const gap = 8;
+    const width = element.offsetWidth;
+    const height = element.offsetHeight;
+    const left = Math.min(Math.max(8, anchor.left + anchor.width / 2 - width / 2), window.innerWidth - width - 8);
+    const above = anchor.top - gap - height;
+    setPosition({ left, top: above >= 8 ? above : anchor.bottom + gap });
+  }, [props.tip]);
+
+  if (!props.tip) return null;
+  return (
+    <div
+      ref={ref}
+      className="accounts-tip"
+      aria-hidden="true"
+      style={position ? { left: position.left, top: position.top } : { left: 0, top: 0, visibility: 'hidden' }}
+    >
+      {props.tip.content}
+    </div>
+  );
+}
+
+function TipLines(props: { title: ReactNode; detail: ReactNode }): JSX.Element {
+  return (
+    <>
+      <span className="accounts-tip-title">{props.title}</span>
+      <span className="accounts-tip-detail">{props.detail}</span>
+    </>
+  );
+}
+
+// ------------------------------------------------------------ share bars
+
+/** One thin single-hue bar from the start, the exact value in a right-aligned tabular column. */
+function ShareMeter(props: { percent: number; value: ReactNode; tip: ChartTipController; tipContent: ReactNode; meterRef?: { current: HTMLSpanElement | null } }): JSX.Element {
+  const width = props.percent > 0 ? Math.max(1.5, Math.min(100, props.percent)) : 0;
+  return (
+    <span
+      ref={(element) => {
+        if (props.meterRef) props.meterRef.current = element;
+      }}
+      className="accounts-meter"
+      onMouseEnter={(event) => props.tip.show(barRect(event.currentTarget), props.tipContent)}
+      onMouseLeave={props.tip.hide}
+    >
+      <span className="accounts-meter-track" aria-hidden="true">
+        <span className="accounts-meter-fill" style={{ width: `${width}%` }} />
+      </span>
+      <span className="accounts-meter-value">{props.value}</span>
     </span>
   );
 }
+
+/** The bar's own box, so the readout sits just above the bar rather than above the cell. */
+function barRect(meter: HTMLElement): DOMRect {
+  return (meter.querySelector('.accounts-meter-track') ?? meter).getBoundingClientRect();
+}
+
+function StationShareRow(props: {
+  rank: number;
+  station: EarningsReport['byStation'][number];
+  totalPaise: number;
+  currency: string;
+  picked: boolean;
+  onToggle: () => void;
+}): JSX.Element {
+  const { station } = props;
+  const tip = useChartTip();
+  const meterRef = useRef<HTMLSpanElement | null>(null);
+  const share = props.totalPaise > 0 ? (station.amountPaise / props.totalPaise) * 100 : 0;
+  const amount = formatPaise(station.amountPaise, props.currency);
+  const tipContent = (
+    <TipLines
+      title={station.stationName}
+      detail={<><strong>{amount}</strong> · {share.toLocaleString('en-IN', { maximumFractionDigits: 1 })}% of the total</>}
+    />
+  );
+  return (
+    <tr className={`accounts-rank-row is-clickable${props.picked ? ' is-selected' : ''}`} onClick={props.onToggle}>
+      <td className="accounts-rank">{props.rank}</td>
+      <td className="accounts-rank-name">
+        <button
+          className="accounts-row-pick"
+          type="button"
+          aria-pressed={props.picked}
+          title={props.picked ? `Stop filtering by ${station.stationName}` : `Show only ${station.stationName}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onToggle();
+          }}
+          onFocus={() => {
+            if (meterRef.current) tip.show(barRect(meterRef.current), tipContent);
+          }}
+          onBlur={tip.hide}
+        >
+          <span>{station.stationName}</span>
+        </button>
+      </td>
+      <td className="admin-num">{station.sessionCount.toLocaleString('en-IN')}</td>
+      <td className="admin-num accounts-amount">{amount}</td>
+      <td className="accounts-share-cell">
+        <ShareMeter percent={share} value={`${Math.round(share)}%`} tip={tip} tipContent={tipContent} meterRef={meterRef} />
+        <ChartTip tip={tip.tip} />
+      </td>
+    </tr>
+  );
+}
+
+function GameShareRow(props: { rank: number; game: EarningsReport['byGame'][number]; maxMinutes: number }): JSX.Element {
+  const { game } = props;
+  const tip = useChartTip();
+  const tipContent = (
+    <TipLines
+      title={game.title}
+      detail={<><strong>{durationLabel(game.playMinutes)}</strong> · {plural(game.sessionCount, 'session', 'sessions')}</>}
+    />
+  );
+  return (
+    <tr>
+      <td className="accounts-rank">{props.rank}</td>
+      <td className="accounts-rank-name"><span title={game.title}>{game.title}</span></td>
+      <td className="admin-num">{game.sessionCount.toLocaleString('en-IN')}</td>
+      <td className="accounts-share-cell">
+        <ShareMeter percent={(game.playMinutes / props.maxMinutes) * 100} value={durationLabel(game.playMinutes)} tip={tip} tipContent={tipContent} />
+        <ChartTip tip={tip.tip} />
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------- session timeline
+
+/** One game entry on the strip: real times for the labels, the part inside the paid time for drawing. */
+interface TimelinePlay {
+  /** Index in `row.games`, so the expanded list and the strip can point at each other. */
+  entryIndex: number;
+  title: string;
+  from: number;
+  to: number;
+  /** Still open and counting up to now. */
+  live: boolean;
+  minutes: number;
+  drawFrom: number;
+  drawTo: number;
+  /** "Forza Horizon 5 · 2:06–2:50 pm · 44 min" */
+  label: string;
+}
+
+interface TimelinePiece {
+  /** A game played, paid time with no game, or (live sessions) paid time still to come. */
+  kind: 'game' | 'idle' | 'left';
+  from: number;
+  to: number;
+  /** Index in `plays` for game pieces. */
+  play?: number;
+}
+
+interface SessionTimeline {
+  /** The paid window: from the session start for its paid minutes. */
+  start: number;
+  end: number;
+  paidMinutes: number;
+  plays: TimelinePlay[];
+  /** Game and idle pieces covering the paid window, in order. */
+  pieces: TimelinePiece[];
+  playedMinutes: number;
+  /** Set while the session is live: now, inside the paid window. */
+  now?: number;
+}
+
+/** "2:06–2:50 pm" (one am/pm when both ends share it), or "2:51 pm–now". */
+function timeRangeLabel(from: number, to: number, toNow: boolean): string {
+  const start = timeLabel(new Date(from).toISOString());
+  if (toNow) return `${start}–now`;
+  const end = timeLabel(new Date(to).toISOString());
+  const split = (label: string): [string, string] => {
+    const match = /^(.*?)[\s  ]*([ap]\.?\s?m\.?)$/i.exec(label);
+    return match ? [match[1], match[2].toLowerCase()] : [label, ''];
+  };
+  const [startTime, startHalf] = split(start);
+  const [, endHalf] = split(end);
+  return startHalf && startHalf === endHalf ? `${startTime}–${end}` : `${start}–${end}`;
+}
+
+/** "3 pm" for a scale label. */
+function hourLabel(time: number): string {
+  return new Date(time).toLocaleTimeString('en-IN', { hour: 'numeric' });
+}
+
+/**
+ * How the paid time was used. The paid window runs from `startedAt` for
+ * `durationMinutes`. Each game entry is a piece from its start to its end,
+ * where an open entry ends like the minutes do (`entryEnd`: the session end,
+ * else the paid time's end but never after now, else now), clamped to the
+ * paid window. Whatever is left between games is idle.
+ */
+function sessionTimeline(row: EarningsSessionRow, now: number): SessionTimeline | null {
+  const start = new Date(row.startedAt).getTime();
+  const paidMinutes = Math.max(0, row.durationMinutes);
+  if (!Number.isFinite(start) || paidMinutes <= 0) return null;
+  const end = start + paidMinutes * MINUTE;
+
+  const plays: TimelinePlay[] = [];
+  row.games.forEach((entry, entryIndex) => {
+    const from = new Date(entry.startedAt).getTime();
+    const to = entryEnd(entry, row, now);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return;
+    const drawFrom = Math.max(from, start);
+    const drawTo = Math.min(to, end);
+    if (drawTo <= drawFrom) return;
+    const live = !entry.endedAt && !row.endedAt && to >= now;
+    const title = entry.title || 'Unknown game';
+    const minutes = entryMinutes(entry, row, now);
+    plays.push({
+      entryIndex,
+      title,
+      from,
+      to,
+      live,
+      minutes,
+      drawFrom,
+      drawTo,
+      label: `${title} · ${timeRangeLabel(from, to, live)} · ${durationLabel(minutes)}`
+    });
+  });
+  plays.sort((left, right) => left.drawFrom - right.drawFrom);
+
+  const pieces: TimelinePiece[] = [];
+  let cursor = start;
+  let played = 0;
+  plays.forEach((play, index) => {
+    // Entries never overlap in practice; if they do, the later one starts where the earlier one ends.
+    const from = Math.max(play.drawFrom, cursor);
+    if (play.drawTo <= from) return;
+    if (from > cursor) pieces.push({ kind: 'idle', from: cursor, to: from });
+    pieces.push({ kind: 'game', from, to: play.drawTo, play: index });
+    played += play.drawTo - from;
+    cursor = play.drawTo;
+  });
+  const live = row.status === 'active' && !row.endedAt && !isUnfinishedSession(row, now) && now > start && now < end;
+  if (cursor < end) {
+    // A live session splits what is left at now: idle so far, then the time still to come.
+    if (live && now > cursor) pieces.push({ kind: 'idle', from: cursor, to: now });
+    pieces.push({ kind: live ? 'left' : 'idle', from: live ? Math.max(cursor, now) : cursor, to: end });
+  }
+
+  return { start, end, paidMinutes, plays, pieces, playedMinutes: played / MINUTE, now: live ? now : undefined };
+}
+
+/** "Paid time 1 hr 30 min, 1 hr 28 min played: Forza Horizon 5, 2:06 to 2:50 pm, 44 min; ..." */
+function timelineSummary(timeline: SessionTimeline): string {
+  const paid = `Paid time ${durationLabel(timeline.paidMinutes)}`;
+  if (timeline.plays.length === 0) return `${paid}. No games recorded.`;
+  const plays = timeline.plays.map((play) => `${play.title}, ${timeRangeLabel(play.from, play.to, play.live).replace('–', ' to ')}, ${durationLabel(play.minutes)}`);
+  return `${paid}, ${durationLabel(timeline.playedMinutes)} played: ${plays.join('; ')}.`;
+}
+
+/** Ticks on the clock's quarter (half, whole) hours inside the paid window. */
+function scaleTicks(start: number, end: number): number[] {
+  const span = (end - start) / MINUTE;
+  const step = span <= 150 ? 15 : span <= 300 ? 30 : 60;
+  const first = new Date(start);
+  first.setSeconds(0, 0);
+  const offset = first.getMinutes() % step;
+  let tick = first.getTime() + (offset === 0 && first.getTime() >= start ? 0 : (step - offset) * MINUTE);
+  const ticks: number[] = [];
+  for (; tick < end; tick += step * MINUTE) {
+    if (tick - start >= MINUTE && end - tick >= MINUTE) ticks.push(tick);
+  }
+  return ticks;
+}
+
+/**
+ * The session timeline strip, the Accounts signature: the full width is the
+ * paid time; each game played is a neutral segment (alternating two tones),
+ * idle time stays empty track, and every piece is separated by a 2px gap.
+ * `detail` is the larger strip of the expanded row, with a clock scale and
+ * focusable segments; the table cell strip is one image with a summary label.
+ */
+function SessionStrip(props: {
+  timeline: SessionTimeline;
+  detail?: boolean;
+  activeEntry?: number | null;
+  onActiveEntry?: (entryIndex: number | null) => void;
+}): JSX.Element {
+  const { timeline, detail } = props;
+  const tip = useChartTip();
+  const stripRef = useRef<HTMLSpanElement>(null);
+  const span = timeline.end - timeline.start;
+  const percent = (time: number): number => ((time - timeline.start) / span) * 100;
+  const last = timeline.pieces.length - 1;
+
+  // The readout points at the drawn bar, not at the taller hit area around it.
+  const anchorFor = (piece: HTMLElement): DOMRect => {
+    const box = piece.getBoundingClientRect();
+    const strip = stripRef.current?.getBoundingClientRect();
+    return strip ? new DOMRect(box.left, strip.top, box.width, strip.height) : box;
+  };
+
+  let gameIndex = 0;
+  const pieces = timeline.pieces.map((piece, index) => {
+    const left = percent(piece.from);
+    const width = percent(piece.to) - left;
+    // A 2px gap at every inner boundary: 1px off each neighbour. The strip's own ends stay square to the track.
+    const insetLeft = index === 0 ? 0 : 1;
+    const insetRight = index === last ? 0 : 1;
+    const style: CSSProperties = {
+      left: `calc(${left.toFixed(3)}% + ${insetLeft}px)`,
+      width: `max(${piece.kind === 'game' ? 2 : 0}px, calc(${width.toFixed(3)}% - ${insetLeft + insetRight}px))`
+    };
+
+    if (piece.kind !== 'game') {
+      const minutes = (piece.to - piece.from) / MINUTE;
+      const content = (
+        <TipLines
+          title={piece.kind === 'left' ? 'Time left' : 'No game'}
+          detail={<>{timeRangeLabel(piece.from, piece.to, false)} · <strong>{durationLabel(minutes)}</strong></>}
+        />
+      );
+      return (
+        <span
+          key={`${piece.kind}-${piece.from}`}
+          className={`accounts-strip-piece is-idle${piece.kind === 'left' ? ' is-left' : ''}`}
+          style={style}
+          onMouseEnter={(event) => tip.show(anchorFor(event.currentTarget), content)}
+          onMouseLeave={tip.hide}
+        />
+      );
+    }
+
+    const play = timeline.plays[piece.play ?? 0];
+    const alternate = gameIndex % 2 === 1;
+    gameIndex += 1;
+    const content = (
+      <TipLines
+        title={play.title}
+        detail={<>{timeRangeLabel(play.from, play.to, play.live)} · <strong>{durationLabel(play.minutes)}</strong></>}
+      />
+    );
+    const enter = (element: HTMLElement): void => {
+      tip.show(anchorFor(element), content);
+      props.onActiveEntry?.(play.entryIndex);
+    };
+    const leave = (): void => {
+      tip.hide();
+      props.onActiveEntry?.(null);
+    };
+    return (
+      <span
+        key={`game-${play.entryIndex}`}
+        className={`accounts-strip-piece is-game${alternate ? ' is-alt' : ''}${props.activeEntry === play.entryIndex ? ' is-active' : ''}`}
+        style={style}
+        role={detail ? 'img' : undefined}
+        tabIndex={detail ? 0 : undefined}
+        aria-label={detail ? play.label : undefined}
+        onMouseEnter={(event) => enter(event.currentTarget)}
+        onMouseLeave={leave}
+        onFocus={detail ? (event) => enter(event.currentTarget) : undefined}
+        onBlur={detail ? leave : undefined}
+      />
+    );
+  });
+
+  const strip = (
+    <span
+      ref={stripRef}
+      className={`accounts-strip${detail ? ' accounts-strip--detail' : ''}`}
+      role={detail ? 'group' : 'img'}
+      aria-label={detail ? `Session timeline, ${timeRangeLabel(timeline.start, timeline.end, false).replace('–', ' to ')}` : timelineSummary(timeline)}
+    >
+      {pieces}
+      {detail && timeline.now !== undefined && (
+        <span className="accounts-strip-now" style={{ left: `${percent(timeline.now).toFixed(3)}%` }} aria-hidden="true" />
+      )}
+    </span>
+  );
+
+  if (!detail) {
+    return (
+      <>
+        {strip}
+        <ChartTip tip={tip.tip} />
+      </>
+    );
+  }
+
+  // Scale: start and end of the paid time, clock ticks between, hour labels where they have room.
+  const nowAt = timeline.now !== undefined ? percent(timeline.now) : undefined;
+  const ticks = scaleTicks(timeline.start, timeline.end);
+  return (
+    <div className="accounts-strip-chart">
+      {strip}
+      <div className="accounts-strip-scale" aria-hidden="true">
+        {ticks.map((tick) => {
+          const at = percent(tick);
+          const hour = new Date(tick).getMinutes() === 0;
+          const labelled = hour && at > 16 && at < 84 && (nowAt === undefined || Math.abs(at - nowAt) > 12);
+          return (
+            <span key={tick} className={`accounts-strip-tick${hour ? ' is-hour' : ''}`} style={{ left: `${at.toFixed(3)}%` }}>
+              {labelled && <span className="accounts-strip-tick-label">{hourLabel(tick)}</span>}
+            </span>
+          );
+        })}
+        {nowAt !== undefined && nowAt > 10 && nowAt < 90 && (
+          <span className="accounts-strip-tick is-now" style={{ left: `${nowAt.toFixed(3)}%` }}>
+            <span className="accounts-strip-tick-label">Now</span>
+          </span>
+        )}
+        <span className="accounts-strip-end is-start">{timeLabel(new Date(timeline.start).toISOString())}</span>
+        <span className="accounts-strip-end is-end">{timeLabel(new Date(timeline.end).toISOString())}</span>
+      </div>
+      <ChartTip tip={tip.tip} />
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ sessions table
 
 function SessionsTable(props: {
   rows: EarningsSessionRow[];
@@ -579,6 +1033,7 @@ function SessionRows(props: {
   const { row } = props;
   const detailId = `accounts-session-${row.stationId}-${row.id}`;
   const gamesTitle = props.sessionGames.map((game) => `${game.title} (${durationLabel(game.minutes)})`).join(', ');
+  const timeline = sessionTimeline(row, props.now);
   return (
     <>
       <tr className={`accounts-row is-clickable${props.open ? ' is-open' : ''}`} onClick={props.onToggle}>
@@ -613,8 +1068,9 @@ function SessionRows(props: {
         <td className="accounts-customer-cell"><CustomerSummary payers={row.payers ?? []} /></td>
         <td className="accounts-plan-cell">{row.planNames.length ? row.planNames.join(', ') : '—'}</td>
         <td className="accounts-games-cell">
+          {timeline && <SessionStrip timeline={timeline} />}
           {props.sessionGames.length === 0 ? (
-            <span className="accounts-muted">{row.status === 'active' && !isUnfinishedSession(row, props.now) ? 'None yet' : 'Not recorded'}</span>
+            <span className="accounts-games accounts-muted">{row.status === 'active' && !isUnfinishedSession(row, props.now) ? 'None yet' : 'Not recorded'}</span>
           ) : (
             <span className="accounts-games" title={gamesTitle}>
               {props.sessionGames.map((game, index) => (
@@ -645,7 +1101,7 @@ function SessionRows(props: {
       {props.open && (
         <tr className="admin-table-detail accounts-detail-row" id={detailId}>
           <td colSpan={props.columnCount}>
-            <SessionDetail row={row} now={props.now} />
+            <SessionDetail row={row} now={props.now} timeline={timeline} />
           </td>
         </tr>
       )}
@@ -674,8 +1130,9 @@ function CustomerSummary(props: { payers: PaymentPayerDetails[] }): JSX.Element 
   );
 }
 
-function SessionDetail(props: { row: EarningsSessionRow; now: number }): JSX.Element {
-  const { row } = props;
+function SessionDetail(props: { row: EarningsSessionRow; now: number; timeline: SessionTimeline | null }): JSX.Element {
+  const { row, timeline } = props;
+  const [activeEntry, setActiveEntry] = useState<number | null>(null);
   const payers = (row.payers ?? []).filter(payerHasDetails);
   const missingCheckouts = row.checkoutIds.filter((id) => !payers.some((payer) => payer.checkoutId === id));
   const unfinished = isUnfinishedSession(row, props.now);
@@ -689,11 +1146,21 @@ function SessionDetail(props: { row: EarningsSessionRow; now: number }): JSX.Ele
     }
     return 'Now';
   };
+  const usage = timeline && timeline.plays.length > 0
+    ? [
+        `${durationLabel(timeline.playedMinutes)} played of ${durationLabel(timeline.paidMinutes)}`,
+        timeline.now !== undefined ? `${durationLabel((timeline.end - timeline.now) / MINUTE)} left` : ''
+      ].filter(Boolean).join(' · ')
+    : '';
 
   return (
     <div className="accounts-detail">
       <section className="accounts-detail-section">
-        <h3 className="admin-subheading">Games played</h3>
+        <header className="accounts-detail-heading">
+          <h3 className="admin-subheading">Games played</h3>
+          {usage && <span className="accounts-detail-usage">{usage}</span>}
+        </header>
+        {timeline && <SessionStrip timeline={timeline} detail activeEntry={activeEntry} onActiveEntry={setActiveEntry} />}
         {row.games.length === 0 ? (
           <p className="accounts-note">
             {playing ? 'No game started yet.' : 'Not recorded. Games are recorded for sessions from version 0.25.0.'}
@@ -701,7 +1168,12 @@ function SessionDetail(props: { row: EarningsSessionRow; now: number }): JSX.Ele
         ) : (
           <ol className="accounts-timeline">
             {row.games.map((entry, index) => (
-              <li key={`${entry.gameId}-${entry.startedAt}-${index}`}>
+              <li
+                key={`${entry.gameId}-${entry.startedAt}-${index}`}
+                className={activeEntry === index ? 'is-active' : undefined}
+                onMouseEnter={() => setActiveEntry(index)}
+                onMouseLeave={() => setActiveEntry(null)}
+              >
                 <span className="accounts-timeline-time">{timeLabel(entry.startedAt)} – {endLabel(entry)}</span>
                 <span className="accounts-timeline-title">{entry.title || 'Unknown game'}</span>
                 <span className="accounts-timeline-duration">{durationLabel(entryMinutes(entry, row, props.now))}</span>
@@ -726,7 +1198,9 @@ function SessionDetail(props: { row: EarningsSessionRow; now: number }): JSX.Ele
       </section>
 
       <section className="accounts-detail-section">
-        <h3 className="admin-subheading">{payers.length > 1 ? `Payments (${payers.length})` : 'Payment'}</h3>
+        <header className="accounts-detail-heading">
+          <h3 className="admin-subheading">{payers.length > 1 ? `Payments (${payers.length})` : 'Payment'}</h3>
+        </header>
         {payers.length === 0 && missingCheckouts.length === 0 && <p className="accounts-note">No payment details recorded.</p>}
         {payers.map((payer) => {
           const method = paymentMethodLabel(payer.method);

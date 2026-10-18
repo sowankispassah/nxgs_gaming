@@ -1,16 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import {
-  FileUp,
-  FolderOpen,
-  Image as ImageIcon,
-  LoaderCircle,
-  Plus,
-  Save,
-  ScanSearch,
-  Search,
-  Trash2,
-  X
-} from 'lucide-react';
+import { LoaderCircle, Search, Trash2, X } from 'lucide-react';
 import type {
   DeviceRecord,
   GameInput,
@@ -230,12 +219,10 @@ export function GameManager(props: { currentDevice: DeviceRecord; games: GameRec
   return (
     <div className="games-layout">
       <PageActions>
-        <button className="admin-btn" type="button" title="New game" onClick={startNewGame}>
-          <Plus size={15} />
+        <button className="admin-btn" type="button" onClick={startNewGame}>
           New game
         </button>
         <button ref={chooseButtonRef} className="admin-btn admin-btn--primary" type="button" onClick={() => setPickerOpen(true)}>
-          <Search size={15} />
           Choose installed game
         </button>
       </PageActions>
@@ -252,7 +239,6 @@ export function GameManager(props: { currentDevice: DeviceRecord; games: GameRec
               title="No games linked yet"
               action={(
                 <button className="admin-btn" type="button" onClick={() => setPickerOpen(true)}>
-                  <Search size={15} />
                   Choose installed game
                 </button>
               )}
@@ -271,7 +257,7 @@ export function GameManager(props: { currentDevice: DeviceRecord; games: GameRec
                     onChange={(event) => setQuery(event.target.value)}
                   />
                   {query && (
-                    <button className="games-search-clear" type="button" aria-label="Clear search" onClick={() => setQuery('')}>
+                    <button className="games-search-clear" type="button" title="Clear search" aria-label="Clear search" onClick={() => setQuery('')}>
                       <X size={14} />
                     </button>
                   )}
@@ -341,7 +327,6 @@ export function GameManager(props: { currentDevice: DeviceRecord; games: GameRec
             <footer className="admin-panel-footer game-editor-footer">
               {message ? <Notice tone={message.tone}>{message.text}</Notice> : <span aria-hidden="true" />}
               <button className="admin-btn admin-btn--primary" type="button" disabled={pending} onClick={() => void saveGame()}>
-                {pending ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}
                 {pending ? 'Saving...' : 'Save game'}
               </button>
             </footer>
@@ -579,7 +564,7 @@ function AssetField(props: {
         className={`asset-preview asset-preview--${props.kind}`}
         path={previewPath}
         alt={`Selected ${props.kind} preview`}
-        fallback={<span className="asset-placeholder" title="No artwork"><ImageIcon size={16} aria-label="No artwork" /></span>}
+        fallback={<span className="asset-placeholder">No image</span>}
       />
       <Field
         htmlFor={props.id}
@@ -605,7 +590,6 @@ function AssetField(props: {
             disabled={props.browsing}
             onClick={props.onBrowse}
           >
-            <ImageIcon size={15} />
             {props.browsing ? 'Browsing...' : 'Browse'}
           </button>
         </div>
@@ -780,7 +764,6 @@ function GameForm(props: {
               />
               {props.form.launchType === 'localExe' && (
                 <button className="admin-btn game-browse" type="button" disabled={picking === 'exe'} onClick={() => void pickExecutable()}>
-                  <FileUp size={15} />
                   {picking === 'exe' ? 'Browsing...' : 'Browse EXE'}
                 </button>
               )}
@@ -795,7 +778,6 @@ function GameForm(props: {
                 onChange={(event) => props.onChange('workingDirectory', event.target.value)}
               />
               <button className="admin-btn game-browse" type="button" disabled={picking === 'folder'} onClick={() => void pickFolder()}>
-                <FolderOpen size={15} />
                 {picking === 'folder' ? 'Browsing...' : 'Browse folder'}
               </button>
             </div>
@@ -869,7 +851,6 @@ export function ScanPanel(props: { currentDevice: DeviceRecord; onGamesChanged: 
     <>
       <PageActions>
         <button className="admin-btn admin-btn--primary scan-button" type="button" disabled={pendingScan} onClick={() => void runScan()}>
-          {pendingScan ? <LoaderCircle className="spin" size={15} /> : <ScanSearch size={15} />}
           {pendingScan ? 'Scanning...' : scannedAt ? 'Scan again' : 'Scan'}
         </button>
       </PageActions>
@@ -955,7 +936,6 @@ export function ScanPanel(props: { currentDevice: DeviceRecord; onGamesChanged: 
                               disabled={saving}
                               onClick={() => void saveSuggestion(suggestion)}
                             >
-                              {saving ? <LoaderCircle className="spin" size={14} /> : <Plus size={14} />}
                               {saving ? 'Adding...' : 'Add'}
                             </button>
                           )}
@@ -983,7 +963,6 @@ export function ScanPanel(props: { currentDevice: DeviceRecord; onGamesChanged: 
               title={scannedAt ? 'No installed games found' : 'No scan results yet'}
               action={scannedAt ? undefined : (
                 <button className="admin-btn" type="button" onClick={() => void runScan()}>
-                  <ScanSearch size={15} />
                   Scan now
                 </button>
               )}

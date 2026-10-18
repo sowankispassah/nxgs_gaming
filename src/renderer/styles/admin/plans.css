@@ -30,7 +30,7 @@
   overflow: hidden;
   color: var(--a-text);
   font-size: var(--a-size-body);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -52,7 +52,7 @@
 
 .plan-price {
   color: var(--a-text);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .plan-table :is(th, td).plan-col-updated {
@@ -72,7 +72,7 @@
   white-space: nowrap;
 }
 
-/* Wide enough for "Cancel" + "Confirm", so columns do not jump during a delete. */
+/* Wide enough for "Cancel" + "Delete", so columns do not jump during a delete. */
 .plan-actions {
   display: inline-flex;
   align-items: center;
@@ -119,16 +119,15 @@
   margin: 0;
 }
 
-/* A sample of the customer's plan row. */
+/* A sample of the customer's plan row, set off by tone (no outline). */
 .plan-preview-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-height: 60px;
-  border: 1px solid var(--a-line);
   border-radius: var(--a-radius-sm);
-  background: var(--a-inset);
+  background: var(--a-panel-2);
   padding: 10px 14px;
 }
 
@@ -142,7 +141,7 @@
   overflow: hidden;
   color: var(--a-text);
   font-size: var(--a-size-body);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -155,8 +154,10 @@
 .plan-preview-price {
   flex: 0 0 auto;
   color: var(--a-text);
+  font-family: var(--a-font-display);
   font-size: var(--a-size-body);
-  font-weight: 600;
+  font-weight: var(--a-weight-display);
+  font-variant-numeric: proportional-nums;
   white-space: nowrap;
 }
 

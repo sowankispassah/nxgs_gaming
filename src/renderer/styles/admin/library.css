@@ -6,7 +6,7 @@
 
 /* ------------------------------------------------------------------ shared */
 
-/* 32px artwork square. Muted initials stand in when a game has no artwork. */
+/* 32px artwork square on a tonal fill (no outline). Muted initials stand in when a game has no artwork. */
 .game-thumb {
   display: grid;
   flex: 0 0 auto;
@@ -15,8 +15,12 @@
   place-items: center;
   overflow: hidden;
   border-radius: var(--a-radius-xs);
-  background: var(--a-panel-2);
-  box-shadow: inset 0 0 0 1px var(--a-line);
+  background: var(--a-tonal);
+}
+
+/* Rows that light up to --a-panel-2 step the empty square up one tone so it never melts into the row. */
+:is(.admin-list-row:is(:hover, .selected, :has(> .row-main:focus-visible)), .installed-game-row:not(:disabled):is(:hover, :focus-visible, .controller-focused), .admin-table tbody tr:hover) .game-thumb {
+  background: var(--a-tonal-hover);
 }
 
 .game-thumb img {
@@ -27,9 +31,9 @@
 }
 
 .game-thumb-initials {
-  color: var(--a-text-3);
+  color: var(--a-text-2);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--a-weight-display);
   line-height: 1;
 }
 
@@ -118,7 +122,7 @@
   overflow: hidden;
   color: var(--a-text);
   font-size: var(--a-size-body);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -185,7 +189,7 @@
 
 
 /* Browse buttons share one width so their inputs end on the same line. */
-.admin-screen .game-browse {
+.game-browse {
   flex: 0 0 auto;
   min-width: 132px;
 }
@@ -210,8 +214,7 @@
   place-items: center;
   overflow: hidden;
   border-radius: var(--a-radius-xs);
-  background: var(--a-inset);
-  box-shadow: inset 0 0 0 1px var(--a-line);
+  background: var(--a-tonal);
 }
 
 .asset-preview--avatar {
@@ -229,10 +232,13 @@
   object-fit: cover;
 }
 
+/* Empty preview: a word, not an icon. */
 .asset-placeholder {
-  display: grid;
-  place-items: center;
-  color: var(--a-text-3);
+  color: var(--a-text-2);
+  padding: 0 8px;
+  font-size: var(--a-size-caption);
+  line-height: 1.25;
+  text-align: center;
 }
 
 .asset-field .admin-field-label .admin-badge {
@@ -305,7 +311,11 @@
   white-space: nowrap;
 }
 
-/* Bordered, scrolling list with a sticky column header. */
+/*
+ * Scrolling list with a sticky column header. No frame: it runs edge to edge
+ * across the modal between two hairlines, rows separated by hairlines, the
+ * columns lined up with the modal's 24px content edge.
+ */
 .installed-game-list {
   --picker-columns: 32px minmax(0, 0.9fr) minmax(0, 1.1fr) 152px;
 
@@ -313,17 +323,17 @@
   flex: 1 1 auto;
   align-content: start;
   min-height: 0;
+  margin-inline: -24px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--a-line);
-  border-radius: var(--a-radius);
+  border-block: 1px solid var(--a-line);
   background: var(--a-panel);
   scrollbar-width: thin;
 }
 
 .installed-game-list > .admin-loading,
 .installed-game-list > .admin-empty {
-  padding: 16px;
+  padding: 16px 24px;
 }
 
 .installed-game-head {
@@ -338,9 +348,9 @@
   border-bottom: 1px solid var(--a-line);
   background: var(--a-panel);
   color: var(--a-text-2);
-  padding: 0 16px 0 12px;
+  padding: 0 24px;
   font-size: var(--a-size-caption);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .installed-game-row {
@@ -355,7 +365,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--a-text);
-  padding: 8px 16px 8px 12px;
+  padding: 8px 24px;
   text-align: left;
 }
 
@@ -367,8 +377,8 @@
   background: var(--a-panel-2);
 }
 
-/* Inside the scroller the outline sits inside the row so it is never clipped. */
-.admin-screen button.installed-game-row:is(:focus-visible, .controller-focused, .focused):not(:disabled) {
+/* Inside the scroller the outline sits inside the row so it is never clipped (one class out-ranks the kit's (0,2,1) button focus rule). */
+.installed-game-row:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
   background: var(--a-panel-2);
   outline-offset: -2px;
 }
@@ -397,7 +407,7 @@
 
 .installed-game-copy strong {
   font-size: var(--a-size-body);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   line-height: 1.35;
 }
 
@@ -493,7 +503,7 @@
 .scan-game-copy strong {
   color: var(--a-text);
   font-size: var(--a-size-body);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   line-height: 1.35;
 }
 
@@ -563,7 +573,7 @@
   background: var(--a-text-2);
 }
 
-.admin-screen .scan-add {
+.scan-add {
   min-width: 76px;
 }
 

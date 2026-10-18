@@ -1,23 +1,7 @@
 import type { ReactNode } from 'react';
-import { CircleCheck, CircleX, Info, TriangleAlert } from 'lucide-react';
 
 export type SettingsTone = 'neutral' | 'info' | 'success' | 'warning' | 'error';
 export type SettingsNoticeTone = 'info' | 'success' | 'warning' | 'error';
-
-const NOTICE_ICONS: Record<SettingsNoticeTone, JSX.Element> = {
-  info: <Info size={20} />,
-  success: <CircleCheck size={20} />,
-  warning: <TriangleAlert size={20} />,
-  error: <CircleX size={20} />
-};
-
-export function toneChipClass(tone: SettingsTone): string {
-  if (tone === 'success') return 'ps-chip ps-chip--success';
-  if (tone === 'warning') return 'ps-chip ps-chip--warning';
-  if (tone === 'error') return 'ps-chip ps-chip--danger';
-  if (tone === 'info') return 'ps-chip ps-chip--accent';
-  return 'ps-chip';
-}
 
 /**
  * The browser's gamepad id with its technical suffix removed, e.g.
@@ -29,32 +13,40 @@ export function controllerDisplayName(name?: string): string | undefined {
   return cleaned || undefined;
 }
 
+/** A state in words: a coloured dot and its label (Connected, Off, Failed...). */
+export function SettingsStatus(props: { tone: SettingsTone; children: ReactNode; className?: string }): JSX.Element {
+  return (
+    <span className={`settings-status tone-${props.tone}${props.className ? ` ${props.className}` : ''}`}>
+      <i className="settings-status-dot" aria-hidden="true" />
+      <span>{props.children}</span>
+    </span>
+  );
+}
+
 /** Inline status line under a settings section (progress, results, errors). */
 export function SettingsNotice(props: { tone: SettingsNoticeTone; message: string }): JSX.Element {
   return (
     <div className={`settings-feedback ${props.tone}`} role="status">
-      <span className="settings-feedback-icon" aria-hidden="true">{NOTICE_ICONS[props.tone]}</span>
+      <i className="settings-status-dot" aria-hidden="true" />
       <span>{props.message}</span>
     </div>
   );
 }
 
-/** Large status card at the top of a settings page. */
+/** Summary at the top of a settings page: what it is on the left, its state on the right. */
 export function SettingsStatusCard(props: {
   tone: SettingsTone;
-  icon: ReactNode;
   label: string;
   title: string;
   detail: ReactNode;
 }): JSX.Element {
   return (
     <div className={`settings-status-card tone-${props.tone}`}>
-      <span className="settings-status-icon" aria-hidden="true">{props.icon}</span>
       <span className="settings-status-copy">
-        <span className={toneChipClass(props.tone)}>{props.label}</span>
         <strong>{props.title}</strong>
         <small>{props.detail}</small>
       </span>
+      <SettingsStatus tone={props.tone}>{props.label}</SettingsStatus>
     </div>
   );
 }
@@ -64,7 +56,6 @@ export function SettingsInfoRow(props: {
   label: string;
   description?: ReactNode;
   value?: ReactNode;
-  icon?: ReactNode;
   focusable?: boolean;
   className?: string;
 }): JSX.Element {
@@ -75,7 +66,6 @@ export function SettingsInfoRow(props: {
       tabIndex={focusable ? -1 : undefined}
       data-settings-action={focusable ? true : undefined}
     >
-      {props.icon && <span className="settings-row-icon" aria-hidden="true">{props.icon}</span>}
       <span className="settings-row-text">
         <strong>{props.label}</strong>
         {props.description && <small>{props.description}</small>}

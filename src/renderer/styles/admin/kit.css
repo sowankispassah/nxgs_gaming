@@ -15,6 +15,7 @@
 /* ============================================================ base elements */
 
 .admin-screen {
+  accent-color: var(--a-accent);
   font-family: var(--a-font);
   font-size: var(--a-size-body);
   line-height: 1.5;
@@ -22,19 +23,30 @@
   letter-spacing: 0;
 }
 
-.admin-screen :is(h1, h2, h3, h4) {
+/*
+ * Headings. :where() keeps these at the console's element specificity (they
+ * still win by load order), so a page styles its own heading with one class
+ * (.fleet-detail-title, .update-headline) and no .admin-screen prefix.
+ */
+:where(.admin-screen) :is(h1, h2, h3, h4) {
   color: var(--a-text);
   font-family: var(--a-font);
-  font-weight: 600;
+  font-weight: var(--a-weight-strong);
   letter-spacing: 0;
   line-height: 1.35;
 }
 
-.admin-screen h2 {
+/* Page titles, section headings and modal titles are set in Red Hat Display. */
+:where(.admin-screen) :is(h1, h2) {
+  font-family: var(--a-font-display);
+  font-weight: var(--a-weight-display);
+}
+
+:where(.admin-screen) h2 {
   font-size: var(--a-size-h2);
 }
 
-.admin-screen :is(h3, h4) {
+:where(.admin-screen) :is(h3, h4) {
   font-size: var(--a-size-small);
 }
 
@@ -49,11 +61,12 @@
 
 .admin-screen a {
   border-radius: 2px;
-  color: var(--a-blue);
+  color: var(--a-accent);
   text-decoration: none;
 }
 
 .admin-screen a:hover {
+  color: var(--a-accent-strong);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -81,19 +94,29 @@
 /*
  * Focus: one 2px outline for keyboard and controller focus (.controller-focused)
  * on everything focusable. No glow, no box-shadow ring.
+ *
+ * Kept as low as each element allows, so a page can give an element its own
+ * focus treatment without stacking a second ring on top:
+ *   buttons     (0,2,1), the same as the console's global button focus rule
+ *               (box-shadow ring, outline none) that it must replace; it wins
+ *               by load order. Override with .x:not(:disabled):is(:focus-visible, ...).
+ *   everything else focusable (links, summary, [tabindex] marks)
+ *               (0,1,0). Override with one class + state: .x:focus-visible.
  */
-.admin-screen :is(button, a[href], summary, [tabindex]):is(:focus-visible, .controller-focused, .focused):not(:disabled) {
+:where(.admin-screen) button:not(:disabled):is(:focus-visible, .controller-focused, .focused),
+:where(.admin-screen) :where(a[href], summary, [tabindex]):is(:focus-visible, .controller-focused, .focused) {
   outline: var(--a-focus);
   outline-offset: var(--a-focus-offset);
   box-shadow: none;
 }
 
-/* Text fields */
+/* Text fields: filled, a subtle border that is heavier at the bottom, accent on focus. */
 .admin-screen :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea) {
   min-height: var(--a-input);
-  border: 1px solid var(--a-line-strong);
+  border: 1px solid var(--a-field-line);
+  border-bottom-color: var(--a-field-line-bottom);
   border-radius: var(--a-radius-sm);
-  background-color: var(--a-inset);
+  background-color: var(--a-field);
   box-shadow: none;
   color: var(--a-text);
   padding: 0 10px;
@@ -123,12 +146,12 @@
 }
 
 .admin-screen :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea):hover:not(:focus):not(:disabled) {
-  background-color: var(--a-panel-2);
+  background-color: var(--a-field-hover);
 }
 
 .admin-screen :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea):focus {
-  border-color: var(--a-text);
-  background-color: var(--a-inset);
+  border-color: var(--a-accent);
+  background-color: var(--a-field);
   box-shadow: none;
   outline: var(--a-focus);
   outline-offset: var(--a-focus-offset);
@@ -149,8 +172,8 @@
   -webkit-appearance: none;
 }
 
+/* The picker icon follows color-scheme (set per theme in tokens.css). */
 .admin-screen input[type='date']::-webkit-calendar-picker-indicator {
-  filter: invert(0.75);
   cursor: pointer;
 }
 
@@ -158,7 +181,7 @@
 .admin-screen :is(input[type='checkbox'], input[type='radio']) {
   width: 16px;
   height: 16px;
-  border: 1px solid #5c5c62;
+  border: 1px solid var(--a-control-border);
   border-radius: var(--a-radius-xs);
   background: transparent;
 }
@@ -172,21 +195,23 @@
   height: 8px;
   margin-top: -2px;
   border-width: 0 2px 2px 0;
-  border-color: var(--a-inverse);
+  border-color: var(--a-on-accent);
 }
 
 .admin-screen input[type='radio']::after {
   width: 6px;
   height: 6px;
-  background: var(--a-inverse);
+  background: var(--a-on-accent);
 }
 
+/* Checked boxes and radios are a selection: the accent. */
 .admin-screen :is(input[type='checkbox'], input[type='radio']):checked {
-  border-color: var(--a-text);
-  background: var(--a-text);
+  border-color: var(--a-accent);
+  background: var(--a-accent);
 }
 
-.admin-screen :is(input[type='checkbox'], input[type='radio']):focus-visible {
+/* Matches the console's checkbox focus rule (0,2,1) and wins by order; a row that shows focus itself overrides it with one class. */
+:where(.admin-screen) :is(input[type='checkbox'], input[type='radio']):focus-visible {
   box-shadow: none;
   outline: var(--a-focus);
   outline-offset: var(--a-focus-offset);
@@ -200,7 +225,7 @@
   color: var(--a-text);
   font-family: var(--a-font);
   font-size: var(--a-size-small);
-  font-weight: 600;
+  font-weight: var(--a-weight-strong);
   letter-spacing: 0;
   line-height: 1.4;
   text-transform: none;
@@ -237,18 +262,19 @@
   overflow-wrap: anywhere;
 }
 
-/* Keyboard key names are the one place uppercase is allowed. */
+/* Keyboard key names are the one place uppercase is allowed. A tonal cap: filled, no edge. */
 .admin-kbd {
   display: inline-grid;
   min-width: 20px;
   height: 20px;
   place-items: center;
-  border: 1px solid var(--a-line-strong);
+  border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
+  background: var(--a-tonal);
   color: var(--a-text-2);
   padding: 0 5px;
   font-family: var(--a-font-mono);
-  font-size: 11.5px;
+  font-size: var(--a-size-badge);
   line-height: 1;
   text-transform: uppercase;
 }
@@ -319,7 +345,7 @@
 .admin-section-heading {
   margin: 0;
   font-size: var(--a-size-h2);
-  font-weight: 600;
+  font-weight: var(--a-weight-display);
   line-height: 1.35;
 }
 
@@ -363,11 +389,14 @@
 
 /* ===================================================================== panel */
 
-/* Panel: the one bordered surface. Never nest panels. */
+/*
+ * Panel: the one raised surface, separated from the page by tone, not by an
+ * outline (the transparent border keeps the 0.27 geometry). Never nest panels.
+ */
 .admin-panel {
   position: relative;
   min-width: 0;
-  border: 1px solid var(--a-line);
+  border: 1px solid transparent;
   border-radius: var(--a-radius);
   background: var(--a-panel);
   box-shadow: none;
@@ -433,15 +462,18 @@
 /* =================================================================== buttons */
 
 /*
- * .admin-btn + one variant: --primary, --secondary (default), --ghost, --danger;
- * sizes --sm (28px) and --icon (square). Page headers use the 32px size,
- * section headers, tables and toolbars the 28px one.
+ * .admin-btn + one variant: --primary (accent fill), --secondary (default:
+ * tonal fill, no outline), --ghost (text only), --danger (red text on a red
+ * tint); sizes --sm (28px) and --icon (square). Page headers use the 32px
+ * size, section headers, tables and toolbars the 28px one. Text buttons carry
+ * no icon; icon-only buttons (row delete, copy, expand, close) need an
+ * aria-label. The border stays transparent so every variant keeps one size.
  */
 .admin-screen .admin-btn {
-  --btn-bg: transparent;
+  --btn-bg: var(--a-tonal);
   --btn-fg: var(--a-text);
-  --btn-border: var(--a-line-strong);
-  --btn-bg-hover: var(--a-panel-2);
+  --btn-border: transparent;
+  --btn-bg-hover: var(--a-tonal-hover);
   --btn-fg-hover: var(--btn-fg);
   --btn-border-hover: var(--btn-border);
 
@@ -458,37 +490,39 @@
   color: var(--btn-fg);
   padding: 0 12px;
   font-family: var(--a-font);
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--a-size-button);
+  font-weight: var(--a-weight-medium);
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;
 }
 
+/* Primary: the accent fill with on-accent text (never white), strong weight. */
 .admin-screen .admin-btn--primary {
-  --btn-bg: var(--a-text);
-  --btn-fg: var(--a-inverse);
-  --btn-border: var(--a-text);
-  --btn-bg-hover: #d4d4d8;
-  --btn-border-hover: #d4d4d8;
+  --btn-bg: var(--a-accent);
+  --btn-fg: var(--a-on-accent);
+  --btn-bg-hover: var(--a-accent-strong);
+
+  font-weight: var(--a-weight-strong);
 }
 
 .admin-screen .admin-btn--ghost {
-  --btn-border: transparent;
+  --btn-bg: transparent;
   --btn-fg: var(--a-text-2);
+  --btn-bg-hover: var(--a-tonal);
   --btn-fg-hover: var(--a-text);
 }
 
 .admin-screen .admin-btn--danger {
+  --btn-bg: var(--a-red-tint);
   --btn-fg: var(--a-red);
-  --btn-border: var(--a-red-line);
-  --btn-bg-hover: var(--a-red-tint);
-  --btn-fg-hover: var(--a-red);
+  --btn-bg-hover: var(--a-red-tint-strong);
+  --btn-fg-hover: var(--a-red-strong);
 }
 
 /* Ghost danger (row delete icons) stays quiet until hover or focus. */
 .admin-screen .admin-btn--ghost.admin-btn--danger {
-  --btn-border: transparent;
+  --btn-bg: transparent;
   --btn-fg: var(--a-text-3);
 }
 
@@ -496,8 +530,7 @@
 .admin-screen .admin-btn--danger.confirming {
   --btn-bg: var(--a-red);
   --btn-fg: var(--a-inverse);
-  --btn-border: var(--a-red);
-  --btn-bg-hover: #ff6b70;
+  --btn-bg-hover: var(--a-red-strong);
   --btn-fg-hover: var(--a-inverse);
 }
 
@@ -533,18 +566,9 @@
   padding: 0;
 }
 
+/* Only icon-only buttons hold an icon (or a spinner in its place while busy): 16px at both sizes. */
 .admin-screen .admin-btn > svg {
   flex: 0 0 auto;
-  width: 15px;
-  height: 15px;
-}
-
-.admin-screen .admin-btn--sm > svg {
-  width: 14px;
-  height: 14px;
-}
-
-.admin-screen .admin-btn--icon > svg {
   width: 16px;
   height: 16px;
 }
@@ -581,7 +605,7 @@
   gap: 6px;
   color: var(--a-text);
   font-size: var(--a-size-small);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   line-height: 1.4;
 }
 
@@ -634,9 +658,10 @@
   align-items: center;
   gap: 8px;
   min-height: var(--a-input);
-  border: 1px solid var(--a-line-strong);
+  border: 1px solid var(--a-field-line);
+  border-bottom-color: var(--a-field-line-bottom);
   border-radius: var(--a-radius-sm);
-  background: var(--a-inset);
+  background: var(--a-field);
   box-shadow: none;
   color: var(--a-text-3);
   padding: 0 10px;
@@ -646,12 +671,12 @@
 }
 
 .admin-affix-input:hover {
-  background: var(--a-panel-2);
+  background: var(--a-field-hover);
 }
 
 .admin-affix-input:focus-within {
-  border-color: var(--a-text);
-  background: var(--a-inset);
+  border-color: var(--a-accent);
+  background: var(--a-field);
   box-shadow: none;
   color: var(--a-text-2);
   outline: var(--a-focus);
@@ -712,20 +737,20 @@
   left: 2px;
   width: 14px;
   height: 14px;
-  background: var(--a-text);
+  background: var(--a-switch-knob);
   box-shadow: none;
   transition:
     translate var(--a-dur) var(--a-ease),
     background-color var(--a-dur) var(--a-ease);
 }
 
+/* On is the accent; the knob keeps its colour. */
 .admin-screen .ps-switch[data-on='true'] {
-  background: var(--a-text);
+  background: var(--a-accent);
 }
 
 .admin-screen .ps-switch[data-on='true']::after {
   translate: 12px 0;
-  background: var(--a-inverse);
 }
 
 /* SwitchRow: copy left, switch right. Inside .admin-switch-list rows get hairlines. */
@@ -757,7 +782,7 @@
 }
 
 .admin-switch-row:hover .ps-switch:not([data-on='true']) {
-  background: #47474b;
+  background: var(--a-switch-off-hover);
 }
 
 .admin-switch-row:has(.admin-switch-input:focus-visible) {
@@ -792,7 +817,7 @@
 .admin-switch-copy strong {
   color: var(--a-text);
   font-size: var(--a-size-body);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .admin-switch-copy small {
@@ -849,13 +874,13 @@
 }
 
 .admin-inline-switch:hover .ps-switch:not([data-on='true']) {
-  background: #47474b;
+  background: var(--a-switch-off-hover);
 }
 
 .admin-inline-switch-label {
   color: var(--a-text-2);
   font-size: var(--a-size-small);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   transition: color var(--a-dur) var(--a-ease);
 }
 
@@ -870,15 +895,19 @@
 
 /* ================================================================= segmented */
 
-/* One choice out of a few. Buttons carry aria-pressed. */
+/*
+ * One choice out of a few: a tonal track (no outline); the chosen segment gets
+ * the accent tint and accent text. Buttons carry aria-pressed (or role=radio
+ * with aria-checked, like the theme switch).
+ */
 .admin-segmented {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 2px;
-  border: 1px solid var(--a-line-strong);
+  border: 1px solid transparent;
   border-radius: var(--a-radius);
-  background: transparent;
+  background: var(--a-tonal);
   box-shadow: none;
   padding: 2px;
 }
@@ -889,20 +918,14 @@
   gap: 6px;
   min-height: var(--a-control-sm);
   border: 0;
-  border-radius: var(--a-radius-xs);
+  border-radius: var(--a-radius-inner);
   background: transparent;
   box-shadow: none;
   color: var(--a-text-2);
   padding: 0 10px;
   font-size: var(--a-size-small);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   white-space: nowrap;
-}
-
-.admin-segmented button > svg {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
 }
 
 .admin-segmented button:not(:disabled):hover {
@@ -910,15 +933,15 @@
   color: var(--a-text);
 }
 
-.admin-segmented button[aria-pressed='true'],
-.admin-segmented button[aria-pressed='true']:not(:disabled):hover {
-  background: var(--a-segment);
-  box-shadow: none;
-  color: var(--a-text);
-  font-weight: 500;
+.admin-screen .admin-segmented button:is([aria-pressed='true'], [aria-checked='true']),
+.admin-screen .admin-segmented button:is([aria-pressed='true'], [aria-checked='true']):not(:disabled):hover {
+  background: var(--a-accent-tint);
+  box-shadow: inset 0 0 0 1px var(--a-accent-line);
+  color: var(--a-accent-strong);
+  font-weight: var(--a-weight-strong);
 }
 
-.admin-screen .admin-segmented button:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
+.admin-segmented button:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
   outline-offset: 1px;
 }
 
@@ -929,7 +952,7 @@
 
 /* ============================================================== toggle chips */
 
-/* On/off filter chips. Selected: light border, 8% white fill and a leading check. */
+/* On/off filter chips: tonal fill. Selected: accent tint, accent text and border, and a leading check. */
 .admin-chip-toggles {
   display: flex;
   flex-wrap: wrap;
@@ -942,38 +965,33 @@
   align-items: center;
   gap: 6px;
   min-height: var(--a-control-sm);
-  border: 1px solid var(--a-line-strong);
+  border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
-  background: transparent;
+  background: var(--a-tonal);
   box-shadow: none;
   color: var(--a-text-2);
   padding: 0 10px;
   font-size: var(--a-size-small);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   white-space: nowrap;
 }
 
-.admin-chip-toggle > svg {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
-}
-
 .admin-chip-toggle:not(:disabled):hover {
-  background: var(--a-panel-2);
+  background: var(--a-tonal-hover);
   color: var(--a-text);
 }
 
 /* .admin-screen beats the console's generic button[aria-pressed] border. */
 .admin-screen .admin-chip-toggle[aria-pressed='true'],
 .admin-screen .admin-chip-toggle[aria-pressed='true']:not(:disabled):hover {
-  border-color: var(--a-text);
-  background: var(--a-white-tint);
-  color: var(--a-text);
-  font-weight: 500;
+  border-color: var(--a-accent-line);
+  background: var(--a-accent-tint);
+  color: var(--a-accent-strong);
+  font-weight: var(--a-weight-medium);
 }
 
-.admin-chip-toggle[aria-pressed='true']::before {
+/* The selected mark of every on/off toggle: chips and the picker's "Whole store". Drawn by CSS, so the button holds text only. */
+:is(.admin-chip-toggle, .admin-picker-store)[aria-pressed='true']::before {
   content: '';
   flex: 0 0 auto;
   width: 12px;
@@ -997,22 +1015,16 @@
   align-items: center;
   gap: 4px;
   min-height: 20px;
-  border: 1px solid var(--a-line-strong);
+  border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
-  background: transparent;
+  background: var(--a-tonal);
   color: var(--a-text-2);
   padding: 0 6px;
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: var(--a-size-badge);
+  font-weight: var(--a-weight-medium);
   letter-spacing: 0;
   line-height: 1;
   white-space: nowrap;
-}
-
-.admin-screen .admin-badge > svg {
-  flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
 }
 
 .admin-screen .admin-badge--success {
@@ -1053,7 +1065,7 @@
   gap: 6px;
   color: var(--a-text-2);
   font-size: var(--a-size-small);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   line-height: 1.3;
   white-space: nowrap;
 }
@@ -1099,16 +1111,16 @@
 /* ================================================================== stat row */
 
 /*
- * One panel split into equal cells by hairlines. The cells draw their own
- * left/top hairline as a 1px shadow; the panel clips the ones on its outer
- * edge, so wrapped rows stay clean.
+ * One panel split into equal cells by hairlines (no outer outline). The cells
+ * draw their own left/top hairline as a 1px shadow; the panel clips the ones
+ * on its outer edge, so wrapped rows stay clean.
  */
 .admin-stat-row {
   display: flex;
   flex-wrap: wrap;
   margin: 0;
   overflow: hidden;
-  border: 1px solid var(--a-line);
+  border: 1px solid transparent;
   border-radius: var(--a-radius);
   background: var(--a-panel);
 }
@@ -1130,17 +1142,19 @@
   margin: 0;
   color: var(--a-text-2);
   font-size: var(--a-size-caption);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   line-height: 1.4;
 }
 
+/* Big standalone figures: Red Hat Display, proportional figures (tabular is for columns). */
 .admin-stat-value {
   margin: 0;
   overflow: hidden;
   color: var(--a-text);
+  font-family: var(--a-font-display);
   font-size: var(--a-size-figure);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  font-weight: var(--a-weight-display);
+  font-variant-numeric: proportional-nums;
   letter-spacing: -0.01em;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -1175,11 +1189,11 @@
 
 /* ===================================================================== table */
 
-/* Wrap the table in .admin-table-scroll (it is the bordered panel and the scroller). */
+/* Wrap the table in .admin-table-scroll: the panel (set off by tone, no outline) and the scroller. Hairlines only between rows. */
 .admin-table-scroll {
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--a-line);
+  border: 1px solid transparent;
   border-radius: var(--a-radius);
   background: var(--a-panel);
 }
@@ -1202,7 +1216,7 @@
   color: var(--a-text-2);
   padding: 0 12px;
   font-size: var(--a-size-caption);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   letter-spacing: 0;
   text-align: left;
   text-transform: none;
@@ -1241,9 +1255,9 @@
   cursor: pointer;
 }
 
-/* Selected row (being edited, or picked as a filter): the fill plus a 2px bar on the left edge, like the nav. */
+/* Selected row (being edited, or picked as a filter): the fill plus a 2px accent bar on the left edge, like the nav. */
 .admin-table tbody tr.is-selected td:first-child {
-  box-shadow: inset 2px 0 0 var(--a-text);
+  box-shadow: inset 2px 0 0 var(--a-accent);
 }
 
 .admin-table :is(th, td).admin-num {
@@ -1251,11 +1265,18 @@
   white-space: nowrap;
 }
 
-/* Expanded row area. */
+/*
+ * Expanded row area. The padding rule has no :hover twin, so a page sets its
+ * own padding with a selector of the same weight (tbody tr.x td) and the row
+ * never shifts under the pointer; only the inset fill needs to beat the hover.
+ */
+.admin-table tbody tr.admin-table-detail td {
+  padding: 16px;
+}
+
 .admin-table tbody tr.admin-table-detail td,
 .admin-table tbody tr.admin-table-detail:hover td {
   background: var(--a-inset);
-  padding: 16px;
 }
 
 /* ==================================================================== notice */
@@ -1263,7 +1284,7 @@
 /* 2px left rule in the semantic colour on its tint. */
 .admin-notice {
   --notice-color: var(--a-text-3);
-  --notice-tint: rgba(255, 255, 255, 0.04);
+  --notice-tint: var(--a-neutral-tint);
 
   display: flex;
   align-items: flex-start;
@@ -1335,7 +1356,7 @@
 .admin-empty-title {
   color: var(--a-text);
   font-size: var(--a-size-body);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .admin-empty p {
@@ -1466,7 +1487,7 @@
   left: 0;
   width: 2px;
   border-radius: 0;
-  background: var(--a-text);
+  background: var(--a-accent);
   box-shadow: none;
 }
 
@@ -1513,13 +1534,13 @@
   gap: 6px;
   max-width: 280px;
   min-height: var(--a-control-sm);
-  border: 1px solid var(--a-line-strong);
+  border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
-  background: transparent;
+  background: var(--a-tonal);
   color: var(--a-text-2);
   padding: 0 7px 0 10px;
   font-size: var(--a-size-small);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   white-space: nowrap;
 }
 
@@ -1545,14 +1566,25 @@
 
 .admin-popover-trigger:not(:disabled):hover,
 .admin-popover.is-open .admin-popover-trigger {
-  background: var(--a-panel-2);
+  background: var(--a-tonal-hover);
   color: var(--a-text);
 }
 
+/* A filter that is on reads like a selected chip. */
 .admin-popover-trigger.is-active,
 .admin-popover.is-open .admin-popover-trigger.is-active {
-  border-color: var(--a-text);
-  background: var(--a-white-tint);
+  border-color: var(--a-accent-line);
+  background: var(--a-accent-tint);
+  color: var(--a-accent-strong);
+}
+
+.admin-popover-trigger.is-active > svg {
+  color: currentColor;
+}
+
+.admin-popover-trigger.is-active .admin-popover-value {
+  border-left-color: var(--a-accent-line);
+  color: var(--a-accent-strong);
 }
 
 .admin-popover-trigger.is-active .admin-popover-label {
@@ -1643,11 +1675,12 @@
   overflow: hidden;
   color: var(--a-text-3);
   font-size: var(--a-size-caption);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* "Whole store" on: full-strength text and the toggle check (drawn with the chips' mark above), no outline. */
 .admin-screen .admin-picker-store[aria-pressed='true'] {
   --btn-fg: var(--a-text);
   border-color: transparent;
@@ -1669,7 +1702,7 @@
 }
 
 /* Keyboard and controller focus outline the whole row, not just the checkbox. */
-.admin-screen .admin-picker-option input:focus-visible {
+.admin-picker-option input[type='checkbox']:focus-visible {
   outline: none;
 }
 
@@ -1724,11 +1757,11 @@
   min-height: var(--a-control-sm);
   border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
-  background: var(--a-panel-2);
+  background: var(--a-tonal);
   color: var(--a-text);
   padding: 0 6px 0 9px;
   font-size: var(--a-size-caption);
-  font-weight: 500;
+  font-weight: var(--a-weight-medium);
 }
 
 .admin-active-chip-kind {
@@ -1752,7 +1785,7 @@
 }
 
 .admin-active-chip:not(:disabled):hover {
-  border-color: var(--a-line-strong);
+  background: var(--a-tonal-hover);
 }
 
 .admin-active-chip:not(:disabled):is(:hover, :focus-visible, .controller-focused) > svg {
@@ -1763,7 +1796,7 @@
 
 /* Control Room modals reuse .modal-backdrop > .modal from dialogs.css, flattened here. */
 .admin-screen .modal-backdrop {
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--a-scrim);
   backdrop-filter: none;
   animation: none;
 }
@@ -1773,12 +1806,15 @@
   border-radius: var(--a-radius);
   background: var(--a-panel);
   box-shadow: var(--a-shadow-pop);
+  color: var(--a-text);
   padding: 24px;
   animation: none;
 }
 
 .admin-screen .modal h2 {
+  font-family: var(--a-font-display);
   font-size: 18px;
+  font-weight: var(--a-weight-display);
   letter-spacing: -0.01em;
   line-height: 1.3;
 }

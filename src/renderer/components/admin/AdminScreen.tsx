@@ -1,20 +1,8 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import {
-  Gamepad2,
-  House,
-  Image as ImageIcon,
-  IndianRupee,
-  MonitorCog,
-  Network,
-  RefreshCw,
-  ScanSearch,
-  ShieldCheck,
-  Timer,
-  Wallet
-} from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import type { AppSettings, DeviceRecord, GameRecord, InitialData } from '../../../shared/types';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../../controllerNavigation';
 import { ControllerHints } from '../../ui/ControllerHints';
+import { useAdminThemePreference, useResolvedAdminTheme, type AdminThemePreference } from '../../ui/preferences';
 import { playUiSound } from '../../ui/uiSound';
 import { BrandLogo } from '../BrandLogo';
 import { DeviceManager } from '../DeviceManager';
@@ -83,6 +71,14 @@ const PAGE_COPY: Record<AdminTab, { title: string; description: string }> = {
 const LOCAL_KEYS_SELECTOR = '[data-admin-local-keys]';
 /** An open filter popover owns Escape/B (it closes itself) as well as the arrows. */
 const POPOVER_SELECTOR = '[data-admin-popover]';
+/** The theme switch in the sidebar footer: left/right (keys, D-pad) move between its options. */
+const THEME_SWITCH_SELECTOR = '[data-admin-theme-switch]';
+
+const THEME_OPTIONS: Array<{ value: AdminThemePreference; label: string }> = [
+  { value: 'dark', label: 'Dark' },
+  { value: 'light', label: 'Light' },
+  { value: 'system', label: 'System' }
+];
 
 export function AdminScreen(props: {
   games: GameRecord[];
@@ -98,6 +94,8 @@ export function AdminScreen(props: {
   const [tab, setTab] = useState<AdminTab>('games');
   const [accountsView, setAccountsView] = useState<AccountsView>(DEFAULT_ACCOUNTS_VIEW);
   const owner = useOwnerSession();
+  const [themePreference, setThemePreference] = useAdminThemePreference();
+  const theme = useResolvedAdminTheme(themePreference);
   const [navFocused, setNavFocused] = useState(false);
   const [pageActionsTarget, setPageActionsTarget] = useState<HTMLElement | null>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -132,10 +130,18 @@ export function AdminScreen(props: {
   }, [closeAdmin, moveAdminTab]);
 
   const handleAdminControllerEvent = useCallback((event: ControllerNavigationEvent): void => {
+    const focused = document.activeElement;
+    const themeOption = focused instanceof HTMLElement && focused.closest(THEME_SWITCH_SELECTOR) ? focused : null;
     if (event.type === 'back') {
       closeAdmin();
+    } else if (event.type === 'accept') {
+      themeOption?.click();
     } else if (event.type === 'direction') {
-      moveAdminTab(event.direction === 'left' || event.direction === 'up' ? -1 : 1);
+      if (themeOption && (event.direction === 'left' || event.direction === 'right')) {
+        stepThemeSwitch(themeOption, event.direction === 'left' ? -1 : 1);
+      } else {
+        moveAdminTab(event.direction === 'left' || event.direction === 'up' ? -1 : 1);
+      }
     }
   }, [closeAdmin, moveAdminTab]);
 
@@ -180,7 +186,7 @@ export function AdminScreen(props: {
   });
 
   return (
-    <section className="admin-screen" spellCheck={false} onPointerDown={() => setNavFocused(false)}>
+    <section className="admin-screen" data-admin-theme={theme} spellCheck={false} onPointerDown={() => setNavFocused(false)}>
       <aside className="admin-sidebar">
         <div className="admin-brand">
           <BrandLogo className="admin-brand-logo" logoPath={props.settings.branding.logoPath} />
@@ -191,25 +197,25 @@ export function AdminScreen(props: {
         </div>
         <nav ref={navRef} aria-label="Control Room sections">
           <NavGroup label="Library">
-            <TabButton {...tabProps('games')} icon={<Gamepad2 size={16} />} label="Games" />
-            <TabButton {...tabProps('scan')} icon={<ScanSearch size={16} />} label="Scan" />
+            <TabButton {...tabProps('games')} label="Games" />
+            <TabButton {...tabProps('scan')} label="Scan" />
           </NavGroup>
           <NavGroup label="This device">
-            <TabButton {...tabProps('sessions')} icon={<Timer size={16} />} label="Sessions" />
-            <TabButton {...tabProps('plans')} icon={<IndianRupee size={16} />} label="Plans" />
-            <TabButton {...tabProps('device')} icon={<MonitorCog size={16} />} label="Details" />
-            <TabButton {...tabProps('branding')} icon={<ImageIcon size={16} />} label="Branding" />
-            <TabButton {...tabProps('kiosk')} icon={<ShieldCheck size={16} />} label="Kiosk" />
-            <TabButton {...tabProps('updates')} icon={<RefreshCw size={16} />} label="Updates" />
+            <TabButton {...tabProps('sessions')} label="Sessions" />
+            <TabButton {...tabProps('plans')} label="Plans" />
+            <TabButton {...tabProps('device')} label="Details" />
+            <TabButton {...tabProps('branding')} label="Branding" />
+            <TabButton {...tabProps('kiosk')} label="Kiosk" />
+            <TabButton {...tabProps('updates')} label="Updates" />
           </NavGroup>
           <NavGroup label="Business">
-            <TabButton {...tabProps('accounts')} icon={<Wallet size={16} />} label="Accounts" />
-            <TabButton {...tabProps('fleet')} icon={<Network size={16} />} label="All devices" />
+            <TabButton {...tabProps('accounts')} label="Accounts" />
+            <TabButton {...tabProps('fleet')} label="All devices" />
           </NavGroup>
         </nav>
-        <div className="admin-sidebar-footer">
+        <div className="admin-sidebar-footer" onFocus={() => setNavFocused(false)}>
+          <AdminThemeSwitch value={themePreference} onChange={setThemePreference} />
           <button className="admin-btn admin-btn--ghost admin-home-button" type="button" onClick={props.onClose}>
-            <House size={16} />
             Back to Home
           </button>
           <ControllerHints
@@ -298,7 +304,6 @@ function TabButton(props: {
   id: AdminTab;
   active: boolean;
   focused: boolean;
-  icon: JSX.Element;
   label: string;
   onClick: () => void;
 }): JSX.Element {
@@ -311,8 +316,66 @@ function TabButton(props: {
       aria-current={props.active ? 'page' : undefined}
       onClick={props.onClick}
     >
-      <span className="admin-nav-icon" aria-hidden="true">{props.icon}</span>
       <span className="admin-nav-label">{props.label}</span>
     </button>
+  );
+}
+
+/** Moves focus to the next/previous theme option and picks it (radio behaviour). */
+function stepThemeSwitch(from: HTMLElement, delta: number): void {
+  const options = Array.from(from.closest(THEME_SWITCH_SELECTOR)?.querySelectorAll<HTMLButtonElement>('button') ?? []);
+  const index = options.indexOf(from as HTMLButtonElement);
+  if (index < 0) return;
+  const next = options[Math.min(options.length - 1, Math.max(0, index + delta))];
+  if (!next || next === from) return;
+  playUiSound('move');
+  next.focus({ preventScroll: true });
+  next.click();
+}
+
+/**
+ * Control Room theme: Dark, Light or System, per station (ui/preferences.ts).
+ * A radio group: Tab reaches the chosen option, left/right (keys or D-pad)
+ * move and pick, Enter/Space/A pick. The arrows stay inside it
+ * (data-admin-local-keys), so they do not switch sections from here.
+ */
+export function AdminThemeSwitch(props: { value: AdminThemePreference; onChange: (value: AdminThemePreference) => void }): JSX.Element {
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      stepThemeSwitch(event.currentTarget, event.key === 'ArrowLeft' ? -1 : 1);
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      stepThemeSwitch(event.currentTarget, event.key === 'Home' ? -THEME_OPTIONS.length : THEME_OPTIONS.length);
+    }
+  };
+  return (
+    <div
+      className="admin-segmented admin-theme-switch"
+      role="radiogroup"
+      aria-label="Control Room theme"
+      data-admin-theme-switch="true"
+      data-admin-local-keys="true"
+    >
+      {THEME_OPTIONS.map((option) => {
+        const checked = option.value === props.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            tabIndex={checked ? 0 : -1}
+            title={option.value === 'system' ? 'Follow the Windows app theme' : undefined}
+            onKeyDown={onKeyDown}
+            onClick={() => {
+              if (!checked) props.onChange(option.value);
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

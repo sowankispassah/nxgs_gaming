@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronRight, LoaderCircle, LockKeyhole, RefreshCw, Search, Store } from 'lucide-react';
+import { ChevronRight, Search } from 'lucide-react';
 import type { FleetStation, ModeratorRecord } from '../../../shared/types';
 import {
   Badge,
@@ -123,7 +123,6 @@ export function DeviceManagementPanel(props: {
         title="Main admin PIN needed"
         action={(
           <button className="admin-btn admin-btn--primary" type="button" disabled={owner.prompting} onClick={() => void unlock()}>
-            <LockKeyhole size={15} />
             Unlock
           </button>
         )}
@@ -177,8 +176,7 @@ export function DeviceManagementPanel(props: {
         <div ref={listRef} className="fleet-list-anchor">
           <PageActions>
             <button className="admin-btn" type="button" disabled={loading} onClick={() => void loadAll()}>
-              {loading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
-              Refresh
+              {loading ? 'Refreshing...' : 'Refresh'}
             </button>
           </PageActions>
           <PageSection
@@ -190,9 +188,11 @@ export function DeviceManagementPanel(props: {
             {listError && <Notice tone="error">{listError}</Notice>}
             {!stations && loading && <LoadingState label="Loading devices..." />}
             {stations && stations.length === 0 && (
-              <EmptyState title="No devices yet">
-                Devices appear here after they sync for the first time.
-              </EmptyState>
+              <Panel>
+                <EmptyState title="No devices yet">
+                  Devices appear here after they sync for the first time.
+                </EmptyState>
+              </Panel>
             )}
             {stations && stations.length > 0 && (
               <Toolbar className="fleet-toolbar" aria-label="Device filters">
@@ -226,13 +226,15 @@ export function DeviceManagementPanel(props: {
                   ))}
                 </div>
                 {stores.length > 1 && (
-                  <span className="admin-affix-input fleet-toolbar-store">
-                    <Store size={15} aria-hidden="true" />
-                    <select value={deviceStore} aria-label="Store" onChange={(event) => setDeviceStore(event.target.value)}>
-                      <option value="">All stores</option>
-                      {stores.map((store) => <option key={store} value={store}>{store}</option>)}
-                    </select>
-                  </span>
+                  <select
+                    className="fleet-toolbar-store"
+                    value={deviceStore}
+                    aria-label="Store"
+                    onChange={(event) => setDeviceStore(event.target.value)}
+                  >
+                    <option value="">All stores</option>
+                    {stores.map((store) => <option key={store} value={store}>{store}</option>)}
+                  </select>
                 )}
                 <ToolbarSpacer />
                 <span className="admin-count" role="status">
@@ -247,15 +249,13 @@ export function DeviceManagementPanel(props: {
                 )}
               </Toolbar>
             )}
+            {/* In the table's place, on the same panel tone; Clear filters is in the toolbar right above. */}
             {stations && stations.length > 0 && visibleStations.length === 0 && (
-              <EmptyState
-                title="No devices match these filters"
-                action={(
-                  <button className="admin-btn admin-btn--sm" type="button" onClick={clearDeviceFilters}>
-                    Clear filters
-                  </button>
-                )}
-              />
+              <Panel>
+                <EmptyState title="No devices match these filters">
+                  Try another search, or clear the filters to see every device.
+                </EmptyState>
+              </Panel>
             )}
             {visibleStations.length > 0 && (
               <StationTable
@@ -460,7 +460,6 @@ function OwnerPinCard(props: { owner: OwnerSession }): JSX.Element {
         <footer className="admin-panel-footer">
           {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
           <button className="admin-btn admin-btn--primary" type="submit" disabled={saving}>
-            {saving && <LoaderCircle className="spin" size={15} />}
             {saving ? 'Saving...' : 'Change PIN'}
           </button>
         </footer>

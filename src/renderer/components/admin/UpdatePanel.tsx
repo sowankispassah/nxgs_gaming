@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, FileDown, LoaderCircle, Power, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, LoaderCircle } from 'lucide-react';
 import type { InitialData, UpdateCheckResult, UpdateDownloadProgress } from '../../../shared/types';
 import { useControllerNavigation, type ControllerNavigationEvent } from '../../controllerNavigation';
 import { ControllerHints } from '../../ui/ControllerHints';
@@ -186,8 +186,7 @@ export function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
           disabled={pending}
           onClick={() => void checkForUpdates()}
         >
-          {checking ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}
-          {checking ? 'Checking for updates...' : 'Check for updates'}
+          {checking ? 'Checking...' : 'Check for updates'}
         </button>
       </PageActions>
 
@@ -208,8 +207,8 @@ export function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
 
               {canDownload && (
                 <button className="admin-btn admin-btn--primary" type="button" disabled={pending} onClick={() => void downloadUpdate()}>
-                  {pendingAction === 'download' ? <LoaderCircle size={15} className="spin" /> : <FileDown size={15} />}
-                  {pendingAction === 'download' ? `Downloading update${progressPercent > 0 ? ` ${progressPercent}%` : '...'}` : 'Download update'}
+                  {/* The progress row below shows the percentage. */}
+                  {pendingAction === 'download' ? 'Downloading...' : 'Download update'}
                 </button>
               )}
 
@@ -221,7 +220,6 @@ export function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
                   disabled={pending}
                   onClick={() => setRestartPromptOpen(true)}
                 >
-                  <Power size={15} />
                   Restart to install update
                 </button>
               )}
@@ -330,7 +328,6 @@ export function UpdatePanel(props: { initialData: InitialData }): JSX.Element {
                   onFocus={() => setRestartPromptIndex(1)}
                   onClick={installDownloadedUpdate}
                 >
-                  {pendingAction === 'install' ? <LoaderCircle size={15} className="spin" /> : <Power size={15} />}
                   {pendingAction === 'install' ? 'Restarting...' : 'Restart now'}
                 </button>
               </div>

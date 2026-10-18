@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import { Check, Search, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { UNKNOWN_PAYMENT_METHOD } from '../../../shared/types';
 import type { EarningsFacets, EarningsSort, FleetStation, LocalSessionStatus } from '../../../shared/types';
 import { Badge, InlineSwitch, Toolbar, ToggleChip } from './AdminKit';
@@ -380,7 +380,6 @@ function DevicePicker(props: { stations: FleetStation[]; selected: string[]; onC
                   aria-pressed={whole}
                   onClick={() => setMany(ids, !whole)}
                 >
-                  {whole && <Check size={14} aria-hidden="true" />}
                   Whole store
                 </button>
               </header>
