@@ -176,24 +176,46 @@
   --a-font-display: 'Red Hat Display Variable', 'Red Hat Text Variable', 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
   --a-font-mono: 'Red Hat Mono Variable', 'Cascadia Mono', Consolas, ui-monospace, monospace;
   /*
-   * Sizes are the 0.27.0 sizes (set in Inter and Cascadia Mono), scaled so
-   * Red Hat's lowercase renders exactly as tall as it did then. Measured
-   * x-heights: Inter 0.55, Red Hat Text 0.49, Red Hat Display 0.50,
-   * Red Hat Mono 0.49, Cascadia Mono 0.52. Change a base size, never a ratio.
+   * Sizes, one token per role. Each base size is the 0.26.0 Control Room size
+   * for that role (set in Inter and Cascadia Mono, with the same viewport
+   * clamps), scaled so Red Hat's lowercase renders exactly as tall as it did
+   * then. Measured x-heights: Inter 0.55, Red Hat Text 0.49, Red Hat Display
+   * 0.50, Red Hat Mono 0.49, Cascadia Mono 0.52. The owner asked for these
+   * sizes: change a base size only when asked, never a ratio, and never
+   * shrink them.
    */
   --a-x-match-text: calc(0.55 / 0.49);
   --a-x-match-display: calc(0.55 / 0.5);
   --a-x-match-mono: calc(0.52 / 0.49);
-  --a-size-title: calc(22px * var(--a-x-match-display));
-  --a-size-h2: calc(15px * var(--a-x-match-display));
-  --a-size-body: calc(14px * var(--a-x-match-text));
-  --a-size-small: calc(13px * var(--a-x-match-text));
-  --a-size-caption: calc(12px * var(--a-x-match-text));
-  --a-size-figure: calc(24px * var(--a-x-match-display));
-  --a-size-mono: calc(12.5px * var(--a-x-match-mono));
-  --a-size-button: calc(13.5px * var(--a-x-match-text));
-  --a-size-badge: calc(11.5px * var(--a-x-match-text));
-  --a-size-heading-lg: calc(18px * var(--a-x-match-display));
+
+  /* Red Hat Display */
+  --a-size-title: calc(clamp(32px, 2.2vw, 40px) * var(--a-x-match-display)); /* page title */
+  --a-size-modal-title: calc(30px * var(--a-x-match-display)); /* modal titles */
+  --a-size-heading-lg: calc(clamp(24px, 1.6vw, 28px) * var(--a-x-match-display)); /* sub-page title ("All devices / Station 01") */
+  --a-size-h2: calc(clamp(20px, 1.25vw, 23px) * var(--a-x-match-display)); /* section headings */
+  --a-size-brand: calc(clamp(21px, 1.35vw, 26px) * var(--a-x-match-display)); /* sidebar "Control Room" */
+  --a-size-hero: calc(clamp(44px, 3.1vw, 56px) * var(--a-x-match-display)); /* Accounts' Total earned, the one hero figure */
+  --a-size-figure: calc(clamp(24px, 1.8vw, 32px) * var(--a-x-match-display)); /* stat values */
+  --a-size-price: calc(clamp(20px, 1.4vw, 24px) * var(--a-x-match-display)); /* plan price in the customer preview */
+
+  /* Red Hat Text */
+  --a-size-lg: calc(20px * var(--a-x-match-text)); /* empty-state title, the update headline */
+  --a-size-figure-text: calc(clamp(24px, 1.8vw, 32px) * var(--a-x-match-text)); /* Accounts' quieter figures */
+  --a-size-figure-name: calc(clamp(19px, 1.35vw, 24px) * var(--a-x-match-text)); /* a figure that is a name (Most played game) */
+  --a-size-body: calc(17px * var(--a-x-match-text)); /* running text, modal copy */
+  --a-size-lead: calc(17px * var(--a-x-match-text)); /* page description, loading line */
+  --a-size-nav: calc(17px * var(--a-x-match-text)); /* sidebar nav items, Back to Home */
+  --a-size-input: calc(17px * var(--a-x-match-text)); /* inputs, selects, textareas */
+  --a-size-row-title: calc(17px * var(--a-x-match-text)); /* a row's name: games, plans, devices, switch and value rows */
+  --a-size-button: calc(17px * var(--a-x-match-text)); /* buttons */
+  --a-size-button-sm: calc(15px * var(--a-x-match-text)); /* compact buttons, segments, toggle chips, filter buttons */
+  --a-size-small: calc(15px * var(--a-x-match-text)); /* secondary text, descriptions, table cells, notices, facts, status */
+  --a-size-label: calc(15px * var(--a-x-match-text)); /* field labels, stat labels, group titles */
+  --a-size-caption: calc(13px * var(--a-x-match-text)); /* help, column headers, third lines, controller hints */
+  --a-size-badge: calc(12px * var(--a-x-match-text)); /* badges, key caps */
+
+  /* Red Hat Mono */
+  --a-size-mono: calc(15px * var(--a-x-match-mono)); /* IDs, payment IDs, paths */
 
   /* Focus: one crisp accent outline, never a glow */
   --a-focus-color: var(--a-accent);
@@ -204,23 +226,43 @@
   --a-dur: 120ms;
   --a-ease: cubic-bezier(0.2, 0, 0, 1);
 
-  /* Sizes */
-  --a-control: 32px;
-  --a-control-sm: 28px;
-  --a-input: 34px;
-  --a-row: 40px;
-  --a-header-row: 36px;
+  /*
+   * Heights, sized for the text above (the 0.26.0 controls were 50px inputs,
+   * 52px buttons, 40px compact buttons, 66px setting rows).
+   */
+  --a-control: 48px; /* buttons, header actions, picker rows */
+  --a-control-sm: 40px; /* compact buttons, segments, toggle chips, filter buttons, row actions */
+  --a-input: 48px; /* inputs, selects, the segmented track */
+  --a-row: 56px; /* table rows */
+  --a-header-row: 44px; /* table column header */
+  --a-setting-row: 66px; /* switch rows, value rows, radio rows */
+  --a-list-row: 68px; /* list rows with a thumbnail and two lines (Games library) */
+  --a-nav-item: clamp(40px, 5.2vh, 54px);
+  --a-brand-logo: clamp(36px, 4.2vh, 46px);
+  --a-thumb: 44px; /* game artwork square in lists and tables */
+  --a-icon: 20px; /* icons in default buttons, glyphs in hints */
+  --a-icon-sm: 18px; /* icons in compact buttons, fields, notices */
+  --a-check: 20px; /* checkboxes and radios */
+
+  /* Paddings around text */
+  --a-btn-pad-x: 20px;
+  --a-btn-pad-x-sm: 14px;
+  --a-field-pad-x: 14px;
+  --a-panel-pad: clamp(22px, 1.6vw, 28px);
+  --a-cell-pad-x: 14px; /* table cells; 20px from the panel edge on the first and last */
+  --a-cell-pad-edge: 20px;
+  --a-modal-pad: 32px;
 
   /* Layout */
-  --a-sidebar-width: 224px;
-  --a-page-pad-top: 28px;
-  --a-page-pad-x: 40px;
-  --a-page-pad-bottom: 48px;
-  --a-page-max: 1120px;
-  --a-page-max-data: 1600px;
-  --a-side-column: 340px;
-  --a-section-gap: 32px;
-  --a-gap: 16px;
+  --a-sidebar-width: clamp(248px, 17vw, 320px);
+  --a-page-pad-top: clamp(24px, 3.6vh, 40px);
+  --a-page-pad-x: clamp(32px, 2.8vw, 56px);
+  --a-page-pad-bottom: 64px;
+  --a-page-max: 1240px;
+  --a-page-max-data: 1760px;
+  --a-side-column: clamp(360px, 24vw, 440px);
+  --a-section-gap: 40px;
+  --a-gap: 20px;
 
   /* ---------------------------------------------------- legacy bridge */
 
@@ -268,7 +310,7 @@
   --text-xs: var(--a-size-caption);
   --text-sm: var(--a-size-small);
   --text-md: var(--a-size-body);
-  --text-lg: calc(15px * var(--a-x-match-text));
+  --text-lg: var(--a-size-lg);
   --text-xl: var(--a-size-heading-lg);
   --text-2xl: var(--a-size-title);
   --text-3xl: var(--a-size-figure);

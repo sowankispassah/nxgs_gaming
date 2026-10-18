@@ -17,9 +17,6 @@
 /* ===================================================================== page */
 
 .accounts-page {
-  /* The hero figure is the one big number on the page; the figures beside it step down. */
-  --accounts-hero-size: 46px;
-  --accounts-figure-size: calc(18px * var(--a-x-match-text));
   /*
    * Timeline segments alternate two neutral tones, never the accent and never
    * a hue per game: text-2, and text-2 pulled 40% toward the track (text-2 and
@@ -33,13 +30,13 @@
   display: grid;
   align-content: start;
   min-width: 0;
-  gap: 24px;
+  gap: 28px;
 }
 
-/* Sections sit 32px apart (24px gap + 8px). */
+/* Sections sit 40px apart (28px gap + 12px). */
 .accounts-page > .admin-section,
 .accounts-breakdown {
-  margin-top: 8px;
+  margin-top: 12px;
 }
 
 .accounts-page :is(.accounts-figures, .accounts-table-scroll, .accounts-rank-table) {
@@ -83,18 +80,26 @@
 .accounts-filters {
   display: grid;
   min-width: 0;
-  gap: 12px;
+  gap: 14px;
 }
 
 .accounts-toolbar {
-  gap: 8px;
+  gap: 10px;
 }
 
 /* Top row: scope, period (and custom dates), then search and sort pushed right. */
 .accounts-search {
-  flex: 1 1 240px;
-  max-width: 340px;
+  flex: 1 1 280px;
+  max-width: 420px;
   margin-left: auto;
+}
+
+/* Too narrow for one row: search and sort wrap to their own line, where the search fills it. */
+@media (max-width: 1700px) {
+  .accounts-search {
+    max-width: none;
+    margin-left: 0;
+  }
 }
 
 .admin-screen .accounts-search input {
@@ -103,7 +108,7 @@
 
 .accounts-sort {
   flex: 0 0 auto;
-  gap: 6px;
+  gap: 8px;
 }
 
 .accounts-sort-label {
@@ -121,32 +126,32 @@
 .accounts-dates {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   color: var(--a-text-3);
   font-size: var(--a-size-small);
 }
 
 .admin-screen .accounts-dates input[type='date'] {
-  width: 150px;
+  width: 190px;
   font-size: var(--a-size-small);
 }
 
 /* Second row: Devices and Games, then labelled chip groups and the verified switch. */
 .accounts-toolbar--filters {
-  gap: 8px 24px;
+  gap: 10px 28px;
 }
 
 .accounts-filter-cluster {
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 8px;
+  gap: 10px;
 }
 
 .accounts-filter-label {
   flex: 0 0 auto;
   color: var(--a-text-3);
-  font-size: var(--a-size-caption);
+  font-size: var(--a-size-label);
   font-weight: var(--a-weight-medium);
 }
 
@@ -164,7 +169,7 @@
   display: flex;
   align-items: flex-start;
   min-width: 0;
-  gap: 16px;
+  gap: 20px;
   color: var(--a-text-2);
   font-size: var(--a-size-small);
   line-height: var(--a-control-sm);
@@ -183,7 +188,7 @@
   flex: 0 0 auto;
   margin-left: auto;
   color: var(--a-text-3);
-  font-size: var(--a-size-caption);
+  font-size: var(--a-size-small);
   white-space: nowrap;
 }
 
@@ -192,7 +197,7 @@
   flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -209,22 +214,22 @@
  */
 .accounts-figures {
   display: grid;
-  grid-template-columns: minmax(280px, 1.3fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(320px, 1.3fr) repeat(3, minmax(0, 1fr));
   align-items: end;
   margin: 0;
   border: 1px solid transparent;
   border-radius: var(--a-radius);
   background: var(--a-panel);
-  padding: 18px 0 18px;
+  padding: 24px 0;
 }
 
 .accounts-figures > div {
   display: grid;
   align-content: end;
   min-width: 0;
-  gap: 4px;
+  gap: 6px;
   margin: 0;
-  padding: 0 24px;
+  padding: 0 var(--a-panel-pad);
 }
 
 .accounts-figures > div + div {
@@ -238,7 +243,7 @@
 
 .accounts-figure-label {
   color: var(--a-text-2);
-  font-size: var(--a-size-caption);
+  font-size: var(--a-size-label);
   font-weight: var(--a-weight-medium);
   line-height: 1.4;
 }
@@ -247,14 +252,14 @@
 .accounts-hero .accounts-figure-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .accounts-hero .accounts-figure-label::before {
   content: '';
   flex: 0 0 auto;
   width: 2px;
-  height: 12px;
+  height: 16px;
   border-radius: 1px;
   background: var(--a-accent);
 }
@@ -264,7 +269,7 @@
   overflow: hidden;
   color: var(--a-text);
   font-family: var(--a-font-display);
-  font-size: var(--accounts-hero-size);
+  font-size: var(--a-size-hero);
   font-weight: var(--a-weight-display);
   font-variant-numeric: proportional-nums lining-nums;
   letter-spacing: -0.02em;
@@ -276,12 +281,18 @@
 .accounts-figure-value {
   overflow: hidden;
   color: var(--a-text);
-  font-size: var(--accounts-figure-size);
+  font-size: var(--a-size-figure-text);
   font-weight: var(--a-weight-medium);
   font-variant-numeric: proportional-nums;
-  line-height: 1.3;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A name (Most played game) steps down from the numbers, as it did in 0.26.0. */
+.accounts-figure-value--name {
+  font-size: var(--a-size-figure-name);
+  line-height: calc(var(--a-size-figure-text) * 1.2);
 }
 
 .accounts-figure-sub {
@@ -299,33 +310,34 @@
 
 /* =================================================================== sessions */
 
-/* The table scrolls inside its panel (both ways) so the page never does. */
+/* The table scrolls inside its panel (both ways) so the page never does. It is a size container so the expanded row can fit the visible width. */
 .accounts-table-scroll {
   max-height: min(70vh, 760px);
   overflow: auto;
+  container-type: inline-size;
 }
 
 .accounts-table {
-  min-width: 900px;
+  min-width: 1080px;
 }
 
 .accounts-table--all {
-  min-width: 1000px;
+  min-width: 1200px;
 }
 
 .accounts-table :is(th, td) {
-  padding-right: 10px;
-  padding-left: 10px;
+  padding-right: 12px;
+  padding-left: 12px;
 }
 
 .accounts-table td {
-  padding-top: 7px;
-  padding-bottom: 7px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
 .accounts-table :is(th.accounts-toggle-col, td.accounts-toggle-cell) {
-  width: 44px;
-  padding: 0 0 0 8px;
+  width: 58px;
+  padding: 0 0 0 12px;
 }
 
 .accounts-row-toggle {
@@ -344,6 +356,11 @@
   color: var(--a-text);
 }
 
+.accounts-row-toggle svg {
+  width: var(--a-icon);
+  height: var(--a-icon);
+}
+
 .accounts-row-toggle[aria-expanded='true'] svg {
   rotate: 90deg;
 }
@@ -356,11 +373,11 @@
   border-bottom-color: transparent;
 }
 
-/* Two-line cells: primary text, then a 12px secondary line. */
+/* Two-line cells: primary text, then a caption line. */
 .accounts-cell-stack {
   display: grid;
   min-width: 0;
-  gap: 1px;
+  gap: 2px;
 }
 
 .accounts-cell-stack > span {
@@ -387,20 +404,20 @@
 }
 
 .accounts-device-cell {
-  max-width: 150px;
+  max-width: 190px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .accounts-customer-cell {
-  min-width: 150px;
-  max-width: 230px;
+  min-width: 190px;
+  max-width: 320px;
 }
 
 .accounts-plan-cell {
-  min-width: 100px;
-  max-width: 160px;
+  min-width: 120px;
+  max-width: 200px;
 }
 
 /* Plan and duration are context; the amount carries the row. */
@@ -411,11 +428,11 @@
 /* Games played: the timeline strip, then the games as one comma list (minutes quieter). */
 .accounts-table .accounts-games-cell {
   width: 28%;
-  min-width: 200px;
+  min-width: 240px;
 }
 
 .accounts-games-cell > .accounts-strip {
-  margin: 1px 0 7px;
+  margin: 2px 0 9px;
 }
 
 /* One line; the full list is the tooltip and the expanded row. Zero width so it never widens the column. */
@@ -430,7 +447,7 @@
 }
 
 .accounts-game-time {
-  margin-left: 5px;
+  margin-left: 6px;
   color: var(--a-text-3);
   white-space: nowrap;
 }
@@ -443,33 +460,36 @@
   font-weight: var(--a-weight-medium);
 }
 
-/* Expanded row: games on the left, payments on the right, aligned with the Started column. */
+/* Expanded row: games on the left, payments on the right, aligned with the Started column (58px toggle column + 12px). */
 .accounts-table tbody tr.accounts-detail-row td {
-  padding: 18px 24px 20px 54px;
+  padding: 22px 28px 26px 70px;
   cursor: default;
 }
 
+/* When the table is wider than its panel (1366px screens), the expanded row stays within the visible width and in view while the table scrolls sideways. */
 .accounts-detail {
+  position: sticky;
+  left: 70px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px 48px;
-  max-width: 1180px;
+  gap: 28px 56px;
+  max-width: min(1380px, calc(100cqw - 98px));
 }
 
 .accounts-detail-section {
   display: grid;
   align-content: start;
   min-width: 0;
-  gap: 10px;
+  gap: 12px;
 }
 
 .accounts-detail-heading {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
   min-width: 0;
-  min-height: 19px;
+  min-height: 24px;
 }
 
 .accounts-detail-usage {
@@ -490,12 +510,12 @@
 
 .accounts-timeline li {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr) auto;
+  grid-template-columns: 190px minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 16px;
-  min-height: 34px;
+  gap: 20px;
+  min-height: 44px;
   border-bottom: 1px solid var(--a-line);
-  padding: 7px 0;
+  padding: 10px 0;
   font-size: var(--a-size-small);
 }
 
@@ -522,18 +542,18 @@
   color: var(--a-text);
 }
 
-/* Key/value list: 148px labels, values left aligned so long IDs read naturally. */
+/* Key/value list: 190px labels (the timeline's time column), values left aligned so long IDs read naturally. */
 .accounts-kv {
   display: grid;
-  gap: 5px;
+  gap: 7px;
   margin: 0;
 }
 
 .accounts-kv > div {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-columns: 190px minmax(0, 1fr);
   align-items: baseline;
-  gap: 16px;
+  gap: 20px;
 }
 
 .accounts-kv dt {
@@ -554,18 +574,18 @@
 }
 
 .accounts-detail-section > .accounts-kv:not(.accounts-payer) {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .accounts-payer {
   display: grid;
-  gap: 5px;
+  gap: 7px;
 }
 
 .accounts-payer + .accounts-payer {
-  margin-top: 4px;
+  margin-top: 6px;
   border-top: 1px solid var(--a-line);
-  padding-top: 12px;
+  padding-top: 14px;
 }
 
 /* ================================================================= timeline */
@@ -579,8 +599,8 @@
  * thin mark is still easy to point at.
  */
 .accounts-strip {
-  --strip-height: 6px;
-  --strip-reach: 5px;
+  --strip-height: 8px;
+  --strip-reach: 6px;
 
   position: relative;
   display: block;
@@ -588,8 +608,8 @@
 }
 
 .accounts-strip--detail {
-  --strip-height: 10px;
-  --strip-reach: 6px;
+  --strip-height: 14px;
+  --strip-reach: 7px;
 }
 
 .accounts-strip-piece {
@@ -636,8 +656,8 @@
 /* Live sessions: where now is, in the expanded strip. */
 .accounts-strip-now {
   position: absolute;
-  top: -3px;
-  bottom: -3px;
+  top: -4px;
+  bottom: -4px;
   width: 2px;
   margin-left: -1px;
   border-radius: 1px;
@@ -649,13 +669,13 @@
 .accounts-strip-chart {
   display: grid;
   min-width: 0;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .accounts-strip-scale {
   position: relative;
-  height: 24px;
-  margin-top: 4px;
+  height: 30px;
+  margin-top: 5px;
   color: var(--a-text-3);
   font-size: var(--a-size-caption);
   line-height: 1;
@@ -666,13 +686,13 @@
   position: absolute;
   top: 0;
   width: 1px;
-  height: 4px;
+  height: 5px;
   margin-left: -0.5px;
   background: var(--a-line-strong);
 }
 
 .accounts-strip-tick.is-hour {
-  height: 6px;
+  height: 8px;
 }
 
 .accounts-strip-tick.is-now {
@@ -683,7 +703,7 @@
 
 .accounts-strip-tick-label {
   position: absolute;
-  top: 10px;
+  top: 13px;
   left: 50%;
   translate: -50% 0;
 }
@@ -695,7 +715,7 @@
 
 .accounts-strip-end {
   position: absolute;
-  top: 10px;
+  top: 13px;
   color: var(--a-text-2);
 }
 
@@ -715,15 +735,15 @@
   position: fixed;
   z-index: 60;
   display: grid;
-  gap: 2px;
-  max-width: 320px;
+  gap: 3px;
+  max-width: 380px;
   border: 1px solid var(--a-line-strong);
   border-radius: var(--a-radius);
   background: var(--a-panel);
   box-shadow: var(--a-shadow-pop);
   color: var(--a-text-2);
-  padding: 7px 10px;
-  font-size: var(--a-size-caption);
+  padding: 10px 14px;
+  font-size: var(--a-size-small);
   line-height: 1.4;
   pointer-events: none;
   white-space: nowrap;
@@ -747,22 +767,22 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 32px;
+  gap: 40px;
 }
 
 .accounts-breakdown > .admin-section + .admin-section {
   margin-top: 0;
 }
 
-/* 40px rows in both tables, with or without the device pick button. */
+/* 56px rows in both tables, with or without the device pick button. */
 .accounts-rank-table .admin-table td {
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 
 .accounts-rank-table .admin-table :is(th, td).accounts-rank-col,
 .accounts-rank-table .admin-table td.accounts-rank {
-  width: 40px;
+  width: 52px;
   padding-right: 0;
   color: var(--a-text-3);
   font-size: var(--a-size-caption);
@@ -808,7 +828,7 @@
 }
 
 /*
- * Share bars: one neutral hue, 6px, square at the start and 2px rounded at
+ * Share bars: one neutral hue, 8px, square at the start and 2px rounded at
  * the end, on a recessive track; the value sits in its own right-aligned
  * tabular column so the bars all start and end on the same lines.
  */
@@ -818,25 +838,25 @@
 }
 
 .accounts-meter {
-  --meter-value: 40px;
+  --meter-value: 52px;
 
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--meter-value);
-  width: var(--meter-width, 176px);
+  width: var(--meter-width, clamp(150px, 11vw, 220px));
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   min-height: var(--a-control-sm);
 }
 
 /* Top games: the bar's value is the play time column. */
 .accounts-rank-table--games .accounts-meter {
-  --meter-value: 84px;
-  --meter-width: 220px;
+  --meter-value: 104px;
+  --meter-width: clamp(200px, 14vw, 270px);
 }
 
 .accounts-meter-track {
   position: relative;
-  height: 6px;
+  height: 8px;
   overflow: hidden;
   border-radius: var(--a-radius-inner);
   background: var(--a-line);
@@ -866,6 +886,13 @@
 }
 
 /* =============================================================== responsive */
+
+/* Side by side, By device needs about 600px; below that the two tables stack. */
+@media (max-width: 1599px) {
+  .accounts-breakdown {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 @media (max-width: 1100px) {
   .accounts-breakdown,

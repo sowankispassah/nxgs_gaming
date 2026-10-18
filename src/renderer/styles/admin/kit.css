@@ -47,7 +47,7 @@
 }
 
 :where(.admin-screen) :is(h3, h4) {
-  font-size: var(--a-size-small);
+  font-size: var(--a-size-label);
 }
 
 .admin-screen :is(code, kbd, samp) {
@@ -119,25 +119,25 @@
   background-color: var(--a-field);
   box-shadow: none;
   color: var(--a-text);
-  padding: 0 10px;
-  font-size: var(--a-size-body);
+  padding: 0 var(--a-field-pad-x);
+  font-size: var(--a-size-input);
   transition:
     border-color var(--a-dur) var(--a-ease),
     background-color var(--a-dur) var(--a-ease);
 }
 
 .admin-screen textarea {
-  min-height: 80px;
-  padding: 8px 10px;
+  min-height: 112px;
+  padding: 12px var(--a-field-pad-x);
   line-height: 1.5;
 }
 
 .admin-screen select {
-  padding-right: 30px;
+  padding-right: 42px;
   background-position:
-    calc(100% - 15px) 50%,
-    calc(100% - 10px) 50%;
-  background-size: 5px 5px;
+    calc(100% - 22px) 50%,
+    calc(100% - 16px) 50%;
+  background-size: 6px 6px;
 }
 
 .admin-screen select option {
@@ -179,8 +179,8 @@
 
 /* Checkboxes and radios */
 .admin-screen :is(input[type='checkbox'], input[type='radio']) {
-  width: 16px;
-  height: 16px;
+  width: var(--a-check);
+  height: var(--a-check);
   border: 1px solid var(--a-control-border);
   border-radius: var(--a-radius-xs);
   background: transparent;
@@ -191,16 +191,16 @@
 }
 
 .admin-screen input[type='checkbox']::after {
-  width: 4px;
-  height: 8px;
+  width: 5px;
+  height: 10px;
   margin-top: -2px;
   border-width: 0 2px 2px 0;
   border-color: var(--a-on-accent);
 }
 
 .admin-screen input[type='radio']::after {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   background: var(--a-on-accent);
 }
 
@@ -224,7 +224,7 @@
   margin: 0;
   color: var(--a-text);
   font-family: var(--a-font);
-  font-size: var(--a-size-small);
+  font-size: var(--a-size-label);
   font-weight: var(--a-weight-strong);
   letter-spacing: 0;
   line-height: 1.4;
@@ -265,14 +265,14 @@
 /* Keyboard key names are the one place uppercase is allowed. A tonal cap: filled, no edge. */
 .admin-kbd {
   display: inline-grid;
-  min-width: 20px;
-  height: 20px;
+  min-width: 26px;
+  height: 26px;
   place-items: center;
   border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
   background: var(--a-tonal);
   color: var(--a-text-2);
-  padding: 0 5px;
+  padding: 0 7px;
   font-family: var(--a-font-mono);
   font-size: var(--a-size-badge);
   line-height: 1;
@@ -298,12 +298,12 @@
   gap: var(--a-section-gap);
 }
 
-/* Main column + 340px side column (device facts, moderators). Stacks below 1100px. */
+/* Main column + side column (device facts, moderators; --a-side-column, 360-440px). Stacks below 1100px. */
 .admin-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--a-side-column);
   align-items: start;
-  gap: 40px;
+  gap: 48px;
 }
 
 @media (max-width: 1100px) {
@@ -312,12 +312,12 @@
   }
 }
 
-/* PageSection: h2 + description, actions on the right, 12px, then content. */
+/* PageSection: h2 + description, actions on the right, 16px, then content. */
 .admin-section {
   display: grid;
   align-content: start;
   min-width: 0;
-  gap: 12px;
+  gap: 16px;
 }
 
 .admin-section + .admin-section {
@@ -332,26 +332,26 @@
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
   min-width: 0;
 }
 
 .admin-section-heading-group {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: 4px;
 }
 
 .admin-section-heading {
   margin: 0;
   font-size: var(--a-size-h2);
   font-weight: var(--a-weight-display);
-  line-height: 1.35;
+  line-height: 1.25;
 }
 
 .admin-section-description {
   margin: 0;
-  max-width: 720px;
+  max-width: 860px;
   color: var(--a-text-2);
   font-size: var(--a-size-small);
   line-height: 1.45;
@@ -363,7 +363,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* Toolbar: a row of controls. */
@@ -372,7 +372,7 @@
   flex-wrap: wrap;
   align-items: center;
   min-width: 0;
-  gap: 8px;
+  gap: 10px;
 }
 
 .admin-toolbar--end {
@@ -400,7 +400,7 @@
   border-radius: var(--a-radius);
   background: var(--a-panel);
   box-shadow: none;
-  padding: 20px;
+  padding: var(--a-panel-pad);
 }
 
 /* Edge to edge content (tables, hairline lists). */
@@ -410,7 +410,7 @@
 
 /* A panel of hairline rows (settings rows, facts): the rows bring their own vertical padding. */
 .admin-panel--rows {
-  padding: 4px 20px;
+  padding: 4px var(--a-panel-pad);
 }
 
 .admin-panel--rows > :is(.admin-value-row, .admin-switch-row) + :is(.admin-value-row, .admin-switch-row) {
@@ -418,7 +418,7 @@
 }
 
 .admin-panel--rows > .admin-meta-list > div {
-  padding-block: 11px;
+  padding-block: 15px;
 }
 
 /*
@@ -430,10 +430,10 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px 16px;
-  margin: 20px -20px -20px;
+  gap: 12px 20px;
+  margin: var(--a-panel-pad) calc(-1 * var(--a-panel-pad)) calc(-1 * var(--a-panel-pad));
   border-top: 1px solid var(--a-line);
-  padding: 12px 20px;
+  padding: 16px var(--a-panel-pad);
 }
 
 /* In a form the grid gap already separates it from the fields. */
@@ -446,11 +446,11 @@
 }
 
 .admin-panel--rows > .admin-panel-footer {
-  margin: 0 -20px -4px;
+  margin: 0 calc(-1 * var(--a-panel-pad)) -4px;
 }
 
 .admin-panel-footer > .admin-notice {
-  flex: 1 1 240px;
+  flex: 1 1 280px;
   min-width: 0;
 }
 
@@ -464,8 +464,8 @@
 /*
  * .admin-btn + one variant: --primary (accent fill), --secondary (default:
  * tonal fill, no outline), --ghost (text only), --danger (red text on a red
- * tint); sizes --sm (28px) and --icon (square). Page headers use the 32px
- * size, section headers, tables and toolbars the 28px one. Text buttons carry
+ * tint); sizes --sm (40px) and --icon (square). Page headers and form footers
+ * use the 48px size, section headers, tables and toolbars the 40px one. Text buttons carry
  * no icon; icon-only buttons (row delete, copy, expand, close) need an
  * aria-label. The border stays transparent so every variant keeps one size.
  */
@@ -481,14 +481,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   min-height: var(--a-control);
   border: 1px solid var(--btn-border);
   border-radius: var(--a-radius-sm);
   background: var(--btn-bg);
   box-shadow: none;
   color: var(--btn-fg);
-  padding: 0 12px;
+  padding: 0 var(--a-btn-pad-x);
   font-family: var(--a-font);
   font-size: var(--a-size-button);
   font-weight: var(--a-weight-medium);
@@ -548,9 +548,9 @@
 
 .admin-screen .admin-btn.admin-btn--sm {
   min-height: var(--a-control-sm);
-  gap: 5px;
-  padding: 0 10px;
-  font-size: var(--a-size-small);
+  gap: 6px;
+  padding: 0 var(--a-btn-pad-x-sm);
+  font-size: var(--a-size-button-sm);
 }
 
 .admin-screen .admin-btn--icon {
@@ -566,45 +566,50 @@
   padding: 0;
 }
 
-/* Only icon-only buttons hold an icon (or a spinner in its place while busy): 16px at both sizes. */
+/* Only icon-only buttons hold an icon (or a spinner in its place while busy): 20px, 18px in a compact button. */
 .admin-screen .admin-btn > svg {
   flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
+  width: var(--a-icon);
+  height: var(--a-icon);
+}
+
+.admin-screen .admin-btn--sm > svg {
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
 }
 
 /* ===================================================================== forms */
 
 .admin-form {
   display: grid;
-  gap: 20px;
+  gap: 24px;
 }
 
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 20px;
 }
 
 .form-grid .full {
   grid-column: 1 / -1;
 }
 
-/* Field: label (13px/500) above the control, help or error (12px) below. */
+/* Field: label (--a-size-label, medium) above the control, help or error (--a-size-caption) below. */
 .admin-field {
   display: grid;
   align-content: start;
   min-width: 0;
-  gap: 6px;
+  gap: 8px;
 }
 
 .admin-field-label {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
   color: var(--a-text);
-  font-size: var(--a-size-small);
+  font-size: var(--a-size-label);
   font-weight: var(--a-weight-medium);
   line-height: 1.4;
 }
@@ -644,7 +649,7 @@
 .input-with-button {
   display: flex;
   align-items: stretch;
-  gap: 8px;
+  gap: 10px;
 }
 
 .input-with-button > input {
@@ -656,7 +661,7 @@
 .admin-affix-input {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-height: var(--a-input);
   border: 1px solid var(--a-field-line);
   border-bottom-color: var(--a-field-line-bottom);
@@ -664,7 +669,7 @@
   background: var(--a-field);
   box-shadow: none;
   color: var(--a-text-3);
-  padding: 0 10px;
+  padding: 0 var(--a-field-pad-x);
   transition:
     border-color var(--a-dur) var(--a-ease),
     background-color var(--a-dur) var(--a-ease);
@@ -689,8 +694,8 @@
 
 .admin-affix-input > svg {
   flex: 0 0 auto;
-  width: 15px;
-  height: 15px;
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
 }
 
 .admin-affix-input > em {
@@ -715,28 +720,28 @@
 
 .admin-affix-input select,
 .admin-affix-input select:is(:hover, :focus) {
-  padding-right: 20px;
+  padding-right: 24px;
   background-position:
-    calc(100% - 7px) 50%,
+    calc(100% - 8px) 50%,
     calc(100% - 2px) 50%;
 }
 
 /* ==================================================================== switch */
 
-/* 30x18, the only rounded-full element. Driven by data-on. */
+/* 40x24, the only rounded-full element. Driven by data-on. */
 .admin-screen .ps-switch {
-  width: 30px;
-  height: 18px;
+  width: 40px;
+  height: 24px;
   border-radius: 999px;
   background: var(--a-switch-off);
   transition: background-color var(--a-dur) var(--a-ease);
 }
 
 .admin-screen .ps-switch::after {
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
   background: var(--a-switch-knob);
   box-shadow: none;
   transition:
@@ -750,7 +755,7 @@
 }
 
 .admin-screen .ps-switch[data-on='true']::after {
-  translate: 12px 0;
+  translate: 16px 0;
 }
 
 /* SwitchRow: copy left, switch right. Inside .admin-switch-list rows get hairlines. */
@@ -769,12 +774,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  min-height: 52px;
+  gap: 24px;
+  min-height: var(--a-setting-row);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  padding: 10px 0;
+  padding: 12px 0;
 }
 
 .admin-switch-row {
@@ -811,12 +816,12 @@
 .admin-switch-copy {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: 3px;
 }
 
 .admin-switch-copy strong {
   color: var(--a-text);
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-row-title);
   font-weight: var(--a-weight-medium);
 }
 
@@ -833,7 +838,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* Danger zone: destructive actions (Exit NXGS Play, Remove device) in a rows panel with a red hairline. No fill. */
@@ -849,7 +854,7 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-height: var(--a-control-sm);
   border-radius: var(--a-radius-xs);
   color: var(--a-text-3);
@@ -888,6 +893,12 @@
   color: var(--a-text);
 }
 
+.admin-inline-switch > svg {
+  flex: 0 0 auto;
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
+}
+
 .admin-inline-switch.is-disabled {
   cursor: default;
   opacity: 0.5;
@@ -909,21 +920,22 @@
   border-radius: var(--a-radius);
   background: var(--a-tonal);
   box-shadow: none;
-  padding: 2px;
+  padding: 3px;
 }
 
+/* The track is as tall as an input: a 1px edge and 3px padding around 40px segments. */
 .admin-segmented button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: var(--a-control-sm);
+  gap: 8px;
+  min-height: calc(var(--a-input) - 8px);
   border: 0;
   border-radius: var(--a-radius-inner);
   background: transparent;
   box-shadow: none;
   color: var(--a-text-2);
-  padding: 0 10px;
-  font-size: var(--a-size-small);
+  padding: 0 var(--a-btn-pad-x-sm);
+  font-size: var(--a-size-button-sm);
   font-weight: var(--a-weight-medium);
   white-space: nowrap;
 }
@@ -957,21 +969,21 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .admin-chip-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: var(--a-control-sm);
   border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
   background: var(--a-tonal);
   box-shadow: none;
   color: var(--a-text-2);
-  padding: 0 10px;
-  font-size: var(--a-size-small);
+  padding: 0 var(--a-btn-pad-x-sm);
+  font-size: var(--a-size-button-sm);
   font-weight: var(--a-weight-medium);
   white-space: nowrap;
 }
@@ -994,8 +1006,8 @@
 :is(.admin-chip-toggle, .admin-picker-store)[aria-pressed='true']::before {
   content: '';
   flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   margin-left: -2px;
   background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -1013,13 +1025,13 @@
 .admin-screen .admin-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-height: 20px;
+  gap: 5px;
+  min-height: 26px;
   border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
   background: var(--a-tonal);
   color: var(--a-text-2);
-  padding: 0 6px;
+  padding: 0 8px;
   font-size: var(--a-size-badge);
   font-weight: var(--a-weight-medium);
   letter-spacing: 0;
@@ -1054,7 +1066,7 @@
 /* =============================================================== status text */
 
 /*
- * 6px dot + 13px label in the semantic colour (mapping in docs/admin-design.md).
+ * 8px dot + label (--a-size-small) in the semantic colour (mapping in docs/admin-design.md).
  * The label is the only baseline-aligned item, so the whole thing sits on the
  * text baseline of a table cell or facts row, level with plain text beside it
  * (no vertical-align or row-centring fixes needed in page CSS).
@@ -1062,7 +1074,7 @@
 .admin-status {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
   color: var(--a-text-2);
   font-size: var(--a-size-small);
   font-weight: var(--a-weight-medium);
@@ -1073,8 +1085,8 @@
 .admin-status-dot {
   flex: 0 0 auto;
   align-self: center;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: currentColor;
 }
@@ -1083,8 +1095,8 @@
 .admin-status > svg {
   flex: 0 0 auto;
   align-self: center;
-  width: 14px;
-  height: 14px;
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
   margin-inline: -2px -1px;
 }
 
@@ -1127,21 +1139,21 @@
 
 .admin-stat {
   display: grid;
-  flex: 1 1 var(--a-stat-min, 160px);
+  flex: 1 1 var(--a-stat-min, 200px);
   align-content: start;
   min-width: 0;
-  gap: 4px;
+  gap: 6px;
   margin: 0;
   box-shadow:
     -1px 0 0 var(--a-line),
     0 -1px 0 var(--a-line);
-  padding: 14px 20px 16px;
+  padding: 18px var(--a-panel-pad) 20px;
 }
 
 .admin-stat-label {
   margin: 0;
   color: var(--a-text-2);
-  font-size: var(--a-size-caption);
+  font-size: var(--a-size-label);
   font-weight: var(--a-weight-medium);
   line-height: 1.4;
 }
@@ -1156,7 +1168,7 @@
   font-weight: var(--a-weight-display);
   font-variant-numeric: proportional-nums;
   letter-spacing: -0.01em;
-  line-height: 1.2;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1214,7 +1226,7 @@
   border-bottom: 1px solid var(--a-line);
   background: var(--a-panel);
   color: var(--a-text-2);
-  padding: 0 12px;
+  padding: 0 var(--a-cell-pad-x);
   font-size: var(--a-size-caption);
   font-weight: var(--a-weight-medium);
   letter-spacing: 0;
@@ -1227,18 +1239,18 @@
   height: var(--a-row);
   border-bottom: 1px solid var(--a-line);
   color: var(--a-text);
-  padding: 8px 12px;
+  padding: 10px var(--a-cell-pad-x);
   vertical-align: middle;
   transition: background-color var(--a-dur) var(--a-ease);
 }
 
-/* 16px from the panel edge on both sides; the cells between keep 12px. */
+/* 20px from the panel edge on both sides; the cells between keep 14px. */
 .admin-table :is(th, td):first-child {
-  padding-left: 16px;
+  padding-left: var(--a-cell-pad-edge);
 }
 
 .admin-table :is(th, td):last-child {
-  padding-right: 16px;
+  padding-right: var(--a-cell-pad-edge);
 }
 
 .admin-table tbody tr:last-child td {
@@ -1271,7 +1283,7 @@
  * never shifts under the pointer; only the inset fill needs to beat the hover.
  */
 .admin-table tbody tr.admin-table-detail td {
-  padding: 16px;
+  padding: 20px var(--a-cell-pad-edge);
 }
 
 .admin-table tbody tr.admin-table-detail td,
@@ -1288,13 +1300,13 @@
 
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
   border-left: 2px solid var(--notice-color);
   border-radius: 0 var(--a-radius-xs) var(--a-radius-xs) 0;
   background: var(--notice-tint);
   color: var(--a-text);
-  padding: 8px 12px;
+  padding: 12px 16px;
   font-size: var(--a-size-small);
   font-weight: 400;
   line-height: 1.45;
@@ -1309,8 +1321,8 @@
 }
 
 .admin-notice-icon svg {
-  width: 15px;
-  height: 15px;
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
 }
 
 .admin-notice--success {
@@ -1338,53 +1350,53 @@
 .admin-empty {
   display: grid;
   justify-items: start;
-  gap: 4px;
-  padding: 16px 0;
+  gap: 6px;
+  padding: 20px 0;
   text-align: left;
 }
 
-/* In a padded panel the panel's padding is enough; edge to edge (scroller, flush panel) it keeps the rows' 16px inset. */
+/* In a padded panel the panel's padding is enough; edge to edge (scroller, flush panel) it keeps the rows' 20px inset. */
 .admin-panel:not(.admin-panel--flush) > :is(.admin-empty, .admin-loading) {
   padding: 0;
 }
 
 :is(.admin-table-scroll, .admin-panel--flush) > :is(.admin-empty, .admin-loading) {
-  padding: 16px;
+  padding: 20px var(--a-cell-pad-edge);
 }
 
 .admin-empty strong,
 .admin-empty-title {
   color: var(--a-text);
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-lg);
   font-weight: var(--a-weight-medium);
 }
 
 .admin-empty p {
-  max-width: 560px;
+  max-width: 640px;
   color: var(--a-text-2);
   font-size: var(--a-size-small);
   line-height: 1.5;
 }
 
 .admin-empty-action {
-  margin-top: 8px;
+  margin-top: 12px;
 }
 
 .admin-loading {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
+  gap: 10px;
   min-height: 0;
   color: var(--a-text-2);
-  padding: 12px 0;
-  font-size: var(--a-size-small);
+  padding: 16px 0;
+  font-size: var(--a-size-lead);
 }
 
 .admin-loading > svg {
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
 }
 
 /* ================================================================ facts list */
@@ -1392,7 +1404,7 @@
 /*
  * <dl class="admin-meta-list"><div><dt/><dd/></div>...</dl>: label/value rows
  * with hairlines between them. One rule for alignment:
- *   default  label left, value right. Short facts in a side column (340px).
+ *   default  label left, value right. Short facts in a side column.
  *   --left   a fixed label column and left-aligned values. Anywhere wider
  *            (inside a main-column panel) or when a value can be long: paths,
  *            IDs, errors, release notes.
@@ -1406,11 +1418,11 @@
 
 .admin-meta-list > div {
   display: grid;
-  grid-template-columns: minmax(120px, 0.6fr) minmax(0, 1fr);
+  grid-template-columns: minmax(140px, 0.6fr) minmax(0, 1fr);
   align-items: baseline;
-  gap: 16px;
+  gap: 20px;
   border-bottom: 1px solid var(--a-line);
-  padding: 9px 0;
+  padding: 13px 0;
 }
 
 .admin-meta-list > div:last-child {
@@ -1437,7 +1449,7 @@
 }
 
 .admin-meta-list--left > div {
-  grid-template-columns: var(--a-meta-label, 168px) minmax(0, 1fr);
+  grid-template-columns: var(--a-meta-label, 210px) minmax(0, 1fr);
 }
 
 .admin-meta-list--left dd {
@@ -1459,12 +1471,12 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 52px;
+  gap: 10px;
+  min-height: var(--a-list-row);
   border-bottom: 1px solid var(--a-line);
   border-radius: 0;
   background: transparent;
-  padding: 6px 8px 6px 10px;
+  padding: 8px 10px 8px 12px;
   transition: background-color var(--a-dur) var(--a-ease);
 }
 
@@ -1496,7 +1508,7 @@
   flex: 1 1 auto;
   align-items: center;
   min-width: 0;
-  gap: 12px;
+  gap: 14px;
   border: 0;
   border-radius: var(--a-radius-xs);
   background: transparent;
@@ -1531,23 +1543,23 @@
 .admin-popover-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  max-width: 280px;
+  gap: 8px;
+  max-width: 360px;
   min-height: var(--a-control-sm);
   border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
   background: var(--a-tonal);
   color: var(--a-text-2);
-  padding: 0 7px 0 10px;
-  font-size: var(--a-size-small);
+  padding: 0 10px 0 var(--a-btn-pad-x-sm);
+  font-size: var(--a-size-button-sm);
   font-weight: var(--a-weight-medium);
   white-space: nowrap;
 }
 
 .admin-popover-trigger > svg {
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
   color: var(--a-text-3);
 }
 
@@ -1560,7 +1572,7 @@
   overflow: hidden;
   border-left: 1px solid var(--a-line-strong);
   color: var(--a-text);
-  padding-left: 7px;
+  padding-left: 10px;
   text-overflow: ellipsis;
 }
 
@@ -1599,13 +1611,13 @@
 /* The panel sits under its button; surface and shadow above. */
 .admin-popover-panel {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   left: 0;
   z-index: 40;
   display: flex;
   flex-direction: column;
-  width: min(320px, calc(100vw - 48px));
-  max-height: min(60vh, 480px);
+  width: min(400px, calc(100vw - 48px));
+  max-height: min(64vh, 600px);
   overflow: hidden;
 }
 
@@ -1618,19 +1630,19 @@
 .admin-picker-head {
   display: grid;
   flex: 0 0 auto;
-  gap: 6px;
+  gap: 8px;
   border-bottom: 1px solid var(--a-line);
-  padding: 8px 8px 6px;
+  padding: 10px 10px 8px;
 }
 
 .admin-screen .admin-picker-search {
-  min-height: var(--a-control);
+  min-height: var(--a-input);
 }
 
 .admin-picker-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   min-height: var(--a-control-sm);
 }
 
@@ -1651,23 +1663,23 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 4px;
+  padding: 6px;
 }
 
 .admin-picker-group + .admin-picker-group {
-  margin-top: 4px;
+  margin-top: 6px;
   border-top: 1px solid var(--a-line);
-  padding-top: 4px;
+  padding-top: 6px;
 }
 
-/* Store header: a 12px label with a ghost "Whole store" button. */
+/* Store header: a caption label with a ghost "Whole store" button. */
 .admin-picker-group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   min-height: var(--a-control);
-  padding-left: 8px;
+  padding-left: 10px;
 }
 
 .admin-picker-group-header > span {
@@ -1689,10 +1701,10 @@
 .admin-picker-option {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-height: var(--a-control);
   border-radius: var(--a-radius-xs);
-  padding: 0 8px;
+  padding: 0 10px;
   cursor: pointer;
   transition: background-color var(--a-dur) var(--a-ease);
 }
@@ -1743,7 +1755,7 @@
 .admin-picker-note {
   margin: 0;
   color: var(--a-text-2);
-  padding: 8px;
+  padding: 10px;
   font-size: var(--a-size-small);
 }
 
@@ -1752,15 +1764,15 @@
 .admin-active-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  max-width: 300px;
+  gap: 8px;
+  max-width: 380px;
   min-height: var(--a-control-sm);
   border: 1px solid transparent;
   border-radius: var(--a-radius-xs);
   background: var(--a-tonal);
   color: var(--a-text);
-  padding: 0 6px 0 9px;
-  font-size: var(--a-size-caption);
+  padding: 0 10px 0 var(--a-btn-pad-x-sm);
+  font-size: var(--a-size-button-sm);
   font-weight: var(--a-weight-medium);
 }
 
@@ -1778,8 +1790,8 @@
 
 .admin-active-chip > svg {
   flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   color: var(--a-text-3);
   transition: color var(--a-dur) var(--a-ease);
 }
@@ -1807,20 +1819,20 @@
   background: var(--a-panel);
   box-shadow: var(--a-shadow-pop);
   color: var(--a-text);
-  padding: 24px;
+  padding: var(--a-modal-pad);
   animation: none;
 }
 
 .admin-screen .modal h2 {
   font-family: var(--a-font-display);
-  font-size: var(--a-size-heading-lg);
+  font-size: var(--a-size-modal-title);
   font-weight: var(--a-weight-display);
-  letter-spacing: -0.01em;
-  line-height: 1.3;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
 }
 
 .admin-screen .modal .muted {
-  font-size: var(--a-size-small);
+  font-size: var(--a-size-body);
 }
 
 /*
@@ -1830,8 +1842,8 @@
  */
 .admin-screen .admin-btn.close-button {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: 20px;
+  right: 20px;
   z-index: 2;
   width: var(--a-control);
   height: var(--a-control);

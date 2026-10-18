@@ -6,12 +6,12 @@
 
 /* ------------------------------------------------------------------ shared */
 
-/* 32px artwork square on a tonal fill (no outline). Muted initials stand in when a game has no artwork. */
+/* Artwork square (--a-thumb) on a tonal fill (no outline). Muted initials stand in when a game has no artwork. */
 .game-thumb {
   display: grid;
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
+  width: var(--a-thumb);
+  height: var(--a-thumb);
   place-items: center;
   overflow: hidden;
   border-radius: var(--a-radius-xs);
@@ -32,7 +32,7 @@
 
 .game-thumb-initials {
   color: var(--a-text-2);
-  font-size: calc(11px * var(--a-x-match-text));
+  font-size: var(--a-size-small);
   font-weight: var(--a-weight-display);
   line-height: 1;
 }
@@ -42,9 +42,9 @@
 /* Library list on the left, editor on the right. */
 .games-layout {
   display: grid;
-  grid-template-columns: clamp(340px, 28%, 420px) minmax(0, 1fr);
+  grid-template-columns: clamp(440px, 34%, 520px) minmax(0, 1fr);
   align-items: start;
-  gap: 32px;
+  gap: clamp(28px, 2.2vw, 40px);
 }
 
 /* The list stays in view while the editor scrolls; long libraries scroll inside the panel. */
@@ -53,7 +53,7 @@
   top: 0;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 56px);
+  max-height: calc(100vh - 64px);
 }
 
 .games-library-panel {
@@ -67,15 +67,15 @@
 .games-search {
   flex: 0 0 auto;
   border-bottom: 1px solid var(--a-line);
-  padding: 10px;
+  padding: 12px;
 }
 
 .games-search-clear {
   display: grid;
   flex: 0 0 auto;
-  width: var(--a-control-sm);
-  height: var(--a-control-sm);
-  margin-right: -7px;
+  width: calc(var(--a-input) - 12px);
+  height: calc(var(--a-input) - 12px);
+  margin-right: -9px;
   place-items: center;
   border: 0;
   border-radius: var(--a-radius-xs);
@@ -89,6 +89,11 @@
   color: var(--a-text);
 }
 
+.games-search-clear svg {
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
+}
+
 /* ---------------------------------------------------------- games: list */
 
 .games-list {
@@ -100,14 +105,14 @@
 }
 
 .games-list .admin-list-row {
-  gap: 4px;
-  min-height: 52px;
-  padding: 6px 8px;
+  gap: 6px;
+  min-height: var(--a-list-row);
+  padding: 8px 10px;
 }
 
 .games-list .row-main {
-  gap: 12px;
-  min-height: 40px;
+  gap: 14px;
+  min-height: calc(var(--a-list-row) - 16px);
   padding: 0 4px;
 }
 
@@ -115,13 +120,13 @@
   display: grid;
   flex: 1 1 auto;
   min-width: 0;
-  gap: 1px;
+  gap: 2px;
 }
 
 .game-row-copy strong {
   overflow: hidden;
   color: var(--a-text);
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-row-title);
   font-weight: var(--a-weight-medium);
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -131,7 +136,7 @@
 .game-row-copy span {
   overflow: hidden;
   color: var(--a-text-3);
-  font-size: var(--a-size-caption);
+  font-size: var(--a-size-small);
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -147,11 +152,11 @@
   container: game-editor / inline-size;
 }
 
-/* Groups: a 13px label column on the left, fields on the right; stacked when narrow. */
+/* Groups: a label column on the left, fields on the right; stacked when narrow. */
 .game-form-group {
   display: grid;
-  gap: 14px;
-  padding: 20px;
+  gap: 16px;
+  padding: var(--a-panel-pad);
 }
 
 .game-form-group + .game-form-group {
@@ -165,14 +170,21 @@
 .game-form-group-body {
   display: grid;
   min-width: 0;
-  gap: 16px;
+  gap: 20px;
 }
 
-@container game-editor (min-width: 720px) {
+/* A narrow editor (1366px screens) gives each field the full width, so placeholders and paths stay readable. */
+@container game-editor (max-width: 620px) {
+  .game-form-group .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container game-editor (min-width: 760px) {
   .game-form-group {
-    grid-template-columns: 148px minmax(0, 1fr);
-    gap: 24px;
-    padding: 24px;
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 28px;
+    padding: 28px;
   }
 
   /* Line the group label up with the first field label. */
@@ -191,26 +203,26 @@
 /* Browse buttons share one width so their inputs end on the same line. */
 .game-browse {
   flex: 0 0 auto;
-  min-width: 132px;
+  min-width: 164px;
 }
 
 /* Artwork: preview on the left of each path field. */
 .game-assets {
   display: grid;
-  gap: 20px;
+  gap: 24px;
 }
 
 .asset-field {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-columns: 144px minmax(0, 1fr);
   align-items: start;
-  gap: 16px;
+  gap: 20px;
   min-width: 0;
 }
 
 .asset-preview {
   display: grid;
-  height: 63px;
+  height: 81px;
   place-items: center;
   overflow: hidden;
   border-radius: var(--a-radius-xs);
@@ -218,11 +230,11 @@
 }
 
 .asset-preview--avatar {
-  width: 63px;
+  width: 81px;
 }
 
 .asset-preview--cover {
-  width: 112px;
+  width: 144px;
 }
 
 .asset-preview img {
@@ -230,6 +242,26 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* In a narrow editor the previews step down (112px wide) so the path field keeps its width. */
+@container game-editor (max-width: 620px) {
+  .asset-field {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .asset-preview {
+    height: 63px;
+  }
+
+  .asset-preview--avatar {
+    width: 63px;
+  }
+
+  .asset-preview--cover {
+    width: 112px;
+  }
 }
 
 /* Empty preview: a word, not an icon. */
@@ -260,12 +292,12 @@
 
 /* Keep focused fields clear of the sticky save bar when focus scrolls them into view. */
 .game-editor-panel :is(input, select, button) {
-  scroll-margin-bottom: 72px;
+  scroll-margin-bottom: 96px;
 }
 
-@container game-editor (min-width: 720px) {
+@container game-editor (min-width: 760px) {
   .game-editor-footer {
-    padding: 12px 24px;
+    padding: 16px 28px;
   }
 }
 
@@ -274,30 +306,30 @@
 .admin-screen .modal.installed-picker-modal {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  width: min(900px, 100%);
-  height: min(720px, 100%);
+  gap: 20px;
+  width: min(1040px, 100%);
+  height: min(860px, 100%);
   overflow: hidden;
-  padding: 24px;
+  padding: var(--a-modal-pad);
 }
 
 .installed-picker-header {
   display: grid;
-  gap: 4px;
-  padding-right: 48px;
+  gap: 6px;
+  padding-right: 64px;
 }
 
 .installed-picker-header p {
   margin: 0;
   color: var(--a-text-2);
-  font-size: var(--a-size-small);
+  font-size: var(--a-size-lead);
   line-height: 1.45;
 }
 
 .installed-picker-toolbar {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
 }
 
 .installed-picker-search {
@@ -314,16 +346,16 @@
 /*
  * Scrolling list with a sticky column header. No frame: it runs edge to edge
  * across the modal between two hairlines, rows separated by hairlines, the
- * columns lined up with the modal's 24px content edge.
+ * columns lined up with the modal's content edge (--a-modal-pad).
  */
 .installed-game-list {
-  --picker-columns: 32px minmax(0, 0.9fr) minmax(0, 1.1fr) 152px;
+  --picker-columns: var(--a-thumb) minmax(0, 0.9fr) minmax(0, 1.1fr) 190px;
 
   display: grid;
   flex: 1 1 auto;
   align-content: start;
   min-height: 0;
-  margin-inline: -24px;
+  margin-inline: calc(-1 * var(--a-modal-pad));
   overflow-y: auto;
   overscroll-behavior: contain;
   border-block: 1px solid var(--a-line);
@@ -333,7 +365,7 @@
 
 .installed-game-list > .admin-loading,
 .installed-game-list > .admin-empty {
-  padding: 16px 24px;
+  padding: 20px var(--a-modal-pad);
 }
 
 .installed-game-head {
@@ -343,12 +375,12 @@
   display: grid;
   grid-template-columns: var(--picker-columns);
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   height: var(--a-header-row);
   border-bottom: 1px solid var(--a-line);
   background: var(--a-panel);
   color: var(--a-text-2);
-  padding: 0 24px;
+  padding: 0 var(--a-modal-pad);
   font-size: var(--a-size-caption);
   font-weight: var(--a-weight-medium);
 }
@@ -357,15 +389,15 @@
   display: grid;
   grid-template-columns: var(--picker-columns);
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   width: 100%;
-  min-height: 56px;
+  min-height: 74px;
   border: 0;
   border-bottom: 1px solid var(--a-line);
   border-radius: 0;
   background: transparent;
   color: var(--a-text);
-  padding: 8px 24px;
+  padding: 10px var(--a-modal-pad);
   text-align: left;
 }
 
@@ -394,7 +426,7 @@
 .installed-game-copy {
   display: grid;
   min-width: 0;
-  gap: 1px;
+  gap: 2px;
 }
 
 .installed-game-copy strong,
@@ -406,14 +438,14 @@
 }
 
 .installed-game-copy strong {
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-row-title);
   font-weight: var(--a-weight-medium);
   line-height: 1.35;
 }
 
 .installed-game-copy span {
   color: var(--a-text-2);
-  font-size: var(--a-size-caption);
+  font-size: var(--a-size-small);
   line-height: 1.35;
 }
 
@@ -429,7 +461,7 @@
   --glyph-triangle: currentColor;
 
   justify-content: flex-start;
-  gap: 16px;
+  gap: 20px;
   color: var(--a-text-3);
   font-size: var(--a-size-caption);
   font-weight: 400;
@@ -437,14 +469,14 @@
 
 .installed-picker-hints .button-glyph,
 .installed-picker-hints .button-glyph svg {
-  width: 16px;
-  height: 16px;
+  width: var(--a-icon);
+  height: var(--a-icon);
 }
 
 /* -------------------------------------------------------------------- scan */
 
 .scan-filter-count {
-  margin-left: 6px;
+  margin-left: 8px;
   color: var(--a-text-3);
   font-weight: 400;
 }
@@ -462,26 +494,26 @@
 }
 
 .scan-col-confidence {
-  width: 128px;
+  width: 156px;
 }
 
 .scan-col-status {
-  width: 172px;
+  width: 210px;
 }
 
 .scan-col-action {
-  width: 116px;
+  width: 140px;
 }
 
 .scan-table td {
-  padding-top: 9px;
-  padding-bottom: 9px;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 .scan-game {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -489,7 +521,7 @@
 .scan-source {
   display: grid;
   min-width: 0;
-  gap: 1px;
+  gap: 2px;
 }
 
 .scan-game-copy strong,
@@ -502,14 +534,14 @@
 
 .scan-game-copy strong {
   color: var(--a-text);
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-row-title);
   font-weight: var(--a-weight-medium);
   line-height: 1.35;
 }
 
 .scan-game-copy span {
   color: var(--a-text-3);
-  font-size: var(--a-size-caption);
+  font-size: var(--a-size-small);
   line-height: 1.35;
 }
 
@@ -535,7 +567,7 @@
 .scan-confidence {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 10px;
   color: var(--a-text-2);
   line-height: 1.3;
   white-space: nowrap;
@@ -545,26 +577,26 @@
   display: inline-flex;
   align-self: center;
   align-items: flex-end;
-  gap: 2px;
-  height: 11px;
+  gap: 3px;
+  height: 14px;
 }
 
 .scan-confidence-bars i {
-  width: 3px;
+  width: 4px;
   border-radius: 1px;
   background: var(--a-line-strong);
 }
 
 .scan-confidence-bars i:nth-child(1) {
-  height: 5px;
+  height: 6px;
 }
 
 .scan-confidence-bars i:nth-child(2) {
-  height: 8px;
+  height: 10px;
 }
 
 .scan-confidence-bars i:nth-child(3) {
-  height: 11px;
+  height: 14px;
 }
 
 .scan-confidence[data-level='1'] i:nth-child(-n + 1),
@@ -574,7 +606,7 @@
 }
 
 .scan-add {
-  min-width: 76px;
+  min-width: 96px;
 }
 
 /* -------------------------------------------------------------- responsive */
@@ -590,6 +622,6 @@
   }
 
   .games-list {
-    max-height: 420px;
+    max-height: 520px;
   }
 }

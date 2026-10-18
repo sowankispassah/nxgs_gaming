@@ -6,13 +6,18 @@
  * Uses --a-* tokens only.
  */
 
-/* Device ID: the code and its copy button, right aligned like the other side-column facts. */
+/* Device ID: the code and its copy button, right aligned like the other side-column facts (the icon, not the button box, ends on the edge). */
+/* The label takes only its own width here, so the whole ID fits beside it in the side column. */
+.admin-meta-list > div:has(> .device-id-value) {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
 .device-id-value {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
-  margin-block: -4px;
+  gap: 6px;
+  margin-block: -8px;
 }
 
 .device-id-value code {
@@ -24,7 +29,7 @@
 }
 
 .admin-screen .device-copy-button {
-  margin-right: -6px;
+  margin-right: calc((var(--a-icon-sm) - var(--a-control-sm)) / 2);
 }
 
 .admin-screen .device-copy-button.is-copied {

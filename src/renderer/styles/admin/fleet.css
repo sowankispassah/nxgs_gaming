@@ -3,7 +3,7 @@
  * toolbar, the device detail (FleetStationPanel), moderators (ModeratorEditor),
  * the main admin PIN and the cloud sync section (FleetSyncCard, also on this
  * device's Device page). All devices is a data page: the list and the detail
- * both fill the 1600px container. Built on kit primitives (tables, clickable
+ * both fill the 1760px container. Built on kit primitives (tables, clickable
  * and selected rows, InlineSwitch, facts lists, panel footers); only column
  * widths and cell details live here. Self-contained, --a-* tokens only: no
  * literal colours and no literal 500/600 weights (the theme weight tokens
@@ -24,7 +24,7 @@
 .fleet-cell-stack {
   display: grid;
   justify-items: start;
-  gap: 2px;
+  gap: 3px;
 }
 
 .fleet-cell-stack small {
@@ -41,7 +41,7 @@
 
 /* Starts where a first section heading would. */
 .fleet-locked {
-  max-width: 520px;
+  max-width: 640px;
   padding-top: 0;
 }
 
@@ -50,44 +50,44 @@
 .fleet-list-anchor,
 .fleet-moderators-anchor {
   min-width: 0;
-  scroll-margin-top: 24px;
+  scroll-margin-top: 32px;
 }
 
 .fleet-toolbar {
-  gap: 8px 12px;
+  gap: 10px 14px;
 }
 
 .fleet-toolbar-search {
-  flex: 0 1 320px;
-  min-width: 220px;
+  flex: 0 1 400px;
+  min-width: 260px;
 }
 
 /* A plain filled select (no decorative icon); "All stores" says what it is. */
 .fleet-toolbar-store {
-  flex: 0 0 200px;
+  flex: 0 0 240px;
   min-width: 0;
 }
 
 .fleet-table td {
-  padding-block: 7px;
+  padding-block: 10px;
 }
 
 .fleet-device-cell {
-  min-width: 240px;
+  min-width: 260px;
 }
 
 /* Fixed widths keep the figures together; the device column takes the rest. */
-.fleet-table .fleet-col-status { width: 150px; }
-.fleet-table .fleet-col-version { width: 110px; }
-.fleet-table .fleet-col-seen { width: 150px; }
-.fleet-table .fleet-col-count { width: 96px; }
-.fleet-table .fleet-col-money { width: 136px; }
+.fleet-table .fleet-col-status { width: 190px; }
+.fleet-table .fleet-col-version { width: 130px; }
+.fleet-table .fleet-col-seen { width: 180px; }
+.fleet-table .fleet-col-count { width: 116px; }
+.fleet-table .fleet-col-money { width: 160px; }
 
 /* The device name is the row's real button (keyboard, controller); the whole row is clickable too. */
 .fleet-row-open {
   display: grid;
   justify-items: start;
-  gap: 1px;
+  gap: 2px;
   max-width: 100%;
   min-width: 0;
   margin: -2px -4px;
@@ -102,14 +102,14 @@
 .fleet-device-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   max-width: 100%;
 }
 
 .fleet-device-name strong {
   overflow: hidden;
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-row-title);
   font-weight: var(--a-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -119,7 +119,7 @@
   max-width: 100%;
   overflow: hidden;
   color: var(--a-text-2);
-  font-size: var(--a-size-caption);
+  font-size: var(--a-size-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -134,13 +134,15 @@
 }
 
 .fleet-table-chevron {
-  width: 40px;
+  width: 48px;
   color: var(--a-text-3);
   text-align: right;
 }
 
 .fleet-table-chevron svg {
   display: block;
+  width: var(--a-icon);
+  height: var(--a-icon);
   margin-left: auto;
   transition: color var(--a-dur) var(--a-ease);
 }
@@ -158,8 +160,9 @@
 
 .fleet-moderator-name {
   width: 22%;
-  max-width: 280px;
+  max-width: 340px;
   overflow: hidden;
+  font-size: var(--a-size-row-title);
   font-weight: var(--a-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -174,7 +177,7 @@
 }
 
 .fleet-moderator-table .fleet-moderator-status {
-  width: 150px;
+  width: 180px;
 }
 
 .admin-table .fleet-moderator-row.is-inactive td.fleet-moderator-name {
@@ -186,8 +189,8 @@
 }
 
 .fleet-moderator-table td.fleet-moderator-actions-cell {
-  padding-block: 4px;
-  padding-right: 8px;
+  padding-block: 6px;
+  padding-right: 10px;
   cursor: default;
 }
 
@@ -195,25 +198,25 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 6px;
 }
 
 /* Editor: fields on the left, devices on the right, separated by space, not a line. */
 .fleet-editor-body {
   display: grid;
-  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 460px) minmax(0, 1fr);
   align-items: start;
-  gap: 24px 64px;
+  gap: 28px 64px;
 }
 
 .fleet-editor-fields {
-  gap: 16px;
+  gap: 20px;
 }
 
 .fleet-moderator-active {
   min-height: 0;
   border-top: 1px solid var(--a-line);
-  padding: 12px 0 0;
+  padding: 16px 0 0;
 }
 
 .fleet-device-picker {
@@ -226,16 +229,16 @@
 .fleet-device-picker legend {
   float: left;
   width: 100%;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   padding: 0;
 }
 
 .fleet-device-groups {
   clear: both;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   align-items: start;
-  gap: 16px 32px;
+  gap: 20px 40px;
 }
 
 .fleet-device-group {
@@ -244,7 +247,7 @@
 }
 
 .fleet-device-group-label {
-  margin: 0 0 2px;
+  margin: 0 0 4px;
   color: var(--a-text-2);
   font-size: var(--a-size-caption);
   font-weight: var(--a-weight-medium);
@@ -253,12 +256,12 @@
 .fleet-device-option {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   min-height: var(--a-control);
-  margin: 0 -6px;
+  margin: 0 -8px;
   border-radius: var(--a-radius-xs);
-  padding: 0 6px;
+  padding: 0 8px;
   cursor: pointer;
   transition: background-color var(--a-dur) var(--a-ease);
 }
@@ -305,7 +308,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: var(--a-section-gap) 40px;
+  gap: var(--a-section-gap) 48px;
 }
 
 /* Side by side, so the kit's stacked-section margin does not apply. */
@@ -319,7 +322,7 @@
  */
 @media (min-width: 1101px) {
   .fleet-settings-grid {
-    row-gap: 12px;
+    row-gap: 16px;
   }
 
   .fleet-settings-grid > .admin-section {
@@ -337,7 +340,7 @@
   display: grid;
   align-content: start;
   min-width: 0;
-  gap: 12px;
+  gap: 16px;
 }
 
 .fleet-sync-error {
@@ -349,46 +352,46 @@
 .fleet-detail {
   display: grid;
   min-width: 0;
-  gap: 20px;
+  gap: 24px;
 }
 
 .fleet-detail-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
 }
 
 .fleet-detail-heading {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 6px;
 }
 
 /*
- * "All devices / Station 01": one 18px Red Hat Display line. The first part is
+ * "All devices / Station 01": one Red Hat Display line (--a-size-heading-lg). The first part is
  * the way back (a plain text button, underlined on hover), the separator is
  * tertiary, the device name is the heading.
  */
 .fleet-detail-path {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
   font-family: var(--a-font-display);
   font-size: var(--a-size-heading-lg);
   letter-spacing: -0.01em;
-  line-height: 1.3;
+  line-height: 1.25;
 }
 
 .fleet-detail-back {
   flex: 0 0 auto;
-  margin: 0 -6px;
+  margin: 0 -8px;
   border: 0;
   border-radius: var(--a-radius-xs);
   background: transparent;
   color: var(--a-text-2);
-  padding: 0 6px;
+  padding: 0 8px;
   font-weight: 400;
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
@@ -403,7 +406,7 @@
   text-decoration-line: underline;
 }
 
-/* The 6px padding already clears the text, so the outline sits on the box and keeps off the separator. */
+/* The 8px padding already clears the text, so the outline sits on the box and keeps off the separator. */
 .fleet-detail-back:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
   outline-offset: 0;
 }
@@ -416,14 +419,14 @@
 .fleet-detail-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   margin: 0;
   font-family: var(--a-font-display);
   font-size: var(--a-size-heading-lg);
   font-weight: var(--a-weight-display);
   letter-spacing: -0.01em;
-  line-height: 1.3;
+  line-height: 1.25;
 }
 
 .fleet-detail-title > span:first-child {
@@ -443,7 +446,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 12px;
+  gap: 4px 16px;
   margin: 0;
 }
 
@@ -452,9 +455,9 @@
   font-size: var(--a-size-small);
 }
 
-/* The split's sections sit 32px apart; StatRow above keeps the 20px detail rhythm. */
+/* The split's sections sit 40px apart; StatRow above keeps the 24px detail rhythm. */
 .fleet-detail-layout {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 /* Games table */
@@ -463,6 +466,7 @@
 }
 
 .fleet-game-title {
+  font-size: var(--a-size-row-title);
   font-weight: var(--a-weight-medium);
 }
 
@@ -474,7 +478,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 12px;
+  gap: 4px 16px;
 }
 
 .admin-table :is(th, td).fleet-games-switch-cell {
@@ -486,9 +490,14 @@
 .fleet-game-switch-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   color: var(--a-text-3);
   vertical-align: middle;
+}
+
+.fleet-game-switch-wrap > svg {
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
 }
 
 /* Side column: assigned moderators, hairline rows exactly like the facts list above it. */
@@ -503,9 +512,9 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   border-bottom: 1px solid var(--a-line);
-  padding: 9px 0;
+  padding: 13px 0;
 }
 
 .fleet-assigned-list li:last-child {

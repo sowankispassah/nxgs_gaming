@@ -5,10 +5,11 @@ it renders) is a quiet operator console for a gaming café: dense and
 typographic, in a dark or a light theme. Hierarchy comes from type, alignment
 and tone, not from boxes or outlines. One brand accent, NXGS magenta, marks
 what is chosen or actionable; other colour only carries meaning (status,
-verified money, errors). Hit targets are 32px high (only the compact controls
-the kit defines, small buttons, segments, toggle chips and the inline switch,
-are 28px) and focus is always a visible accent outline, because staff may
-drive it with a controller.
+verified money, errors). Text is set at the size staff knew from 0.26.0 (see
+Rules: type), with generous controls around it: inputs and buttons are 48px
+high (only the compact controls the kit defines, small buttons, segments,
+toggle chips, filter buttons and the inline switch, are 40px), and focus is
+always a visible accent outline, because staff may drive it with a controller.
 
 Customer surfaces (Home, Settings, the quick menu, PinDialog,
 AdminOptionsDialog...) are out of scope: they keep Inter and the console look.
@@ -69,19 +70,21 @@ What makes it NXGS rather than a default component theme:
   row) turns a segment `--a-text` and shows the readout (`.accounts-tip`: a
   fixed popover with the game, its clock range and its minutes in bold; empty
   track reads "No game", a live session's remainder "Time left"). In the
-  "Games played" cell it is 6px tall above the comma list and is one image
-  with a spoken summary; in the expanded row it is 10px, its segments are
+  "Games played" cell it is 8px tall above the comma list and is one image
+  with a spoken summary; in the expanded row it is 14px, its segments are
   focusable, and a clock scale sits under it (start and end of the paid time,
   quarter/half/hour ticks, hour labels where they fit; a live session adds a
   2px `--a-text` now mark and "Now"). It belongs to Accounts' own CSS; nothing
   else in the Control Room should compete with it.
 - **Accounts' hero figure and share bars.** Accounts has exactly one hero
-  figure, Total earned: 46px Red Hat Display with proportional lining figures
-  and a 2px accent bar before its label (the one figure above 24px in the
-  Control Room). The three figures beside it
-  (Paid sessions, Paid time, Most played game) are quieter: 18px Red Hat Text
-  at the medium weight. The By device and Top games share bars are single hue:
-  a 6px `--a-text-3` fill on an `--a-line` track, square at the start and 2px
+  figure, Total earned: `--a-size-hero` (Red Hat Display, about 62px at
+  1920 and 48px at 1366) with proportional lining figures and a 2px accent bar
+  before its label, the largest number in the Control Room. The three figures
+  beside it (Paid sessions, Paid time, Most played game) are quieter:
+  `--a-size-figure-text` Red Hat Text at the medium weight (36px / 28px), and
+  the game name a step smaller (`--a-size-figure-name`, as the 0.26.0 tile
+  had it). The By device and Top games share bars are single hue:
+  an 8px `--a-text-3` fill on an `--a-line` track, square at the start and 2px
   rounded at the end, the value in its own right-aligned tabular column so
   every bar starts and ends on the same lines; hover or focus turns the fill
   `--a-text-2` and shows the exact value in the same readout.
@@ -137,7 +140,7 @@ What makes it NXGS rather than a default component theme:
 | File | Owns |
 | --- | --- |
 | `src/renderer/styles/admin/tokens.css` | The Red Hat font imports; the `--a-*` colour and weight tokens for the dark and light themes (with `color-scheme`); the theme-independent tokens (shape, type, sizes, layout, motion); and the bridge that re-points the global console tokens inside the Control Room (below) |
-| `src/renderer/styles/admin/shell.css` | Screen grid, sidebar (brand tile, text nav, theme switch, footer), page container (1120 / 1600px), page header, scope note, header actions and the main admin chip |
+| `src/renderer/styles/admin/shell.css` | Screen grid, sidebar (brand tile, text nav, theme switch, footer), page container (1240 / 1760px), page header, scope note, header actions and the main admin chip |
 | `src/renderer/styles/admin/kit.css` | Base elements inside `.admin-screen` and every shared primitive: panels and footers, buttons, fields, switch rows, inline switches, danger zone, segmented, toggle chips, badges, status text, stat row, tables (clickable and selected rows), notices, empty and loading, facts lists, list rows, FilterPopover with its pickers and active-filter chips, modals |
 | `src/renderer/styles/admin/library.css` | Games (library list, editor groups, artwork, sticky save bar), the installed game picker modal (edge-to-edge list), Scan (results table, confidence bars) |
 | `src/renderer/styles/admin/settings.css` | Sessions (play access choices, page save bar), Branding, Kiosk (diagnostics columns, exit PIN width), Updates (summary, progress, restart modal) |
@@ -165,27 +168,61 @@ them; anything a second page needs goes into the kit.
 - **A panel holds a table, a grouped form or a list. Never nest panels.** The
   heading goes above the panel (`PageSection`), never inside it. A form panel
   ends in a full-width `.admin-panel-footer` (feedback left, button right).
-- **Sections:** h2 (15px Red Hat Display, display weight) + optional one-line description,
-  12px gap, content. 32px between sections (`.admin-stack` or consecutive
+- **Sections:** h2 (`--a-size-h2` Red Hat Display, display weight) + optional one-line description,
+  16px gap, content. 40px between sections (`.admin-stack` or consecutive
   `PageSection`s). A list and its editor are two sections ("Saved plans" /
   "Edit plan", "Moderators" / "Add moderator", "Customer games" / "Add game").
-- **Two-column pages:** main column + 340px side column (`.admin-split`), which
-  stacks below 1100px. Side columns hold short facts, never forms.
-- **Widths:** content is left aligned. Form pages max 1120px; data pages
-  (Games, Accounts, All devices, including the device detail) 1600px. Both
+- **Two-column pages:** main column + side column (`--a-side-column`,
+  360-440px; `.admin-split`), which stacks below 1100px. Side columns hold
+  short facts, never forms.
+- **Widths:** content is left aligned. Form pages max 1240px; data pages
+  (Games, Accounts, All devices, including the device detail) 1760px. Both
   1920×1080 and 1366×768 fit without horizontal page scroll; wide tables scroll
-  inside `.admin-table-scroll`.
+  inside `.admin-table-scroll` (at 1366 the Accounts sessions table does; its
+  expanded row stays inside the visible width). Where a row of controls or a
+  pair of tables no longer fits, it wraps or stacks (Accounts' search and sort
+  take their own line, By device and Top games stack below 1600px, the Games
+  editor's field pairs stack when the editor is under 620px) rather than
+  shrinking text.
 - **Type does the hierarchy, at the size staff are used to.** Text sizes come
-  from the `--a-size-*` tokens only, and each token is a 0.27.0 size (set in
-  Inter and Cascadia Mono) multiplied by an x-height ratio, so Red Hat's
-  lowercase renders exactly as tall as before: `--a-x-match-text` 0.55/0.49,
+  from the `--a-size-*` role tokens only. Each token is the 0.26.0 Control
+  Room size for that role (set in Inter and Cascadia Mono, with the same
+  viewport clamps) multiplied by an x-height ratio, so Red Hat's lowercase
+  renders exactly as tall as it did in 0.26.0: `--a-x-match-text` 0.55/0.49,
   `--a-x-match-display` 0.55/0.50, `--a-x-match-mono` 0.52/0.49 (measured).
-  Base sizes: page title 22, sub-page and modal titles 18, section headings
-  15, big figures 24 (all Red Hat Display); body 14, buttons 13.5, secondary
-  13, captions and labels 12, badges 11.5 (Red Hat Text); IDs and paths 12.5
-  (Red Hat Mono). To resize, change a base size in `tokens.css`, never a
-  ratio, and never write a raw pixel font size in page CSS. The owner asked
-  for these sizes (0.28.1): don't shrink them.
+  Base sizes, before the ratio (rendered at 1920 in brackets):
+
+  | Role | Token | 0.26.0 base |
+  | --- | --- | --- |
+  | Page title | `--a-size-title` | clamp(32px, 2.2vw, 40px) Display (44px) |
+  | Modal title | `--a-size-modal-title` | 30px Display (33px) |
+  | Sub-page title ("All devices / Station 01") | `--a-size-heading-lg` | clamp(24px, 1.6vw, 28px) Display (31px) |
+  | Section heading (h2) | `--a-size-h2` | clamp(20px, 1.25vw, 23px) Display (25px) |
+  | Sidebar "Control Room" | `--a-size-brand` | clamp(21px, 1.35vw, 26px) Display (28.5px) |
+  | Accounts' hero figure (new in 0.27; sized to stay well above the stat values) | `--a-size-hero` | clamp(44px, 3.1vw, 56px) Display (62px) |
+  | Stat values | `--a-size-figure` | clamp(24px, 1.8vw, 32px) Display (35px) |
+  | Plan prices (plans table, customer preview) | `--a-size-price` | clamp(20px, 1.4vw, 24px) Display (26px) |
+  | Accounts' quieter figures / a figure that is a name | `--a-size-figure-text` / `--a-size-figure-name` | clamp(24px, 1.8vw, 32px) / clamp(19px, 1.35vw, 24px) |
+  | Empty-state title, update headline, plan names, logo name | `--a-size-lg` | 20px (22.4px) |
+  | Running text, modal copy | `--a-size-body` | 17px (19px) |
+  | Page description, loading line, modal description | `--a-size-lead` | 17px |
+  | Nav items, Back to Home | `--a-size-nav` | 17px |
+  | Inputs, selects, textareas | `--a-size-input` | 17px |
+  | A row's name: games, devices, moderators, switch and value rows | `--a-size-row-title` | 17px |
+  | Buttons | `--a-size-button` | 17px |
+  | Compact buttons, segments, toggle chips, filter buttons, active filters | `--a-size-button-sm` | 15px (16.8px) |
+  | Secondary text, section descriptions, table cells, notices, facts, status, scope note | `--a-size-small` | 15px |
+  | Field labels, stat and figure labels, group titles (h3, `.admin-subheading`) | `--a-size-label` | 15px |
+  | Help, captions, column headers, third lines, nav group labels, controller hints | `--a-size-caption` | 13px (14.6px) |
+  | Badges, key caps | `--a-size-badge` | 12px (13.5px) |
+  | IDs, payment IDs, paths (Red Hat Mono) | `--a-size-mono` | 15px Cascadia (15.9px) |
+
+  To resize, change a base size in `tokens.css`, never a ratio, and never
+  write a raw pixel font size in page CSS. **The owner asked for these sizes
+  (the 0.26.0 sizes, measured against 0.26.0 screenshots): never shrink them
+  without asking.** Heights and the paddings around text are sized for them
+  (see the theme-independent tokens), so a smaller control would crowd the
+  text.
 - **Weights come from tokens, never literals** (only regular 400 is written
   as a number, because it is the same in both themes). Light-on-dark reads
   heavier, so the light theme steps every token up one notch:
@@ -232,7 +269,7 @@ them; anything a second page needs goes into the kit.
   exact strings tests assert (`pending ? 'Saving...' : 'Save settings'`).
   Spinners remain only where there are no words to change: page and section
   loading lines (`LoadingState`), the update headline while it checks, an
-  icon-only row button (the 16px icon swaps for a spinner of the same size),
+  icon-only row button (the icon swaps for a spinner of the same size),
   and a table switch while its change saves (`InlineSwitch busy`, or beside
   the switch in the device detail's games table so the switch never moves).
 - **Specificity: the kit stays low so pages can use one class.** The kit
@@ -319,12 +356,20 @@ Theme-independent tokens:
 | `--a-font-display` | Red Hat Display | Page title, section and modal headings, figures, sidebar brand |
 | `--a-font` | Red Hat Text | All UI text |
 | `--a-font-mono` | Red Hat Mono, Cascadia Mono, Consolas | IDs, payment IDs, paths, key names |
-| `--a-size-title` `-h2` `-figure` | 22 15 24px | Display sizes |
-| `--a-size-body` `-small` `-caption` `-mono` `-button` `-badge` | 14.5 13.5 12.5 13 14 12px | Text sizes |
+| `--a-size-*` | see Rules: type | One token per text role, 0.26.0 base size × x-height ratio |
 | `--a-focus-color`, `--a-focus`, `--a-focus-offset` | accent, `2px solid`, 2px | Focus outline |
 | `--a-dur`, `--a-ease` | 120ms | Colour transitions |
-| `--a-control` / `--a-control-sm` / `--a-input` / `--a-row` / `--a-header-row` | 32 / 28 / 34 / 40 / 36px | Heights |
-| `--a-page-max` / `--a-page-max-data` / `--a-side-column` / `--a-section-gap` | 1120 / 1600 / 340 / 32px | Layout |
+| `--a-control` / `--a-control-sm` / `--a-input` | 48 / 40 / 48px | Buttons and header actions / compact buttons, segments, chips, filter buttons, row actions / inputs, selects and the segmented track |
+| `--a-row` / `--a-header-row` | 56 / 44px | Table rows / column header |
+| `--a-setting-row` / `--a-list-row` | 66 / 68px | Switch, value and radio rows / list rows with a thumbnail (Games library) |
+| `--a-nav-item` / `--a-brand-logo` | clamp(40px, 5.2vh, 54px) / clamp(36px, 4.2vh, 46px) | Sidebar nav items / logo tile |
+| `--a-thumb` / `--a-icon` / `--a-icon-sm` / `--a-check` | 44 / 20 / 18 / 20px | Game artwork square / icons in buttons and hint glyphs / icons in compact buttons, fields, notices / checkboxes and radios |
+| `--a-btn-pad-x` / `--a-btn-pad-x-sm` / `--a-field-pad-x` | 20 / 14 / 14px | Horizontal padding in buttons / compact buttons and chips / fields |
+| `--a-panel-pad` / `--a-modal-pad` | clamp(22px, 1.6vw, 28px) / 32px | Panel padding (and footer, stat cells) / modal padding |
+| `--a-cell-pad-x` / `--a-cell-pad-edge` | 14 / 20px | Table cell padding / first and last cell from the panel edge |
+| `--a-sidebar-width` | clamp(248px, 17vw, 320px) | Sidebar (the 0.26.0 width) |
+| `--a-page-pad-top` / `--a-page-pad-x` / `--a-page-pad-bottom` | clamp(24px, 3.6vh, 40px) / clamp(32px, 2.8vw, 56px) / 64px | Content padding |
+| `--a-page-max` / `--a-page-max-data` / `--a-side-column` / `--a-section-gap` | 1240 / 1760 / clamp(360px, 24vw, 440px) / 40px | Layout |
 
 **Console token bridge.** The last block of `tokens.css` re-points the global
 console tokens inside `.admin-screen` only: `--ps-*` surfaces/text/status
@@ -339,8 +384,10 @@ admin CSS; use `--a-*`.**
 
 ## Shell (AdminScreen)
 
-- Sidebar (224px): the logo on a dark tile + "Control Room" (Red Hat Display)
-  + device name; nav groups *Library* (Games, Scan), *This device* (Sessions,
+- Sidebar (`--a-sidebar-width`, 248-320px): the logo on a dark tile +
+  "Control Room" (`--a-size-brand`, Red Hat Display) + device name; nav items
+  are `--a-size-nav` at `--a-nav-item` height, so all ten fit at 1366×768
+  with the footer; nav groups *Library* (Games, Scan), *This device* (Sessions,
   Plans, Details, Branding, Kiosk, Updates), *Business* (Accounts, All
   devices). Nav items are text only, aligned with the group label; the active
   item has a 2px accent bar, strong-weight text and a faint accent tint; hover and
@@ -349,14 +396,15 @@ admin CSS; use `--a-*`.**
   through it top to bottom. Footer, top to bottom: the theme switch (Dark ·
   Light · System, see Themes), "Back to Home" (ghost, no icon) and one line of
   controller hints.
-- Page header: `PAGE_COPY[tab]` title (22px Red Hat Display) and description,
-  then the scope note, always present so every header has the same height:
+- Page header: `PAGE_COPY[tab]` title (`--a-size-title` Red Hat Display) and
+  description (`--a-size-lead`), then the scope note (`--a-size-small`),
+  always present so every header has the same height:
   "Applies to Station 01", "Earnings from Station 01" (Accounts, this
   device), "Earnings from every device" (Accounts, all devices) or "Covers
   every device" (All devices). The actions slot sits on the right, then (main
   admin pages, while unlocked) the "Main admin unlocked · Lock" chip after a
   hairline. A hairline closes the header.
-- `DATA_TABS` (games, accounts, fleet) get the 1600px container.
+- `DATA_TABS` (games, accounts, fleet) get the 1760px container.
 - Kept behaviour: `data-admin-tab` on nav buttons, `.controller-focused` on the
   focused nav item, Escape/B closes (not from inputs or an open
   `[data-admin-popover]`), arrows stay inside `[data-admin-local-keys]` (the
@@ -364,8 +412,8 @@ admin CSS; use `--a-*`.**
   (PinDialog) renders in the Control Room, `data-admin-theme` on the root.
 
 Put page-level actions (Refresh, Export, Add) in the header with
-`<PageActions>`, as text buttons without icons; section-level actions (Sync
-now, View earnings) are 28px buttons in the section header:
+`<PageActions>`, as 48px text buttons without icons; section-level actions
+(Sync now, View earnings) are 40px buttons in the section header:
 
 ```tsx
 import { PageActions } from './AdminKit';
@@ -380,8 +428,8 @@ import { PageActions } from './AdminKit';
 
 A page that opens one item of a list in place (the device detail on All
 devices) does not get a back arrow, a "Back" button or a breadcrumb bar. Its
-heading reads as a path in one 18px Red Hat Display line, **"All devices /
-Station 01"** (`.fleet-detail-path` in `fleet.css`):
+heading reads as a path in one Red Hat Display line (`--a-size-heading-lg`),
+**"All devices / Station 01"** (`.fleet-detail-path` in `fleet.css`):
 
 - the first part is the way back: a real `<button>` (keyboard, controller,
   `onBack`) in `--a-text-2` at the regular weight, `--a-text` and underlined
@@ -416,9 +464,9 @@ Import components from `components/admin/AdminKit.tsx`. Classes are in
 
 ### Panel — the one raised surface
 
-`.admin-panel` (20px padding, `--a-panel` fill, no outline: a transparent 1px
+`.admin-panel` (`--a-panel-pad` padding, `--a-panel` fill, no outline: a transparent 1px
 border keeps the geometry). `padding="none"` (`.admin-panel--flush`) for
-edge to edge lists; `padding="rows"` (`.admin-panel--rows`, 4px 20px) for a
+edge to edge lists; `padding="rows"` (`.admin-panel--rows`, 4px `--a-panel-pad`) for a
 panel of hairline rows: switch rows, value rows, a facts list. Other props:
 `as` (`div`, `section`, `form`, `ul`, `ol`), any HTML attribute, `ref`.
 
@@ -443,7 +491,7 @@ sticky.
 
 ### Toolbar, ToolbarSpacer — a row of controls
 
-`.admin-toolbar` (8px gap, wraps), `--end`, `--between`; `.admin-toolbar-spacer`.
+`.admin-toolbar` (10px gap, wraps), `--end`, `--between`; `.admin-toolbar-spacer`.
 
 ```tsx
 <Toolbar aria-label="Device filters">
@@ -458,18 +506,20 @@ sticky.
 `.admin-btn` + `--primary` (accent fill, `--a-on-accent` text, strong weight; hover
 `--a-accent-strong`; never white), `--secondary` (the default: tonal
 `--a-tonal` fill, no outline), `--ghost` (text only, `--a-text-2`; tonal on
-hover), `--danger` (red text on a red tint, stronger on hover); sizes `--sm`
-(28px) and `--icon` (square, combine with `--sm`). Every variant keeps a
+hover), `--danger` (red text on a red tint, stronger on hover); 48px with
+`--a-size-button` text and 20px side padding, sizes `--sm` (40px,
+`--a-size-button-sm`, 14px padding) and `--icon` (square, combine with
+`--sm`). Every variant keeps a
 transparent 1px border so they line up. Add `.confirming` to a danger button
 for the second click of a two-step delete (solid red, labelled with the
 action: "Delete", "Remove device"; Cancel beside it). Ghost danger
 (`--ghost --danger`) stays grey until hover: use it for row delete icons.
 Text buttons have no icon and no spinner: while busy they are disabled and
-read "Saving..." (see Pending buttons). Icon-only buttons (16px icon, the
-kit sizes any `svg` in an `.admin-btn` to 16px) are for row actions (delete,
-copy, reorder, close) and need an `aria-label`; while busy the icon becomes
-a 16px spinner. Header actions are 32px; section, table and toolbar actions
-28px. One primary button per view.
+read "Saving..." (see Pending buttons). Icon-only buttons (the kit sizes any
+`svg` in an `.admin-btn` to 20px, 18px in a compact one) are for row actions
+(delete, copy, reorder, close) and need an `aria-label`; while busy the icon
+becomes a spinner of the same size. Header actions and form footers are 48px;
+section, table and toolbar actions 40px. One primary button per view.
 
 ```tsx
 <button className="admin-btn admin-btn--primary" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save device'}</button>
@@ -479,18 +529,18 @@ a 16px spinner. Header actions are 32px; section, table and toolbar actions
 
 ### Field and inputs
 
-`Field` renders `.admin-field` with `.admin-field-label` (13.5px, medium),
-`.admin-field-required`, `.admin-field-help` / `.admin-field-error` (12.5px).
+`Field` renders `.admin-field` with `.admin-field-label` (`--a-size-label`, medium),
+`.admin-field-required`, `.admin-field-help` / `.admin-field-error` (`--a-size-caption`).
 With `htmlFor` the label points at the control; without it the label wraps the
 control. `error` replaces the help text and turns the control border red.
 `.admin-field-help` is also the class for a short standalone note in a form or
 side column ("Use 6 or more digits...").
 
 Inputs, selects and textareas are styled by element inside `.admin-screen`:
-34px, filled (`--a-field`: the inset tone in dark, white in light), a subtle
+48px with `--a-size-input` text and 14px side padding, filled (`--a-field`: the inset tone in dark, white in light), a subtle
 1px `--a-field-line` border that is heavier at the bottom
 (`--a-field-line-bottom`), hover `--a-field-hover`; on focus the border turns
-accent and the accent focus outline appears. Checkboxes and radios are 16px;
+accent and the accent focus outline appears. Checkboxes and radios are 20px;
 checked ones are accent with an `--a-on-accent` mark. Native pickers and the
 select list follow the theme through `color-scheme`.
 
@@ -505,11 +555,12 @@ word before or after it in an `<em>`: "₹", "min", "sec", or the "Sort" label;
 the same filled frame; the inner input/select loses its own frame, the
 wrapper shows focus; no other icons in fields),
 `.input-with-button`, `.form-grid` (two columns, `.full` spans both),
-`.admin-form` (20px rhythm).
+`.admin-form` (24px rhythm).
 
 ### SwitchRow — on/off setting
 
-`.admin-switch-row` (copy left, 30×18 switch right). Wrap several in
+`.admin-switch-row` (66px: `--a-size-row-title` title and `--a-size-small`
+description left, 40×24 switch right). Wrap several in
 `.admin-switch-list` for hairlines between rows, inside a `padding="rows"`
 panel. `.admin-value-row` is the same row with a value control (a PIN input,
 seconds). The switch itself is `.ps-switch[data-on]`: `--a-switch-off` track
@@ -549,7 +600,7 @@ click confirms (`.confirming`, with Cancel beside it). Used for Exit NXGS Play
 
 ### InlineSwitch — a switch in a table cell or toolbar
 
-`.admin-inline-switch`: the bare 30×18 switch with an optional label after it
+`.admin-inline-switch`: the bare 40×24 switch with an optional label after it
 and an optional spinner (`busy`). The checkbox is hidden; the label shows the
 focus outline. Used by the Plans "Enabled" column, the device detail's games
 "On" column and Accounts' "Verified payments only".
@@ -561,7 +612,8 @@ focus outline. Used by the Plans "Enabled" column, the device detail's games
 
 ### Segmented — one choice out of a few
 
-`.admin-segmented`: a tonal track (no outline), 28px segments; the chosen
+`.admin-segmented`: a tonal track (no outline) as tall as an input (48px),
+40px segments; the chosen
 segment gets the accent tint, a 1px inset accent edge and
 `--a-accent-strong` text at the strong weight (unchosen segments are
 `--a-text-2` at the medium weight). Buttons carry `aria-pressed` (or
@@ -577,7 +629,7 @@ only: `SegmentedOption` has no icon.
 
 ### ToggleChip — on/off filter
 
-`.admin-chip-toggle[aria-pressed]` (28px, radius 4, tonal fill; selected:
+`.admin-chip-toggle[aria-pressed]` (40px, `--a-size-button-sm`, radius 4, tonal fill; selected:
 accent tint, `--a-accent-line` edge, `--a-accent-strong` text and a leading
 check drawn by CSS, the same mark the picker's "Whole store" toggle uses, so
 no toggle carries an icon element). Group in `.admin-chip-toggles`.
@@ -590,14 +642,14 @@ no toggle carries an icon element). Group in `.admin-chip-toggles`.
 
 ### Badge — a fact about a row
 
-`.admin-badge` (20px, radius 4, 12px medium, tonal fill, no outline,
+`.admin-badge` (26px, radius 4, `--a-size-badge` medium, tonal fill, no outline,
 `--a-text-2`) and `--success`, `--warning`, `--danger`, `--info` (the
 semantic tint and colour). For "This
 device", "Global", "Custom", "Device admin only". Not for counts or live states.
 
 ### StatusText — a state in words
 
-`.admin-status` + `--neutral|success|warning|danger|info`: 6px dot + 13.5px
+`.admin-status` + `--neutral|success|warning|danger|info`: 8px dot + `--a-size-small`
 label in the theme's semantic colour (mapping above). The label is the only
 baseline-aligned item, so a status sits exactly on the text baseline of a table
 cell or facts row; no page needs a `vertical-align` or row-centring fix.
@@ -611,10 +663,10 @@ cell or facts row; no page needs a `vertical-align` or row-centring fix.
 ### StatRow + Stat — key figures
 
 `.admin-stat-row` is one panel (no outline) split into equal cells by
-hairlines (wraps cleanly; `minCellWidth` sets the wrap point, default 160px).
-Each `.admin-stat`: `.admin-stat-label` (12.5px), `.admin-stat-value` (24px
+hairlines (wraps cleanly; `minCellWidth` sets the wrap point, default 200px).
+Each `.admin-stat`: `.admin-stat-label` (`--a-size-label`), `.admin-stat-value` (`--a-size-figure`
 Red Hat Display, proportional figures, ellipsis), optional `.admin-stat-sub`
-(12.5px). The same figure has the same label on every
+(`--a-size-caption`). The same figure has the same label on every
 page ("Games on device", "Paid sessions", "Revenue"). No icons.
 
 ```tsx
@@ -627,8 +679,9 @@ page ("Games on device", "Paid sessions", "Revenue"). No icons.
 ### Table — classes only
 
 `.admin-table-scroll` is the panel (tone, no outline) and the scroller;
-`.admin-table` inside: sticky 36px header (12.5px medium `--a-text-2`), 40px
-rows, hairline row separators only, 16px from the panel edge on both sides,
+`.admin-table` inside: sticky 44px header (`--a-size-caption` medium `--a-text-2`), 56px
+rows of `--a-size-small` text (a row's name `--a-size-row-title`), 14px cell
+padding, hairline row separators only, 20px from the panel edge on both sides,
 hover `--a-panel-2`, `.admin-num` for right aligned numbers.
 
 - `tr.is-clickable`: the row opens, expands or picks something on click
@@ -636,7 +689,7 @@ hover `--a-panel-2`, `.admin-num` for right aligned numbers.
   controller (device name, expand toggle, Edit).
 - `tr.is-selected`: the row being edited or picked: `--a-panel-2` fill and a
   2px accent bar on the left edge, like the nav and the Games list.
-- `tr.admin-table-detail`: the expanded row (`--a-inset`, 16px padding,
+- `tr.admin-table-detail`: the expanded row (`--a-inset`, 20px padding,
   hovered or not). A page that needs other padding sets it with a selector of
   the same weight (`.accounts-table tbody tr.accounts-detail-row td`); there is
   no `:hover` rule to match, so the row never shifts under the pointer.
@@ -656,7 +709,7 @@ hover `--a-panel-2`, `.admin-num` for right aligned numbers.
 ### Notice — inline feedback
 
 `.admin-notice--success|error|warning|info`: 2px left rule in the semantic
-colour on its tint, 13.5px, 15px icon inline (the icon carries meaning). `role="alert"` for errors.
+colour on its tint, `--a-size-small`, 18px icon inline (the icon carries meaning). `role="alert"` for errors.
 
 ```tsx
 <Notice tone="error">{error}</Notice>
@@ -664,9 +717,9 @@ colour on its tint, 13.5px, 15px icon inline (the icon carries meaning). `role="
 
 ### EmptyState — nothing to show
 
-`.admin-empty`: left aligned 14.5px medium title, 13.5px text, optional
+`.admin-empty`: left aligned `--a-size-lg` medium title, `--a-size-small` text, optional
 `action`. No icons. In a padded panel it uses the panel's padding; in a table scroller or
-flush panel it keeps the rows' 16px inset.
+flush panel it keeps the rows' 20px inset.
 
 ```tsx
 <Panel>
@@ -676,21 +729,22 @@ flush panel it keeps the rows' 16px inset.
 
 ### LoadingState — waiting
 
-`.admin-loading`: 14px spinner + 13.5px text, inline, left aligned.
+`.admin-loading`: 18px spinner + `--a-size-lead` text, inline, left aligned.
 
 ### Facts list — label/value pairs
 
 `<dl class="admin-meta-list"><div><dt/><dd/></div></dl>`: hairline rows on the
-text baseline (13px). Default: label left, value right, for short facts in a
+text baseline (`--a-size-small`, 13px row padding). Default: label left, value right, for short facts in a
 side column (Device page identity, device detail). `.admin-meta-list--left`: a
-168px label column (`--a-meta-label`) and left aligned values, for facts in a
+210px label column (`--a-meta-label`) and left aligned values, for facts in a
 main-column panel or values that can be long (cloud sync, local storage
 paths, update facts, diagnostics). Put it in a `padding="rows"` panel when it
 has a frame.
 
 ### List rows — `.admin-list > .admin-list-row`
 
-Hairline rows inside a flush panel (the Games library); `.row-main` is the
+Hairline rows (68px, a 44px thumbnail, `--a-size-row-title` name and
+`--a-size-small` second line) inside a flush panel (the Games library); `.row-main` is the
 clickable part; `.selected` adds the `--a-panel-2` fill and the 2px accent
 bar. Use a table for data.
 
@@ -703,9 +757,9 @@ styled like a selected chip) and a panel under it (`.admin-popover-panel`:
 so Escape/B close it, not the Control Room. Inside, a picker:
 `.admin-picker-head` (search + status line with Select all / Clear),
 `.admin-picker-list` > `.admin-picker-group` (`.admin-picker-group-header`:
-the store name, 12.5px medium `--a-text-3`, and a "Whole store" ghost toggle
+the store name, `--a-size-caption` medium `--a-text-3`, and a "Whole store" ghost toggle
 with `aria-pressed`; on, it reads in `--a-text` with the chips' CSS check, no
-icon element) > `.admin-picker-option` rows (32px,
+icon element) > `.admin-picker-option` rows (48px,
 checkbox, `.admin-picker-name`, `.admin-picker-meta`, optional badge; keyboard
 focus outlines the row). Active filters show as `.admin-active-chip` buttons
 ("Device Station 01 ×", tonal) in the result line under a filter bar.
@@ -714,8 +768,8 @@ focus outlines the row). Active filters show as `.admin-active-chip` buttons
 
 Control Room modals reuse `.modal-backdrop > .modal` from dialogs.css; inside
 `.admin-screen` they are flattened and themed (`--a-scrim` backdrop, panel
-fill, 1px `--a-line-strong` edge, radius 4, pop shadow, 24px padding, 18px
-Red Hat Display heading). Render them inside the page component so they stay
+fill, 1px `--a-line-strong` edge, radius 4, pop shadow, 32px padding,
+`--a-size-modal-title` Red Hat Display heading, `--a-size-body` copy). Render them inside the page component so they stay
 inside `.admin-screen`. A close button is
 `admin-btn admin-btn--icon admin-btn--ghost close-button`: the kit pins it to
 the top right corner of every modal. The PinDialog is portaled outside and
@@ -723,9 +777,9 @@ keeps its own console look (dark) in both themes.
 
 **A list inside a modal runs edge to edge** (the installed game picker,
 `.installed-game-list` in `library.css`): no frame of its own, it spans the
-modal's full width between two hairlines (`margin-inline: -24px`), rows are
+modal's full width between two hairlines (`margin-inline` minus `--a-modal-pad`), rows are
 separated by hairlines, a sticky column header sits on the same panel tone,
-and every column lines up with the modal's 24px content edge. Keyboard and
+and every column lines up with the modal's 32px content edge. Keyboard and
 controller focus draw the outline inside the row (`outline-offset: -2px`)
 so the scroller never clips it. Do not put a framed table or a panel inside
 a modal.
@@ -734,15 +788,15 @@ a modal.
 
 | Class | Purpose |
 | --- | --- |
-| `.admin-subheading` | 13.5px Red Hat Text at the strong weight: a group title inside a section or panel ("Details", "Kiosk", "Games played"), one notch above the labels beside it |
-| `.admin-text-2`, `.admin-caption` | Secondary colour; 12.5px caption |
-| `.admin-count` | 13.5px `--a-text-2` count or short meta next to a heading or toolbar ("8 saved", "4 of 5 on", "Last scan 2:05 pm") |
+| `.admin-subheading` | `--a-size-label` Red Hat Text at the strong weight: a group title inside a section or panel ("Details", "Kiosk", "Games played"), one notch above the labels beside it |
+| `.admin-text-2`, `.admin-caption` | Secondary colour; `--a-size-caption` caption |
+| `.admin-count` | `--a-size-small` `--a-text-2` count or short meta next to a heading or toolbar ("8 saved", "4 of 5 on", "Last scan 2:05 pm") |
 | `.admin-num` | Tabular, right aligned, no wrap |
-| `.admin-mono` | 13px Red Hat Mono, selectable (IDs, payment IDs, paths) |
+| `.admin-mono` | `--a-size-mono` Red Hat Mono, selectable (IDs, payment IDs, paths) |
 | `.admin-kbd` | Keyboard key name in Red Hat Mono on a tonal key cap: filled `--a-tonal`, no edge line, in both themes (the one uppercase) |
 | `.admin-visually-hidden` | Screen-reader-only text |
-| `.admin-stack` | Vertical 32px rhythm between sections |
-| `.admin-split` | Main + 340px side column, stacked below 1100px |
+| `.admin-stack` | Vertical 40px rhythm between sections |
+| `.admin-split` | Main + side column (`--a-side-column`), stacked below 1100px |
 
 ### Other exports
 
@@ -797,8 +851,12 @@ a modal.
   floating surfaces and focus.
 - No glows, halos or coloured box-shadow rings; focus is the outline.
 - No gradients, blue-tinted surfaces or card shadows.
-- No uppercase or letter-spacing (key names excepted); no 30px+ headings inside
-  a page.
+- No uppercase or letter-spacing (key names excepted); no heading inside a
+  page larger than the section heading (`--a-size-h2`): only the page title,
+  the sub-page title and modal titles are larger.
+- No shrinking text, controls or rows below the role tokens to fit something
+  in: wrap, stack or let a table scroll inside its panel instead. The owner
+  asked for the 0.26.0 sizes.
 - No nested panels, no card-in-card "sections", no section heading (h2)
   inside a panel; a group title (`.admin-subheading`) inside one is fine.
 - No huge numbers with an icon badge as KPI tiles; use `StatRow`.

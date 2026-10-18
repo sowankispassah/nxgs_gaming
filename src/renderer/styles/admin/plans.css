@@ -10,14 +10,14 @@
 
 .plan-table th.plan-col-order,
 .plan-table td.plan-col-order {
-  width: 72px;
+  width: 104px;
   padding-right: 0;
-  padding-left: 8px;
+  padding-left: 12px;
 }
 
 .plan-order {
   display: inline-flex;
-  gap: 2px;
+  gap: 4px;
 }
 
 .plan-table td.plan-col-name {
@@ -25,18 +25,19 @@
   width: 32%;
 }
 
+/* Plan names and prices keep the 0.26.0 plan list sizes: 20px names, display prices. */
 .plan-name {
   display: block;
   overflow: hidden;
   color: var(--a-text);
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-lg);
   font-weight: var(--a-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .plan-table td.plan-col-scope {
-  max-width: 180px;
+  max-width: 220px;
 }
 
 .plan-table td.plan-col-scope > span {
@@ -52,7 +53,9 @@
 
 .plan-price {
   color: var(--a-text);
-  font-weight: var(--a-weight-medium);
+  font-family: var(--a-font-display);
+  font-size: var(--a-size-price);
+  font-weight: var(--a-weight-display);
 }
 
 .plan-table :is(th, td).plan-col-updated {
@@ -67,7 +70,7 @@
 
 .plan-table :is(th, td).plan-col-actions {
   width: 1%;
-  padding-right: 8px;
+  padding-right: 12px;
   text-align: right;
   white-space: nowrap;
 }
@@ -77,8 +80,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
-  min-width: 140px;
+  gap: 6px;
+  min-width: 184px;
 }
 
 /* Disabled plans read quieter; the switch says why. */
@@ -90,29 +93,29 @@
 
 .plan-editor-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   align-items: start;
   gap: 0;
 }
 
 .plan-editor-fields {
   align-content: start;
-  padding-right: 24px;
+  padding-right: var(--a-panel-pad);
 }
 
 .plan-editor-switch > .admin-switch-row {
   min-height: 0;
   border-top: 1px solid var(--a-line);
-  padding: 14px 0 0;
+  padding: 18px 0 0;
 }
 
 .plan-preview {
   display: grid;
   align-content: start;
   align-self: stretch;
-  gap: 10px;
+  gap: 12px;
   border-left: 1px solid var(--a-line);
-  padding-left: 24px;
+  padding-left: var(--a-panel-pad);
 }
 
 .plan-preview .admin-caption {
@@ -124,23 +127,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  min-height: 60px;
+  gap: 16px;
+  min-height: 76px;
   border-radius: var(--a-radius-sm);
   background: var(--a-panel-2);
-  padding: 10px 14px;
+  padding: 12px 18px;
 }
 
 .plan-preview-copy {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: 3px;
 }
 
 .plan-preview-copy strong {
   overflow: hidden;
   color: var(--a-text);
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-row-title);
   font-weight: var(--a-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -148,14 +151,14 @@
 
 .plan-preview-copy small {
   color: var(--a-text-2);
-  font-size: var(--a-size-caption);
+  font-size: var(--a-size-small);
 }
 
 .plan-preview-price {
   flex: 0 0 auto;
   color: var(--a-text);
   font-family: var(--a-font-display);
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-price);
   font-weight: var(--a-weight-display);
   font-variant-numeric: proportional-nums;
   white-space: nowrap;
@@ -166,7 +169,7 @@
 @media (max-width: 1100px) {
   .plan-editor-body {
     grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
+    gap: 24px;
   }
 
   .plan-editor-fields {
@@ -176,7 +179,7 @@
   .plan-preview {
     border-top: 1px solid var(--a-line);
     border-left: 0;
-    padding-top: 16px;
+    padding-top: 20px;
     padding-left: 0;
   }
 }

@@ -367,6 +367,7 @@ export function AccountsPanel(props: {
               label="Most played game"
               value={topGame?.title ?? 'None yet'}
               title={topGame?.title}
+              name
               sub={topGame
                 ? `${plural(topGame.sessionCount, 'session', 'sessions')} · ${durationLabel(topGame.playMinutes)}`
                 : 'No games recorded in this period'}
@@ -477,12 +478,12 @@ export function AccountsPanel(props: {
   );
 }
 
-/** A secondary figure beside the hero: label, value (quieter than the hero), optional sub line. */
-function Figure(props: { label: string; value: ReactNode; sub?: ReactNode; title?: string }): JSX.Element {
+/** A secondary figure beside the hero: label, value (quieter than the hero), optional sub line. `name` sets a word value (a game title) a step smaller than a number. */
+function Figure(props: { label: string; value: ReactNode; sub?: ReactNode; title?: string; name?: boolean }): JSX.Element {
   return (
     <div className="accounts-figure">
       <dt className="accounts-figure-label">{props.label}</dt>
-      <dd className="accounts-figure-value" title={props.title}>{props.value}</dd>
+      <dd className={`accounts-figure-value${props.name ? ' accounts-figure-value--name' : ''}`} title={props.title}>{props.value}</dd>
       {props.sub && <dd className="accounts-figure-sub">{props.sub}</dd>}
     </div>
   );

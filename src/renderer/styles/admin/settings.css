@@ -16,7 +16,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
   min-height: var(--a-control);
 }
 
@@ -35,7 +35,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 12px;
+  gap: 4px 14px;
   color: var(--a-text-2);
   font-size: var(--a-size-small);
 }
@@ -44,19 +44,20 @@
   margin: 0;
 }
 
+/* A ghost compact button: its text lines up with the note's. */
 .settings-note > .admin-btn {
-  margin-left: -10px;
+  margin-left: calc(-1 * var(--a-btn-pad-x-sm));
 }
 
 /* Matches the base input rule's specificity so the fixed width wins. */
 .admin-screen :is(.admin-value-row, .admin-row-actions) > input.settings-pin-input {
   flex: 0 0 auto;
-  width: 200px;
+  width: 240px;
 }
 
 .settings-seconds-input {
   flex: 0 0 auto;
-  width: 120px;
+  width: 150px;
 }
 
 .settings-locked {
@@ -77,9 +78,9 @@
 .settings-choice {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  min-height: 52px;
-  padding: 12px 0;
+  gap: 14px;
+  min-height: var(--a-setting-row);
+  padding: 16px 0;
   cursor: pointer;
 }
 
@@ -111,15 +112,15 @@
 .branding-row {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 24px;
 }
 
 /* The logo art is made for a dark background, so it sits on the dark logo tile in both themes (no outline). */
 .branding-preview {
   display: grid;
   flex: 0 0 auto;
-  width: 104px;
-  height: 104px;
+  width: 136px;
+  height: 136px;
   place-items: center;
   overflow: hidden;
   border-radius: var(--a-radius);
@@ -137,7 +138,7 @@
   flex: 1 1 auto;
   align-content: center;
   min-width: 0;
-  gap: 4px;
+  gap: 6px;
   font-size: var(--a-size-small);
 }
 
@@ -145,12 +146,12 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .branding-title strong {
   color: var(--a-text);
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-lg);
   font-weight: var(--a-weight-medium);
 }
 
@@ -163,7 +164,7 @@
   flex: 0 0 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* ------------------------------------------------------------------- kiosk */
@@ -172,12 +173,12 @@
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 10px;
+  gap: 4px 12px;
 }
 
 .diagnostics-warnings {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* Two columns of key/value groups with a hairline between them. */
@@ -191,8 +192,8 @@
   display: grid;
   align-content: start;
   min-width: 0;
-  gap: 20px;
-  padding: 16px 20px 12px;
+  gap: 24px;
+  padding: 20px var(--a-panel-pad) 16px;
 }
 
 .diagnostics-column + .diagnostics-column {
@@ -202,15 +203,15 @@
 .diagnostics-group {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 6px;
 }
 
 /* Denser rows than other facts lists, all one height whether or not a label holds key caps. */
 .diagnostics-list > div {
-  grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1fr);
   align-items: center;
-  min-height: 34px;
-  padding: 6px 0;
+  min-height: 46px;
+  padding: 8px 0;
 }
 
 .diagnostics-list dd.diagnostics-value--empty {
@@ -225,28 +226,28 @@
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .diagnostics-key {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   color: var(--a-text-3);
 }
 
 .diagnostics-note {
-  max-width: 720px;
+  max-width: 860px;
   margin: 0;
 }
 
 /* Danger zone (kit .admin-danger-zone): the exit PIN beside its button. */
 .admin-screen .admin-row-actions > input.settings-pin-input {
-  width: 160px;
+  width: 200px;
 }
 
 .danger-zone-notice {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 /* ----------------------------------------------------------------- updates */
@@ -255,38 +256,40 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  min-height: 56px;
-  padding: 12px 0;
+  gap: 20px;
+  min-height: 80px;
+  padding: 16px 0;
 }
 
 .update-summary-copy {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: 4px;
 }
 
 .update-headline {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
   color: var(--a-text);
-  font-size: var(--a-size-body);
+  font-size: var(--a-size-lg);
   font-weight: var(--a-weight-medium);
 }
 
 .update-headline > svg {
   flex: 0 0 auto;
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
   color: var(--a-text-2);
 }
 
-/* State dot: neutral until a check says otherwise. */
+/* State dot: neutral until a check says otherwise; the spinner takes its place while checking. */
 .update-dot {
   flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  margin: 0 4px;
+  width: 8px;
+  height: 8px;
+  margin: 0 5px;
   border-radius: 50%;
   background: var(--a-text-3);
 }
@@ -304,8 +307,9 @@
   background: var(--a-red);
 }
 
+/* Lines up with the headline text: the 18px dot slot plus the 10px gap. */
 .update-detail {
-  margin: 0 0 0 22px;
+  margin: 0 0 0 28px;
   color: var(--a-text-2);
   font-size: var(--a-size-small);
   line-height: 1.45;
@@ -313,16 +317,16 @@
 
 .update-progress {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   border-top: 1px solid var(--a-line);
-  padding: 12px 0 14px;
+  padding: 16px 0 18px;
 }
 
 .update-progress-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   color: var(--a-text-2);
   font-size: var(--a-size-small);
 }
@@ -332,9 +336,9 @@
 }
 
 .update-progress-track {
-  height: 4px;
+  height: 6px;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--a-line-strong);
 }
 
@@ -366,19 +370,24 @@
 .update-release-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+}
+
+.update-release-link > svg {
+  width: var(--a-icon-sm);
+  height: var(--a-icon-sm);
 }
 
 /* Restart prompt: kit modal, two buttons, controller hints. */
 .admin-screen .modal.update-modal {
   display: grid;
-  gap: 20px;
-  width: min(480px, 100%);
+  gap: 24px;
+  width: min(640px, 100%);
 }
 
 .update-modal-copy {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .update-modal-copy > p {
@@ -396,36 +405,36 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px 20px;
+  gap: 14px 24px;
   border-top: 1px solid var(--a-line);
-  padding-top: 16px;
+  padding-top: 20px;
 }
 
-/* The same compact hints as the game picker footer and the sidebar: 16px glyphs. */
+/* The same hints as the game picker footer and the sidebar: --a-icon glyphs. */
 .update-modal-hints {
   --glyph-cross: currentColor;
   --glyph-circle: currentColor;
 
   justify-content: flex-start;
-  gap: 16px;
+  gap: 20px;
   color: var(--a-text-3);
   font-size: var(--a-size-caption);
   font-weight: 400;
 }
 
 .update-modal-hints .controller-hint {
-  gap: 6px;
+  gap: 8px;
 }
 
 .update-modal-hints .button-glyph,
 .update-modal-hints .button-glyph svg {
-  width: 16px;
-  height: 16px;
+  width: var(--a-icon);
+  height: var(--a-icon);
 }
 
 .update-modal-actions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   margin-left: auto;
 }
 
