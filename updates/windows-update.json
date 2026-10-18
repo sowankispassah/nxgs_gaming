@@ -1,7 +1,7 @@
 {
-    "version":  "0.27.0",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.27.0/NXGS-Play-Setup.exe",
-    "sha256":  "8e545ce7552808f6a29ba7fc91acd61bfb095a0e2c5c93ae322332527964099c",
+    "version":  "0.28.0",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.28.0/NXGS-Play-Setup.exe",
+    "sha256":  "3a97a32a48886f21273c2734fa2526bfad7a078f1c6823a140b22c6b52c86415",
     "required":  false,
-    "notes":  "Redesigned Control Room: calmer, denser layout with tables, grouped sidebar and status-only colour"
+    "notes":  "Control Room light/dark mode and new look; Accounts session timelines; cleaner customer Settings"
 }
