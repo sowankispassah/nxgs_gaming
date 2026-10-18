@@ -127,7 +127,7 @@ Renderer styles are split per surface under `src/renderer/styles/` (`tokens.css`
 
 The Control Room has two owner-facing tabs (0.25.0):
 
-- **Accounts**: income from paid sessions with the games played in each session and the Razorpay payer details (phone, email, method, UPI ID, card network and last 4, payment ID). It defaults to this device and works offline. **All devices** shows every station's earnings from the cloud and asks for the main admin PIN. Filter by period or device, expand a row for the game timeline and payments, and export CSV.
+- **Accounts**: income from paid sessions with the games played in each session and the Razorpay payer details (phone, email, method, UPI ID, card network and last 4, payment ID). It defaults to this device and works offline. **All devices** shows every station's earnings from the cloud and asks for the main admin PIN. Filter by period, devices (multi-select, grouped by store), games played, payment method, status and verified payments, search by phone, email, UPI ID or payment ID, and sort. The tiles, breakdowns, table and CSV export all follow the same filters. Expand a row for the game timeline and payments.
 - **All Devices** (Device Management): needs the main admin PIN. Lists every station with its games, sessions and revenue. Edit or remove a station, turn a game on or off remotely, add moderators whose own PIN unlocks the Control Room on the devices you pick, change the main admin PIN, and see cloud sync status.
 
 The main admin PIN starts as `1832`. Five wrong PINs lock it for 10 minutes, and each further lockout doubles up to 24 hours. The main admin session ends when the Control Room closes. Moderators cannot see or change a station's own admin PIN.

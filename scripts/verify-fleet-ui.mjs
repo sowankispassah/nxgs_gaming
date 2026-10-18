@@ -2,8 +2,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { readRendererStyles } from './lib/rendererSources.mjs';
 import {
+  accountsFilterCount,
   buildEarningsQuery,
+  clearAccountsFilters,
   DEFAULT_ACCOUNTS_VIEW,
+  filterFleetStations,
+  groupStationsByStore,
+  withAccountsScope,
   durationLabel,
   formatPaise,
   isUnfinishedSession,
@@ -16,9 +21,11 @@ import {
 
 // Control Room Accounts (earnings) and All Devices (Device Management) UI.
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
-const [admin, accounts, ownerGate, fleetPanel, stationPanel, moderators, syncCard, deviceManager, app, settingsPanels, styles] = await Promise.all([
+const [admin, accounts, filters, popover, ownerGate, fleetPanel, stationPanel, moderators, syncCard, deviceManager, app, settingsPanels, styles] = await Promise.all([
   read('../src/renderer/components/admin/AdminScreen.tsx'),
   read('../src/renderer/components/admin/AccountsPanel.tsx'),
+  read('../src/renderer/components/admin/AccountsFilters.tsx'),
+  read('../src/renderer/components/admin/FilterPopover.tsx'),
   read('../src/renderer/components/admin/useOwnerSession.tsx'),
   read('../src/renderer/components/admin/DeviceManagementPanel.tsx'),
   read('../src/renderer/components/admin/FleetStationPanel.tsx'),
@@ -68,7 +75,7 @@ assert.match(
 );
 assert.match(accounts, /query\.scope === 'all'\s*\?\s*await owner\.run\(\(\) => window\.nxgs\.getEarnings\(query\)/);
 assert.match(accounts, /window\.nxgs\.listFleetStations\(\)/);
-assert.match(accounts, /' \(removed\)'/);
+assert.match(filters, /' \(removed\)'/);
 for (const label of ['Today', 'Last 7 days', 'This month', 'All time', 'Custom']) {
   assert.match(accounts, new RegExp(`label: '${label}'`), `period preset ${label}`);
 }
@@ -110,7 +117,7 @@ assert.match(stationPanel, /This is the device you are using now\./);
 assert.match(moderators, /A moderator's PIN unlocks the Control Room on the devices you pick\./);
 assert.match(moderators, /Leave blank to keep the current PIN/);
 assert.equal((moderators.match(/type="password"\s+inputMode="numeric"/g) ?? []).length, 2, 'moderator PIN fields must be numeric password inputs');
-assert.match(admin, /setAccountsView\(\(current\) => \(\{ \.\.\.current, scope: 'all', stationId \}\)\)/, 'View earnings must open Accounts for that device');
+assert.match(admin, /setAccountsView\(\(current\) => \(\{ \.\.\.withAccountsScope\(current, 'all'\), stationIds: \[stationId\] \}\)\)/, 'View earnings must open Accounts for that device');
 
 // Review fixes (contract addendum B).
 assert.match(fleetPanel, /Use 6 or more digits\./, 'the main admin PIN card must recommend a longer PIN');
@@ -145,29 +152,99 @@ assert.match(app, /unsubscribeFleetLocalData\(\);/);
 assert.match(styles, /\.accounts-table th \{[^}]*position: sticky;/, 'the sessions table header must stay visible while scrolling');
 assert.match(styles, /\.accounts-table-scroll \{[^}]*overflow: auto;/);
 
+// Earnings filters (contract addendum C): the bar only builds the query; main filters.
+assert.match(accounts, /<AccountsFilterBar[\s\S]{0,200}facets=\{report\?\.facets\}/);
+assert.match(accounts, /const viewKey = JSON\.stringify\(built\.query\)/, 'every filter must reload the report');
+assert.match(accounts, /stationIds: toggleValue\(current\.stationIds, station\.stationId\)/, 'By device adds devices to the filter');
+assert.match(accounts, /No sessions match these filters/);
+for (const label of ['Devices', 'Games', 'Payment', 'Status', 'Search', 'Sort']) {
+  assert.ok(filters.includes(`>${label}<`) || filters.includes(`label="${label}"`), `filter bar must have ${label}`);
+}
+assert.match(filters, /Phone, email, UPI ID or payment ID/);
+assert.match(filters, /SEARCH_DEBOUNCE_MS = 300/);
+assert.match(filters, /Verified payments only/);
+assert.match(filters, /Whole store/);
+assert.match(filters, /This device/);
+assert.match(filters, /'No details'/);
+assert.match(filters, /Showing \$\{props\.shownCount\.toLocaleString\('en-IN'\)\} of \$\{total\.toLocaleString\('en-IN'\)\} sessions/);
+assert.match(filters, /Clear filters/);
+assert.match(filters, /EARNINGS_SORT_OPTIONS\.map/);
+assert.match(popover, /event\.key === 'Escape'[\s\S]{0,400}event\.stopPropagation\(\);[\s\S]{0,80}close\(\);/, 'Escape in a popover must close it, not the Control Room');
+assert.match(popover, /data-admin-popover=\{open \? 'true' : undefined\}/);
+assert.match(popover, /triggerRef\.current\?\.focus/, 'closing a popover returns focus to its button');
+assert.match(popover, /addEventListener\('pointerdown'/, 'clicking outside closes a popover');
+assert.match(popover, /useControllerNavigation\(true, handleController\)/);
+assert.match(admin, /event\.target\.closest\(POPOVER_SELECTOR\)\) return;/, 'the Control Room ignores keys inside an open popover');
+assert.match(fleetPanel, /filterFleetStations\(stations \?\? \[\], \{ search: deviceSearch, states: deviceStates, store: deviceStore \}\)/);
+assert.match(fleetPanel, /Name, store, location or device ID/);
+assert.match(fleetPanel, /All stores/);
+
+{
+  const base = { ...DEFAULT_ACCOUNTS_VIEW, range: 'all' };
+  const all = { ...base, scope: 'all' };
+  assert.deepEqual(buildEarningsQuery({ ...all, stationIds: ['a', 'b'], verifiedOnly: true, search: '  98765 ', sort: 'amount_high' }).query, {
+    scope: 'all', sort: 'amount_high', stationIds: ['a', 'b'], verifiedOnly: true, search: '98765'
+  });
+  // Device scope never sends devices or verified-only.
+  assert.deepEqual(buildEarningsQuery({ ...base, stationIds: ['a'], verifiedOnly: true }).query, { scope: 'device', sort: 'newest' });
+  assert.deepEqual(
+    buildEarningsQuery({ ...base, gameIds: ['g1'], paymentMethods: ['upi', 'unknown'], statuses: ['active'] }).query,
+    { scope: 'device', sort: 'newest', gameIds: ['g1'], paymentMethods: ['upi', 'unknown'], statuses: ['active'] }
+  );
+  const busy = { ...all, stationIds: ['a'], gameIds: ['g1'], paymentMethods: ['upi'], statuses: ['completed'], verifiedOnly: true, search: 'x', sort: 'oldest', range: 'week' };
+  assert.equal(accountsFilterCount(busy), 6);
+  assert.deepEqual(clearAccountsFilters(busy), { ...all, range: 'week', sort: 'oldest' });
+  // Changing scope keeps period, search, sort and session filters; clears devices and verified-only.
+  assert.deepEqual(withAccountsScope(busy, 'device'), { ...busy, scope: 'device', stationIds: [], verifiedOnly: false });
+}
+{
+  const station = (id, name, storeName, extra = {}) => ({
+    id, name, storeName, location: 'Cabin', status: 'active', appVersion: '0.26.0', registeredAt: '', gameCount: 0,
+    sessionCount: 0, totalRevenuePaise: 0, isCurrentDevice: false, ...extra
+  });
+  const fleet = [
+    station('d1', 'Station 01', 'Main Store'),
+    station('d2', 'Lounge PC', 'Downtown', { status: 'inactive' }),
+    station('d3', 'Old PC', 'Downtown', { removedAt: '2026-10-01T00:00:00.000Z' }),
+    station('d4', 'Spare', '')
+  ];
+  assert.deepEqual(groupStationsByStore(fleet).map((group) => [group.store, group.stations.map((item) => item.id)]), [
+    ['Downtown', ['d2', 'd3']], ['Main Store', ['d1']], ['No store', ['d4']]
+  ]);
+  const ids = (picked) => filterFleetStations(fleet, { search: '', states: [], store: '', ...picked }).map((item) => item.id);
+  assert.deepEqual(ids({ search: 'lounge' }), ['d2']);
+  assert.deepEqual(ids({ search: 'D3' }), ['d3']);
+  assert.deepEqual(ids({ states: ['removed', 'inactive'] }), ['d2', 'd3']);
+  assert.deepEqual(ids({ store: 'Downtown', states: ['active'] }), []);
+  assert.deepEqual(ids({ store: 'No store' }), ['d4']);
+}
+
 // Period presets send local-day boundaries: inclusive from, exclusive to.
 const now = new Date(2026, 9, 17, 15, 30);
 const view = (range, extra = {}) => ({ ...DEFAULT_ACCOUNTS_VIEW, range, ...extra });
 assert.deepEqual(buildEarningsQuery(view('today'), now).query, {
   scope: 'device',
+  sort: 'newest',
   from: new Date(2026, 9, 17).toISOString(),
   to: new Date(2026, 9, 18).toISOString()
 });
 assert.equal(buildEarningsQuery(view('week'), now).query.from, new Date(2026, 9, 11).toISOString());
 assert.deepEqual(buildEarningsQuery(view('month'), now).query, {
   scope: 'device',
+  sort: 'newest',
   from: new Date(2026, 9, 1).toISOString(),
   to: new Date(2026, 10, 1).toISOString()
 });
-assert.deepEqual(buildEarningsQuery(view('all'), now).query, { scope: 'device' });
+assert.deepEqual(buildEarningsQuery(view('all'), now).query, { scope: 'device', sort: 'newest' });
 assert.deepEqual(buildEarningsQuery(view('custom', { customFrom: '2026-10-01', customTo: '2026-10-05' }), now).query, {
   scope: 'device',
+  sort: 'newest',
   from: new Date(2026, 9, 1).toISOString(),
   to: new Date(2026, 9, 6).toISOString()
 });
 assert.ok(buildEarningsQuery(view('custom', { customFrom: '2026-10-05', customTo: '2026-10-01' }), now).invalid);
-assert.equal(buildEarningsQuery(view('all', { scope: 'all', stationId: 'device_a' }), now).query.stationId, 'device_a');
-assert.equal(buildEarningsQuery(view('all', { stationId: 'device_a' }), now).query.stationId, undefined);
+assert.deepEqual(buildEarningsQuery(view('all', { scope: 'all', stationIds: ['device_a'] }), now).query.stationIds, ['device_a']);
+assert.equal(buildEarningsQuery(view('all', { stationIds: ['device_a'] }), now).query.stationIds, undefined);
 
 assert.equal(formatPaise(150000), '₹1,500');
 assert.equal(formatPaise(12345650), '₹1,23,456.50');
@@ -206,4 +283,4 @@ assert.equal(isUnfinishedSession(stale, later), true);
 assert.equal(isUnfinishedSession(stale, Date.parse('2026-10-17T10:25:00.000Z')), false);
 assert.equal(isUnfinishedSession({ ...stale, status: 'completed' }, later), false);
 
-console.log('Accounts tab, main admin PIN gate, All Devices management, moderators, cloud sync and Razorpay customer details verified.');
+console.log('Accounts tab and filters, main admin PIN gate, All Devices management and list filters, moderators, cloud sync and Razorpay customer details verified.');

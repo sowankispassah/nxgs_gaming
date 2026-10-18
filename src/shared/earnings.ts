@@ -2,13 +2,18 @@
 // verification scripts. Keep this file dependency-free and type-only imports
 // so Node can load it with --experimental-strip-types.
 import type {
+  EarningsFacets,
   EarningsGameTotal,
+  EarningsQuery,
   EarningsReport,
   EarningsScope,
   EarningsSessionRow,
+  EarningsSort,
   EarningsStationTotal,
+  LocalSessionStatus,
   PaymentPayerDetails,
-  SessionGamePlay
+  SessionGamePlay,
+  UNKNOWN_PAYMENT_METHOD
 } from './types';
 
 export interface EarningsReportOptions {
@@ -19,7 +24,28 @@ export interface EarningsReportOptions {
   now?: Date | string | number;
   /** The cloud hit its row cap, so `rows` is incomplete. */
   truncated?: boolean;
+  /** Filter options from the sessions before the attribute filters; computed from `rows` when omitted. */
+  facets?: EarningsFacets;
+  /** Row order; defaults to `newest`. */
+  sort?: EarningsSort;
 }
+
+// Same value as UNKNOWN_PAYMENT_METHOD in types.ts (a type-only import keeps
+// this file loadable by Node; the type annotation keeps them in step).
+const NO_PAYMENT_METHOD: typeof UNKNOWN_PAYMENT_METHOD = 'unknown';
+
+export const EARNINGS_SORTS: readonly EarningsSort[] = ['newest', 'oldest', 'amount_high', 'amount_low', 'longest'];
+
+export const EARNINGS_SORT_LABELS: Readonly<Record<EarningsSort, string>> = {
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+  amount_high: 'Highest amount',
+  amount_low: 'Lowest amount',
+  longest: 'Longest session'
+};
+
+/** Every session status, in the order filter chips and facets list them. */
+export const EARNINGS_STATUSES: readonly LocalSessionStatus[] = ['completed', 'expired', 'interrupted', 'active'];
 
 const PAYER_FIELDS: Array<[keyof Omit<PaymentPayerDetails, 'checkoutId'>, string]> = [
   ['razorpayPaymentId', 'razorpay_payment_id'],
@@ -72,6 +98,11 @@ export function paymentMethodLabel(method: string | undefined): string {
   const key = text(method).toLowerCase();
   if (!key) return '';
   return PAYMENT_METHOD_LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+/** Label for a payment-method filter value; `unknown` reads "No details". */
+export function paymentMethodFilterLabel(method: string): string {
+  return method === NO_PAYMENT_METHOD ? 'No details' : paymentMethodLabel(method);
 }
 
 /**
@@ -145,12 +176,162 @@ export function sessionGameTitles(row: Pick<EarningsSessionRow, 'games'>): strin
   return unique(row.games.map((game) => game.title || game.gameId));
 }
 
-export function buildEarningsReport(rows: EarningsSessionRow[], options: EarningsReportOptions): EarningsReport {
-  const nowDate = options.now === undefined ? new Date() : new Date(options.now);
-  const now = Number.isFinite(nowDate.getTime()) ? nowDate.getTime() : Date.now();
-  const sorted = [...rows].sort((left, right) =>
-    (timeOf(right.startedAt) || 0) - (timeOf(left.startedAt) || 0) || right.id.localeCompare(left.id)
+// ---------------------------------------------------------------------------
+// Filters, sorting and facets: one path for the table, the tiles and the CSV
+// ---------------------------------------------------------------------------
+
+function nowTime(now: Date | string | number | undefined): number {
+  if (now === undefined) return Date.now();
+  const time = new Date(now).getTime();
+  return Number.isFinite(time) ? time : Date.now();
+}
+
+function digitsOf(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+/** Lowercase payment methods of a session's payers; `unknown` when none is known. */
+export function sessionPaymentMethods(row: Pick<EarningsSessionRow, 'payers'>): string[] {
+  const methods = unique((row.payers ?? []).map((payer) => text(payer.method).toLowerCase()));
+  return methods.length > 0 ? methods : [NO_PAYMENT_METHOD];
+}
+
+/** Stations asked for: `stationIds` plus the older single `stationId`. Empty means every station. */
+export function earningsStationIds(query: Pick<EarningsQuery, 'stationId' | 'stationIds'>): string[] {
+  return unique([...(query.stationIds ?? []), ...(query.stationId ? [query.stationId] : [])]);
+}
+
+/** Period and device filtering only: the sessions the facets describe. */
+export function earningsRowsInScope(
+  rows: EarningsSessionRow[],
+  query: Pick<EarningsQuery, 'from' | 'to' | 'stationId' | 'stationIds'>
+): EarningsSessionRow[] {
+  const from = timeOf(query.from);
+  const to = timeOf(query.to);
+  const stations = new Set(earningsStationIds(query));
+  return rows.filter((row) => {
+    const startedAt = timeOf(row.startedAt);
+    if (Number.isFinite(from) && !(startedAt >= from)) return false;
+    if (Number.isFinite(to) && !(startedAt < to)) return false;
+    return stations.size === 0 || stations.has(row.stationId);
+  });
+}
+
+/**
+ * True when the session matches the search text: a case-insensitive substring
+ * of a payer's phone, email, name, UPI ID or Razorpay payment ID, a checkout
+ * ID, plan name, device name or game title. With 4 or more digits the phone is
+ * also compared digits-only, so "+91 98765 43210" finds "+919876543210".
+ */
+export function earningsRowMatchesSearch(row: EarningsSessionRow, search: string): boolean {
+  const needle = text(search).toLowerCase();
+  if (!needle) return true;
+  const payers = row.payers ?? [];
+  const haystack = [
+    ...payers.flatMap((payer) => [payer.phone, payer.email, payer.name, payer.upiId, payer.razorpayPaymentId]),
+    ...(row.checkoutIds ?? []),
+    ...(row.planNames ?? []),
+    row.stationName,
+    ...(row.games ?? []).map((game) => game.title)
+  ];
+  if (haystack.some((value) => typeof value === 'string' && value.toLowerCase().includes(needle))) return true;
+  const digits = digitsOf(needle);
+  return digits.length >= 4 && payers.some((payer) => digitsOf(payer.phone ?? '').includes(digits));
+}
+
+/**
+ * Applies every filter in `query` to the rows: period (`from` inclusive, `to`
+ * exclusive), devices, games, payment methods, statuses, verified payments and
+ * search. Order is kept. `now` is accepted for call sites that pass it, but no
+ * filter reads the clock: stations' clocks differ, and their rows must not vanish.
+ */
+export function filterEarningsRows(
+  rows: EarningsSessionRow[],
+  query: Omit<EarningsQuery, 'scope' | 'sort'>,
+  _now?: Date | string | number
+): EarningsSessionRow[] {
+  const games = new Set(query.gameIds ?? []);
+  const methods = new Set((query.paymentMethods ?? []).map((method) => method.toLowerCase()));
+  const statuses = new Set(query.statuses ?? []);
+  const search = text(query.search);
+  return earningsRowsInScope(rows, query).filter((row) =>
+    (games.size === 0 || (row.games ?? []).some((game) => games.has(game.gameId)))
+    && (methods.size === 0 || sessionPaymentMethods(row).some((method) => methods.has(method)))
+    && (statuses.size === 0 || statuses.has(row.status))
+    && (!query.verifiedOnly || row.paymentVerified === true)
+    && (!search || earningsRowMatchesSearch(row, search))
   );
+}
+
+function newestFirst(left: EarningsSessionRow, right: EarningsSessionRow): number {
+  return (timeOf(right.startedAt) || 0) - (timeOf(left.startedAt) || 0) || right.id.localeCompare(left.id);
+}
+
+/** A sorted copy: by start time, amount (ties newest first) or paid duration (ties newest first). */
+export function sortEarningsRows(rows: EarningsSessionRow[], sort: EarningsSort = 'newest'): EarningsSessionRow[] {
+  const amount = (row: EarningsSessionRow) => Number(row.amountPaise) || 0;
+  const minutes = (row: EarningsSessionRow) => Number(row.durationMinutes) || 0;
+  const compare: Record<EarningsSort, (left: EarningsSessionRow, right: EarningsSessionRow) => number> = {
+    newest: newestFirst,
+    oldest: (left, right) => -newestFirst(left, right),
+    amount_high: (left, right) => amount(right) - amount(left) || newestFirst(left, right),
+    amount_low: (left, right) => amount(left) - amount(right) || newestFirst(left, right),
+    longest: (left, right) => minutes(right) - minutes(left) || newestFirst(left, right)
+  };
+  return [...rows].sort(compare[sort] ?? newestFirst);
+}
+
+/** Filter options for the sessions in the period and devices (before the other filters). */
+export function earningsFacets(rows: EarningsSessionRow[]): EarningsFacets {
+  const games = new Map<string, string>();
+  const methods = new Set<string>();
+  const statuses = new Set<LocalSessionStatus>();
+  for (const row of sortEarningsRows(rows, 'newest')) {
+    statuses.add(row.status);
+    for (const method of sessionPaymentMethods(row)) methods.add(method);
+    // Newest first, so the first title seen for a game is its latest name.
+    for (const game of row.games ?? []) {
+      if (game?.gameId && !games.has(game.gameId)) games.set(game.gameId, game.title || game.gameId);
+    }
+  }
+  return {
+    games: [...games].map(([gameId, title]) => ({ gameId, title }))
+      .sort((left, right) => left.title.localeCompare(right.title) || left.gameId.localeCompare(right.gameId)),
+    paymentMethods: [...methods].sort((left, right) =>
+      Number(left === NO_PAYMENT_METHOD) - Number(right === NO_PAYMENT_METHOD) || left.localeCompare(right)
+    ),
+    statuses: EARNINGS_STATUSES.filter((status) => statuses.has(status)),
+    sessionCount: rows.length
+  };
+}
+
+/**
+ * The single path from raw rows to a report: facets from the period and
+ * devices, then every filter, then the sort. Used for both scopes and the CSV.
+ */
+export function buildEarningsReportForQuery(
+  rows: EarningsSessionRow[],
+  query: EarningsQuery,
+  options: { now?: Date | string | number; truncated?: boolean } = {}
+): EarningsReport {
+  const now = nowTime(options.now);
+  const inScope = earningsRowsInScope(rows, query);
+  return buildEarningsReport(filterEarningsRows(inScope, query, now), {
+    scope: query.scope,
+    from: query.from,
+    to: query.to,
+    now,
+    truncated: options.truncated,
+    facets: earningsFacets(inScope),
+    sort: query.sort
+  });
+}
+
+export function buildEarningsReport(rows: EarningsSessionRow[], options: EarningsReportOptions): EarningsReport {
+  const now = nowTime(options.now);
+  const sort = options.sort && EARNINGS_SORTS.includes(options.sort) ? options.sort : 'newest';
+  // Totals walk newest first so station names and game titles are the latest ones.
+  const sorted = sortEarningsRows(rows, 'newest');
 
   const stations = new Map<string, EarningsStationTotal>();
   const games = new Map<string, { title: string; sessions: Set<string>; minutes: number }>();
@@ -206,9 +387,11 @@ export function buildEarningsReport(rows: EarningsSessionRow[], options: Earning
     totalPaise,
     sessionCount: sorted.length,
     paidMinutes,
-    rows: sorted,
+    rows: sort === 'newest' ? sorted : sortEarningsRows(rows, sort),
     byStation,
-    byGame
+    byGame,
+    facets: options.facets ?? earningsFacets(rows),
+    sort
   };
 }
 

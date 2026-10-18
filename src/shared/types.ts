@@ -226,14 +226,45 @@ export interface StationCloudState {
 /** `device` reads this station's local records; `all` reads every station from the cloud and needs the main admin PIN. */
 export type EarningsScope = 'device' | 'all';
 
+export type EarningsSort = 'newest' | 'oldest' | 'amount_high' | 'amount_low' | 'longest';
+
+/** Payment method filter value for sessions without any known payer details. */
+export const UNKNOWN_PAYMENT_METHOD = 'unknown';
+
 export interface EarningsQuery {
   scope: EarningsScope;
   /** Inclusive ISO timestamp; omitted means from the beginning. Matched against session `startedAt`. */
   from?: string;
   /** Exclusive ISO timestamp; omitted means up to now. */
   to?: string;
-  /** Only for scope `all`: limit to one station. */
+  /** Only for scope `all`: limit to one station. Kept for older callers; merged into `stationIds`. */
   stationId?: string;
+  /** Only for scope `all`: limit to these stations. Empty or omitted means every station. */
+  stationIds?: string[];
+  /** Sessions in which at least one of these games was played. */
+  gameIds?: string[];
+  /** Lowercase Razorpay methods (`upi`, `card`, ...) or `unknown`; a session matches if any payer matches. */
+  paymentMethods?: string[];
+  statuses?: LocalSessionStatus[];
+  /** Only for scope `all`: only sessions whose payment the cloud verified. */
+  verifiedOnly?: boolean;
+  /**
+   * Case-insensitive text match on customer phone (digits also match without spaces or +91),
+   * email, name, UPI ID, Razorpay payment ID, checkout IDs, plan names, device name and game titles.
+   */
+  search?: string;
+  /** Defaults to `newest`. */
+  sort?: EarningsSort;
+}
+
+/** Options for the filter controls, from the sessions in the period and devices before the other filters. */
+export interface EarningsFacets {
+  games: { gameId: string; title: string }[];
+  /** Lowercase methods present, plus `unknown` when some sessions have no payer details. */
+  paymentMethods: string[];
+  statuses: LocalSessionStatus[];
+  /** Sessions in the period and devices before the game, method, status, verified and search filters. */
+  sessionCount: number;
 }
 
 export interface EarningsSessionRow {
@@ -290,6 +321,9 @@ export interface EarningsReport {
   byGame: EarningsGameTotal[];
   /** The cloud returned its maximum number of rows; totals cover only those rows. */
   truncated?: boolean;
+  /** Totals and rows above cover only the sessions that pass every filter. */
+  facets: EarningsFacets;
+  sort: EarningsSort;
 }
 
 export type FleetErrorCode =

@@ -100,16 +100,6 @@
   gap: 8px;
 }
 
-.accounts-device-filter {
-  flex: 1 1 260px;
-  max-width: 420px;
-  gap: 8px;
-}
-
-.accounts-device-filter select {
-  min-height: 48px;
-}
-
 .accounts-filter-actions {
   display: flex;
   flex-wrap: wrap;
@@ -145,6 +135,419 @@
 
 .accounts-error-card > .admin-notice {
   flex: 1 1 320px;
+}
+
+/* ------------------------------------------------- filter bar (0.26.0) */
+
+.accounts-filter-bar {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid var(--ps-line);
+  padding-top: 16px;
+}
+
+.accounts-search-field {
+  flex: 1 1 220px;
+  max-width: 560px;
+  gap: 8px;
+}
+
+.accounts-search-field .admin-affix-input,
+.accounts-sort-field .admin-affix-input,
+.fleet-list-search .admin-affix-input,
+.fleet-list-store .admin-affix-input {
+  min-height: 48px;
+}
+
+.accounts-sort-field {
+  flex: 0 0 210px;
+  gap: 8px;
+}
+
+.fleet-list-store {
+  flex: 0 0 240px;
+  gap: 8px;
+}
+
+/* A select sitting inside an affix box keeps its arrow but drops its own frame. */
+.accounts-sort-input select,
+.accounts-sort-input select:focus {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 46px;
+  border: 0;
+  background-color: transparent;
+  box-shadow: none;
+  padding-left: 0;
+}
+
+/* Toggle chips: multi-select filters such as payment method and status. */
+.admin-chip-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  border: 1px solid var(--ps-line-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ps-text-2);
+  padding: 0 14px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.admin-chip-toggle:not(:disabled):hover {
+  background: var(--ps-surface-hover);
+  color: var(--ps-text);
+  filter: none;
+}
+
+.admin-chip-toggle[aria-pressed='true'] {
+  border-color: rgba(45, 140, 255, 0.6);
+  background: var(--ps-blue-soft);
+  color: #d4e7ff;
+  font-weight: var(--weight-semibold);
+}
+
+.admin-chip-toggle:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
+  border-color: #ffffff;
+  background: #ffffff;
+  color: var(--ps-text-inverse);
+  box-shadow: var(--focus-ring);
+}
+
+.accounts-inline-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  margin-left: auto;
+  border-radius: var(--radius-pill);
+  background: var(--admin-row-fill);
+  padding: 4px 16px 4px 6px;
+  color: var(--ps-text-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.accounts-inline-switch > span:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.accounts-inline-switch input[type='checkbox'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.accounts-inline-switch:hover {
+  background: var(--ps-surface-hover);
+  color: var(--ps-text);
+}
+
+.accounts-inline-switch:has(input:focus-visible) {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: var(--focus-ring);
+}
+
+/* Active filters: the result count, removable chips and Clear filters. */
+.accounts-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 36px;
+}
+
+.accounts-result-count {
+  color: var(--ps-text-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-active-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  min-height: 32px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ps-blue-soft);
+  color: #d4e7ff;
+  padding: 0 10px 0 13px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.admin-active-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-active-chip:not(:disabled):hover {
+  background: rgba(45, 140, 255, 0.3);
+  filter: none;
+}
+
+.admin-active-chip:not(:disabled):is(:focus-visible, .controller-focused, .focused) {
+  background: #ffffff;
+  color: var(--ps-text-inverse);
+  box-shadow: var(--focus-ring);
+}
+
+/* Filter popovers: a field-like button with a panel underneath. */
+.admin-popover {
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-popover-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: clamp(200px, 15vw, 260px);
+  min-height: 48px;
+  border: 1px solid var(--ps-line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ps-text);
+  padding: 0 12px 0 14px;
+  font-size: var(--text-md);
+  text-align: left;
+}
+
+.admin-popover-trigger > svg {
+  flex: 0 0 auto;
+  color: var(--ps-text-2);
+  transition: rotate var(--dur-base) var(--ease-out);
+}
+
+.admin-popover.is-open .admin-popover-trigger > svg {
+  rotate: 180deg;
+}
+
+.admin-popover-icon {
+  display: grid;
+  flex: 0 0 auto;
+  color: var(--ps-text-3);
+}
+
+.admin-popover-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-popover-trigger.is-active {
+  border-color: rgba(45, 140, 255, 0.6);
+  background: var(--ps-blue-soft);
+}
+
+.admin-popover-trigger.is-active .admin-popover-icon {
+  color: #9cc8ff;
+}
+
+.admin-popover-trigger:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.1);
+  filter: none;
+}
+
+.admin-popover-trigger:not(:disabled):is(:focus-visible, .controller-focused, .focused),
+.admin-popover.is-open .admin-popover-trigger {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 1px #ffffff, 0 0 18px 2px rgba(255, 255, 255, 0.18);
+}
+
+.admin-popover-trigger:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.admin-popover-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, calc(100vw - 48px));
+  max-height: min(58vh, 540px);
+  border: 1px solid var(--ps-line-strong);
+  border-radius: var(--radius-lg);
+  /* Opaque: the page under an open filter must not show through. */
+  background: #171c28;
+  box-shadow: var(--shadow-3);
+  padding: 14px;
+  animation: nxgs-fade-in var(--dur-fast) var(--ease-out);
+}
+
+.admin-picker {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 12px;
+}
+
+.admin-picker-search {
+  flex: 0 0 auto;
+  min-height: 46px;
+}
+
+.admin-picker-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.admin-picker-list {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+  gap: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 -6px;
+  padding: 2px 6px 4px;
+}
+
+.admin-picker-group {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-picker-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px 4px;
+}
+
+.admin-picker-group-header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ps-text-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-picker-group-header .admin-chip-toggle {
+  min-height: 30px;
+  padding: 0 11px;
+  font-size: var(--text-xs);
+}
+
+.admin-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 50px;
+  border-radius: var(--radius-sm);
+  background: var(--admin-row-fill);
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.admin-picker-option:hover {
+  background: var(--ps-surface-hover);
+}
+
+.admin-picker-option:has(input:focus-visible) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-picker-copy {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 1px;
+}
+
+.admin-picker-copy strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-picker-copy small {
+  overflow: hidden;
+  color: var(--ps-text-3);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-picker-option .ps-chip {
+  min-height: 24px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+/* All Devices list filters */
+.fleet-list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px 22px;
+  margin-bottom: 18px;
+}
+
+.fleet-list-search {
+  flex: 1 1 280px;
+  max-width: 480px;
+  gap: 8px;
+}
+
+/* Same height as the inputs beside them, so the labels line up. */
+.fleet-list-filters .admin-chip-toggles {
+  min-height: 48px;
+}
+
+.fleet-list-count {
+  flex: 1 1 100%;
+  min-height: 0;
 }
 
 /* ------------------------------------------------------------ stat tiles */

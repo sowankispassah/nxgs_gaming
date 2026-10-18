@@ -1,8 +1,22 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { register } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  buildEarningsReportForQuery,
+  EARNINGS_SORT_LABELS,
+  EARNINGS_SORTS,
+  EARNINGS_STATUSES,
+  earningsFacets,
+  earningsRowMatchesSearch,
+  earningsRowsInScope,
+  filterEarningsRows,
+  paymentMethodFilterLabel,
+  sessionPaymentMethods,
+  sortEarningsRows,
   buildEarningsReport,
   EARNINGS_CSV_COLUMNS,
   earningsReportToCsv,
@@ -140,7 +154,9 @@ assert.deepEqual(
     paidMinutes: 0,
     rows: [],
     byStation: [],
-    byGame: []
+    byGame: [],
+    facets: { games: [], paymentMethods: [], statuses: [], sessionCount: 0 },
+    sort: 'newest'
   }
 );
 
@@ -330,6 +346,308 @@ assert.equal(allRecords[2][14], 'No');
 assert.equal(parseCsv(earningsReportToCsv(empty)).length, 1, 'an empty report exports just the header');
 
 // ---------------------------------------------------------------------------
+// Earnings filters, search, sorts and facets (0.26.0)
+// ---------------------------------------------------------------------------
+
+const filterRows = [
+  row({
+    id: 'f1', stationId: 'device_a', stationName: 'Front PC', status: 'completed',
+    startedAt: '2026-10-10T10:00:00.000Z', endedAt: '2026-10-10T11:00:00.000Z', amountPaise: 10000, durationMinutes: 60,
+    planNames: ['1 Hour'], checkoutIds: ['chk-a1'], paymentVerified: true,
+    games: [{ gameId: 'fifa', title: 'FIFA 25', startedAt: '2026-10-10T10:05:00.000Z' }],
+    payers: [{ checkoutId: 'chk-a1', name: 'Ravi', phone: '+919876543210', email: 'Player@Example.com', method: 'upi', upiId: 'player@okaxis', razorpayPaymentId: 'pay_A1' }]
+  }),
+  row({
+    id: 'f2', stationId: 'device_b', stationName: 'Back PC', status: 'expired',
+    startedAt: '2026-10-11T10:00:00.000Z', endedAt: '2026-10-11T10:30:00.000Z', amountPaise: 5000, durationMinutes: 30,
+    planNames: ['30 Minutes'], checkoutIds: ['chk-b1', 'chk-b2'], paymentVerified: false,
+    games: [
+      { gameId: 'gta', title: 'GTA V', startedAt: '2026-10-11T10:01:00.000Z' },
+      { gameId: 'fifa', title: 'FIFA 26', startedAt: '2026-10-11T10:10:00.000Z' }
+    ],
+    payers: [{ checkoutId: 'chk-b1', phone: '+918888877777', method: 'card', cardNetwork: 'Visa', cardLast4: '4242' }]
+  }),
+  row({
+    id: 'f3', stationId: 'device_c', stationName: 'Corner PC', status: 'active',
+    startedAt: '2026-10-12T10:00:00.000Z', endedAt: undefined, amountPaise: 15000, durationMinutes: 90,
+    planNames: ['1 Hour 30 Minutes'], checkoutIds: ['chk-c1'], games: [], payers: []
+  }),
+  row({
+    id: 'f4', stationId: 'device_a', stationName: 'Front PC', status: 'interrupted',
+    startedAt: '2026-10-09T10:00:00.000Z', endedAt: '2026-10-09T10:20:00.000Z', amountPaise: 10000, durationMinutes: 60,
+    planNames: ['1 Hour'], checkoutIds: ['chk-a2'], paymentVerified: true,
+    games: [{ gameId: 'nfs', title: 'NFS', startedAt: '2026-10-09T10:01:00.000Z' }],
+    // A payer without a method counts as "unknown".
+    payers: [{ checkoutId: 'chk-a2', razorpayPaymentId: 'pay_A2' }]
+  }),
+  row({
+    id: 'f5', stationId: 'device_b', stationName: 'Back PC', status: 'completed',
+    // Same start as f2: ties sort by id, newest-first puts f5 before f2.
+    startedAt: '2026-10-11T10:00:00.000Z', endedAt: '2026-10-11T10:30:00.000Z', amountPaise: 5000, durationMinutes: 30,
+    planNames: ['30 Minutes'], checkoutIds: ['chk-b3'], paymentVerified: true,
+    games: [{ gameId: 'gta', title: 'GTA V', startedAt: '2026-10-11T10:02:00.000Z' }],
+    payers: [{ checkoutId: 'chk-b3', phone: '+91 77777 66666', method: 'UPI' }]
+  })
+];
+const filterSnapshot = JSON.stringify(filterRows);
+const ids = (list) => list.map((entry) => entry.id);
+const filtered = (query) => ids(filterEarningsRows(filterRows, query));
+
+// Period and devices.
+assert.deepEqual(ids(earningsRowsInScope(filterRows, { from: '2026-10-10T00:00:00.000Z', to: '2026-10-12T00:00:00.000Z' })), ['f1', 'f2', 'f5']);
+assert.deepEqual(ids(earningsRowsInScope(filterRows, { stationIds: ['device_a'] })), ['f1', 'f4']);
+assert.deepEqual(ids(earningsRowsInScope(filterRows, { stationId: 'device_c', stationIds: ['device_b'] })), ['f2', 'f3', 'f5'], 'stationId merges into stationIds');
+assert.deepEqual(filtered({}), ['f1', 'f2', 'f3', 'f4', 'f5'], 'no filters keeps every row in order');
+// Games: any entry with a selected game.
+assert.deepEqual(filtered({ gameIds: ['fifa'] }), ['f1', 'f2']);
+assert.deepEqual(filtered({ gameIds: ['nfs', 'gta'] }), ['f2', 'f4', 'f5']);
+// Payment methods: any payer's lowercased method; unknown = no payer with a method.
+assert.deepEqual(sessionPaymentMethods(filterRows[4]), ['upi']);
+assert.deepEqual(sessionPaymentMethods(filterRows[3]), ['unknown']);
+assert.deepEqual(filtered({ paymentMethods: ['unknown'] }), ['f3', 'f4']);
+assert.deepEqual(filtered({ paymentMethods: ['upi'] }), ['f1', 'f5']);
+assert.deepEqual(filtered({ paymentMethods: ['UPI'] }), ['f1', 'f5']);
+assert.deepEqual(filtered({ paymentMethods: ['card', 'unknown'] }), ['f2', 'f3', 'f4']);
+// Raw statuses and verified payments.
+assert.deepEqual(filtered({ statuses: ['active'] }), ['f3']);
+assert.deepEqual(filtered({ statuses: ['completed', 'expired'] }), ['f1', 'f2', 'f5']);
+assert.deepEqual(filtered({ verifiedOnly: true }), ['f1', 'f4', 'f5']);
+assert.deepEqual(filtered({ verifiedOnly: false }), ['f1', 'f2', 'f3', 'f4', 'f5']);
+// Search: trimmed, case-insensitive substring over payer, checkout, plan, device and game fields.
+for (const [search, expected] of [
+  ['9876543210', ['f1']],
+  ['+91 98765 43210', ['f1']],
+  ['98765', ['f1']],
+  ['+91-98765-43210', ['f1']],
+  ['7777766666', ['f5']],
+  ['player@example.COM', ['f1']],
+  ['  Ravi  ', ['f1']],
+  ['okaxis', ['f1']],
+  ['PAY_a2', ['f4']],
+  ['chk-b2', ['f2']],
+  ['30 minutes', ['f2', 'f3', 'f5']],
+  ['1 hour 30', ['f3']],
+  ['corner', ['f3']],
+  ['gta', ['f2', 'f5']],
+  ['4242', []],
+  ['nobody', []],
+  ['   ', ['f1', 'f2', 'f3', 'f4', 'f5']]
+]) {
+  assert.deepEqual(filtered({ search }), expected, `search "${search}"`);
+}
+assert.equal(earningsRowMatchesSearch(filterRows[0], '9876 543'), true, 'a phone in groups still matches by digits');
+assert.equal(earningsRowMatchesSearch(filterRows[0], '+91 9'), false, 'fewer than 4 digits only match as text');
+// Every filter at once.
+assert.deepEqual(filtered({ stationIds: ['device_a', 'device_b'], paymentMethods: ['upi'], statuses: ['completed'], search: 'front' }), ['f1']);
+assert.equal(JSON.stringify(filterRows), filterSnapshot, 'filters never mutate rows');
+
+// Sorts.
+assert.deepEqual([...EARNINGS_SORTS], ['newest', 'oldest', 'amount_high', 'amount_low', 'longest']);
+assert.equal(EARNINGS_SORT_LABELS.amount_high, 'Highest amount');
+assert.deepEqual(ids(sortEarningsRows(filterRows, 'newest')), ['f3', 'f5', 'f2', 'f1', 'f4']);
+assert.deepEqual(ids(sortEarningsRows(filterRows)), ['f3', 'f5', 'f2', 'f1', 'f4'], 'newest is the default');
+assert.deepEqual(ids(sortEarningsRows(filterRows, 'oldest')), ['f4', 'f1', 'f2', 'f5', 'f3']);
+assert.deepEqual(ids(sortEarningsRows(filterRows, 'amount_high')), ['f3', 'f1', 'f4', 'f5', 'f2'], 'amount ties fall back to newest');
+assert.deepEqual(ids(sortEarningsRows(filterRows, 'amount_low')), ['f5', 'f2', 'f1', 'f4', 'f3']);
+assert.deepEqual(ids(sortEarningsRows(filterRows, 'longest')), ['f3', 'f1', 'f4', 'f5', 'f2']);
+assert.equal(JSON.stringify(filterRows), filterSnapshot, 'sorting copies');
+
+// Facets: games by title (latest name), methods with unknown last, statuses in chip order.
+assert.deepEqual([...EARNINGS_STATUSES], ['completed', 'expired', 'interrupted', 'active']);
+assert.deepEqual(earningsFacets(filterRows), {
+  games: [{ gameId: 'fifa', title: 'FIFA 26' }, { gameId: 'gta', title: 'GTA V' }, { gameId: 'nfs', title: 'NFS' }],
+  paymentMethods: ['card', 'upi', 'unknown'],
+  statuses: ['completed', 'expired', 'interrupted', 'active'],
+  sessionCount: 5
+});
+assert.deepEqual(earningsFacets([]), { games: [], paymentMethods: [], statuses: [], sessionCount: 0 });
+assert.equal(paymentMethodFilterLabel('unknown'), 'No details');
+assert.equal(paymentMethodFilterLabel('netbanking'), 'Net banking');
+
+// One path: facets from period + devices, then filters, then sort; the CSV follows it.
+const filteredReport = buildEarningsReportForQuery(filterRows, {
+  scope: 'all',
+  stationIds: ['device_a', 'device_b'],
+  paymentMethods: ['upi'],
+  sort: 'amount_low'
+}, { now });
+assert.deepEqual(ids(filteredReport.rows), ['f5', 'f1']);
+assert.equal(filteredReport.sort, 'amount_low');
+assert.equal(filteredReport.totalPaise, 15000, 'totals cover only the filtered sessions');
+assert.equal(filteredReport.sessionCount, 2);
+assert.deepEqual(filteredReport.byStation.map((station) => station.stationId), ['device_a', 'device_b']);
+assert.deepEqual(filteredReport.facets, {
+  games: [{ gameId: 'fifa', title: 'FIFA 26' }, { gameId: 'gta', title: 'GTA V' }, { gameId: 'nfs', title: 'NFS' }],
+  paymentMethods: ['card', 'upi', 'unknown'],
+  statuses: ['completed', 'expired', 'interrupted'],
+  sessionCount: 4
+}, 'facets ignore the method filter but respect the device filter');
+const filteredCsv = parseCsv(earningsReportToCsv(filteredReport));
+assert.deepEqual(filteredCsv.slice(1).map((record) => record[15]), ['chk-b3', 'chk-a1'], 'the CSV holds exactly the filtered rows, in the chosen order');
+const defaultReport = buildEarningsReport(filterRows, { scope: 'device', now, sort: 'bogus' });
+assert.equal(defaultReport.sort, 'newest', 'an unknown sort falls back to newest');
+assert.deepEqual(defaultReport.facets, earningsFacets(filterRows), 'facets default to the given rows');
+
+// ---------------------------------------------------------------------------
+// FleetService.getEarnings: validation and multi-station fan-out (fake fetch)
+// ---------------------------------------------------------------------------
+
+// Load the real FleetService with an Electron stub and extensionless .ts imports.
+const electronStub = [
+  'export const app = { getPath: () => globalThis.__nxgsTestDir, getAppPath: () => globalThis.__nxgsTestDir, getVersion: () => "0.0.0-test" };',
+  'export const net = { fetch: (...args) => globalThis.__nxgsFetch(...args) };'
+].join('\n');
+const hooks = `
+const electron = ${JSON.stringify(`data:text/javascript,${encodeURIComponent(electronStub)}`)};
+export async function resolve(specifier, context, next) {
+  if (specifier === 'electron') return { url: electron, shortCircuit: true };
+  if (/^\\.\\.?\\//.test(specifier) && !/\\.[cm]?[jt]s$/.test(specifier) && context.parentURL?.endsWith('.ts')) {
+    try { return await next(specifier + '.ts', context); } catch {}
+  }
+  return next(specifier, context);
+}`;
+register(`data:text/javascript,${encodeURIComponent(hooks)}`);
+const testDir = await mkdtemp(join(tmpdir(), 'nxgs-verify-accounts-'));
+globalThis.__nxgsTestDir = testDir;
+process.resourcesPath ??= testDir;
+process.env.NXGS_RENTAL_FUNCTION_BASE_URL = 'https://fleet.test/functions/v1';
+process.env.NXGS_SUPABASE_ANON_KEY = 'test-key';
+const { FleetService } = await import('../src/main/fleetService.ts');
+
+const toWire = (entry) => ({
+  session_id: entry.id,
+  station_id: entry.stationId,
+  station_name: entry.stationName,
+  status: entry.status,
+  started_at: entry.startedAt,
+  ended_at: entry.endedAt ?? null,
+  expires_at: entry.expiresAt ?? null,
+  duration_minutes: entry.durationMinutes,
+  amount_paise: entry.amountPaise,
+  currency: entry.currency,
+  plan_ids: [],
+  plan_names: entry.planNames,
+  checkout_ids: entry.checkoutIds,
+  games: entry.games.map((game) => ({ game_id: game.gameId, title: game.title, started_at: game.startedAt, ended_at: game.endedAt ?? null })),
+  payment_verified: entry.paymentVerified === true,
+  payers: entry.payers.map((payer) => ({
+    checkout_id: payer.checkoutId, name: payer.name ?? null, phone: payer.phone ?? null, email: payer.email ?? null,
+    method: payer.method ?? null, upi_id: payer.upiId ?? null, razorpay_payment_id: payer.razorpayPaymentId ?? null
+  }))
+});
+const OWNER_TOKEN = 'a'.repeat(64);
+const fetchLog = [];
+let inFlight = 0;
+let maxInFlight = 0;
+globalThis.__nxgsFetch = async (url, init) => {
+  assert.equal(url, 'https://fleet.test/functions/v1/stationFleet');
+  assert.ok(init.signal, 'every request has a timeout');
+  const body = JSON.parse(init.body);
+  fetchLog.push(body);
+  const json = (status, value) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
+  if (body.action === 'owner_login') return json(200, { owner_token: OWNER_TOKEN, expires_at: '2026-10-18T12:00:00.000Z' });
+  if (body.action === 'owner_logout') return json(200, { ok: true });
+  assert.equal(body.action, 'earnings');
+  assert.equal(body.owner_token, OWNER_TOKEN);
+  inFlight += 1;
+  maxInFlight = Math.max(maxInFlight, inFlight);
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  inFlight -= 1;
+  if (body.station_id === 'device_fail') return json(500, { error: true, message: 'request_failed' });
+  const stationRows = filterRows.filter((entry) => !body.station_id || entry.stationId === body.station_id).map(toWire);
+  // Station b answers its rows twice: merged rows are deduped by station + session.
+  if (body.station_id === 'device_b') stationRows.push(toWire(filterRows[1]));
+  return json(200, { rows: stationRows, truncated: body.station_id === 'device_c' });
+};
+const fakeStore = {
+  getCloudState: () => ({ removedByOwner: false, moderators: [] }),
+  getCurrentDevice: () => ({ id: 'device_local', name: 'Local PC' }),
+  listEarningsRows: () => structuredClone(filterRows),
+  listCheckoutIdsMissingPayers: () => []
+};
+const fleet = new FleetService({ store: fakeStore, appVersion: '0.26.0', onLocalDataChanged: () => undefined });
+assert.equal((await fleet.getEarnings({ scope: 'all' })).code, 'owner_pin_required');
+assert.equal((await fleet.unlockOwner('1832')).ok, true);
+const earningsCalls = () => fetchLog.filter((entry) => entry.action === 'earnings');
+
+// Six stations: one request each, never more than four at once, rows merged and deduped.
+let before = earningsCalls().length;
+const fanOut = await fleet.getEarnings({
+  scope: 'all',
+  stationIds: ['device_a', 'device_b', 'device_c', 'device_d', 'device_e', 'device_f']
+});
+assert.equal(fanOut.ok, true, JSON.stringify(fanOut));
+const fanOutCalls = earningsCalls().slice(before);
+assert.deepEqual(fanOutCalls.map((entry) => entry.station_id).sort(), ['device_a', 'device_b', 'device_c', 'device_d', 'device_e', 'device_f']);
+assert.equal(maxInFlight, 4, 'at most four station requests run at once');
+assert.deepEqual(ids(fanOut.data.rows), ['f3', 'f5', 'f2', 'f1', 'f4'], 'merged, deduped and sorted newest first');
+assert.equal(fanOut.data.truncated, true, 'truncated if any station answer was');
+assert.equal(fanOut.data.facets.sessionCount, 5);
+
+// The older stationId merges into stationIds.
+before = earningsCalls().length;
+const merged = await fleet.getEarnings({ scope: 'all', stationId: 'device_a', stationIds: ['device_a', 'device_b'] });
+assert.deepEqual(earningsCalls().slice(before).map((entry) => entry.station_id).sort(), ['device_a', 'device_b']);
+assert.deepEqual(ids(merged.data.rows), ['f5', 'f2', 'f1', 'f4']);
+assert.equal(merged.data.truncated, undefined);
+
+// No devices chosen: one request for every station.
+before = earningsCalls().length;
+const everyStation = await fleet.getEarnings({ scope: 'all', from: '2026-10-10T00:00:00.000Z' });
+const everyCall = earningsCalls().slice(before);
+assert.equal(everyCall.length, 1);
+assert.equal(everyCall[0].station_id, undefined);
+assert.equal(everyCall[0].from, '2026-10-10T00:00:00.000Z');
+assert.deepEqual(ids(everyStation.data.rows), ['f3', 'f5', 'f2', 'f1'], 'the period applies to merged rows too');
+
+// Filters, sort and facets after the merge.
+const combined = await fleet.getEarnings({
+  scope: 'all', stationIds: ['device_a', 'device_b'], statuses: ['completed'], verifiedOnly: true, search: ' +91 77777 ', sort: 'oldest'
+});
+assert.deepEqual(ids(combined.data.rows), ['f5']);
+assert.equal(combined.data.sort, 'oldest');
+assert.equal(combined.data.facets.sessionCount, 4);
+
+// One failed station fails the report.
+const failedFanOut = await fleet.getEarnings({ scope: 'all', stationIds: ['device_a', 'device_fail'] });
+assert.equal(failedFanOut.ok, false);
+assert.equal(failedFanOut.code, 'failed');
+
+// Invalid filters never reach the cloud.
+before = fetchLog.length;
+for (const [query, label] of [
+  [{ scope: 'all', stationIds: ['bad id!'] }, 'station id pattern'],
+  [{ scope: 'all', stationId: 'x' }, 'short station id'],
+  [{ scope: 'all', stationIds: Array.from({ length: 201 }, (_, index) => `device_${index}`) }, 'more than 200 stations'],
+  [{ scope: 'all', stationIds: 'device_a' }, 'stationIds not a list'],
+  [{ scope: 'device', gameIds: [42] }, 'game id type'],
+  [{ scope: 'device', gameIds: ['bad\u0000id'] }, 'game id control character'],
+  [{ scope: 'device', paymentMethods: ['up i'] }, 'payment method pattern'],
+  [{ scope: 'device', statuses: ['playing'] }, 'unknown status'],
+  [{ scope: 'device', sort: 'random' }, 'unknown sort'],
+  [{ scope: 'device', search: 'x'.repeat(101) }, 'search too long'],
+  [{ scope: 'device', search: 42 }, 'search type'],
+  [{ scope: 'all', verifiedOnly: 'yes' }, 'verifiedOnly type'],
+  [{ scope: 'device', from: 'not a date' }, 'bad date']
+]) {
+  const result = await fleet.getEarnings(query);
+  assert.equal(result.code, 'invalid_input', label);
+  assert.ok(result.error, label);
+}
+assert.equal(fetchLog.length, before, 'validation happens before any request');
+assert.equal((await fleet.getEarnings({ scope: 'device', search: 'x'.repeat(100) })).ok, true, '100 characters is allowed');
+
+// This device: devices and verified-only do not apply; the same filters and sort do.
+const local = await fleet.getEarnings({ scope: 'device', stationIds: ['device_x'], verifiedOnly: true, search: 'pc', sort: 'amount_high' });
+assert.equal(local.ok, true, JSON.stringify(local));
+assert.deepEqual(ids(local.data.rows), ['f3', 'f1', 'f4', 'f5', 'f2']);
+assert.equal(local.data.scope, 'device');
+const localGames = await fleet.getEarnings({ scope: 'device', gameIds: ['gta'] });
+assert.deepEqual(ids(localGames.data.rows), ['f5', 'f2']);
+assert.equal(localGames.data.facets.sessionCount, 5);
+fleet.stop();
+
+// ---------------------------------------------------------------------------
 // PIN hashes (Node main process <-> Deno stationFleet)
 // ---------------------------------------------------------------------------
 
@@ -475,7 +793,8 @@ assert.match(fleetSource, /const REQUEST_TIMEOUT_MS = 20_000/);
 assert.match(fleetSource, /const PAYER_LOOKUP_TIMEOUT_MS = 8_000/);
 assert.match(fleetSource, /'session_payers'/);
 assert.match(fleetSource, /payers: normalizePayerList\(wire\.payers\)/, 'all-device rows map wire payers');
-assert.match(fleetSource, /buildEarningsReport\(list\(response\.rows\)\.flatMap\(toEarningsRow\), \{\s*scope: 'all'/);
+assert.match(fleetSource, /list\(response\.rows\)\.flatMap\(toEarningsRow\)/);
+assert.match(fleetSource, /return buildEarningsReportForQuery\(\[\.\.\.rows\.values\(\)\], query, \{/, 'all devices go through the same filter path');
 assert.match(fleetSource, /if \(cloud\.removedByOwner\) return;/, 'sync pauses after removal');
 assert.doesNotMatch(fleetSource, /logLine\([^)]*(station_token|owner_token|stationToken)\b[^)]*\)/, 'tokens never reach the log');
 assert.match(paymentSource, /normalizePayerDetails\(payer, stringValue\(entitlement\.checkoutId\)\)/);
@@ -492,7 +811,10 @@ assert.match(fleetSource, /token = randomBytes\(32\)\.toString\('hex'\);\s*await
 assert.match(fleetSource, /station_token: token,/);
 assert.match(fleetSource, /needsRejoin: cloud\.removedByOwner \|\| this\.registrationBlocked/);
 assert.match(fleetSource, /await this\.register\(owner\.token, true\)/, 'rejoin re-keys with the owner token');
-assert.match(fleetSource, /truncated: response\.truncated === true/);
+assert.match(fleetSource, /truncated: responses\.some\(\(response\) => response\.truncated === true\)/);
+assert.match(fleetSource, /const EARNINGS_FAN_OUT = 4;/);
+assert.match(fleetSource, /buildEarningsReportForQuery\(this\.store\.listEarningsRows\(range\), query\)/, 'this device goes through the same filter path');
+assert.match(mainSource, /const report = await requireFleetService\(\)\.getEarnings\(query\);/, 'the CSV export goes through getEarnings');
 assert.match(fleetSource, /\.\.\.\(expiresAt \? \{ expiresAt \} : \{\}\)/);
 assert.match(fleetSource, /if \(generation !== this\.ownerGeneration\) \{[\s\S]*?owner_logout[\s\S]*?code: 'owner_pin_required', error: MESSAGES\.controlRoomClosed/);
 assert.match(fleetSource, /clearOwnerSession\(reason: string\): void \{\s*this\.ownerGeneration \+= 1;/);
@@ -500,5 +822,5 @@ assert.match(fleetSource, /if \(cloud\.removedByOwner \|\| cloud\.stationToken !
 assert.doesNotMatch(paymentSource, /function parseIni|function readClientConfig/);
 
 console.log(
-  `Accounts verified: earnings aggregation, payer mapping, RFC 4180 CSV with formula guard, PIN hashes${crossChecked ? ' (cross-checked with stationFleet/pin.ts)' : ' (stationFleet/pin.ts not present; cross-check skipped)'}, IPC channels, and DataStore sync wiring.`
+  `Accounts verified: earnings aggregation, filters/search/sorts/facets, multi-station fan-out, payer mapping, RFC 4180 CSV with formula guard, PIN hashes${crossChecked ? ' (cross-checked with stationFleet/pin.ts)' : ' (stationFleet/pin.ts not present; cross-check skipped)'}, IPC channels, and DataStore sync wiring.`
 );

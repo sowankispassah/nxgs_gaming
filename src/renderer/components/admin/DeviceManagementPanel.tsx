@@ -9,17 +9,33 @@ import {
   MonitorCog,
   Network,
   RefreshCw,
-  Save
+  Save,
+  Search,
+  Store
 } from 'lucide-react';
 import type { FleetStation, ModeratorRecord } from '../../../shared/types';
 import { CardHeader, EmptyState, LoadingState, Notice, revealInContent, type NoticeTone } from './AdminKit';
 import { FleetStationPanel } from './FleetStationPanel';
 import { FleetSyncCard } from './FleetSyncCard';
-import { formatPaise, PIN_PATTERN, relativeTime } from './fleetFormat';
+import {
+  filterFleetStations,
+  formatPaise,
+  PIN_PATTERN,
+  relativeTime,
+  storeNames,
+  toggleValue,
+  type FleetStationState
+} from './fleetFormat';
 import { ModeratorsSection } from './ModeratorEditor';
 import { OWNER_PIN_MESSAGES, type OwnerSession } from './useOwnerSession';
 
 type Access = 'checking' | 'locked' | 'open';
+
+const STATE_FILTERS: Array<{ id: FleetStationState; label: string }> = [
+  { id: 'active', label: 'Active' },
+  { id: 'inactive', label: 'Inactive' },
+  { id: 'removed', label: 'Removed' }
+];
 
 /** Removed devices last; otherwise the cloud's order (most recently seen first). */
 function sortStations(stations: FleetStation[]): FleetStation[] {
@@ -43,6 +59,10 @@ export function DeviceManagementPanel(props: {
   const [moderatorError, setModeratorError] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [listNotice, setListNotice] = useState('');
+  // Device list filters; kept here so they survive opening a device and coming back.
+  const [deviceSearch, setDeviceSearch] = useState('');
+  const [deviceStates, setDeviceStates] = useState<FleetStationState[]>([]);
+  const [deviceStore, setDeviceStore] = useState('');
   const moderatorsRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLElement>(null);
 
@@ -112,6 +132,14 @@ export function DeviceManagementPanel(props: {
   }
 
   const selected = stations?.find((station) => station.id === selectedId);
+  const stores = storeNames(stations ?? []);
+  const visibleStations = filterFleetStations(stations ?? [], { search: deviceSearch, states: deviceStates, store: deviceStore });
+  const listFiltered = Boolean(deviceSearch.trim() || deviceStates.length || deviceStore);
+  const clearDeviceFilters = (): void => {
+    setDeviceSearch('');
+    setDeviceStates([]);
+    setDeviceStore('');
+  };
 
   return (
     <div className="fleet-page admin-stack">
@@ -164,8 +192,80 @@ export function DeviceManagementPanel(props: {
             </EmptyState>
           )}
           {stations && stations.length > 0 && (
+            <div className="fleet-list-filters">
+              <label className="admin-field fleet-list-search">
+                <span className="admin-section-title">Search</span>
+                <span className="admin-affix-input">
+                  <Search size={17} aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={deviceSearch}
+                    placeholder="Name, store, location or device ID"
+                    aria-label="Search devices"
+                    onChange={(event) => setDeviceSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      // Escape clears the search first; only an empty box lets Escape leave the Control Room.
+                      if (event.key === 'Escape' && deviceSearch) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setDeviceSearch('');
+                      }
+                    }}
+                  />
+                </span>
+              </label>
+              <div className="accounts-filter-group">
+                <span className="admin-section-title">Status</span>
+                <div className="admin-chip-toggles" role="group" aria-label="Device status">
+                  {STATE_FILTERS.map((state) => (
+                    <button
+                      key={state.id}
+                      className="admin-chip-toggle"
+                      type="button"
+                      aria-pressed={deviceStates.includes(state.id)}
+                      onClick={() => setDeviceStates((current) => toggleValue(current, state.id))}
+                    >
+                      {state.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {stores.length > 1 && (
+                <label className="admin-field fleet-list-store">
+                  <span className="admin-section-title">Store</span>
+                  <span className="admin-affix-input accounts-sort-input">
+                    <Store size={16} aria-hidden="true" />
+                    <select value={deviceStore} aria-label="Store" onChange={(event) => setDeviceStore(event.target.value)}>
+                      <option value="">All stores</option>
+                      {stores.map((store) => <option key={store} value={store}>{store}</option>)}
+                    </select>
+                  </span>
+                </label>
+              )}
+              <div className="accounts-active-filters fleet-list-count">
+                <span className="accounts-result-count">
+                  {listFiltered
+                    ? `Showing ${visibleStations.length} of ${stations.length} devices`
+                    : `Showing all ${stations.length} ${stations.length === 1 ? 'device' : 'devices'}`}
+                </span>
+                {listFiltered && (
+                  <button className="secondary-action compact" type="button" onClick={clearDeviceFilters}>
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {stations && stations.length > 0 && visibleStations.length === 0 && (
+            <EmptyState icon={<Search size={28} />} title="No devices match these filters">
+              <button className="secondary-action compact" type="button" onClick={clearDeviceFilters}>
+                Clear filters
+              </button>
+            </EmptyState>
+          )}
+          {visibleStations.length > 0 && (
             <ul className="fleet-station-grid">
-              {stations.map((station) => (
+              {visibleStations.map((station) => (
                 <li key={station.id}>
                   <StationCard
                     station={station}

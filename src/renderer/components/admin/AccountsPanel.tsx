@@ -25,11 +25,15 @@ import type {
   PaymentPayerDetails
 } from '../../../shared/types';
 import { CardHeader, EmptyState, LoadingState, Notice, type NoticeTone } from './AdminKit';
+import { AccountsFilterBar } from './AccountsFilters';
 import {
+  accountsFilterCount,
   buildEarningsQuery,
+  clearAccountsFilters,
   dateLabel,
   dateTimeLabel,
   durationLabel,
+  EARNINGS_SORT_OPTIONS,
   entryEnd,
   entryMinutes,
   formatPaise,
@@ -42,6 +46,8 @@ import {
   summarizeSessionGames,
   timeLabel,
   toDateInputValue,
+  toggleValue,
+  withAccountsScope,
   type AccountsView,
   type RangePreset
 } from './fleetFormat';
@@ -84,11 +90,6 @@ function periodLabel(view: AccountsView): string {
   return 'All time';
 }
 
-function stationOptionLabel(station: FleetStation): string {
-  const place = [station.storeName, station.location].filter(Boolean).join(' · ');
-  return `${station.name}${place ? ` — ${place}` : ''}${station.removedAt ? ' (removed)' : ''}`;
-}
-
 export function AccountsPanel(props: {
   view: AccountsView;
   onViewChange: Dispatch<SetStateAction<AccountsView>>;
@@ -110,14 +111,20 @@ export function AccountsPanel(props: {
   const requestRef = useRef(0);
 
   const allScope = view.scope === 'all';
-  const viewKey = [view.scope, view.stationId, view.range, view.customFrom, view.customTo].join('|');
-  const invalidRange = useMemo(() => buildEarningsQuery(view).invalid ?? '', [view]);
+  const built = useMemo(() => buildEarningsQuery(view), [view]);
+  const invalidRange = built.invalid ?? '';
+  // Every filter is part of the query the main process applies; any change reloads the report.
+  const viewKey = JSON.stringify(built.query);
 
-  // A new period, scope or device is a different report: drop the old one so stale rows never show.
+  // The other scope has different columns and devices: drop its report so stale rows never show.
+  // Other filter changes keep the current report on screen (dimmed) until the new one arrives.
   useEffect(() => {
     setReport(null);
     setExpanded(new Set());
     setShowAllGames(false);
+  }, [view.scope]);
+
+  useEffect(() => {
     setExportNotice(null);
   }, [viewKey]);
 
@@ -141,7 +148,7 @@ export function AccountsPanel(props: {
           setReport(result.data);
         } else if (result.code === 'owner_pin_required') {
           // The main admin PIN was cancelled: go back to this device.
-          onViewChange((current) => ({ ...current, scope: 'device', stationId: '' }));
+          onViewChange((current) => withAccountsScope(current, 'device'));
         } else {
           setError(result.error ?? 'Could not load earnings.');
         }
@@ -185,7 +192,7 @@ export function AccountsPanel(props: {
       setScopePending(false);
       if (!unlocked) return;
     }
-    onViewChange((current) => ({ ...current, scope, stationId: '' }));
+    onViewChange((current) => withAccountsScope(current, scope));
   };
 
   const chooseRange = (range: RangePreset): void => {
@@ -227,8 +234,16 @@ export function AccountsPanel(props: {
     });
   };
 
-  const selectedStation = stations.find((station) => station.id === view.stationId);
-  const scopeName = allScope ? selectedStation?.name ?? 'All devices' : props.currentDevice.name;
+  const pickedStations = allScope ? view.stationIds : [];
+  const scopeName = !allScope
+    ? props.currentDevice.name
+    : pickedStations.length === 0
+      ? 'All devices'
+      : pickedStations.length === 1
+        ? stations.find((station) => station.id === pickedStations[0])?.name || '1 device'
+        : `${pickedStations.length} devices`;
+  const filterCount = accountsFilterCount(view);
+  const sortLabel = EARNINGS_SORT_OPTIONS.find((option) => option.id === (report?.sort ?? view.sort))?.label ?? 'Newest first';
   const period = periodLabel(view);
   const topGame = report?.byGame[0];
   const games = report ? (showAllGames ? report.byGame : report.byGame.slice(0, TOP_GAMES_PREVIEW)) : [];
@@ -253,21 +268,6 @@ export function AccountsPanel(props: {
               </button>
             </div>
           </div>
-          {allScope && (
-            <label className="admin-field accounts-device-filter">
-              <span className="admin-section-title">Device</span>
-              <select
-                value={view.stationId}
-                onChange={(event) => onViewChange((current) => ({ ...current, stationId: event.target.value }))}
-              >
-                <option value="">All devices</option>
-                {stations.map((station) => (
-                  <option key={station.id} value={station.id}>{stationOptionLabel(station)}</option>
-                ))}
-                {view.stationId && !selectedStation && <option value={view.stationId}>Selected device</option>}
-              </select>
-            </label>
-          )}
           <div className="accounts-filter-actions">
             <button className="secondary-action compact" type="button" disabled={busy} onClick={() => setRefreshCount((count) => count + 1)}>
               {loading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
@@ -314,6 +314,14 @@ export function AccountsPanel(props: {
             </div>
           )}
         </div>
+        <AccountsFilterBar
+          view={view}
+          onViewChange={onViewChange}
+          stations={stations}
+          facets={report?.facets}
+          shownCount={report?.sessionCount}
+          disabled={scopePending}
+        />
         {allScope && stationsError && <Notice tone="warning">{stationsError}</Notice>}
         {invalidRange && <Notice tone="warning">{invalidRange}</Notice>}
         {exportNotice && <Notice tone={exportNotice.tone} className="accounts-export-notice">{exportNotice.text}</Notice>}
@@ -372,7 +380,7 @@ export function AccountsPanel(props: {
             <CardHeader
               eyebrow={allScope ? scopeName : 'This device'}
               title="Paid sessions"
-              subtitle={`${period} · Newest first · Updated ${timeLabel(report.generatedAt)}`}
+              subtitle={`${period} · ${sortLabel} · Updated ${timeLabel(report.generatedAt)}`}
               actions={<span className="ps-chip admin-count-chip">{report.rows.length} {report.rows.length === 1 ? 'session' : 'sessions'}</span>}
             />
             {report.truncated && (
@@ -381,9 +389,17 @@ export function AccountsPanel(props: {
               </Notice>
             )}
             {report.rows.length === 0 ? (
-              <EmptyState icon={<ReceiptIndianRupee size={28} />} title="No paid sessions in this period">
-                {allScope ? 'Try a longer period or another device.' : 'Try a longer period. Sessions customers pay for on this device appear here.'}
-              </EmptyState>
+              filterCount > 0 ? (
+                <EmptyState icon={<ReceiptIndianRupee size={28} />} title="No sessions match these filters">
+                  <button className="secondary-action compact" type="button" onClick={() => onViewChange((current) => clearAccountsFilters(current))}>
+                    Clear filters
+                  </button>
+                </EmptyState>
+              ) : (
+                <EmptyState icon={<ReceiptIndianRupee size={28} />} title="No paid sessions in this period">
+                  {allScope ? 'Try a longer period or another device.' : 'Try a longer period. Sessions customers pay for on this device appear here.'}
+                </EmptyState>
+              )
             ) : (
               <SessionsTable rows={report.rows} allScope={allScope} expanded={expanded} onToggle={toggleRow} />
             )}
@@ -395,7 +411,7 @@ export function AccountsPanel(props: {
                 <CardHeader
                   eyebrow="Breakdown"
                   title="By device"
-                  subtitle="Pick a device to see only its sessions."
+                  subtitle="Pick devices to see only their sessions."
                 />
                 {report.byStation.length === 0 ? (
                   <p className="field-note">No device earned in this period.</p>
@@ -406,10 +422,10 @@ export function AccountsPanel(props: {
                         <button
                           className="accounts-bar-row"
                           type="button"
-                          aria-pressed={view.stationId === station.stationId}
+                          aria-pressed={view.stationIds.includes(station.stationId)}
                           onClick={() => onViewChange((current) => ({
                             ...current,
-                            stationId: current.stationId === station.stationId ? '' : station.stationId
+                            stationIds: toggleValue(current.stationIds, station.stationId)
                           }))}
                         >
                           <span className="accounts-bar-copy">

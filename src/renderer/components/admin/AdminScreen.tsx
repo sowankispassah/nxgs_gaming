@@ -20,6 +20,7 @@ import { BrandLogo } from '../BrandLogo';
 import { DeviceManager } from '../DeviceManager';
 import { PlanManager } from '../PlanManager';
 import { AccountsPanel, DEFAULT_ACCOUNTS_VIEW, type AccountsView } from './AccountsPanel';
+import { withAccountsScope } from './fleetFormat';
 import { DeviceManagementPanel } from './DeviceManagementPanel';
 import { GameManager, ScanPanel } from './GameLibraryPanels';
 import { BrandingSettingsPanel, KioskSettingsPanel, SessionSettings } from './SettingsPanels';
@@ -77,6 +78,8 @@ const PAGE_COPY: Record<AdminTab, { title: string; description: string }> = {
 
 /** Arrow keys inside these regions (such as the earnings table) stay with the region instead of switching sections. */
 const LOCAL_KEYS_SELECTOR = '[data-admin-local-keys]';
+/** An open filter popover owns Escape/B (it closes itself) as well as the arrows. */
+const POPOVER_SELECTOR = '[data-admin-popover]';
 
 export function AdminScreen(props: {
   games: GameRecord[];
@@ -115,6 +118,7 @@ export function AdminScreen(props: {
       if (event.ctrlKey || event.altKey || event.metaKey) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
       if (event.key.startsWith('Arrow') && event.target instanceof Element && event.target.closest(LOCAL_KEYS_SELECTOR)) return;
+      if (event.target instanceof Element && event.target.closest(POPOVER_SELECTOR)) return;
       event.preventDefault();
       if (event.key === 'Escape' || event.key.toLowerCase() === 'b') closeAdmin();
       else moveAdminTab(event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1);
@@ -145,12 +149,12 @@ export function AdminScreen(props: {
   // Locked (or the PIN prompt was cancelled): every-device earnings go back to this device.
   useEffect(() => {
     if (!owner.unlocked && !owner.prompting && accountsView.scope === 'all') {
-      setAccountsView((current) => ({ ...current, scope: 'device', stationId: '' }));
+      setAccountsView((current) => withAccountsScope(current, 'device'));
     }
   }, [accountsView.scope, owner.prompting, owner.unlocked]);
 
   const viewStationEarnings = useCallback((stationId: string): void => {
-    setAccountsView((current) => ({ ...current, scope: 'all', stationId }));
+    setAccountsView((current) => ({ ...withAccountsScope(current, 'all'), stationIds: [stationId] }));
     setTab('accounts');
   }, []);
 

@@ -2,6 +2,9 @@ import type {
   EarningsQuery,
   EarningsScope,
   EarningsSessionRow,
+  EarningsSort,
+  FleetStation,
+  LocalSessionStatus,
   PaymentPayerDetails,
   SessionGamePlay
 } from '../../../shared/types';
@@ -190,29 +193,79 @@ export function addDays(date: Date, days: number): Date {
 
 export type RangePreset = 'today' | 'week' | 'month' | 'all' | 'custom';
 
-/** What the Accounts page shows. Kept by AdminScreen so "View earnings" can open it filtered. */
+/** What the Accounts page shows. Kept by AdminScreen so switching tabs keeps it and "View earnings" can open it filtered. */
 export interface AccountsView {
   scope: EarningsScope;
-  /** Scope `all` only; empty means every device. */
-  stationId: string;
   range: RangePreset;
   /** `YYYY-MM-DD`, used by the Custom range. */
   customFrom: string;
   customTo: string;
+  /** Scope `all` only; empty means every device. */
+  stationIds: string[];
+  gameIds: string[];
+  /** Lowercase Razorpay methods, or `unknown` for sessions without payer details. */
+  paymentMethods: string[];
+  statuses: LocalSessionStatus[];
+  /** Scope `all` only. */
+  verifiedOnly: boolean;
+  /** Committed (debounced) search text. */
+  search: string;
+  sort: EarningsSort;
 }
 
 export const DEFAULT_ACCOUNTS_VIEW: AccountsView = {
   scope: 'device',
-  stationId: '',
   range: 'month',
   customFrom: '',
-  customTo: ''
+  customTo: '',
+  stationIds: [],
+  gameIds: [],
+  paymentMethods: [],
+  statuses: [],
+  verifiedOnly: false,
+  search: '',
+  sort: 'newest'
 };
+
+export const EARNINGS_SORT_OPTIONS: Array<{ id: EarningsSort; label: string }> = [
+  { id: 'newest', label: 'Newest first' },
+  { id: 'oldest', label: 'Oldest first' },
+  { id: 'amount_high', label: 'Highest amount' },
+  { id: 'amount_low', label: 'Lowest amount' },
+  { id: 'longest', label: 'Longest session' }
+];
+
+/** Filters beyond scope, period and sort that narrow the sessions shown. */
+export function accountsFilterCount(view: AccountsView): number {
+  const devices = view.scope === 'all' ? view.stationIds.length : 0;
+  const verified = view.scope === 'all' && view.verifiedOnly ? 1 : 0;
+  return devices + view.gameIds.length + view.paymentMethods.length + view.statuses.length + verified + (view.search.trim() ? 1 : 0);
+}
+
+/** "Clear filters": keeps scope, period and sort. */
+export function clearAccountsFilters(view: AccountsView): AccountsView {
+  return { ...view, stationIds: [], gameIds: [], paymentMethods: [], statuses: [], verifiedOnly: false, search: '' };
+}
+
+/** Switching between This device and All devices keeps period, search, sort and the session filters. */
+export function withAccountsScope(view: AccountsView, scope: EarningsScope): AccountsView {
+  return { ...view, scope, stationIds: [], verifiedOnly: false };
+}
+
+export function toggleValue<T>(values: T[], value: T): T[] {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
 
 /** Converts the chosen period to the ISO `from` (inclusive) / `to` (exclusive) the main process filters by. */
 export function buildEarningsQuery(view: AccountsView, now = new Date()): { query: EarningsQuery; invalid?: string } {
-  const query: EarningsQuery = { scope: view.scope };
-  if (view.scope === 'all' && view.stationId) query.stationId = view.stationId;
+  const query: EarningsQuery = { scope: view.scope, sort: view.sort };
+  if (view.scope === 'all' && view.stationIds.length) query.stationIds = [...view.stationIds];
+  if (view.gameIds.length) query.gameIds = [...view.gameIds];
+  if (view.paymentMethods.length) query.paymentMethods = [...view.paymentMethods];
+  if (view.statuses.length) query.statuses = [...view.statuses];
+  if (view.scope === 'all' && view.verifiedOnly) query.verifiedOnly = true;
+  const search = view.search.trim();
+  if (search) query.search = search;
   const today = startOfDay(now);
   if (view.range === 'today') {
     query.from = today.toISOString();
@@ -233,4 +286,57 @@ export function buildEarningsQuery(view: AccountsView, now = new Date()): { quer
     if (to) query.to = addDays(to, 1).toISOString();
   }
   return { query };
+}
+
+// ---------------------------------------------------------------------------
+// Device lists (Accounts device picker and the All Devices tab)
+// ---------------------------------------------------------------------------
+
+export type FleetStationState = 'active' | 'inactive' | 'removed';
+
+export function fleetStationState(station: FleetStation): FleetStationState {
+  if (station.removedAt) return 'removed';
+  return station.status === 'active' ? 'active' : 'inactive';
+}
+
+/** Name, store, location or device ID contains the text (case-insensitive). */
+export function stationMatchesSearch(station: FleetStation, search: string): boolean {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return true;
+  return [station.name, station.storeName, station.location, station.id].some((field) => field?.toLowerCase().includes(needle));
+}
+
+export function filterFleetStations(
+  stations: FleetStation[],
+  filters: { search: string; states: FleetStationState[]; store: string }
+): FleetStation[] {
+  return stations.filter((station) =>
+    stationMatchesSearch(station, filters.search)
+    && (filters.states.length === 0 || filters.states.includes(fleetStationState(station)))
+    && (!filters.store || (station.storeName.trim() || NO_STORE) === filters.store)
+  );
+}
+
+/** Group label for devices without a store name. */
+export const NO_STORE = 'No store';
+
+/** Devices grouped by store (A-Z, "No store" last); in each store by name with removed devices last. */
+export function groupStationsByStore(stations: FleetStation[]): Array<{ store: string; stations: FleetStation[] }> {
+  const groups = new Map<string, FleetStation[]>();
+  for (const station of stations) {
+    const store = station.storeName.trim() || NO_STORE;
+    groups.set(store, [...(groups.get(store) ?? []), station]);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => Number(left === NO_STORE) - Number(right === NO_STORE) || left.localeCompare(right))
+    .map(([store, items]) => ({
+      store,
+      stations: [...items].sort((left, right) =>
+        Number(Boolean(left.removedAt)) - Number(Boolean(right.removedAt)) || left.name.localeCompare(right.name)
+      )
+    }));
+}
+
+export function storeNames(stations: FleetStation[]): string[] {
+  return groupStationsByStore(stations).map((group) => group.store);
 }

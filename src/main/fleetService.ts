@@ -24,7 +24,13 @@ import type {
   OwnerUnlockResult,
   SessionGamePlay
 } from '../shared/types';
-import { buildEarningsReport, normalizePayerList } from '../shared/earnings';
+import {
+  buildEarningsReportForQuery,
+  EARNINGS_SORTS,
+  EARNINGS_STATUSES,
+  earningsStationIds,
+  normalizePayerList
+} from '../shared/earnings';
 import { readBackendConfig, type BackendConfig } from './backendConfig';
 import type { DataStore, GameOverride, OwnerDeviceFields } from './database';
 import { logLine } from './logger';
@@ -45,6 +51,12 @@ const SESSION_BATCH = 200;
 // The cloud slides the owner session 30 minutes on every authorised call.
 const OWNER_SESSION_MS = 30 * 60_000;
 const STATION_ID = /^[A-Za-z0-9_-]{3,80}$/;
+const GAME_ID = /^[^\u0000-\u001f\u007f]{1,200}$/;
+const PAYMENT_METHOD = /^[a-z0-9_]{1,40}$/;
+const MAX_FILTER_VALUES = 200;
+const MAX_SEARCH_LENGTH = 100;
+// Earnings for several chosen stations are fetched one station per request, this many at a time.
+const EARNINGS_FAN_OUT = 4;
 
 const MESSAGES = {
   offline: 'No internet connection. Device Management needs the cloud.',
@@ -366,6 +378,77 @@ function normalizeRange(query: EarningsQuery | undefined): { from?: string; to?:
   return range;
 }
 
+/** A filter list from the renderer: at most 200 strings, each passing `valid`. Returns an error message when invalid. */
+function filterList(value: unknown, valid: (item: string) => boolean, what: string): string[] | string {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return `Choose ${what} again.`;
+  if (value.length > MAX_FILTER_VALUES) return `Choose at most ${MAX_FILTER_VALUES} ${what}.`;
+  if (value.some((item) => typeof item !== 'string' || !valid(item))) return `Unknown ${what} in the filter.`;
+  return [...new Set(value as string[])];
+}
+
+/** Validates an earnings query from the renderer; returns a staff-readable message when it is invalid. */
+function normalizeEarningsQuery(query: EarningsQuery | undefined): EarningsQuery | string {
+  const range = normalizeRange(query);
+  if (!range) return 'Choose a valid date range.';
+  const scope = query?.scope === 'all' ? 'all' : 'device';
+  const stationId = query?.stationId;
+  if (stationId !== undefined && stationId !== null && stationId !== '' && !STATION_ID.test(String(stationId))) {
+    return 'Unknown devices in the filter.';
+  }
+  const stationIds = filterList(query?.stationIds, (id) => STATION_ID.test(id), 'devices');
+  if (typeof stationIds === 'string') return stationIds;
+  const gameIds = filterList(query?.gameIds, (id) => GAME_ID.test(id), 'games');
+  if (typeof gameIds === 'string') return gameIds;
+  const paymentMethods = filterList(query?.paymentMethods, (method) => PAYMENT_METHOD.test(method.toLowerCase()), 'payment methods');
+  if (typeof paymentMethods === 'string') return paymentMethods;
+  const statuses = filterList(query?.statuses, (status) => (EARNINGS_STATUSES as readonly string[]).includes(status), 'session statuses');
+  if (typeof statuses === 'string') return statuses;
+  if (query?.verifiedOnly !== undefined && query.verifiedOnly !== null && typeof query.verifiedOnly !== 'boolean') {
+    return 'Choose the verified payments filter again.';
+  }
+  if (query?.search !== undefined && query.search !== null && typeof query.search !== 'string') return 'Search for text.';
+  const search = str(query?.search).trim();
+  if (search.length > MAX_SEARCH_LENGTH) return `Search must be ${MAX_SEARCH_LENGTH} characters or fewer.`;
+  const sort = query?.sort ?? 'newest';
+  if (!EARNINGS_SORTS.includes(sort)) return 'Unknown sort order.';
+  const devices = earningsStationIds({ stationIds, stationId: stationId ? String(stationId) : undefined });
+  if (devices.length > MAX_FILTER_VALUES) return `Choose at most ${MAX_FILTER_VALUES} devices.`;
+  return {
+    scope,
+    ...range,
+    // Devices and verified payments only exist across all devices; this device is always itself.
+    ...(scope === 'all' && devices.length > 0 ? { stationIds: devices } : {}),
+    ...(gameIds.length > 0 ? { gameIds } : {}),
+    ...(paymentMethods.length > 0 ? { paymentMethods: paymentMethods.map((method) => method.toLowerCase()) } : {}),
+    ...(statuses.length > 0 ? { statuses: statuses as LocalSessionStatus[] } : {}),
+    ...(scope === 'all' && query?.verifiedOnly === true ? { verifiedOnly: true } : {}),
+    ...(search ? { search } : {}),
+    sort
+  };
+}
+
+/** Runs `run` over `items` with at most `limit` in flight; stops starting new work after a failure. */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next < items.length) {
+      const index = next;
+      next += 1;
+      try {
+        results[index] = await run(items[index]);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 function validateStationInput(input: FleetStationInput | undefined): OwnerDeviceFields | string {
   const name = str(input?.name).trim();
   const storeName = str(input?.storeName).trim();
@@ -679,29 +762,32 @@ export class FleetService {
   // -------------------------------------------------------------------------
 
   /** `device` is built from local records (works offline); `all` comes from the cloud and needs the owner session. */
-  async getEarnings(query: EarningsQuery): Promise<FleetResult<EarningsReport>> {
-    const range = normalizeRange(query);
-    if (!range) return invalidInput('Choose a valid date range.');
-    if (query?.scope === 'all') {
-      const stationId = str(query.stationId);
-      if (stationId && !STATION_ID.test(stationId)) return invalidInput('Unknown station.');
-      return this.ownerCall('earnings', {
-        ...range,
-        ...(stationId ? { station_id: stationId } : {})
-      }, (response) =>
-        buildEarningsReport(list(response.rows).flatMap(toEarningsRow), {
-          scope: 'all',
-          ...range,
-          truncated: response.truncated === true
-        })
-      );
+  async getEarnings(rawQuery: EarningsQuery): Promise<FleetResult<EarningsReport>> {
+    const query = normalizeEarningsQuery(rawQuery);
+    if (typeof query === 'string') return invalidInput(query);
+    const range = { ...(query.from ? { from: query.from } : {}), ...(query.to ? { to: query.to } : {}) };
+    if (query.scope === 'all') {
+      const stationIds = query.stationIds ?? [];
+      return this.withOwner('earnings', async (ownerToken) => {
+        // Every station in one request, or one request per chosen station.
+        const bodies: WireObject[] = stationIds.length === 0
+          ? [range]
+          : stationIds.map((stationId) => ({ ...range, station_id: stationId }));
+        const responses = await mapWithConcurrency(bodies, EARNINGS_FAN_OUT, (body) =>
+          this.invoke('earnings', { ...body, owner_token: ownerToken })
+        );
+        const rows = new Map<string, EarningsSessionRow>();
+        for (const response of responses) {
+          for (const row of list(response.rows).flatMap(toEarningsRow)) rows.set(`${row.stationId}\u0000${row.id}`, row);
+        }
+        return buildEarningsReportForQuery([...rows.values()], query, {
+          truncated: responses.some((response) => response.truncated === true)
+        });
+      });
     }
     try {
       await this.refreshLocalPayers(range);
-      return {
-        ok: true,
-        data: buildEarningsReport(this.store.listEarningsRows(range), { scope: 'device', ...range })
-      };
+      return { ok: true, data: buildEarningsReportForQuery(this.store.listEarningsRows(range), query) };
     } catch (error) {
       await logLine('error', `Could not build this device's earnings: ${String(error)}`);
       return { ok: false, code: 'failed', error: "Couldn't load this device's earnings." };
@@ -1036,21 +1122,26 @@ export class FleetService {
     return null;
   }
 
-  private async ownerCall<T>(
+  private ownerCall<T>(
     action: string,
     body: WireObject,
     map: (response: WireObject) => T | Promise<T>
   ): Promise<FleetResult<T>> {
+    return this.withOwner(action, async (ownerToken) => map(await this.invoke(action, { ...body, owner_token: ownerToken })));
+  }
+
+  /** Runs owner-authorised cloud work: needs the unlocked session, slides it on success, forgets it when the cloud does. */
+  private async withOwner<T>(label: string, run: (ownerToken: string) => Promise<T>): Promise<FleetResult<T>> {
     const owner = this.validOwner();
     if (!owner) return { ok: false, code: 'owner_pin_required', error: MESSAGES.ownerPinRequired };
     try {
-      const response = await this.invoke(action, { ...body, owner_token: owner.token });
+      const data = await run(owner.token);
       if (this.owner === owner) owner.expiresAt = Date.now() + OWNER_SESSION_MS;
-      return { ok: true, data: await map(response) };
+      return { ok: true, data };
     } catch (error) {
       const callError = asCallError(error);
       if (callError.code === 'owner_pin_required' && this.owner === owner) this.owner = null;
-      await logLine('warn', `Device Management ${action} failed: ${callError.message}`);
+      await logLine('warn', `Device Management ${label} failed: ${callError.message}`);
       return failure(callError);
     }
   }
