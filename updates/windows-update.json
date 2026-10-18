@@ -1,7 +1,7 @@
 {
-    "version":  "0.28.1",
-    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.28.1/NXGS-Play-Setup.exe",
-    "sha256":  "b6e3cef75ae1f863538edfb75e0de5a739d6d5ac138b7c7b9687f7df203c7063",
+    "version":  "0.28.2",
+    "downloadUrl":  "https://github.com/sowankispassah/nxgs_gaming/releases/download/v0.28.2/NXGS-Play-Setup.exe",
+    "sha256":  "379c50843b7a63f7bb82f426d4354f01bc1b8bcd6a7e2c739fe853ed5c61d895",
     "required":  false,
-    "notes":  "Control Room text back to its previous size"
+    "notes":  "Bigger Control Room text, matching the earlier design's size"
 }
